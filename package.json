@@ -1,0 +1,29 @@
+{
+  "name": "weavekit",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "weavekit": "./dist/cli.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "baml-generate": "baml-cli generate",
+    "build": "npm run baml-generate && tsc -p tsconfig.json",
+    "council": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@boundaryml/baml": "^0.220.0",
+    "@github/copilot-sdk": "^0.1.0",
+    "@flue/runtime": "^1.0.0-beta.5",
+    "valibot": "^1.0.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  }
+}
