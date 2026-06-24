@@ -49,7 +49,16 @@ With nub:
 nub run council council run --input examples/design-question.md --output runs/example
 ```
 
-The CLI prints rich progress to stderr while the council runs: run start, round start, persona start/finish/failure, BAML normalization/Judge/report phases, artifact paths, and final stop reason. The final stdout includes the recommendation plus a link to the Markdown report:
+The CLI prints compact rich progress to stderr while the council runs: run start, round start, persona start/finish/failure, BAML normalization/Judge/report phases, artifact paths, and final stop reason. After each successful BAML normalization, pretty logs include one indented summary of that persona's normalized stance:
+
+```text
+[2026-06-24T19:42:21.962Z] baml completed round=1 persona=pragmatic operation=normalize duration=4.5s
+    -> Pragmatic persona recommends a minimal validation spike before adopting Flue/BAML.
+```
+
+Rounds use a shared fan-out/fan-in model. Round 1 sends the initial brief to every persona. Round 2+ sends one shared Judge brief, produced from the previous round's full set of normalized critiques, to every persona; the Judge then assesses the current round's full critique set together.
+
+The final stdout includes the recommendation plus a link to the Markdown report:
 
 ```text
 Markdown report: runs/example/CouncilReport.md
