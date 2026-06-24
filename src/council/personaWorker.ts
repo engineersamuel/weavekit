@@ -11,6 +11,17 @@ type CopilotLikeClient = {
 };
 
 /**
+ * Reads stop errors attached to a persona result by `CopilotPersonaWorker`.
+ * Returns the array of cleanup errors, or undefined if none were attached.
+ */
+export function getResultStopErrors(result: RawPersonaResult): Error[] | undefined {
+  const r = result as Record<string, unknown>;
+  const se = r._stopErrors;
+  if (Array.isArray(se) && se.length > 0) return se as Error[];
+  return undefined;
+}
+
+/**
  * Reads stop errors attached to a propagating error by `CopilotPersonaWorker`.
  * Returns the array of cleanup errors, or undefined if none were attached.
  */
@@ -32,6 +43,10 @@ export function getDisconnectError(err: unknown): Error | undefined {
     if (de instanceof Error) return de;
   }
   return undefined;
+}
+
+function attachStopErrorsToResult(result: RawPersonaResult, stopErrors: Error[]): void {
+  (result as Record<string, unknown>)._stopErrors = stopErrors;
 }
 
 function attachDisconnectError(err: unknown, disconnectErr: unknown): void {
@@ -73,11 +88,14 @@ export class CopilotPersonaWorker implements PersonaWorker {
   private readonly clientFactory: () => CopilotLikeClient | Promise<CopilotLikeClient>;
   private readonly model: string;
   private readonly timeoutMs: number;
+  private readonly onPermissionRequest: () => { kind: "approved" | "denied" };
 
   constructor(args: {
     clientFactory?: () => CopilotLikeClient | Promise<CopilotLikeClient>;
     model?: string;
     timeoutMs?: number;
+    /** Permission handler for persona sessions. Defaults to deny-by-default. */
+    onPermissionRequest?: () => { kind: "approved" | "denied" };
   } = {}) {
     this.clientFactory = args.clientFactory ?? (async () => {
       const { CopilotClient } = await import("@github/copilot-sdk");
@@ -85,6 +103,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
     });
     this.model = args.model ?? "gpt-5";
     this.timeoutMs = args.timeoutMs ?? 120_000;
+    this.onPermissionRequest = args.onPermissionRequest ?? (() => ({ kind: "denied" as const }));
   }
 
   async runPersona(args: { persona: PersonaDefinition; brief: RoundBrief }): Promise<RawPersonaResult> {
@@ -93,6 +112,8 @@ export class CopilotPersonaWorker implements PersonaWorker {
     await client.start();
 
     let primaryError: unknown = undefined;
+    let successResult: RawPersonaResult | undefined = undefined;
+
     try {
       const session = await client.createSession({
         model: this.model,
@@ -105,7 +126,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
             prompt: persona.prompt,
           },
         ],
-        onPermissionRequest: () => ({ kind: "approved" as const }),
+        onPermissionRequest: this.onPermissionRequest,
       });
 
       let sendError: unknown = undefined;
@@ -117,7 +138,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
           throw new Error(`Copilot persona ${persona.id} returned an empty response.`);
         }
 
-        return {
+        successResult = {
           personaId: persona.id,
           text,
           transcript: [`assistant: ${text}`],
@@ -134,24 +155,41 @@ export class CopilotPersonaWorker implements PersonaWorker {
             // Preserve original send error; attach disconnect error for inspection.
             attachDisconnectError(sendError, disconnectErr);
           } else {
+            // sendAndWait succeeded but disconnect failed — clear result, surface as error.
+            successResult = undefined;
             throw disconnectErr;
           }
         }
       }
     } catch (_err) {
       primaryError = _err;
-      throw _err;
-    } finally {
-      const stopErrors = await client.stop();
-      if (stopErrors && stopErrors.length > 0) {
-        if (primaryError !== undefined) {
-          // Attach cleanup errors to the propagating error so callers can inspect
-          // them via getStopErrors() without suppressing the original failure.
-          attachStopErrors(primaryError, stopErrors);
-        } else {
-          throw new AggregateError(stopErrors, "Copilot client stop reported errors");
-        }
-      }
     }
+
+    // Collect stop errors outside the try/finally so that stop() rejections are handled
+    // without masking a primary error, and stop errors on the success path don't discard the result.
+    let stopErrors: Error[] | undefined;
+    try {
+      const rawStop = await client.stop();
+      if (rawStop && rawStop.length > 0) stopErrors = rawStop;
+    } catch (stopRejection) {
+      stopErrors = [stopRejection instanceof Error ? stopRejection : new Error(String(stopRejection))];
+    }
+
+    if (successResult !== undefined) {
+      // Happy path: return the result and surface any cleanup errors for inspection.
+      if (stopErrors) {
+        attachStopErrorsToResult(successResult, stopErrors);
+      }
+      return successResult;
+    }
+
+    if (primaryError !== undefined) {
+      if (stopErrors) {
+        attachStopErrors(primaryError, stopErrors);
+      }
+      throw primaryError;
+    }
+
+    throw new Error("runPersona: unreachable state");
   }
 }

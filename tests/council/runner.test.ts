@@ -65,6 +65,41 @@ function judge(roundsBeforeStop: number): JudgeReducer {
 }
 
 describe("runCouncil", () => {
+  it("overwrites hallucinated failedPersonas from judge with authoritative run-state failures", async () => {
+    // The LLM can fabricate or drop failed personas; deterministic run-state must win.
+    const hallucinatingJudge: JudgeReducer = {
+      assessRound: judge(1).assessRound,
+      async createFinalReport() {
+        return {
+          recommendation: "Use Flue.",
+          rationale: ["OK"],
+          strongestObjections: [],
+          unresolvedQuestions: [],
+          confidence: 0.8,
+          convergence: 0.9,
+          nextExperiment: "Try it.",
+          failedPersonas: [{ personaId: "hallucinated", message: "invented by LLM", retryable: false }],
+        };
+      },
+    };
+
+    const report = await runCouncil(
+      { prompt: "Test hallucination." },
+      {
+        deps: {
+          personaWorker: fakeWorker(["socratic"]),
+          normalizer,
+          judge: hallucinatingJudge,
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    const failedIds = report.failedPersonas.map((f) => f.personaId);
+    expect(failedIds).not.toContain("hallucinated");
+    expect(failedIds).toContain("socratic");
+  });
+
   it("runs personas, normalizes critiques, and returns a final report", async () => {
     const report = await runCouncil(
       { prompt: "Should Weavekit use Flue?" },

@@ -123,13 +123,17 @@ export async function runCouncilRound(
     failures: allFailures,
   });
 
+  // Deterministic run-state is authoritative: overwrite failedPersonas so the LLM
+  // cannot drop, reorder, or hallucinate failures that were tracked by the runner.
+  const authoritative = { ...finalReport, failedPersonas: allFailures };
+
   const stopReason = reachedMaxRounds
     ? "max-rounds"
     : assessment.diminishingReturns
       ? "diminishing-returns"
       : "consensus";
 
-  return { ...state, rounds, finalReport, stopReason };
+  return { ...state, rounds, finalReport: authoritative, stopReason };
 }
 
 export async function runCouncilLoop(

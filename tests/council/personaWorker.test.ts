@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPersonaPrompt, CopilotPersonaWorker, getDisconnectError, getStopErrors } from "../../src/council/personaWorker.js";
+import { buildPersonaPrompt, CopilotPersonaWorker, getDisconnectError, getResultStopErrors, getStopErrors } from "../../src/council/personaWorker.js";
 import type { PersonaDefinition, RoundBrief } from "../../src/council/types.js";
 
 const persona: PersonaDefinition = {
@@ -71,7 +71,7 @@ describe("persona worker", () => {
     expect(client.stop).toHaveBeenCalled();
   });
 
-  it("onPermissionRequest handler returns approved shape", async () => {
+  it("default onPermissionRequest handler denies all requests", async () => {
     const session = {
       sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Response" } }),
       disconnect: vi.fn().mockResolvedValue(undefined),
@@ -91,10 +91,34 @@ describe("persona worker", () => {
 
     const config = client.createSession.mock.calls[0][0] as Record<string, unknown>;
     const handler = config.onPermissionRequest as () => unknown;
+    expect(handler()).toEqual({ kind: "denied" });
+  });
+
+  it("accepts a caller-supplied onPermissionRequest handler that can approve", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Response" } }),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      model: "gpt-5",
+      onPermissionRequest: () => ({ kind: "approved" as const }),
+    });
+
+    await worker.runPersona({ persona, brief });
+
+    const config = client.createSession.mock.calls[0][0] as Record<string, unknown>;
+    const handler = config.onPermissionRequest as () => unknown;
     expect(handler()).toEqual({ kind: "approved" });
   });
 
-  it("surfaces stop errors when there is no earlier error", async () => {
+  it("returns persona result and makes stop errors inspectable when sendAndWait succeeds", async () => {
     const session = {
       sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Response" } }),
       disconnect: vi.fn().mockResolvedValue(undefined),
@@ -110,9 +134,11 @@ describe("persona worker", () => {
       model: "gpt-5",
     });
 
-    const err = await worker.runPersona({ persona, brief }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(AggregateError);
-    expect((err as AggregateError).errors[0]).toMatchObject({ message: "cleanup failed" });
+    const result = await worker.runPersona({ persona, brief });
+    expect(result.text).toBe("Response");
+    const stopErrs = getResultStopErrors(result);
+    expect(stopErrs).toHaveLength(1);
+    expect(stopErrs![0].message).toBe("cleanup failed");
   });
 
   it("attaches stop errors to the thrown error when both sendAndWait and stop fail", async () => {

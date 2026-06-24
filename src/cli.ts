@@ -1,5 +1,7 @@
+#!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { runCouncil } from "./council/runner.js";
+import { CouncilRunFailedError } from "./council/errors.js";
 import type { CouncilInput } from "./council/types.js";
 
 export type CouncilCliArgs = {
@@ -43,6 +45,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
+    process.exitCode = error instanceof CouncilRunFailedError ? error.exitCode : 1;
   });
 }
