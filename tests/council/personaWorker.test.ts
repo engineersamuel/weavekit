@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPersonaPrompt, CopilotPersonaWorker, getDisconnectError, getResultStopErrors, getStopErrors } from "../../src/council/personaWorker.js";
+import { buildPersonaPrompt, CopilotPersonaWorker, getDisconnectError, getResultDisconnectError, getResultStopErrors, getStopErrors } from "../../src/council/personaWorker.js";
 import type { PersonaDefinition, RoundBrief } from "../../src/council/types.js";
 
 const persona: PersonaDefinition = {
@@ -189,5 +189,31 @@ describe("persona worker", () => {
     // Disconnect error must be inspectable, not silently lost
     expect(getDisconnectError(err)).toBeInstanceOf(Error);
     expect((getDisconnectError(err) as Error).message).toBe("disconnect failed");
+  });
+
+  it("when sendAndWait succeeds but disconnect throws, returns the result and makes disconnect error inspectable", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Success text" } }),
+      disconnect: vi.fn().mockRejectedValue(new Error("disconnect failed")),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      model: "gpt-5",
+    });
+
+    // Must NOT throw — the main operation succeeded
+    const result = await worker.runPersona({ persona, brief });
+    expect(result.text).toBe("Success text");
+    expect(result.personaId).toBe("skeptic");
+    // Disconnect error must be inspectable on the result
+    const de = getResultDisconnectError(result);
+    expect(de).toBeInstanceOf(Error);
+    expect(de!.message).toBe("disconnect failed");
   });
 });

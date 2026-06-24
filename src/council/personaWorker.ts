@@ -34,6 +34,17 @@ export function getStopErrors(err: unknown): Error[] | undefined {
 }
 
 /**
+ * Reads a disconnect error attached to a persona result by `CopilotPersonaWorker`.
+ * Returns the error, or undefined if none was attached.
+ */
+export function getResultDisconnectError(result: RawPersonaResult): Error | undefined {
+  const r = result as Record<string, unknown>;
+  const de = r._disconnectError;
+  if (de instanceof Error) return de;
+  return undefined;
+}
+
+/**
  * Reads a disconnect error attached to a propagating error by `CopilotPersonaWorker`.
  * Returns the error, or undefined if none was attached.
  */
@@ -47,6 +58,10 @@ export function getDisconnectError(err: unknown): Error | undefined {
 
 function attachStopErrorsToResult(result: RawPersonaResult, stopErrors: Error[]): void {
   (result as Record<string, unknown>)._stopErrors = stopErrors;
+}
+
+function attachDisconnectErrorToResult(result: RawPersonaResult, disconnectErr: unknown): void {
+  (result as Record<string, unknown>)._disconnectError = disconnectErr;
 }
 
 function attachDisconnectError(err: unknown, disconnectErr: unknown): void {
@@ -155,9 +170,11 @@ export class CopilotPersonaWorker implements PersonaWorker {
             // Preserve original send error; attach disconnect error for inspection.
             attachDisconnectError(sendError, disconnectErr);
           } else {
-            // sendAndWait succeeded but disconnect failed — clear result, surface as error.
-            successResult = undefined;
-            throw disconnectErr;
+            // sendAndWait succeeded but disconnect failed — preserve the result and
+            // attach the disconnect error for inspection (mirrors stop-error behavior).
+            if (successResult !== undefined) {
+              attachDisconnectErrorToResult(successResult, disconnectErr);
+            }
           }
         }
       }
