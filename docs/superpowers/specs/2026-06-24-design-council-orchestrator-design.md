@@ -9,7 +9,7 @@ The goal is learning speed with a path to a durable personal workflow engine. Th
 ## Design goals
 
 - Use TypeScript for fastest iteration across workflow tooling, Copilot SDK integration, BAML, and CLI/report output.
-- Use Mastra as the workflow runner for typed steps, parallel fan-out, loop control, and workflow debugging.
+- Use Flue as the finite workflow and agent harness layer for OSS-friendly workflows, tools, subagents, sessions, and future connector/adaptor growth.
 - Use GitHub Copilot SDK sessions as persona workers from the start.
 - Use BAML at selected decision points, not every LLM boundary.
 - Keep the external module deep: callers use `runCouncil(input, { personaSet? }) => CouncilReport`.
@@ -39,7 +39,7 @@ The CLI invokes that interface and writes artifacts:
 weavekit council run --input question.md --personas default
 ```
 
-Behind the seam, Mastra controls the workflow:
+Behind the seam, Flue hosts the finite workflow while Weavekit owns the explicit TypeScript council loop:
 
 1. Build an initial `RoundBrief` from `CouncilInput`.
 2. Fan out to Copilot SDK persona sessions in parallel.
@@ -54,9 +54,9 @@ Behind the seam, Mastra controls the workflow:
 
 ### CouncilRunner
 
-`CouncilRunner` owns the public interface. It validates input, chooses the persona set, invokes the Mastra workflow, and returns the final `CouncilReport`.
+`CouncilRunner` owns the public interface. It validates input, chooses the persona set, invokes the Flue-backed council workflow, and returns the final `CouncilReport`.
 
-This is the primary test surface. Callers should not need to know about Mastra, BAML code generation, Copilot sessions, round orchestration, or artifact formatting.
+This is the primary test surface. Callers should not need to know about Flue, BAML code generation, Copilot sessions, round orchestration, or artifact formatting.
 
 ### PersonaWorker
 
@@ -98,7 +98,7 @@ BAML owns the core LLM-to-type contracts:
 - `RoundAssessment`
 - `CouncilReport`
 
-Mastra owns workflow state and step wiring. BAML should be used where determinism matters most: critique normalization, convergence assessment, disagreement synthesis, and final report shaping.
+Flue owns the finite workflow harness and inspectable run surface. Weavekit owns the deterministic council state machine inside that workflow. BAML should be used where determinism matters most: critique normalization, convergence assessment, disagreement synthesis, and final report shaping.
 
 ## Data flow
 
@@ -178,7 +178,7 @@ Internal modules can have tests behind their own seams, but v0 should avoid expo
 4. Add a product research/recommendation workflow.
 5. Revisit Rust for stable orchestrator primitives or performance-sensitive pieces.
 6. Revisit Microsoft Agent Framework for dogfooding if Python/C# workflow experiments become valuable.
-7. Revisit LangGraph only if cyclic graph semantics become more important than Mastra's workflow ergonomics.
+7. Revisit Mastra or LangGraph only if explicit graph/workflow DSL ergonomics become more important than Flue's OSS-friendly harness, connector, sandbox, and subagent fit.
 
 ## v0 success criteria
 
