@@ -57,14 +57,14 @@ function providerName(model: string): string {
 }
 
 describe("BAML Copilot proxy providers", () => {
-  it("defines a local proxy client for each advertised model and defaults to gpt-5-mini", async () => {
+  it("defines a local proxy client for each advertised model and uses env.BAML_MODEL for DefaultClient", async () => {
     const baml = await readFile("baml_src/clients.baml", "utf8");
     const council = await readFile("baml_src/council.baml", "utf8");
 
     expect(baml).toContain("base_url env.COPILOT_PROXY_BASE_URL");
     expect(baml).toContain("api_key env.COPILOT_PROXY_API_KEY");
     expect(baml).toContain('client<llm> DefaultClient');
-    expect(baml).toContain('model "gpt-5-mini"');
+    expect(baml).toContain('model env.BAML_MODEL');
     // Non-default proxy clients use a hardcoded local address
     expect(baml).toContain('base_url "http://127.0.0.1:8080/v1"');
     expect(council).not.toMatch(/^client<llm>/m);

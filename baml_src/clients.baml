@@ -11,7 +11,7 @@ client<llm> DefaultClient {
   options {
     base_url env.COPILOT_PROXY_BASE_URL
     api_key env.COPILOT_PROXY_API_KEY
-    model "gpt-5-mini"
+    model env.BAML_MODEL
   }
 }
 
