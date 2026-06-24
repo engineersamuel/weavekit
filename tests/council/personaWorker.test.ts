@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPersonaPrompt, CopilotPersonaWorker } from "../../src/council/personaWorker.js";
+import { buildPersonaPrompt, CopilotPersonaWorker, getStopErrors } from "../../src/council/personaWorker.js";
 import type { PersonaDefinition, RoundBrief } from "../../src/council/types.js";
 
 const persona: PersonaDefinition = {
@@ -113,5 +113,30 @@ describe("persona worker", () => {
     const err = await worker.runPersona({ persona, brief }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AggregateError);
     expect((err as AggregateError).errors[0]).toMatchObject({ message: "cleanup failed" });
+  });
+
+  it("attaches stop errors to the thrown error when both sendAndWait and stop fail", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockRejectedValue(new Error("send failed")),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue([new Error("cleanup failed")]),
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      model: "gpt-5",
+    });
+
+    const err = await worker.runPersona({ persona, brief }).catch((e: unknown) => e);
+    // Original error must still propagate
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe("send failed");
+    // Stop errors must be attached, not silently dropped
+    expect(getStopErrors(err)).toHaveLength(1);
+    expect(getStopErrors(err)![0].message).toBe("cleanup failed");
   });
 });

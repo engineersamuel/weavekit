@@ -10,6 +10,24 @@ type CopilotLikeClient = {
   stop(): Promise<Error[] | undefined>;
 };
 
+/**
+ * Reads stop errors attached to a propagating error by `CopilotPersonaWorker`.
+ * Returns the array of cleanup errors, or undefined if none were attached.
+ */
+export function getStopErrors(err: unknown): Error[] | undefined {
+  if (err !== null && typeof err === "object" && "stopErrors" in err) {
+    const se = (err as Record<string, unknown>).stopErrors;
+    if (Array.isArray(se) && se.length > 0) return se as Error[];
+  }
+  return undefined;
+}
+
+function attachStopErrors(err: unknown, stopErrors: Error[]): void {
+  if (err !== null && typeof err === "object") {
+    (err as Record<string, unknown>).stopErrors = stopErrors;
+  }
+}
+
 export type PersonaWorker = {
   runPersona(args: {
     persona: PersonaDefinition;
@@ -56,7 +74,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
     const client = await this.clientFactory();
     await client.start();
 
-    let hadError = false;
+    let primaryError: unknown = undefined;
     try {
       const session = await client.createSession({
         model: this.model,
@@ -90,12 +108,18 @@ export class CopilotPersonaWorker implements PersonaWorker {
         await session.disconnect();
       }
     } catch (_err) {
-      hadError = true;
+      primaryError = _err;
       throw _err;
     } finally {
       const stopErrors = await client.stop();
-      if (!hadError && stopErrors && stopErrors.length > 0) {
-        throw new AggregateError(stopErrors, "Copilot client stop reported errors");
+      if (stopErrors && stopErrors.length > 0) {
+        if (primaryError !== undefined) {
+          // Attach cleanup errors to the propagating error so callers can inspect
+          // them via getStopErrors() without suppressing the original failure.
+          attachStopErrors(primaryError, stopErrors);
+        } else {
+          throw new AggregateError(stopErrors, "Copilot client stop reported errors");
+        }
       }
     }
   }
