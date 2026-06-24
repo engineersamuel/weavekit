@@ -149,8 +149,8 @@ export function createCouncilWorkflow(deps: CouncilWorkflowDeps) {
       instructions:
         "You host finite Design Council workflow runs. Application code controls the council loop and typed outputs.",
     })),
-    input: v.any(),
-    output: v.any(),
+    input: v.looseObject({}),
+    output: v.looseObject({}),
     async run({ input }) {
       return await runCouncilLoop(CouncilRunStateSchema.parse(input), deps);
     },

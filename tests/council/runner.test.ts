@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runCouncil } from "../../src/council/runner.js";
+import { createCouncilWorkflow } from "../../src/council/workflow.js";
 import { defaultPersonaSet } from "../../src/council/personas.js";
 import type { JudgeReducer, CritiqueNormalizer } from "../../src/council/bamlAdapters.js";
 import type { PersonaWorker } from "../../src/council/personaWorker.js";
@@ -83,19 +84,29 @@ describe("runCouncil", () => {
   });
 
   it("stops at max three rounds even if Judge asks to continue", async () => {
+    let assessmentCount = 0;
+    const trackingJudge: JudgeReducer = {
+      async assessRound({ roundNumber, critiques, failures }) {
+        assessmentCount++;
+        return judge(10).assessRound({ roundNumber, critiques, failures });
+      },
+      createFinalReport: judge(10).createFinalReport,
+    };
+
     const report = await runCouncil(
       { prompt: "Keep debating forever." },
       {
         deps: {
           personaWorker: fakeWorker(),
           normalizer,
-          judge: judge(10),
+          judge: trackingJudge,
           writeArtifacts: false,
         },
       },
     );
 
     expect(report.recommendation).toBe("Use Flue for v0.");
+    expect(assessmentCount).toBe(3);
   });
 
   it("fails when fewer than two debating personas succeed", async () => {
@@ -112,5 +123,17 @@ describe("runCouncil", () => {
         },
       ),
     ).rejects.toThrow("Council requires at least two successful personas.");
+  });
+});
+
+describe("createCouncilWorkflow", () => {
+  it("returns a workflow object without throwing when called with valid deps", () => {
+    expect(() =>
+      createCouncilWorkflow({
+        personaWorker: fakeWorker(),
+        normalizer,
+        judge: judge(1),
+      }),
+    ).not.toThrow();
   });
 });

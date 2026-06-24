@@ -1,6 +1,7 @@
 import { GeneratedBamlAdapters } from "./bamlAdapters.js";
 import { writeCouncilArtifacts } from "./artifacts.js";
-import { runCouncilLoop, type CouncilWorkflowDeps } from "./workflow.js";
+import { runCouncilLoop, createCouncilWorkflow, type CouncilWorkflowDeps } from "./workflow.js";
+import { CouncilRunFailedError } from "./errors.js";
 import { CopilotPersonaWorker } from "./personaWorker.js";
 import { resolvePersonaSet } from "./personas.js";
 import {
@@ -33,7 +34,7 @@ export async function runCouncil(input: z.input<typeof CouncilInputSchema>, opti
   const finalState = await runCouncilLoop(initialState, deps);
 
   if (!finalState.finalReport) {
-    throw new Error("Council workflow completed without a final report.");
+    throw new CouncilRunFailedError("Council workflow completed without a final report.");
   }
 
   if (options.deps?.writeArtifacts !== false) {
