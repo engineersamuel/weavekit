@@ -22,6 +22,24 @@ export function getStopErrors(err: unknown): Error[] | undefined {
   return undefined;
 }
 
+/**
+ * Reads a disconnect error attached to a propagating error by `CopilotPersonaWorker`.
+ * Returns the error, or undefined if none was attached.
+ */
+export function getDisconnectError(err: unknown): Error | undefined {
+  if (err !== null && typeof err === "object" && "disconnectError" in err) {
+    const de = (err as Record<string, unknown>).disconnectError;
+    if (de instanceof Error) return de;
+  }
+  return undefined;
+}
+
+function attachDisconnectError(err: unknown, disconnectErr: unknown): void {
+  if (err !== null && typeof err === "object") {
+    (err as Record<string, unknown>).disconnectError = disconnectErr;
+  }
+}
+
 function attachStopErrors(err: unknown, stopErrors: Error[]): void {
   if (err !== null && typeof err === "object") {
     (err as Record<string, unknown>).stopErrors = stopErrors;
@@ -90,6 +108,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
         onPermissionRequest: () => ({ kind: "approved" as const }),
       });
 
+      let sendError: unknown = undefined;
       try {
         const response = await session.sendAndWait({ prompt: buildPersonaPrompt(persona, brief) }, this.timeoutMs);
         const text = response?.data?.content ?? "";
@@ -104,8 +123,20 @@ export class CopilotPersonaWorker implements PersonaWorker {
           transcript: [`assistant: ${text}`],
           metadata: { model: this.model },
         };
+      } catch (err) {
+        sendError = err;
+        throw err;
       } finally {
-        await session.disconnect();
+        try {
+          await session.disconnect();
+        } catch (disconnectErr) {
+          if (sendError !== undefined) {
+            // Preserve original send error; attach disconnect error for inspection.
+            attachDisconnectError(sendError, disconnectErr);
+          } else {
+            throw disconnectErr;
+          }
+        }
       }
     } catch (_err) {
       primaryError = _err;
