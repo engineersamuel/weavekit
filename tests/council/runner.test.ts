@@ -97,6 +97,51 @@ describe("runCouncil", () => {
     expect(events).toContain("council.run.completed");
   });
 
+  it("emits normalized summary and shared round source metadata", async () => {
+    const events: unknown[] = [];
+
+    await runCouncil(
+      { prompt: "Log summaries across rounds." },
+      {
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(2),
+          writeArtifacts: false,
+        },
+        logger: {
+          event(event) {
+            events.push(event);
+          },
+        },
+      },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "council.round.started",
+        roundNumber: 1,
+        focusSource: "initial",
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "council.round.started",
+        roundNumber: 2,
+        focusSource: "judge",
+        previousRoundNumber: 1,
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "council.baml.completed",
+        operation: "normalize",
+        personaId: "pragmatic",
+        summary: "pragmatic recommends testing the riskiest assumption first.",
+      }),
+    );
+  });
+
   it("overwrites hallucinated failedPersonas from judge with authoritative run-state failures", async () => {
     // The LLM can fabricate or drop failed personas; deterministic run-state must win.
     const hallucinatingJudge: JudgeReducer = {
