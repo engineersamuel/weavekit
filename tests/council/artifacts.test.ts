@@ -13,7 +13,7 @@ const report = {
   confidence: 0.72,
   convergence: 0.81,
   nextExperiment: "Run one council on the Weavekit design.",
-  finalReportMarkdown: "# Custom Markdown Report\n\nUse Flue for v0.\n",
+  finalReportMarkdown: " ",
   failedPersonas: [],
 };
 
@@ -21,8 +21,10 @@ describe("council artifacts", () => {
   it("renders a decision-ready Markdown report", () => {
     const markdown = renderCouncilReportMarkdown(report);
 
-    expect(markdown).toContain("# Custom Markdown Report");
+    expect(markdown).toContain("# Design Council Report");
+    expect(markdown).toContain("## Recommendation");
     expect(markdown).toContain("Use Flue for v0.");
+    expect(markdown).toContain("## Strongest Objections");
     expect(markdown).not.toContain("Raw transcript");
   });
 
