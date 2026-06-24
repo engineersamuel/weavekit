@@ -6,7 +6,8 @@ type CopilotLikeClient = {
     sendAndWait(message: { prompt: string }, timeout?: number): Promise<{ data?: { content?: string } } | undefined>;
     disconnect(): Promise<void>;
   }>;
-  stop(): Promise<void>;
+  // Real SDK returns Error[] on stop; undefined is tolerated for mocks/no-error cases.
+  stop(): Promise<Error[] | undefined>;
 };
 
 export type PersonaWorker = {
@@ -55,38 +56,47 @@ export class CopilotPersonaWorker implements PersonaWorker {
     const client = await this.clientFactory();
     await client.start();
 
-    const session = await client.createSession({
-      model: this.model,
-      agent: persona.id,
-      customAgents: [
-        {
-          name: persona.id,
-          displayName: persona.name,
-          description: persona.description,
-          prompt: persona.prompt,
-        },
-      ],
-      // Approve all permission requests without prompting the user.
-      onPermissionRequest: () => true,
-    });
-
+    let hadError = false;
     try {
-      const response = await session.sendAndWait({ prompt: buildPersonaPrompt(persona, brief) }, this.timeoutMs);
-      const text = response?.data?.content ?? "";
+      const session = await client.createSession({
+        model: this.model,
+        agent: persona.id,
+        customAgents: [
+          {
+            name: persona.id,
+            displayName: persona.name,
+            description: persona.description,
+            prompt: persona.prompt,
+          },
+        ],
+        onPermissionRequest: () => ({ kind: "approved" as const }),
+      });
 
-      if (text.trim().length === 0) {
-        throw new Error(`Copilot persona ${persona.id} returned an empty response.`);
+      try {
+        const response = await session.sendAndWait({ prompt: buildPersonaPrompt(persona, brief) }, this.timeoutMs);
+        const text = response?.data?.content ?? "";
+
+        if (text.trim().length === 0) {
+          throw new Error(`Copilot persona ${persona.id} returned an empty response.`);
+        }
+
+        return {
+          personaId: persona.id,
+          text,
+          transcript: [`assistant: ${text}`],
+          metadata: { model: this.model },
+        };
+      } finally {
+        await session.disconnect();
       }
-
-      return {
-        personaId: persona.id,
-        text,
-        transcript: [`assistant: ${text}`],
-        metadata: { model: this.model },
-      };
+    } catch (_err) {
+      hadError = true;
+      throw _err;
     } finally {
-      await session.disconnect();
-      await client.stop();
+      const stopErrors = await client.stop();
+      if (!hadError && stopErrors && stopErrors.length > 0) {
+        throw new AggregateError(stopErrors, "Copilot client stop reported errors");
+      }
     }
   }
 }

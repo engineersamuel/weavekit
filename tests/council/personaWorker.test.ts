@@ -54,4 +54,64 @@ describe("persona worker", () => {
       }),
     );
   });
+
+  it("calls client.stop() even when createSession throws", async () => {
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockRejectedValue(new Error("session failed")),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      model: "gpt-5",
+    });
+
+    await expect(worker.runPersona({ persona, brief })).rejects.toThrow("session failed");
+    expect(client.stop).toHaveBeenCalled();
+  });
+
+  it("onPermissionRequest handler returns approved shape", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Response" } }),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      model: "gpt-5",
+    });
+
+    await worker.runPersona({ persona, brief });
+
+    const config = client.createSession.mock.calls[0][0] as Record<string, unknown>;
+    const handler = config.onPermissionRequest as () => unknown;
+    expect(handler()).toEqual({ kind: "approved" });
+  });
+
+  it("surfaces stop errors when there is no earlier error", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Response" } }),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue([new Error("cleanup failed")]),
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      model: "gpt-5",
+    });
+
+    const err = await worker.runPersona({ persona, brief }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AggregateError);
+    expect((err as AggregateError).errors[0]).toMatchObject({ message: "cleanup failed" });
+  });
 });
