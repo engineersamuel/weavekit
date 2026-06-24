@@ -1,6 +1,6 @@
 import { GeneratedBamlAdapters } from "./bamlAdapters.js";
 import { writeCouncilArtifacts } from "./artifacts.js";
-import { runCouncilLoop, createCouncilWorkflow, type CouncilWorkflowDeps } from "./workflow.js";
+import { runCouncilLoop, type CouncilWorkflowDeps } from "./workflow.js";
 import { CouncilRunFailedError } from "./errors.js";
 import { CopilotPersonaWorker } from "./personaWorker.js";
 import { resolvePersonaSet } from "./personas.js";
