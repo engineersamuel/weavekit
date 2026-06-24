@@ -84,8 +84,9 @@ export async function writeCouncilArtifacts(args: {
 
   const debugTranscriptPaths: string[] = [];
   for (const round of state.rounds) {
-    for (const result of round.rawResults) {
-      const transcriptPath = join(debugDir, `round-${round.brief.roundNumber}-${result.personaId}.txt`);
+    for (let i = 0; i < round.rawResults.length; i++) {
+      const result = round.rawResults[i]!;
+      const transcriptPath = join(debugDir, `round-${round.brief.roundNumber}-${result.personaId}-${i}.txt`);
       await writeFile(transcriptPath, result.transcript.join("\n") + "\n", "utf8");
       debugTranscriptPaths.push(transcriptPath);
     }

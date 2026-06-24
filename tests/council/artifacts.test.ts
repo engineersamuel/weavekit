@@ -27,6 +27,60 @@ describe("council artifacts", () => {
     expect(markdown).not.toContain("Raw transcript");
   });
 
+  it("produces distinct transcript files when a round contains duplicate personaIds", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-artifacts-dup-"));
+    const state: CouncilRunState = {
+      input: { prompt: "Question", context: [], constraints: [] },
+      personas: [],
+      maxRounds: 1,
+      rounds: [
+        {
+          brief: { roundNumber: 1, prompt: "Question", focus: "Initial critique" },
+          rawResults: [
+            {
+              personaId: "socratic",
+              text: "First answer",
+              transcript: ["assistant: First answer"],
+              metadata: { model: "gpt-5" },
+            },
+            {
+              personaId: "socratic",
+              text: "Second answer",
+              transcript: ["assistant: Second answer"],
+              metadata: { model: "gpt-5" },
+            },
+          ],
+          critiques: [],
+          failures: [],
+          assessment: {
+            roundNumber: 1,
+            consensus: "Continue",
+            disagreements: [],
+            confidence: 0.5,
+            convergence: 0.4,
+            shouldContinue: false,
+            diminishingReturns: false,
+            nextRoundBrief: "",
+          },
+        },
+      ],
+      finalReport: report,
+      stopReason: "consensus",
+    };
+
+    try {
+      const artifacts = await writeCouncilArtifacts({ outputDir, state });
+
+      expect(artifacts.debugTranscriptPaths).toHaveLength(2);
+      expect(artifacts.debugTranscriptPaths[0]).not.toBe(artifacts.debugTranscriptPaths[1]);
+
+      await expect(readFile(artifacts.debugTranscriptPaths[0]!, "utf8")).resolves.toContain("First answer");
+      await expect(readFile(artifacts.debugTranscriptPaths[1]!, "utf8")).resolves.toContain("Second answer");
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
   it("writes Markdown, JSON state, and debug transcripts", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "weavekit-artifacts-"));
     const state: CouncilRunState = {
