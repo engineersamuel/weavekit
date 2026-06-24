@@ -15,7 +15,7 @@ npm install
 npm run baml-generate
 ```
 
-Run the local Copilot proxy on port 8080 before running the real workflow. The BAML clients use the proxy's OpenAI-compatible `/v1/chat/completions` endpoint and default to `gpt-5-mini`.
+Run the local Copilot proxy on port 8080 before running the real workflow. The BAML clients use the proxy's OpenAI-compatible `/v1/chat/completions` endpoint. Set `BAML_MODEL` to your preferred model (e.g., `gpt-5-mini`).
 
 ```bash
 curl -fsS http://127.0.0.1:8080/health

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseCouncilCliArgs, readCouncilInputFile } from "../src/cli.js";
+import { formatCouncilSuccessMessage, parseCouncilCliArgs, readCouncilInputFile } from "../src/cli.js";
 
 describe("CLI", () => {
   it("parses council run arguments", () => {
@@ -18,6 +18,24 @@ describe("CLI", () => {
     expect(parsed).toEqual({
       inputPath: "question.md",
       outputDir: "runs/question",
+      logFormat: "pretty",
+    });
+  });
+
+  it("parses JSON log format", () => {
+    const parsed = parseCouncilCliArgs([
+      "council",
+      "run",
+      "--input",
+      "question.md",
+      "--log-format",
+      "json",
+    ]);
+
+    expect(parsed).toEqual({
+      inputPath: "question.md",
+      outputDir: "runs/latest",
+      logFormat: "json",
     });
   });
 
@@ -32,5 +50,15 @@ describe("CLI", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it("formats final output with a Markdown report link", () => {
+    const message = formatCouncilSuccessMessage({
+      recommendation: "Use Flue for v0.",
+      outputDir: "runs/example",
+    });
+
+    expect(message).toContain("Use Flue for v0.");
+    expect(message).toContain("Markdown report: runs/example/CouncilReport.md");
   });
 });

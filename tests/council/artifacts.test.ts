@@ -13,6 +13,8 @@ const report = {
   confidence: 0.72,
   convergence: 0.81,
   nextExperiment: "Run one council on the Weavekit design.",
+  // Sentinel: a whitespace-only string triggers the fallback renderer (trim().length === 0),
+  // so these fixture tests exercise the built-in Markdown template rather than pass-through.
   finalReportMarkdown: " ",
   failedPersonas: [],
 };

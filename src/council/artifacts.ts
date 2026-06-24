@@ -27,6 +27,10 @@ function renderFailures(failures: PersonaFailure[]): string {
 }
 
 export function renderCouncilReportMarkdown(report: CouncilReport): string {
+  if (report.finalReportMarkdown.trim().length > 0) {
+    return report.finalReportMarkdown.endsWith("\n") ? report.finalReportMarkdown : `${report.finalReportMarkdown}\n`;
+  }
+
   return [
     "# Design Council Report",
     "",
