@@ -41,7 +41,10 @@ export async function runCouncilRound(
   state: CouncilRunState,
   deps: CouncilWorkflowDeps,
 ): Promise<CouncilRunState> {
-  if (state.stopReason || state.finalReport) {
+  // Guard maxRounds as a fail-safe: caller (runCouncilLoop or external) should not call
+  // this function when rounds.length >= maxRounds. This check prevents a single round
+  // from exceeding the limit if the contract is violated.
+  if (state.stopReason || state.finalReport || state.rounds.length >= state.maxRounds) {
     return state;
   }
 
@@ -135,6 +138,10 @@ export async function runCouncilLoop(
 ): Promise<CouncilRunState> {
   let state = CouncilRunStateSchema.parse(initialState);
 
+  // Guard maxRounds at loop level as a safety measure.
+  // runCouncilRound also guards maxRounds to prevent a single round from exceeding the limit.
+  // The loop check ensures the outer loop terminates; the round check ensures each round
+  // respects the bound regardless of how runCouncilRound is called.
   while (!state.stopReason && state.rounds.length < state.maxRounds) {
     state = await runCouncilRound(state, deps);
   }
@@ -142,6 +149,9 @@ export async function runCouncilLoop(
   return state;
 }
 
+// Exported for Flue server-registration seam: runCouncil (in runner.ts) uses the direct
+// runCouncilLoop for the CLI/library path (v0), while createCouncilWorkflow enables
+// running the council as a Flue workflow on remote services (future integration).
 export function createCouncilWorkflow(deps: CouncilWorkflowDeps) {
   return defineWorkflow({
     agent: defineAgent(() => ({
