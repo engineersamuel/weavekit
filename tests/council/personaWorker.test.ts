@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPersonaPrompt, CopilotPersonaWorker, getDisconnectError, getResultDisconnectError, getResultStopErrors, getStopErrors } from "../../src/council/personaWorker.js";
+import { existsSync } from "node:fs";
+import {
+  buildPersonaPrompt,
+  CopilotPersonaWorker,
+  getDisconnectError,
+  getResultDisconnectError,
+  getResultStopErrors,
+  getStopErrors,
+  resolveCopilotCliPath,
+} from "../../src/council/personaWorker.js";
 import type { PersonaDefinition, RoundBrief } from "../../src/council/types.js";
 
 const persona: PersonaDefinition = {
@@ -22,6 +31,14 @@ describe("persona worker", () => {
     expect(prompt).toContain("Challenge weak evidence.");
     expect(prompt).toContain("Round 1");
     expect(prompt).toContain("Should we use Flue?");
+  });
+
+  it("resolves the installed Copilot CLI npm loader used by the SDK", () => {
+    const cliPath = resolveCopilotCliPath();
+
+    expect(cliPath).toContain("@github/copilot");
+    expect(cliPath).toMatch(/npm-loader\.js$/);
+    expect(existsSync(cliPath)).toBe(true);
   });
 
   it("returns raw persona text and transcript from Copilot sendAndWait", async () => {
@@ -92,6 +109,30 @@ describe("persona worker", () => {
     const config = client.createSession.mock.calls[0][0] as Record<string, unknown>;
     const handler = config.onPermissionRequest as () => unknown;
     expect(handler()).toEqual({ kind: "denied" });
+  });
+
+  it("uses the Copilot CLI default model when no model is supplied", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Response" } }),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+    });
+
+    await worker.runPersona({ persona, brief });
+
+    expect(client.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "claude-sonnet-4.5",
+      }),
+    );
   });
 
   it("accepts a caller-supplied onPermissionRequest handler that can approve", async () => {

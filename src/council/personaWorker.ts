@@ -1,4 +1,7 @@
+import { createRequire } from "node:module";
 import type { PersonaDefinition, RawPersonaResult, RoundBrief } from "./types.js";
+
+const require = createRequire(import.meta.url);
 
 type CopilotLikeClient = {
   start(): Promise<void>;
@@ -99,6 +102,10 @@ export function buildPersonaPrompt(persona: PersonaDefinition, brief: RoundBrief
   ].join("\n");
 }
 
+export function resolveCopilotCliPath(): string {
+  return require.resolve("@github/copilot/npm-loader.js");
+}
+
 export class CopilotPersonaWorker implements PersonaWorker {
   private readonly clientFactory: () => CopilotLikeClient | Promise<CopilotLikeClient>;
   private readonly model: string;
@@ -114,9 +121,9 @@ export class CopilotPersonaWorker implements PersonaWorker {
   } = {}) {
     this.clientFactory = args.clientFactory ?? (async () => {
       const { CopilotClient } = await import("@github/copilot-sdk");
-      return new CopilotClient() as unknown as CopilotLikeClient;
+      return new CopilotClient({ cliPath: resolveCopilotCliPath() }) as unknown as CopilotLikeClient;
     });
-    this.model = args.model ?? "gpt-5";
+    this.model = args.model ?? "claude-sonnet-4.5";
     this.timeoutMs = args.timeoutMs ?? 120_000;
     this.onPermissionRequest = args.onPermissionRequest ?? (() => ({ kind: "denied" as const }));
   }
