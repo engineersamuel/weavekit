@@ -35,6 +35,7 @@ export type RoundBrief = z.infer<typeof RoundBriefSchema>;
 
 export const PersonaCritiqueSchema = z.object({
   personaId: z.string().min(1),
+  overallSummary: z.string().min(1),
   summary: z.string().min(1),
   claims: z.array(z.string().min(1)),
   risks: z.array(z.string().min(1)),
@@ -82,6 +83,7 @@ export const CouncilReportSchema = z.object({
   confidence: z.number().min(0).max(1),
   convergence: z.number().min(0).max(1),
   nextExperiment: z.string().min(1),
+  finalReportMarkdown: z.string().min(1),
   failedPersonas: z.array(PersonaFailureSchema),
 });
 

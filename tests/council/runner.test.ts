@@ -26,6 +26,7 @@ const normalizer: CritiqueNormalizer = {
   async normalizeCritique(raw) {
     return {
       personaId: raw.personaId,
+      overallSummary: `${raw.personaId} recommends testing the riskiest assumption first.`,
       summary: raw.text,
       claims: [`${raw.personaId} claim`],
       risks: [`${raw.personaId} risk`],
@@ -58,6 +59,7 @@ function judge(roundsBeforeStop: number): JudgeReducer {
         confidence: 0.8,
         convergence: 0.9,
         nextExperiment: "Run the council on a real design.",
+        finalReportMarkdown: "# Design Council Report\n\nUse Flue for v0.",
         failedPersonas: failures,
       };
     },
@@ -65,6 +67,36 @@ function judge(roundsBeforeStop: number): JudgeReducer {
 }
 
 describe("runCouncil", () => {
+  it("emits progress events for the council run", async () => {
+    const events: string[] = [];
+
+    await runCouncil(
+      { prompt: "Log this run." },
+      {
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+        logger: {
+          event(event) {
+            events.push(event.type);
+          },
+        },
+      },
+    );
+
+    expect(events).toContain("council.run.started");
+    expect(events).toContain("council.round.started");
+    expect(events).toContain("council.persona.started");
+    expect(events).toContain("council.persona.completed");
+    expect(events).toContain("council.baml.started");
+    expect(events).toContain("council.baml.completed");
+    expect(events).toContain("council.round.completed");
+    expect(events).toContain("council.run.completed");
+  });
+
   it("overwrites hallucinated failedPersonas from judge with authoritative run-state failures", async () => {
     // The LLM can fabricate or drop failed personas; deterministic run-state must win.
     const hallucinatingJudge: JudgeReducer = {
@@ -78,6 +110,7 @@ describe("runCouncil", () => {
           confidence: 0.8,
           convergence: 0.9,
           nextExperiment: "Try it.",
+          finalReportMarkdown: "# Design Council Report\n\nUse Flue.",
           failedPersonas: [{ personaId: "hallucinated", message: "invented by LLM", retryable: false }],
         };
       },

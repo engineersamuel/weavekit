@@ -7,6 +7,7 @@ describe("BAML adapter seams", () => {
       async normalizeCritique({ personaId }) {
         return {
           personaId,
+          overallSummary: "Summary for compact progress output.",
           summary: "Summary",
           claims: ["Claim"],
           risks: ["Risk"],
@@ -48,6 +49,7 @@ describe("BAML adapter seams", () => {
           confidence: 0.8,
           convergence: 0.9,
           nextExperiment: "Run on another design.",
+          finalReportMarkdown: "# Design Council Report\n\nShip v0.",
           failedPersonas: [],
         };
       },

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CouncilInputSchema,
   CouncilReportSchema,
+  PersonaCritiqueSchema,
   createInitialRunState,
 } from "../../src/council/types.js";
 import { defaultPersonaSet } from "../../src/council/personas.js";
@@ -41,9 +42,25 @@ describe("council domain types", () => {
       confidence: 0.74,
       convergence: 0.8,
       nextExperiment: "Build one council run against a real design question.",
+      finalReportMarkdown: "# Design Council Report\n\nUse Flue for v0.",
       failedPersonas: [],
     });
 
     expect(report.confidence).toBeGreaterThan(0.7);
+    expect(report.finalReportMarkdown).toContain("# Design Council Report");
+  });
+
+  it("requires normalized persona critiques to include a compact overall summary", () => {
+    const critique = PersonaCritiqueSchema.parse({
+      personaId: "pragmatic",
+      overallSummary: "Pragmatic persona recommends a minimal validation spike before adopting orchestration layers.",
+      summary: "The design should prove the council pattern before committing to Flue and BAML.",
+      claims: ["The smallest useful experiment is enough for v0."],
+      risks: ["Premature framework adoption can obscure the core product risk."],
+      questions: ["What measurable problem justifies Flue?"],
+      recommendations: ["Run a two-persona spike before expanding the orchestration layer."],
+    });
+
+    expect(critique.overallSummary).toContain("minimal validation spike");
   });
 });

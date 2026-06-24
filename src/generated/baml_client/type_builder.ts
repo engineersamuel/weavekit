@@ -27,9 +27,9 @@ export { FieldType, EnumBuilder, ClassBuilder }
 export default class TypeBuilder {
     private tb: _TypeBuilder;
     
-    CouncilReport: ClassViewer<'CouncilReport', "recommendation" | "rationale" | "strongestObjections" | "unresolvedQuestions" | "confidence" | "convergence" | "nextExperiment" | "failedPersonas">;
+    CouncilReport: ClassViewer<'CouncilReport', "recommendation" | "rationale" | "strongestObjections" | "unresolvedQuestions" | "confidence" | "convergence" | "nextExperiment" | "finalReportMarkdown" | "failedPersonas">;
     
-    PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "summary" | "claims" | "risks" | "questions" | "recommendations">;
+    PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "overallSummary" | "summary" | "claims" | "risks" | "questions" | "recommendations">;
     
     PersonaFailure: ClassViewer<'PersonaFailure', "personaId" | "message" | "retryable">;
     
@@ -51,11 +51,11 @@ export default class TypeBuilder {
         });
         
         this.CouncilReport = this.tb.classViewer("CouncilReport", [
-          "recommendation","rationale","strongestObjections","unresolvedQuestions","confidence","convergence","nextExperiment","failedPersonas",
+          "recommendation","rationale","strongestObjections","unresolvedQuestions","confidence","convergence","nextExperiment","finalReportMarkdown","failedPersonas",
         ]);
         
         this.PersonaCritique = this.tb.classViewer("PersonaCritique", [
-          "personaId","summary","claims","risks","questions","recommendations",
+          "personaId","overallSummary","summary","claims","risks","questions","recommendations",
         ]);
         
         this.PersonaFailure = this.tb.classViewer("PersonaFailure", [

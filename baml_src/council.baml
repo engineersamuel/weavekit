@@ -1,20 +1,3 @@
-generator typescript {
-  output_type "typescript"
-  output_dir "../src/generated"
-  default_client_mode "async"
-  module_format "esm"
-  version "0.220.0"
-}
-
-client<llm> DefaultClient {
-  provider "openai-generic"
-  options {
-    base_url env.BAML_OPENAI_BASE_URL
-    api_key env.BAML_OPENAI_API_KEY
-    model env.BAML_MODEL
-  }
-}
-
 class RawPersonaResult {
   personaId string
   text string
@@ -22,6 +5,7 @@ class RawPersonaResult {
 
 class PersonaCritique {
   personaId string
+  overallSummary string
   summary string
   claims string[]
   risks string[]
@@ -54,6 +38,7 @@ class CouncilReport {
   confidence float
   convergence float
   nextExperiment string
+  finalReportMarkdown string
   failedPersonas PersonaFailure[]
 }
 
@@ -62,6 +47,8 @@ function NormalizePersonaCritique(raw: RawPersonaResult) -> PersonaCritique {
   prompt #"
     Normalize this persona response into the requested critique schema.
     Preserve the personaId exactly.
+    Set overallSummary to one short sentence for CLI progress that summarizes
+    the persona's overall stance, conclusion, or decision.
 
     Persona ID: {{ raw.personaId }}
     Raw response:
@@ -100,6 +87,9 @@ function CreateCouncilReport(
     Create a decision-ready Design Council report.
     Do not write a transcript. Focus on recommendation, rationale, objections,
     unresolved questions, confidence, convergence, and the next experiment.
+    Also include finalReportMarkdown: a rich Markdown report for humans, starting
+    with a level-1 heading named Design Council Report and including links/sections that make the
+    final artifact useful when written to CouncilReport.md.
 
     Critiques: {{ critiques }}
     Assessments: {{ assessments }}

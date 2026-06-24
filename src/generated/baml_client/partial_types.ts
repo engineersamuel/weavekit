@@ -44,10 +44,12 @@ export namespace partial_types {
       confidence?: number | null
       convergence?: number | null
       nextExperiment?: string | null
+      finalReportMarkdown?: string | null
       failedPersonas: PersonaFailure[]
     }
     export interface PersonaCritique {
       personaId?: string | null
+      overallSummary?: string | null
       summary?: string | null
       claims: string[]
       risks: string[]

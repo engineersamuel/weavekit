@@ -55,12 +55,14 @@ export interface CouncilReport {
   confidence: number
   convergence: number
   nextExperiment: string
+  finalReportMarkdown: string
   failedPersonas: PersonaFailure[]
   
 }
 
 export interface PersonaCritique {
   personaId: string
+  overallSummary: string
   summary: string
   claims: string[]
   risks: string[]
