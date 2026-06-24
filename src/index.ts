@@ -8,3 +8,4 @@ export type {
   PersonaSet,
 } from "./council/types.js";
 export { defaultPersonaSet, resolvePersonaSet } from "./council/personas.js";
+export { runCouncil, type RunCouncilOptions } from "./council/runner.js";
