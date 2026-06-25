@@ -62,3 +62,112 @@ export class PolicyModelRouter implements ModelRouter {
     return this.policy[request.taskKind];
   }
 }
+
+export type RouteModelCallInput = {
+  taskKind: string;
+  summary: string;
+  candidates: string[];
+};
+
+export type RouteModelCallFn = (
+  input: RouteModelCallInput,
+  signal: AbortSignal,
+) => Promise<RoutingDecision>;
+
+// Candidate client names (BAML kinds) / SDK model ids (persona) offered to the LLM router.
+export const ROUTER_CANDIDATES: Record<RouteTaskKind, string[]> = {
+  normalize: ["CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
+  assess: ["CopilotProxyClaudeSonnet46", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt54"],
+  report: ["CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48", "CopilotProxyGpt55"],
+  persona: ["claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
+};
+
+const VALID_EFFORTS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh"]);
+
+export function normalizeRoutingDecision(
+  raw: {
+    clientName?: string | null;
+    model?: string | null;
+    reasoningEffort?: string | null;
+    rationale?: string | null;
+  },
+  fallbackModel: string,
+): RoutingDecision {
+  const effort = raw.reasoningEffort ?? undefined;
+  return {
+    clientName: raw.clientName ?? undefined,
+    model: raw.model ?? fallbackModel,
+    reasoningEffort: effort && VALID_EFFORTS.has(effort) ? (effort as ReasoningEffort) : undefined,
+    rationale: raw.rationale ?? "",
+  };
+}
+
+function rejectAfter(ms: number): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    setTimeout(() => reject(new Error(`router timeout after ${ms}ms`)), ms);
+  });
+}
+
+// A decision is only trusted if it stays within the offered candidates: for the persona
+// (SDK) path the model id must be a candidate; for BAML kinds the clientName must be a
+// candidate client. Anything else (hallucinated client/model) is rejected -> policy fallback.
+export function isValidDecision(
+  decision: RoutingDecision,
+  taskKind: RouteTaskKind,
+  candidates: string[],
+): boolean {
+  if (!decision.model) {
+    return false;
+  }
+  if (taskKind === "persona") {
+    return candidates.includes(decision.model);
+  }
+  return decision.clientName !== undefined && candidates.includes(decision.clientName);
+}
+
+export class LlmModelRouter implements ModelRouter {
+  private readonly fallback: ModelRouter;
+  private readonly callRouteModelCall: RouteModelCallFn;
+  private readonly timeoutMs: number;
+  private readonly candidates: Record<RouteTaskKind, string[]>;
+
+  constructor(args: {
+    fallback: ModelRouter;
+    callRouteModelCall: RouteModelCallFn;
+    timeoutMs?: number;
+    candidates?: Record<RouteTaskKind, string[]>;
+  }) {
+    this.fallback = args.fallback;
+    this.callRouteModelCall = args.callRouteModelCall;
+    this.timeoutMs = args.timeoutMs ?? 3500;
+    this.candidates = args.candidates ?? ROUTER_CANDIDATES;
+  }
+
+  async route(request: RouteRequest): Promise<RoutingDecision> {
+    const candidates = this.candidates[request.taskKind];
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const decision = await Promise.race([
+        this.callRouteModelCall(
+          {
+            taskKind: request.taskKind,
+            summary: request.summary ?? "",
+            candidates,
+          },
+          controller.signal,
+        ),
+        rejectAfter(this.timeoutMs),
+      ]);
+      if (!isValidDecision(decision, request.taskKind, candidates)) {
+        return this.fallback.route(request);
+      }
+      return decision;
+    } catch {
+      return this.fallback.route(request);
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
+    }
+  }
+}
