@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runCouncil } from "./council/runner.js";
-import { CouncilRunFailedError } from "./council/errors.js";
-import { createConsoleCouncilLogger, createJsonCouncilLogger, createSilentCouncilLogger, type CouncilLogger } from "./council/logger.js";
-import type { CouncilInput } from "./council/types.js";
+import { runDecisionCouncil } from "./decision-council/runner.js";
+import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
+import { createConsoleDecisionCouncilLogger, createJsonDecisionCouncilLogger, createSilentDecisionCouncilLogger, type DecisionCouncilLogger } from "./decision-council/logger.js";
+import type { DecisionCouncilInput } from "./decision-council/types.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 
-export type CouncilCliArgs = {
+export type DecisionCouncilCliArgs = {
   inputPath: string;
   outputDir: string;
   logFormat: LogFormat;
 };
 
-export function parseCouncilCliArgs(argv: string[]): CouncilCliArgs {
-  if (argv[0] !== "council" || argv[1] !== "run") {
-    throw new Error("Usage: weavekit council run --input <path> [--output <dir>]");
+export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
+  if (argv[0] !== "decision-council" || argv[1] !== "run") {
+    throw new Error("Usage: weavekit decision-council run --input <path> [--output <dir>]");
   }
 
   const inputIndex = argv.indexOf("--input");
@@ -39,42 +39,42 @@ export function parseCouncilCliArgs(argv: string[]): CouncilCliArgs {
   };
 }
 
-export async function readCouncilInputFile(inputPath: string): Promise<CouncilInput> {
+export async function readDecisionCouncilInputFile(inputPath: string): Promise<DecisionCouncilInput> {
   const prompt = await readFile(inputPath, "utf8");
   return { prompt, context: [], constraints: [] };
 }
 
-export function formatCouncilSuccessMessage(args: { recommendation: string; outputDir: string }): string {
+export function formatDecisionCouncilSuccessMessage(args: { recommendation: string; outputDir: string }): string {
   return [
     args.recommendation,
-    `Markdown report: ${join(args.outputDir, "CouncilReport.md")}`,
+    `Markdown report: ${join(args.outputDir, "DecisionCouncilReport.md")}`,
     `Artifacts written to ${args.outputDir}`,
     "",
   ].join("\n");
 }
 
-export function createCouncilLogger(format: LogFormat): CouncilLogger {
-  if (format === "json") return createJsonCouncilLogger();
-  if (format === "silent") return createSilentCouncilLogger();
-  return createConsoleCouncilLogger();
+export function createDecisionCouncilLogger(format: LogFormat): DecisionCouncilLogger {
+  if (format === "json") return createJsonDecisionCouncilLogger();
+  if (format === "silent") return createSilentDecisionCouncilLogger();
+  return createConsoleDecisionCouncilLogger();
 }
 
 async function main(): Promise<void> {
-  const args = parseCouncilCliArgs(process.argv.slice(2));
-  const input = await readCouncilInputFile(args.inputPath);
-  const report = await runCouncil(input, {
+  const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
+  const input = await readDecisionCouncilInputFile(args.inputPath);
+  const report = await runDecisionCouncil(input, {
     outputDir: args.outputDir,
     inputPath: args.inputPath,
-    logger: createCouncilLogger(args.logFormat),
+    logger: createDecisionCouncilLogger(args.logFormat),
   });
 
-  process.stdout.write(formatCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
+  process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
-    process.exitCode = error instanceof CouncilRunFailedError ? error.exitCode : 1;
+    process.exitCode = error instanceof DecisionCouncilRunFailedError ? error.exitCode : 1;
   });
 }

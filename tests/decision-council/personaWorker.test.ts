@@ -8,8 +8,8 @@ import {
   getResultStopErrors,
   getStopErrors,
   resolveCopilotCliPath,
-} from "../../src/council/personaWorker.js";
-import type { PersonaDefinition, RoundBrief } from "../../src/council/types.js";
+} from "../../src/decision-council/personaWorker.js";
+import type { PersonaDefinition, RoundBrief } from "../../src/decision-council/types.js";
 
 const persona: PersonaDefinition = {
   id: "skeptic",

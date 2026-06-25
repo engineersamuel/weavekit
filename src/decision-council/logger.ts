@@ -1,6 +1,6 @@
 import pc from "picocolors";
 
-export type CouncilEvent =
+export type DecisionCouncilEvent =
   | {
       type: "council.run.started";
       timestamp: string;
@@ -68,8 +68,8 @@ export type CouncilEvent =
       error?: string;
     };
 
-export type CouncilLogger = {
-  event(event: CouncilEvent): void;
+export type DecisionCouncilLogger = {
+  event(event: DecisionCouncilEvent): void;
 };
 
 type LoggerOptions = {
@@ -94,11 +94,11 @@ function seconds(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-function label(event: CouncilEvent): string {
+function label(event: DecisionCouncilEvent): string {
   return event.type.replace(/^council\./, "").replaceAll(".", " ");
 }
 
-function colorize(event: CouncilEvent, text: string, enabled: boolean): string {
+function colorize(event: DecisionCouncilEvent, text: string, enabled: boolean): string {
   const colors = pc.createColors(enabled);
   if (!enabled) return text;
   if (event.type.endsWith(".failed")) return colors.red(text);
@@ -111,7 +111,7 @@ function childLine(text: string): string {
   return `\n    -> ${text}`;
 }
 
-function childText(event: CouncilEvent): string | undefined {
+function childText(event: DecisionCouncilEvent): string | undefined {
   if (event.type === "council.baml.completed" && event.operation === "normalize" && event.summary) {
     return event.summary;
   }
@@ -127,7 +127,7 @@ function childText(event: CouncilEvent): string | undefined {
   return undefined;
 }
 
-export function formatCouncilEvent(event: CouncilEvent, options: FormatOptions = {}): string {
+export function formatDecisionCouncilEvent(event: DecisionCouncilEvent, options: FormatOptions = {}): string {
   const color = options.color ?? pc.isColorSupported;
   const colors = pc.createColors(color);
   const title = colorize(event, label(event), color);
@@ -173,16 +173,16 @@ export function formatCouncilEvent(event: CouncilEvent, options: FormatOptions =
   return child ? `${parts.join(" ")}${childLine(child)}` : parts.join(" ");
 }
 
-export function createConsoleCouncilLogger(options: LoggerOptions & FormatOptions = {}): CouncilLogger {
+export function createConsoleDecisionCouncilLogger(options: LoggerOptions & FormatOptions = {}): DecisionCouncilLogger {
   const write = options.write ?? ((message) => process.stderr.write(message));
   return {
     event(event) {
-      write(`${formatCouncilEvent(event, { color: options.color })}\n`);
+      write(`${formatDecisionCouncilEvent(event, { color: options.color })}\n`);
     },
   };
 }
 
-export function createJsonCouncilLogger(options: LoggerOptions = {}): CouncilLogger {
+export function createJsonDecisionCouncilLogger(options: LoggerOptions = {}): DecisionCouncilLogger {
   const write = options.write ?? ((message) => process.stderr.write(message));
   return {
     event(event) {
@@ -191,7 +191,7 @@ export function createJsonCouncilLogger(options: LoggerOptions = {}): CouncilLog
   };
 }
 
-export function createSilentCouncilLogger(options: LoggerOptions = {}): CouncilLogger {
+export function createSilentDecisionCouncilLogger(options: LoggerOptions = {}): DecisionCouncilLogger {
   const write = options.write ?? noopWrite;
   return {
     event() {

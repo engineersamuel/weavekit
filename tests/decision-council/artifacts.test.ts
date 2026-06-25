@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderCouncilReportMarkdown, writeCouncilArtifacts } from "../../src/council/artifacts.js";
-import type { CouncilRunState } from "../../src/council/types.js";
+import { renderDecisionCouncilReportMarkdown, writeDecisionCouncilArtifacts } from "../../src/decision-council/artifacts.js";
+import type { DecisionCouncilRunState } from "../../src/decision-council/types.js";
 
 const report = {
   recommendation: "Use Flue for v0.",
@@ -21,7 +21,7 @@ const report = {
 
 describe("council artifacts", () => {
   it("renders a decision-ready Markdown report", () => {
-    const markdown = renderCouncilReportMarkdown(report);
+    const markdown = renderDecisionCouncilReportMarkdown(report);
 
     expect(markdown).toContain("# Design Council Report");
     expect(markdown).toContain("## Recommendation");
@@ -32,7 +32,7 @@ describe("council artifacts", () => {
 
   it("produces distinct transcript files when a round contains duplicate personaIds", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "weavekit-artifacts-dup-"));
-    const state: CouncilRunState = {
+    const state: DecisionCouncilRunState = {
       input: { prompt: "Question", context: [], constraints: [] },
       personas: [],
       maxRounds: 1,
@@ -72,7 +72,7 @@ describe("council artifacts", () => {
     };
 
     try {
-      const artifacts = await writeCouncilArtifacts({ outputDir, state });
+      const artifacts = await writeDecisionCouncilArtifacts({ outputDir, state });
 
       expect(artifacts.debugTranscriptPaths).toHaveLength(2);
       expect(artifacts.debugTranscriptPaths[0]).not.toBe(artifacts.debugTranscriptPaths[1]);
@@ -86,7 +86,7 @@ describe("council artifacts", () => {
 
   it("writes Markdown, JSON state, and debug transcripts", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "weavekit-artifacts-"));
-    const state: CouncilRunState = {
+    const state: DecisionCouncilRunState = {
       input: { prompt: "Question", context: [], constraints: [] },
       personas: [],
       maxRounds: 3,
@@ -120,7 +120,7 @@ describe("council artifacts", () => {
     };
 
     try {
-      const artifacts = await writeCouncilArtifacts({ outputDir, state });
+      const artifacts = await writeDecisionCouncilArtifacts({ outputDir, state });
 
       await expect(readFile(artifacts.reportPath, "utf8")).resolves.toContain("Use Flue for v0.");
       await expect(readFile(artifacts.statePath, "utf8")).resolves.toContain("\"stopReason\": \"consensus\"");

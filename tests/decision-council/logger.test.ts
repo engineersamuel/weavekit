@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createConsoleCouncilLogger,
-  createJsonCouncilLogger,
-  createSilentCouncilLogger,
-  formatCouncilEvent,
-  type CouncilEvent,
-} from "../../src/council/logger.js";
+  createConsoleDecisionCouncilLogger,
+  createJsonDecisionCouncilLogger,
+  createSilentDecisionCouncilLogger,
+  formatDecisionCouncilEvent,
+  type DecisionCouncilEvent,
+} from "../../src/decision-council/logger.js";
 
 describe("council logger", () => {
-  const event: CouncilEvent = {
+  const event: DecisionCouncilEvent = {
     type: "council.persona.completed",
     timestamp: "2026-06-24T18:00:00.000Z",
     runId: "run-1",
@@ -18,7 +18,7 @@ describe("council logger", () => {
   };
 
   it("formats progress events with readable labels and colors", () => {
-    const formatted = formatCouncilEvent(event, { color: true });
+    const formatted = formatDecisionCouncilEvent(event, { color: true });
 
     expect(formatted).toContain("persona completed");
     expect(formatted).toContain("skeptic");
@@ -28,7 +28,7 @@ describe("council logger", () => {
 
   it("writes newline-delimited JSON events", () => {
     const write = vi.fn();
-    const logger = createJsonCouncilLogger({ write });
+    const logger = createJsonDecisionCouncilLogger({ write });
 
     logger.event(event);
 
@@ -37,7 +37,7 @@ describe("council logger", () => {
 
   it("can silence progress output", () => {
     const write = vi.fn();
-    const logger = createSilentCouncilLogger({ write });
+    const logger = createSilentDecisionCouncilLogger({ write });
 
     logger.event(event);
 
@@ -46,7 +46,7 @@ describe("council logger", () => {
 
   it("writes pretty events to stderr by default", () => {
     const write = vi.fn();
-    const logger = createConsoleCouncilLogger({ write, color: false });
+    const logger = createConsoleDecisionCouncilLogger({ write, color: false });
 
     logger.event(event);
 
@@ -54,7 +54,7 @@ describe("council logger", () => {
   });
 
   it("formats normalized critique summaries as indented child lines", () => {
-    const formatted = formatCouncilEvent(
+    const formatted = formatDecisionCouncilEvent(
       {
         type: "council.baml.completed",
         timestamp: "2026-06-24T18:00:00.000Z",
@@ -75,7 +75,7 @@ describe("council logger", () => {
   });
 
   it("formats shared Judge round context as an indented child line", () => {
-    const formatted = formatCouncilEvent(
+    const formatted = formatDecisionCouncilEvent(
       {
         type: "council.round.started",
         timestamp: "2026-06-24T18:00:00.000Z",

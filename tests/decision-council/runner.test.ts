@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { runCouncil } from "../../src/council/runner.js";
-import { createCouncilWorkflow } from "../../src/council/workflow.js";
-import { defaultPersonaSet } from "../../src/council/personas.js";
-import type { JudgeReducer, CritiqueNormalizer } from "../../src/council/bamlAdapters.js";
-import type { PersonaWorker } from "../../src/council/personaWorker.js";
+import { runDecisionCouncil } from "../../src/decision-council/runner.js";
+import { createDecisionCouncilWorkflow } from "../../src/decision-council/workflow.js";
+import { defaultPersonaSet } from "../../src/decision-council/personas.js";
+import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
+import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
 
 function fakeWorker(failPersonaIds: string[] = []): PersonaWorker {
   return {
@@ -66,11 +66,11 @@ function judge(roundsBeforeStop: number): JudgeReducer {
   };
 }
 
-describe("runCouncil", () => {
+describe("runDecisionCouncil", () => {
   it("emits progress events for the council run", async () => {
     const events: string[] = [];
 
-    await runCouncil(
+    await runDecisionCouncil(
       { prompt: "Log this run." },
       {
         deps: {
@@ -100,7 +100,7 @@ describe("runCouncil", () => {
   it("emits normalized summary and shared round source metadata", async () => {
     const events: unknown[] = [];
 
-    await runCouncil(
+    await runDecisionCouncil(
       { prompt: "Log summaries across rounds." },
       {
         deps: {
@@ -161,7 +161,7 @@ describe("runCouncil", () => {
       },
     };
 
-    const report = await runCouncil(
+    const report = await runDecisionCouncil(
       { prompt: "Test hallucination." },
       {
         deps: {
@@ -179,7 +179,7 @@ describe("runCouncil", () => {
   });
 
   it("runs personas, normalizes critiques, and returns a final report", async () => {
-    const report = await runCouncil(
+    const report = await runDecisionCouncil(
       { prompt: "Should Weavekit use Flue?" },
       {
         personaSet: defaultPersonaSet,
@@ -206,7 +206,7 @@ describe("runCouncil", () => {
       createFinalReport: judge(10).createFinalReport,
     };
 
-    const report = await runCouncil(
+    const report = await runDecisionCouncil(
       { prompt: "Keep debating forever." },
       {
         deps: {
@@ -224,7 +224,7 @@ describe("runCouncil", () => {
 
   it("fails when fewer than two debating personas succeed", async () => {
     await expect(
-      runCouncil(
+      runDecisionCouncil(
         { prompt: "Handle failures." },
         {
           deps: {
@@ -239,10 +239,10 @@ describe("runCouncil", () => {
   });
 });
 
-describe("createCouncilWorkflow", () => {
+describe("createDecisionCouncilWorkflow", () => {
   it("returns a workflow object without throwing when called with valid deps", () => {
     expect(() =>
-      createCouncilWorkflow({
+      createDecisionCouncilWorkflow({
         personaWorker: fakeWorker(),
         normalizer,
         judge: judge(1),
