@@ -80,6 +80,37 @@ BAML can print large raw prompts/responses. Use `BAML_LOG=warn` when you want We
 BAML_LOG=warn COPILOT_PROXY_API_KEY="anything" nub run council decision-council run --input examples/design-question.md --output runs/example
 ```
 
+## Model + effort routing
+
+Weavekit's decision council routes each task (normalize, assess, report, persona) to a model and optional reasoning effort using a hybrid router: a deterministic policy default always applies, and an optional fast LLM router is consulted only when a task is marked `dynamic`.
+
+**Hybrid router:** The policy default is always resolved first. For tasks with `dynamic: true`, the router consults a fast LLM router model to pick a model and effort from a curated candidate set. The LLM router result is cached per `(taskKind, summary)` prefix. If the LLM returns a client or model outside the allowed candidate set, the router falls back to the policy default.
+
+**Sub-5-second guarantee:** The LLM router races its call against a 3500 ms `AbortSignal` timeout. On timeout or any error, the router immediately falls back to the deterministic policy. This ensures routing decisions never block the workflow.
+
+**Default routing policy:**
+
+| Task kind | BAML client | Model | Use case |
+|-----------|-------------|-------|----------|
+| `normalize` | `CopilotProxyClaudeHaiku45` | `claude-haiku-4-5` | Fast, non-reasoning structured extraction |
+| `assess` | `CopilotProxyClaudeSonnet46` | `claude-sonnet-4-6` | Mid-reasoning Judge decision |
+| `report` | `CopilotProxyClaudeSonnet46` | `claude-sonnet-4-6` | Strong synthesis |
+| `persona` | (Copilot SDK path) | `claude-sonnet-4.5` | Persona debate tier |
+
+**BAML effort passthrough:** By default, BAML routing swaps the *client* only and does NOT send `reasoning_effort` to the proxy. Effort passthrough is opt-in, left disabled pending proxy verification. Similarly, persona `reasoningEffort` is only forwarded when an operator wires an explicit capability predicate (it defaults to off). No model receives an effort field it might reject unless explicitly enabled.
+
+**Benchmark router latency:**
+
+Before choosing a production router model, measure TTFT and total latency across candidates:
+
+```bash
+export COPILOT_PROXY_BASE_URL="http://127.0.0.1:8080/v1"
+export COPILOT_PROXY_API_KEY="anything"
+npm run bench:router
+```
+
+This prints a table of TTFT and total latency per candidate router model. It is a standalone diagnostic, not part of `npm test`.
+
 ## Observability
 
 The direct CLI path uses Weavekit's typed `DecisionCouncilLogger` events. Use `--log-format json` to capture them as JSONL:
