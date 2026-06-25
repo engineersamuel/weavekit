@@ -12,7 +12,8 @@
     "baml-generate": "baml-cli generate",
     "build": "npm run baml-generate && tsc -p tsconfig.json",
     "council": "tsx src/cli.ts",
-    "eval": "tsx src/eval-cli.ts"
+    "eval": "tsx src/eval-cli.ts",
+    "bench:router": "tsx scripts/router-benchmark.ts"
   },
   "dependencies": {
     "@boundaryml/baml": "^0.223.0",
