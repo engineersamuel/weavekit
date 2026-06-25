@@ -3,7 +3,7 @@ generator typescript {
   output_dir "../src/generated"
   default_client_mode "async"
   module_format "esm"
-  version "0.220.0"
+  version "0.223.0"
 }
 
 client<llm> DefaultClient {

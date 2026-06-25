@@ -14,7 +14,7 @@
     "council": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@boundaryml/baml": "^0.220.0",
+    "@boundaryml/baml": "^0.223.0",
     "@flue/runtime": "^1.0.0-beta.5",
     "@github/copilot-sdk": "^0.1.0",
     "picocolors": "^1.1.1",
