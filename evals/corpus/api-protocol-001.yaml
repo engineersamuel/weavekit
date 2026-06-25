@@ -1,0 +1,64 @@
+id: api-protocol-001
+domain: api-protocol
+difficulty: intermediate
+title: API protocol for a public API with diverse clients
+prompt: >-
+  We are exposing a public API consumed by web, mobile, and third-party
+  developers. Should the primary interface be REST, GraphQL, or gRPC?
+context:
+  - Third-party developers want something familiar and cacheable.
+  - Clients fetch widely varying subsets of data.
+constraints:
+  - Must be easy for external developers to adopt.
+referenceAnswer:
+  recommendation: >-
+    Use REST over HTTP as the public interface: it is the most familiar,
+    cacheable, and tooling-friendly choice for diverse external clients. Consider
+    GraphQL where varied client data-shaping is the dominant need.
+  rationale:
+    - REST's ubiquity, HTTP caching, and tooling lower the adoption barrier for
+      third parties.
+    - It works uniformly across web, mobile, and server clients.
+  strongestObjections:
+    - GraphQL eliminates over/under-fetching when clients need very different data
+      shapes.
+    - gRPC offers the best performance and typed contracts for service-to-service.
+  conditions:
+    - Choose GraphQL when client-driven data shaping across many views is the core
+      problem and you can handle caching/complexity.
+    - Choose gRPC for internal, low-latency, strongly-typed service-to-service
+      calls, not public browser traffic.
+  viableAlternatives:
+    - GraphQL (client-shaped queries)
+    - gRPC (internal, high-performance, typed)
+  redFlags:
+    - Forcing gRPC as a public browser-facing API where it is awkward to consume
+      and cache.
+sources:
+  - https://graphql.org/learn/
+  - https://grpc.io/docs/what-is-grpc/introduction/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

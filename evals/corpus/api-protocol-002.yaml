@@ -1,0 +1,60 @@
+id: api-protocol-002
+domain: api-protocol
+difficulty: intermediate
+title: Real-time update mechanism for clients
+prompt: >-
+  Clients need near-real-time updates when server-side data changes. Should we
+  use polling, webhooks, or a push channel like WebSockets/SSE?
+context:
+  - Updates are user-facing and should feel live in the browser.
+  - There are also server-to-server integrations that need notifications.
+constraints:
+  - Keep it operationally manageable.
+referenceAnswer:
+  recommendation: >-
+    Use a server push channel (SSE for one-way live updates, WebSockets for
+    bidirectional) for the live browser UX, and webhooks for server-to-server
+    event delivery; reserve polling as a simple fallback.
+  rationale:
+    - SSE/WebSockets deliver low-latency live updates without busy polling.
+    - Webhooks are the right fit for delivering events to other servers.
+  strongestObjections:
+    - WebSockets add stateful connection management and scaling concerns.
+    - Polling is trivially simple and robust at low update rates.
+  conditions:
+    - Use SSE over WebSockets when updates are one-directional (server to client).
+    - Use polling when update frequency is low and simplicity beats latency.
+  viableAlternatives:
+    - Webhooks (server-to-server push)
+    - Polling (simple fallback)
+  redFlags:
+    - Tight-interval polling as the primary mechanism for a UI that must feel
+      live, wasting resources and adding latency.
+sources:
+  - https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+  - https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.
