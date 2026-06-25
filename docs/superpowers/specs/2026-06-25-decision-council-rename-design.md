@@ -1,8 +1,8 @@
-# Decision Council Rename Design
+# Glueplane Decision Council Rename Design
 
 ## Goal
 
-Rename the v0 workflow from Design Council to Decision Council so the product promise is generic decision support: helping a user think through problems, tradeoffs, risks, and next experiments. This is an intentional breaking rename, not a compatibility migration.
+Rename the project from Weavekit to Glueplane and rename the v0 workflow from Design Council to Decision Council. Glueplane is the project/package/CLI name; Decision Council is the first workflow. The product promise is generic decision support: helping a user think through problems, tradeoffs, risks, and next experiments. This is an intentional breaking rename, not a compatibility migration.
 
 The workflow can still handle design and architecture questions, but the default framing should be broader than design review.
 
@@ -10,17 +10,19 @@ The workflow can still handle design and architecture questions, but the default
 
 This change should rename the active product surface end to end:
 
+- Project/product name: `Weavekit` becomes `Glueplane`.
+- Package, binary, and command examples: `weavekit` becomes `glueplane`.
 - User-facing prose: `Design Council` becomes `Decision Council`.
 - Public TypeScript API: `CouncilInput`, `CouncilReport`, `CouncilRunState`, `runCouncil`, and `createCouncilWorkflow` become `DecisionCouncil*` or `runDecisionCouncil` names.
 - Source layout: `src/council/*` becomes `src/decision-council/*`.
-- CLI: `weavekit council run` becomes `weavekit decision-council run`.
+- CLI: `weavekit council run` becomes `glueplane decision-council run`.
 - npm script: `npm run council` becomes `npm run decision-council`.
 - Artifacts: `CouncilReport.md` and `CouncilRunState.json` become `DecisionCouncilReport.md` and `DecisionCouncilRunState.json`.
 - BAML contracts and functions use Decision Council names.
 - Logs/events use consistent decision-council naming.
 - Tests and active examples use the new command, artifacts, and terminology.
 
-Historical design and plan documents can be updated when they are copied into active usage docs, but they do not need to be renamed or rewritten solely to erase history.
+Historical design and plan documents can be updated when they are copied into active usage docs, but they do not need to be renamed or rewritten solely to erase history. Active specs/plans for this current rename should use Glueplane.
 
 ## Non-goals
 
@@ -28,7 +30,7 @@ Historical design and plan documents can be updated when they are copied into ac
 - Do not keep old artifact filenames.
 - Do not introduce a second workflow beside the old one.
 - Do not change persona behavior, round scheduling, BAML validation policy, or stop policy as part of the rename.
-- Do not broaden Weavekit into a general workflow framework beyond the current Decision Council surface.
+- Do not broaden Glueplane into a general workflow framework beyond the current Decision Council surface.
 
 ## Architecture
 
@@ -70,7 +72,7 @@ No deprecated `Council*` aliases should remain because the user-facing choice is
 The CLI parser should accept:
 
 ```bash
-weavekit decision-council run --input examples/decision-question.md --output runs/example
+glueplane decision-council run --input examples/decision-question.md --output runs/example
 ```
 
 The old `council run` command should fail with the normal usage error. Success output should point to `DecisionCouncilReport.md`.
@@ -116,7 +118,7 @@ Existing error behavior should be preserved:
 - Judge or artifact failures fail the run.
 - The `nextRoundBrief: null` schema boundary fix remains in place after renaming.
 
-Usage errors should mention `weavekit decision-council run --input <path> [--output <dir>]`.
+Usage errors should mention `glueplane decision-council run --input <path> [--output <dir>]`.
 
 ## Testing strategy
 
@@ -135,6 +137,7 @@ After BAML changes, regenerate the client and verify generated files are in sync
 - No active source, tests, README, example, BAML prompt, generated client, or artifact assertion refers to `Design Council` except dated historical docs that are intentionally preserved.
 - The old CLI command `council run` is rejected.
 - The new CLI command and npm script use `decision-council`.
+- The package name and binary are `glueplane`.
 - Artifacts are written as `DecisionCouncilReport.md` and `DecisionCouncilRunState.json`.
 - Public exports expose `DecisionCouncil*` names with no `Council*` compatibility aliases.
 - Tests, typecheck, BAML generation, and build pass.
