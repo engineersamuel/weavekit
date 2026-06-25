@@ -1,12 +1,12 @@
 export const version = "0.0.0";
 
 export type {
-  CouncilInput,
-  CouncilReport,
-  CouncilRunState,
+  DecisionCouncilInput,
+  DecisionCouncilReport,
+  DecisionCouncilRunState,
   PersonaDefinition,
   PersonaSet,
-} from "./council/types.js";
-export { defaultPersonaSet, resolvePersonaSet } from "./council/personas.js";
-export { runCouncil, type RunCouncilOptions } from "./council/runner.js";
-export { createCouncilWorkflow, type CouncilWorkflowDeps } from "./council/workflow.js";
+} from "./decision-council/types.js";
+export { defaultPersonaSet, resolvePersonaSet } from "./decision-council/personas.js";
+export { runDecisionCouncil, type RunDecisionCouncilOptions } from "./decision-council/runner.js";
+export { createDecisionCouncilWorkflow, type DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js";

@@ -16,14 +16,14 @@ export const PersonaSetSchema = z.object({
 
 export type PersonaSet = z.infer<typeof PersonaSetSchema>;
 
-export const CouncilInputSchema = z.object({
+export const DecisionCouncilInputSchema = z.object({
   prompt: z.string().min(1),
   context: z.array(z.string().min(1)).default([]),
   constraints: z.array(z.string().min(1)).default([]),
   personaSetName: z.string().min(1).optional(),
 });
 
-export type CouncilInput = z.infer<typeof CouncilInputSchema>;
+export type DecisionCouncilInput = z.infer<typeof DecisionCouncilInputSchema>;
 
 export const RoundBriefSchema = z.object({
   roundNumber: z.number().int().positive(),
@@ -33,7 +33,7 @@ export const RoundBriefSchema = z.object({
 
 export type RoundBrief = z.infer<typeof RoundBriefSchema>;
 
-export const PersonaCritiqueSchema = z.object({
+export const DecisionPersonaCritiqueSchema = z.object({
   personaId: z.string().min(1),
   overallSummary: z.string().min(1),
   summary: z.string().min(1),
@@ -43,15 +43,15 @@ export const PersonaCritiqueSchema = z.object({
   recommendations: z.array(z.string().min(1)),
 });
 
-export type PersonaCritique = z.infer<typeof PersonaCritiqueSchema>;
+export type DecisionPersonaCritique = z.infer<typeof DecisionPersonaCritiqueSchema>;
 
-export const PersonaFailureSchema = z.object({
+export const DecisionPersonaFailureSchema = z.object({
   personaId: z.string().min(1),
   message: z.string().min(1),
   retryable: z.boolean(),
 });
 
-export type PersonaFailure = z.infer<typeof PersonaFailureSchema>;
+export type DecisionPersonaFailure = z.infer<typeof DecisionPersonaFailureSchema>;
 
 export const RawPersonaResultSchema = z.object({
   personaId: z.string().min(1),
@@ -62,7 +62,7 @@ export const RawPersonaResultSchema = z.object({
 
 export type RawPersonaResult = z.infer<typeof RawPersonaResultSchema>;
 
-export const RoundAssessmentSchema = z.object({
+export const DecisionRoundAssessmentSchema = z.object({
   roundNumber: z.number().int().positive(),
   consensus: z.string().min(1),
   disagreements: z.array(z.string().min(1)),
@@ -70,12 +70,12 @@ export const RoundAssessmentSchema = z.object({
   convergence: z.number().min(0).max(1),
   shouldContinue: z.boolean(),
   diminishingReturns: z.boolean(),
-  nextRoundBrief: z.string().min(1).optional(),
+  nextRoundBrief: z.preprocess((value) => (value === null ? undefined : value), z.string().min(1).optional()),
 });
 
-export type RoundAssessment = z.infer<typeof RoundAssessmentSchema>;
+export type DecisionRoundAssessment = z.infer<typeof DecisionRoundAssessmentSchema>;
 
-export const CouncilReportSchema = z.object({
+export const DecisionCouncilReportSchema = z.object({
   recommendation: z.string().min(1),
   rationale: z.array(z.string().min(1)),
   strongestObjections: z.array(z.string().min(1)),
@@ -84,34 +84,34 @@ export const CouncilReportSchema = z.object({
   convergence: z.number().min(0).max(1),
   nextExperiment: z.string().min(1),
   finalReportMarkdown: z.string().min(1),
-  failedPersonas: z.array(PersonaFailureSchema),
+  failedPersonas: z.array(DecisionPersonaFailureSchema),
 });
 
-export type CouncilReport = z.infer<typeof CouncilReportSchema>;
+export type DecisionCouncilReport = z.infer<typeof DecisionCouncilReportSchema>;
 
-export const CouncilRoundSchema = z.object({
+export const DecisionCouncilRoundSchema = z.object({
   brief: RoundBriefSchema,
   rawResults: z.array(RawPersonaResultSchema),
-  critiques: z.array(PersonaCritiqueSchema),
-  failures: z.array(PersonaFailureSchema),
-  assessment: RoundAssessmentSchema,
+  critiques: z.array(DecisionPersonaCritiqueSchema),
+  failures: z.array(DecisionPersonaFailureSchema),
+  assessment: DecisionRoundAssessmentSchema,
 });
 
-export type CouncilRound = z.infer<typeof CouncilRoundSchema>;
+export type DecisionCouncilRound = z.infer<typeof DecisionCouncilRoundSchema>;
 
-export const CouncilRunStateSchema = z.object({
-  input: CouncilInputSchema,
+export const DecisionCouncilRunStateSchema = z.object({
+  input: DecisionCouncilInputSchema,
   personas: z.array(PersonaDefinitionSchema),
   maxRounds: z.number().int().positive(),
-  rounds: z.array(CouncilRoundSchema),
-  finalReport: CouncilReportSchema.optional(),
+  rounds: z.array(DecisionCouncilRoundSchema),
+  finalReport: DecisionCouncilReportSchema.optional(),
   stopReason: z.enum(["consensus", "diminishing-returns", "max-rounds"]).optional(),
 });
 
-export type CouncilRunState = z.infer<typeof CouncilRunStateSchema>;
+export type DecisionCouncilRunState = z.infer<typeof DecisionCouncilRunStateSchema>;
 
-export function createInitialRunState(input: z.input<typeof CouncilInputSchema>, personaSet: PersonaSet): CouncilRunState {
-  const parsedInput = CouncilInputSchema.parse(input);
+export function createInitialRunState(input: z.input<typeof DecisionCouncilInputSchema>, personaSet: PersonaSet): DecisionCouncilRunState {
+  const parsedInput = DecisionCouncilInputSchema.parse(input);
   const parsedPersonaSet = PersonaSetSchema.parse(personaSet);
 
   return {
