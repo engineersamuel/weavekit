@@ -5,7 +5,7 @@ import {
   createSilentCouncilLogger,
   formatCouncilEvent,
   type CouncilEvent,
-} from "../../src/council/logger.js";
+} from "../../src/decision-council/logger.js";
 
 describe("council logger", () => {
   const event: CouncilEvent = {

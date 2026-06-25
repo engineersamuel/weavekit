@@ -1,56 +1,51 @@
 import { b } from "../generated/baml_client/index.js";
-import {
-  CouncilReportSchema,
-  PersonaCritiqueSchema,
-  RoundAssessmentSchema,
-  type CouncilReport,
-  type PersonaCritique,
-  type PersonaFailure,
-  type RawPersonaResult,
-  type RoundAssessment,
+import type {
+  DecisionCouncilReport,
+  DecisionPersonaCritique,
+  DecisionPersonaFailure,
+  DecisionRoundAssessment,
+  RawPersonaResult,
 } from "./types.js";
 
 export type CritiqueNormalizer = {
-  normalizeCritique(raw: RawPersonaResult): Promise<PersonaCritique>;
+  normalizeCritique(raw: RawPersonaResult): Promise<DecisionPersonaCritique>;
 };
 
 export type JudgeReducer = {
   assessRound(args: {
     roundNumber: number;
-    critiques: PersonaCritique[];
-    failures: PersonaFailure[];
-  }): Promise<RoundAssessment>;
+    critiques: DecisionPersonaCritique[];
+    failures: DecisionPersonaFailure[];
+  }): Promise<DecisionRoundAssessment>;
   createFinalReport(args: {
-    critiques: PersonaCritique[];
-    assessments: RoundAssessment[];
-    failures: PersonaFailure[];
-  }): Promise<CouncilReport>;
+    critiques: DecisionPersonaCritique[];
+    assessments: DecisionRoundAssessment[];
+    failures: DecisionPersonaFailure[];
+  }): Promise<DecisionCouncilReport>;
 };
 
 export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
-  async normalizeCritique(raw: RawPersonaResult): Promise<PersonaCritique> {
-    const result = await b.NormalizePersonaCritique({
-      personaId: raw.personaId,
-      text: raw.text,
-    });
-    return PersonaCritiqueSchema.parse(result);
+  async normalizeCritique(raw: RawPersonaResult): Promise<DecisionPersonaCritique> {
+    return b.NormalizePersonaCritique(raw);
   }
 
   async assessRound(args: {
     roundNumber: number;
-    critiques: PersonaCritique[];
-    failures: PersonaFailure[];
-  }): Promise<RoundAssessment> {
+    critiques: DecisionPersonaCritique[];
+    failures: DecisionPersonaFailure[];
+  }): Promise<DecisionRoundAssessment> {
     const result = await b.AssessCouncilRound(args.roundNumber, args.critiques, args.failures);
-    return RoundAssessmentSchema.parse(result);
+    return {
+      ...result,
+      nextRoundBrief: result.nextRoundBrief ?? undefined,
+    };
   }
 
   async createFinalReport(args: {
-    critiques: PersonaCritique[];
-    assessments: RoundAssessment[];
-    failures: PersonaFailure[];
-  }): Promise<CouncilReport> {
-    const result = await b.CreateCouncilReport(args.critiques, args.assessments, args.failures);
-    return CouncilReportSchema.parse(result);
+    critiques: DecisionPersonaCritique[];
+    assessments: DecisionRoundAssessment[];
+    failures: DecisionPersonaFailure[];
+  }): Promise<DecisionCouncilReport> {
+    return b.CreateCouncilReport(args.critiques, args.assessments, args.failures);
   }
 }

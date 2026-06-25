@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CritiqueNormalizer, JudgeReducer } from "../../src/council/bamlAdapters.js";
+import type { CritiqueNormalizer, JudgeReducer } from "../../src/decision-council/bamlAdapters.js";
 
 describe("BAML adapter seams", () => {
   it("allows tests to replace critique normalization", async () => {

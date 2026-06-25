@@ -7,3 +7,5 @@ export class DecisionCouncilRunFailedError extends Error {
     this.exitCode = exitCode;
   }
 }
+
+export const CouncilRunFailedError = DecisionCouncilRunFailedError;

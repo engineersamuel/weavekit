@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultPersonaSet, resolvePersonaSet } from "../../src/council/personas.js";
+import { defaultPersonaSet, resolvePersonaSet } from "../../src/decision-council/personas.js";
 
 describe("persona sets", () => {
   it("ships the approved default debating personas", () => {
