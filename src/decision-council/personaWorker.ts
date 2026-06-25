@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import type { PersonaDefinition, RawPersonaResult, RoundBrief } from "./types.js";
+import type { ModelRouter } from "./modelRouter.js";
 
 const require = createRequire(import.meta.url);
 
@@ -111,6 +112,8 @@ export class CopilotPersonaWorker implements PersonaWorker {
   private readonly model: string;
   private readonly timeoutMs: number;
   private readonly onPermissionRequest: () => { kind: "approved" | "denied" };
+  private readonly router?: ModelRouter;
+  private readonly supportsReasoningEffort: (model: string) => boolean;
 
   constructor(args: {
     clientFactory?: () => CopilotLikeClient | Promise<CopilotLikeClient>;
@@ -118,6 +121,8 @@ export class CopilotPersonaWorker implements PersonaWorker {
     timeoutMs?: number;
     /** Permission handler for persona sessions. Defaults to deny-by-default. */
     onPermissionRequest?: () => { kind: "approved" | "denied" };
+    router?: ModelRouter;
+    supportsReasoningEffort?: (model: string) => boolean;
   } = {}) {
     this.clientFactory = args.clientFactory ?? (async () => {
       const { CopilotClient } = await import("@github/copilot-sdk");
@@ -126,6 +131,8 @@ export class CopilotPersonaWorker implements PersonaWorker {
     this.model = args.model ?? "claude-sonnet-4.5";
     this.timeoutMs = args.timeoutMs ?? 120_000;
     this.onPermissionRequest = args.onPermissionRequest ?? (() => ({ kind: "denied" as const }));
+    this.router = args.router;
+    this.supportsReasoningEffort = args.supportsReasoningEffort ?? (() => false);
   }
 
   async runPersona(args: { persona: PersonaDefinition; brief: RoundBrief }): Promise<RawPersonaResult> {
@@ -137,8 +144,24 @@ export class CopilotPersonaWorker implements PersonaWorker {
     let successResult: RawPersonaResult | undefined = undefined;
 
     try {
-      const session = await client.createSession({
-        model: this.model,
+      const decision = this.router
+        ? await this.router.route({
+            taskKind: "persona",
+            personaId: persona.id,
+            roundNumber: brief.roundNumber,
+            summary: brief.prompt,
+          })
+        : undefined;
+      const model = decision?.model ?? this.model;
+
+      const sessionConfig: {
+        model: string;
+        reasoningEffort?: string;
+        agent: string;
+        customAgents: Array<{ name: string; displayName: string; description: string; prompt: string }>;
+        onPermissionRequest: () => { kind: "approved" | "denied" };
+      } = {
+        model,
         agent: persona.id,
         customAgents: [
           {
@@ -149,7 +172,12 @@ export class CopilotPersonaWorker implements PersonaWorker {
           },
         ],
         onPermissionRequest: this.onPermissionRequest,
-      });
+      };
+      if (decision?.reasoningEffort && this.supportsReasoningEffort(model)) {
+        sessionConfig.reasoningEffort = decision.reasoningEffort;
+      }
+
+      const session = await client.createSession(sessionConfig);
 
       let sendError: unknown = undefined;
       try {
@@ -164,7 +192,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
           personaId: persona.id,
           text,
           transcript: [`assistant: ${text}`],
-          metadata: { model: this.model },
+          metadata: { model },
         };
       } catch (err) {
         sendError = err;

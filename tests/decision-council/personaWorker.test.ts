@@ -10,6 +10,7 @@ import {
   resolveCopilotCliPath,
 } from "../../src/decision-council/personaWorker.js";
 import type { PersonaDefinition, RoundBrief } from "../../src/decision-council/types.js";
+import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
 
 const persona: PersonaDefinition = {
   id: "skeptic",
@@ -256,5 +257,80 @@ describe("persona worker", () => {
     const de = getResultDisconnectError(result);
     expect(de).toBeInstanceOf(Error);
     expect(de!.message).toBe("disconnect failed");
+  });
+});
+
+describe("persona worker routing", () => {
+  it("threads routed model and reasoningEffort into createSession", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Critique text" } }),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+    const router: ModelRouter = {
+      async route() {
+        return { model: "gpt-5.4", reasoningEffort: "medium", rationale: "tier" };
+      },
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      router,
+      supportsReasoningEffort: () => true,
+    });
+    const result = await worker.runPersona({ persona, brief });
+
+    const config = client.createSession.mock.calls[0]![0] as { model: string; reasoningEffort?: string };
+    expect(config.model).toBe("gpt-5.4");
+    expect(config.reasoningEffort).toBe("medium");
+    expect(result.metadata.model).toBe("gpt-5.4");
+  });
+
+  it("omits reasoningEffort when the model does not support it, even if routed", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Critique text" } }),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+    const router: ModelRouter = {
+      async route() {
+        return { model: "claude-sonnet-4.5", reasoningEffort: "high", rationale: "tier" };
+      },
+    };
+
+    // No supportsReasoningEffort predicate -> default () => false -> effort omitted.
+    const worker = new CopilotPersonaWorker({ clientFactory: () => client, router });
+    await worker.runPersona({ persona, brief });
+
+    const config = client.createSession.mock.calls[0]![0] as { model: string; reasoningEffort?: string };
+    expect(config.model).toBe("claude-sonnet-4.5");
+    expect(config.reasoningEffort).toBeUndefined();
+  });
+
+  it("omits reasoningEffort and uses the constructor model when no router is set", async () => {
+    const session = {
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Critique text" } }),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn().mockResolvedValue(session),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const worker = new CopilotPersonaWorker({ clientFactory: () => client, model: "claude-sonnet-4.5" });
+    await worker.runPersona({ persona, brief });
+
+    const config = client.createSession.mock.calls[0]![0] as { model: string; reasoningEffort?: string };
+    expect(config.model).toBe("claude-sonnet-4.5");
+    expect(config.reasoningEffort).toBeUndefined();
   });
 });

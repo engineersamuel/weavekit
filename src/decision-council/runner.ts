@@ -12,6 +12,7 @@ import {
   type PersonaSet,
 } from "./types.js";
 import type { z } from "zod";
+import { createDefaultModelRouter, defaultRouteModelCall, type ModelRouter } from "./modelRouter.js";
 
 export type RunDecisionCouncilOptions = {
   personaSet?: PersonaSet;
@@ -19,6 +20,7 @@ export type RunDecisionCouncilOptions = {
   outputDir?: string;
   inputPath?: string;
   logger?: DecisionCouncilLogger;
+  router?: ModelRouter;
   deps?: Partial<DecisionCouncilWorkflowDeps> & {
     writeArtifacts?: boolean;
   };
@@ -31,9 +33,10 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
   const personaSet = options.personaSet
     ? resolvePersonaSet(options.personaSet)
     : resolvePersonaSetByName(options.personaSetName ?? parsedInput.personaSetName);
-  const bamlAdapters = new GeneratedBamlAdapters();
+  const router = options.router ?? createDefaultModelRouter(defaultRouteModelCall);
+  const bamlAdapters = new GeneratedBamlAdapters({ router });
   const deps: DecisionCouncilWorkflowDeps = {
-    personaWorker: options.deps?.personaWorker ?? new CopilotPersonaWorker(),
+    personaWorker: options.deps?.personaWorker ?? new CopilotPersonaWorker({ router }),
     normalizer: options.deps?.normalizer ?? bamlAdapters,
     judge: options.deps?.judge ?? bamlAdapters,
     logger: options.logger,

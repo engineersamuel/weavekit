@@ -1,3 +1,5 @@
+import { b } from "../generated/baml_client/index.js";
+
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
 export type RouteTaskKind = "normalize" | "assess" | "report" | "persona";
@@ -208,3 +210,21 @@ export function createDefaultModelRouter(callRouteModelCall?: RouteModelCallFn):
   const llm = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall });
   return new HybridModelRouter({ policy, llm });
 }
+
+// Production seam: wraps the generated RouteModelCall, passing the abort signal so the
+// hard timeout actually cancels the proxy request. The fallback model is the policy model
+// for this task kind (a real model id) — NOT input.candidates[0], which for BAML kinds is
+// a client name like "CopilotProxyClaudeHaiku45", not a model id.
+export const defaultRouteModelCall: RouteModelCallFn = async (input, signal) => {
+  const raw = await b.RouteModelCall(input.taskKind, input.summary, input.candidates, { signal });
+  const policyModel = DEFAULT_ROUTING_POLICY[input.taskKind as RouteTaskKind]?.model ?? "claude-haiku-4-5";
+  return normalizeRoutingDecision(
+    {
+      clientName: raw.clientName ?? undefined,
+      model: raw.model,
+      reasoningEffort: raw.reasoningEffort ?? undefined,
+      rationale: raw.rationale,
+    },
+    policyModel,
+  );
+};

@@ -4,6 +4,7 @@ import { createDecisionCouncilWorkflow } from "../../src/decision-council/workfl
 import { defaultPersonaSet } from "../../src/decision-council/personas.js";
 import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
+import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
 
 function fakeWorker(failPersonaIds: string[] = []): PersonaWorker {
   return {
@@ -282,6 +283,24 @@ describe("runDecisionCouncil", () => {
         },
       ),
     ).rejects.toThrow("Council requires at least two successful personas.");
+  });
+
+  it("accepts a custom router without breaking the run", async () => {
+    const router: ModelRouter = {
+      async route() {
+        return { clientName: "CopilotProxyClaudeHaiku45", model: "claude-haiku-4-5", rationale: "test" };
+      },
+    };
+
+    const report = await runDecisionCouncil(
+      { prompt: "Route this run." },
+      {
+        router,
+        deps: { writeArtifacts: false, personaWorker: fakeWorker(), normalizer, judge: judge(1) },
+      },
+    );
+
+    expect(report.recommendation).toBeDefined();
   });
 });
 
