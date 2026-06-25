@@ -52,15 +52,15 @@ describe("PolicyModelRouter", () => {
 describe("LlmModelRouter", () => {
   it("returns the LLM decision when the call resolves in time", async () => {
     const call: RouteModelCallFn = async () => ({
-      clientName: "CopilotProxyGrokCodeFast1",
-      model: "grok-code-fast-1",
+      clientName: "CopilotProxyGpt54",
+      model: "gpt-5.4",
       reasoningEffort: undefined,
-      rationale: "fast",
+      rationale: "capable",
     });
     const router = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall: call });
 
     await expect(router.route({ taskKind: "assess", dynamic: true })).resolves.toMatchObject({
-      clientName: "CopilotProxyGrokCodeFast1",
+      clientName: "CopilotProxyGpt54",
     });
   });
 

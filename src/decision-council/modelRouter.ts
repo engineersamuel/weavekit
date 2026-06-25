@@ -77,7 +77,7 @@ export type RouteModelCallFn = (
 // Candidate client names (BAML kinds) / SDK model ids (persona) offered to the LLM router.
 export const ROUTER_CANDIDATES: Record<RouteTaskKind, string[]> = {
   normalize: ["CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
-  assess: ["CopilotProxyClaudeSonnet46", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt54"],
+  assess: ["CopilotProxyClaudeSonnet46", "CopilotProxyGpt54"],
   report: ["CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48", "CopilotProxyGpt55"],
   persona: ["claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
 };
