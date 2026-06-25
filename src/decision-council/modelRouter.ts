@@ -171,3 +171,40 @@ export class LlmModelRouter implements ModelRouter {
     }
   }
 }
+
+export class HybridModelRouter implements ModelRouter {
+  private readonly policy: ModelRouter;
+  private readonly llm?: ModelRouter;
+  private readonly cache = new Map<string, RoutingDecision>();
+
+  constructor(args: { policy: ModelRouter; llm?: ModelRouter }) {
+    this.policy = args.policy;
+    this.llm = args.llm;
+  }
+
+  async route(request: RouteRequest): Promise<RoutingDecision> {
+    if (!request.dynamic || !this.llm) {
+      return this.policy.route(request);
+    }
+    const key = `${request.taskKind}:${(request.summary ?? "").slice(0, 80)}`;
+    const cached = this.cache.get(key);
+    if (cached) {
+      return cached;
+    }
+    const decision = await this.llm.route(request);
+    this.cache.set(key, decision);
+    return decision;
+  }
+}
+
+// Default production router: policy default + LLM for dynamic intent, the LLM guarded
+// by an abort-timeout that falls back to policy. The callRouteModelCall seam is injected
+// so the runner can pass the generated b.RouteModelCall wrapper (see bamlAdapters wiring).
+export function createDefaultModelRouter(callRouteModelCall?: RouteModelCallFn): ModelRouter {
+  const policy = new PolicyModelRouter();
+  if (!callRouteModelCall) {
+    return new HybridModelRouter({ policy });
+  }
+  const llm = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall });
+  return new HybridModelRouter({ policy, llm });
+}

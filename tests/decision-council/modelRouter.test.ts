@@ -143,3 +143,58 @@ describe("normalizeRoutingDecision", () => {
     expect(decision.reasoningEffort).toBe("high");
   });
 });
+
+import {
+  HybridModelRouter,
+  createDefaultModelRouter,
+} from "../../src/decision-council/modelRouter.js";
+
+describe("HybridModelRouter", () => {
+  it("uses policy for static requests without calling the LLM", async () => {
+    let llmCalls = 0;
+    const llm = {
+      async route() {
+        llmCalls += 1;
+        return { clientName: "CopilotProxyGrokCodeFast1", model: "grok-code-fast-1", rationale: "x" };
+      },
+    };
+    const router = new HybridModelRouter({ policy: new PolicyModelRouter(), llm });
+
+    const decision = await router.route({ taskKind: "normalize" });
+    expect(decision.clientName).toBe("CopilotProxyClaudeHaiku45");
+    expect(llmCalls).toBe(0);
+  });
+
+  it("consults the LLM for dynamic requests and caches by task + summary", async () => {
+    let llmCalls = 0;
+    const llm = {
+      async route() {
+        llmCalls += 1;
+        return { clientName: "CopilotProxyGrokCodeFast1", model: "grok-code-fast-1", rationale: "x" };
+      },
+    };
+    const router = new HybridModelRouter({ policy: new PolicyModelRouter(), llm });
+
+    await router.route({ taskKind: "assess", summary: "same", dynamic: true });
+    await router.route({ taskKind: "assess", summary: "same", dynamic: true });
+    expect(llmCalls).toBe(1);
+  });
+
+  it("falls back to policy for dynamic requests when no LLM router is configured", async () => {
+    const router = new HybridModelRouter({ policy: new PolicyModelRouter() });
+    await expect(router.route({ taskKind: "report", dynamic: true })).resolves.toMatchObject({
+      clientName: "CopilotProxyClaudeSonnet46",
+    });
+  });
+});
+
+describe("createDefaultModelRouter", () => {
+  it("returns a router that resolves static decisions from policy", async () => {
+    const router = createDefaultModelRouter(async () => {
+      throw new Error("LLM should not be called for static requests");
+    });
+    await expect(router.route({ taskKind: "normalize" })).resolves.toMatchObject({
+      clientName: "CopilotProxyClaudeHaiku45",
+    });
+  });
+});
