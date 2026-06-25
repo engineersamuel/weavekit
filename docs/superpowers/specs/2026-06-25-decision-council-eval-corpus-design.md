@@ -46,9 +46,10 @@ likely to add value.
 
 - Author ~15 original decision questions with rich reference answers across 8 domains.
 - Define a Zod-validated corpus schema; store one YAML file per question.
-- Build a thin harness: Council runner + Copilot-CLI baseline + reference-guided judge
-  (pairwise, swap-augmented) + analytic rubric + aggregation.
-- Unit tests (vitest) for schema + pure scoring/aggregation, with all LLM/CLI calls mocked.
+- Build a **promptfoo-based** harness (TS-native): the Council and the Copilot CLI as custom
+  providers, judged with promptfoo `select-best` (pairwise) + weighted reference-anchored
+  `g-eval`/`llm-rubric` assertions.
+- Unit tests (vitest) for schema + the suite builder (pure), with the providers' LLM/CLI calls mocked.
 - An `npm run eval` entrypoint and a Markdown/JSON results report.
 
 ## Non-goals
@@ -133,11 +134,12 @@ corpus item ───→ ┤
                  └─ baseline: copilot --allow-all -p "<prompt>" --no-color   (isolated temp CWD, timeout)
                               → stdout answer string
                                           │
-                    reference-guided JUDGE (sees referenceAnswer):
-                      • PAIRWISE  council vs baseline, swap-augmented (A-B and B-A) → winner | tie
-                      • RUBRIC    each answer scored 1–5 per criterion → weighted totals
+                    promptfoo JUDGE (grader → local Copilot proxy; sees referenceAnswer):
+                      • g-eval/llm-rubric: one weighted assertion per rubric criterion, scored
+                        against the reference → per-provider weighted composite  (PRIMARY signal)
+                      • select-best: council vs baseline → pairwise winner       (corroborating)
                                           │
-        aggregate → council win-rate (position-bias-controlled), mean rubric/criterion,
+        aggregate (promptfoo Eval + summary) → council vs baseline composite delta, win-rate,
                     cost-quality ratio (à la DeliberationBench) → evals/results/<ts>/report.{json,md}
 ```
 
@@ -172,21 +174,28 @@ corpus item ───→ ┤
   `BAML_MODEL`/persona model. An optional `--baseline-model <m>` knob (maps to `copilot --model`)
   can pin the model when a controlled comparison is wanted. Default: Copilot's own default.
 
-### Judge
+### Judge — promptfoo (TS-native)
 
-- Reference-guided, two complementary modes (both consume `referenceAnswer`):
-  - **Pairwise**, swap-augmented: judge sees `prompt` + `referenceAnswer` + answer A / answer B and
-    picks winner or tie. Run both orders (A-B and B-A); the net verdict counts as a win only if it
-    agrees across both orders, else tie. This neutralizes position bias (MT-Bench finding).
-  - **Analytic rubric**: judge scores each answer 1–5 per `rubric` criterion against the reference,
-    producing weighted totals per contestant (diagnostic: shows *which* dimension differs).
-- **Implementation:** a BAML function `JudgeDecisionAnswers` (typed verdict + per-criterion scores),
-  on-convention with weavekit's BAML-first typed-contract approach. Alternative considered: a
-  self-contained `fetch`-based judge in the eval module (no BAML regen, more portable) — rejected
-  for v0 to keep typed parsing, but noted as a fallback if BAML regen friction appears.
-- **Judge model ≠ answer model:** judge defaults to a strong, *different* model via a new
-  `EVAL_JUDGE_MODEL` env (e.g. one of the `CopilotProxy*` clients such as `CopilotProxyGpt5` or
-  `CopilotProxyClaudeSonnet46`) to reduce self-preference bias.
+Both contestants are promptfoo **custom providers**; a single corpus item becomes one promptfoo
+test whose assertions do the grading. The corpus YAML is the source of truth — a suite builder
+(`src/eval/buildSuite.ts`) translates each item into promptfoo `tests[]` programmatically (no
+duplicated config).
+
+- **Reference-anchored rubric (PRIMARY).** Each `rubric[]` criterion maps to one weighted
+  `g-eval` (CoT) or `llm-rubric` assertion whose prompt scores the answer against the item's
+  `referenceAnswer` (interpolated via `{{reference}}`). promptfoo aggregates the per-criterion
+  scores into a per-provider weighted composite using each assertion's `weight` (= the criterion
+  weight). Because each answer is scored independently against the reference (no A/B positioning),
+  this signal is largely free of position bias.
+- **Pairwise (CORROBORATING).** A `select-best` assertion compares the Council vs Copilot outputs
+  for the same item and names a head-to-head winner — mirroring MT-Bench `pairwise-baseline` /
+  Arena preference.
+- **Grader model.** Configured via `defaultTest.options.provider` to an OpenAI-compatible provider
+  pointed at the **local Copilot proxy** (`http://127.0.0.1:8080/v1`), model from `EVAL_JUDGE_MODEL`
+  — a strong model, ideally *different* from the answer model to reduce self-preference bias. No
+  external API key; everything stays on the proxy.
+- **Rubric levels.** The corpus `rubric[].levels` (5/3/1 descriptions) become the rubric/`g-eval`
+  assertion text, so grading criteria live in the corpus, not the harness.
 
 ### Aggregation & report
 
@@ -199,48 +208,53 @@ corpus item ───→ ┤
 ### File layout
 
 ```
-evals/corpus/*.yaml          # the QA pairs (committed)
-evals/results/<ts>/...       # run outputs (gitignored)
-src/eval/schema.ts           # Zod schema + YAML loader/validator
-src/eval/baseline.ts         # runCopilotBaseline(prompt): spawn copilot CLI, capture stdout
-src/eval/council.ts          # thin wrapper over runDecisionCouncil (writeArtifacts:false) + cost capture
-src/eval/judge.ts            # pairwise + rubric (BAML adapter)
-src/eval/score.ts            # PURE: swap-verdict resolution, rubric weighting, aggregation (unit-tested)
-src/eval/run.ts              # orchestrates council + baseline + judge over the corpus
-src/eval-cli.ts              # `npm run eval -- --corpus evals/corpus [--ids data-store-001 ...] [--baseline-model m]`
-tests/eval/*.test.ts         # vitest; mocks runDecisionCouncil, the CLI spawn, and the judge
+evals/corpus/*.yaml              # the QA pairs (committed)
+evals/results/<ts>/...           # promptfoo run outputs (gitignored)
+src/eval/schema.ts               # Zod schema + YAML loader/validator
+src/eval/providers/council.ts    # promptfoo ApiProvider: callApi() → runDecisionCouncil(writeArtifacts:false)
+                                 #   → answer string; returns cost (rounds/personaCalls/latency) in metadata
+src/eval/providers/copilot.ts    # promptfoo ApiProvider: callApi() → spawn copilot --allow-all -p (temp CWD) → stdout
+src/eval/buildSuite.ts           # PURE: corpus → promptfoo EvaluateTestSuite (providers, prompt, weighted
+                                 #   g-eval/llm-rubric per criterion + select-best) — unit-tested
+src/eval/run.ts                  # import { evaluate } from 'promptfoo'; run suite; write report.{json,md}
+src/eval-cli.ts                  # `npm run eval -- --corpus evals/corpus [--ids ...] [--baseline-model m]`
+tests/eval/*.test.ts             # vitest; mocks runDecisionCouncil + the CLI spawn; unit-tests buildSuite
 ```
 
 ### Configuration / environment
 
 - Real runs require (same as the Council): the Copilot proxy on `127.0.0.1:8080`, `COPILOT_PROXY_BASE_URL`,
   `COPILOT_PROXY_API_KEY`, `BAML_MODEL`, Copilot SDK auth, and the `copilot` CLI on `PATH`.
-- New: `EVAL_JUDGE_MODEL` (optional; defaults to a strong proxy model).
+- New: `EVAL_JUDGE_MODEL` (optional; the promptfoo grader model on the local proxy; defaults to a
+  strong model distinct from the answer model).
 - New `package.json` script: `"eval": "tsx src/eval-cli.ts"`.
-- New dep: `yaml`. (BAML judge requires `npm run baml-generate`.)
+- New dev deps: `promptfoo` and `yaml`. No BAML changes for the harness.
 - `.gitignore`: add `evals/results/`.
 
 ## Testing & verification
 
-- **Hermetic unit tests** (`tests/eval/`): schema validation (good + malformed YAML), pure
-  scoring/aggregation (swap-augmented verdict logic, rubric weighting, cost-quality math), and the
-  orchestrator with `runDecisionCouncil`, the CLI spawn, and the judge all mocked — mirroring the
-  existing `tests/decision-council/*` dependency-injection/mock pattern. No network/LLM in CI.
+- **Hermetic unit tests** (`tests/eval/`): schema validation (good + malformed YAML) and the **pure
+  suite builder** (`buildSuite`: correct providers, per-criterion weighted assertions, `select-best`,
+  `{{reference}}` interpolation), plus the custom providers with `runDecisionCouncil` and the CLI
+  spawn mocked — mirroring the existing `tests/decision-council/*` dependency-injection/mock pattern.
+  promptfoo's own judging runs only in the manual smoke run, not in CI. No network/LLM in CI.
 - **Verify**: `npm test`, `npm run typecheck`, `npm run build` all pass.
 - **Manual smoke** (requires proxy + Copilot auth): `npm run eval -- --ids orchestration-framework-001`
   produces a results report.
 
 ## Risks & open decisions
 
-- **Judge bias / reliability.** Mitigated by reference-guided prompts, swap augmentation, and a
-  judge model distinct from the answer model. Residual risk acknowledged; not chasing human
-  calibration at v0.
+- **Judge bias / reliability.** Mitigated by reference-anchored independent rubric scoring as the
+  primary signal (no A/B positioning), `select-best` only as corroboration, and a grader model
+  distinct from the answer model. Residual risk acknowledged; not chasing human calibration at v0.
 - **Baseline non-determinism / side effects.** Copilot `--allow-all` could in principle act; mitigated
   by isolated temp CWD + timeout, and questions phrased as advice (not "edit my repo").
 - **Small N (15).** Enough for directional signal and to validate the loop; not for statistical
   claims. Expansion is a follow-up.
 - **Corpus format (decided): YAML-per-file.** Alternative single JSONL rejected for authorability.
-- **Judge impl (decided): BAML.** `fetch`-based judge noted as fallback.
+- **Eval framework (decided): promptfoo** (TS-native: `select-best` + weighted `g-eval`/`llm-rubric`).
+  DeepEval (`ArenaGEval` + `GEval`) was the alternative but is Python-only — rejected to keep the
+  harness in weavekit's TypeScript stack.
 
 ## References
 
@@ -253,5 +267,7 @@ tests/eval/*.test.ts         # vitest; mocks runDecisionCouncil, the CLI spawn, 
 - LLMs Choose the Right Stack — ohohlfeld.com/paper/ise2025-llm.pdf
 - Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena — arXiv:2306.05685; github.com/lm-sys/FastChat
 - Arena-Hard-Auto / BenchBuilder — github.com/lmarena/arena-hard-auto
+- promptfoo — promptfoo.dev (LLM-as-a-judge: `select-best`, `g-eval`, `llm-rubric`; custom providers)
+- DeepEval (considered) — deepeval.com (`ArenaGEval`, `GEval`); github.com/confident-ai/deepeval
 - Evidence-based architecture reference — github.com/cristoslc/architecture-reference-repo
 - AWS Well-Architected — Performance Efficiency PERF4 (database selection)
