@@ -12,11 +12,12 @@ export type DecisionCouncilCliArgs = {
   inputPath: string;
   outputDir: string;
   logFormat: LogFormat;
+  personaSetName?: string;
 };
 
 export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
   if (argv[0] !== "decision-council" || argv[1] !== "run") {
-    throw new Error("Usage: weavekit decision-council run --input <path> [--output <dir>]");
+    throw new Error("Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--log-format <pretty|json|silent>]");
   }
 
   const inputIndex = argv.indexOf("--input");
@@ -32,10 +33,17 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     throw new Error("Invalid --log-format value. Expected pretty, json, or silent.");
   }
 
+  const personaSetIndex = argv.indexOf("--persona-set");
+  if (personaSetIndex !== -1 && !argv[personaSetIndex + 1]) {
+    throw new Error("Missing value for --persona-set <name>.");
+  }
+  const personaSetName = personaSetIndex === -1 ? undefined : argv[personaSetIndex + 1];
+
   return {
     inputPath: argv[inputIndex + 1]!,
     outputDir: outputIndex === -1 ? "runs/latest" : argv[outputIndex + 1] ?? "runs/latest",
     logFormat,
+    personaSetName,
   };
 }
 
@@ -65,6 +73,7 @@ async function main(): Promise<void> {
   const report = await runDecisionCouncil(input, {
     outputDir: args.outputDir,
     inputPath: args.inputPath,
+    personaSetName: args.personaSetName,
     logger: createDecisionCouncilLogger(args.logFormat),
   });
 

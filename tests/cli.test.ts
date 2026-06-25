@@ -19,6 +19,7 @@ describe("CLI", () => {
       inputPath: "question.md",
       outputDir: "runs/question",
       logFormat: "pretty",
+      personaSetName: undefined,
     });
   });
 
@@ -36,7 +37,24 @@ describe("CLI", () => {
       inputPath: "question.md",
       outputDir: "runs/latest",
       logFormat: "json",
+      personaSetName: undefined,
     });
+  });
+
+  it("parses persona set name", () => {
+    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--persona-set", "strategic"]);
+
+    expect(parsed.personaSetName).toBe("strategic");
+  });
+
+  it("leaves persona set name undefined when not supplied", () => {
+    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md"]);
+
+    expect(parsed.personaSetName).toBeUndefined();
+  });
+
+  it("rejects missing persona set value", () => {
+    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--persona-set"])).toThrow();
   });
 
   it("reads Markdown input into DecisionCouncilInput", async () => {

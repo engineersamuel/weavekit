@@ -1,4 +1,4 @@
-import { PersonaSetSchema, type PersonaSet } from "./types.js";
+import { PersonaDefinitionSchema, PersonaSetSchema, type PersonaDefinition, type PersonaSet } from "./types.js";
 
 export const defaultPersonaSet: PersonaSet = PersonaSetSchema.parse({
   name: "default",
@@ -36,4 +36,35 @@ export const defaultPersonaSet: PersonaSet = PersonaSetSchema.parse({
 
 export function resolvePersonaSet(personaSet: PersonaSet = defaultPersonaSet): PersonaSet {
   return PersonaSetSchema.parse(structuredClone(personaSet));
+}
+
+export const gameTheorist: PersonaDefinition = PersonaDefinitionSchema.parse({
+  id: "game-theorist",
+  name: "Strategic Game Theorist",
+  description:
+    "Frames decisions as strategic games—players, strategies, payoffs, information, timing—then exposes incentives, credibility gaps, and best-response risks.",
+  prompt:
+    "You are the Strategic Game Theorist, a disciplined analyst of strategic interaction grounded in non-cooperative game theory, with a clearly flagged cooperative layer for coalitions, bargaining, and voting power. Default to ANALYZE mode: do not jump to advice—frame the game first. Apply the game-framing protocol: (1) Players—name every decision-maker, including hidden principals and absent counterparties who still shape incentives; (2) Strategies—list each player's feasible moves; (3) Payoffs—model what each player actually values, separating stated from revealed preferences; (4) Information—classify complete versus incomplete, perfect versus imperfect, and what is common knowledge; (5) Timing—simultaneous versus sequential, one-shot versus repeated, and whether commitments are credible. Then select the solution concept that fits—dominance, pure or mixed Nash, backward induction, subgame-perfect, or Bayesian—rather than forcing one template, and surface strategic phenomena: dilemmas, coordination and focal points, commitment and credibility, signaling and screening, mechanism manipulation, and repeated-game cooperation. Treat opponents as rational best-responders, never passive. State key assumptions explicitly and separate prediction from prescription. End every critique with four lists—claims, risks, questions, recommendations—so downstream council normalization stays lossless.",
+});
+
+export const strategicPersonaSet: PersonaSet = PersonaSetSchema.parse({
+  name: "strategic",
+  personas: [...defaultPersonaSet.personas, gameTheorist],
+});
+
+export const personaSetRegistry: Record<string, PersonaSet> = {
+  default: defaultPersonaSet,
+  strategic: strategicPersonaSet,
+};
+
+export function resolvePersonaSetByName(name?: string): PersonaSet {
+  if (!name) {
+    return resolvePersonaSet(defaultPersonaSet);
+  }
+  const set = personaSetRegistry[name];
+  if (!set) {
+    const available = Object.keys(personaSetRegistry).join(", ");
+    throw new Error(`Unknown persona set "${name}". Available persona sets: ${available}.`);
+  }
+  return resolvePersonaSet(set);
 }

@@ -22,6 +22,20 @@ function fakeWorker(failPersonaIds: string[] = []): PersonaWorker {
   };
 }
 
+function recordingWorker(seen: Set<string>): PersonaWorker {
+  return {
+    async runPersona({ persona, brief }) {
+      seen.add(persona.id);
+      return {
+        personaId: persona.id,
+        text: `${persona.name} critique for round ${brief.roundNumber}`,
+        transcript: [`assistant: ${persona.name}`],
+        metadata: { model: "fake" },
+      };
+    },
+  };
+}
+
 const normalizer: CritiqueNormalizer = {
   async normalizeCritique(raw) {
     return {
@@ -194,6 +208,38 @@ describe("runDecisionCouncil", () => {
 
     expect(report.recommendation).toBe("Use Flue for v0.");
     expect(report.failedPersonas).toEqual([]);
+  });
+
+  it("selects strategic personas from the personaSetName option", async () => {
+    const strategicSeen = new Set<string>();
+    await runDecisionCouncil(
+      { prompt: "Pick a set." },
+      {
+        personaSetName: "strategic",
+        deps: {
+          personaWorker: recordingWorker(strategicSeen),
+          normalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    const defaultSeen = new Set<string>();
+    await runDecisionCouncil(
+      { prompt: "Pick a set." },
+      {
+        deps: {
+          personaWorker: recordingWorker(defaultSeen),
+          normalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    expect(strategicSeen.has("game-theorist")).toBe(true);
+    expect(defaultSeen.has("game-theorist")).toBe(false);
   });
 
   it("stops at max three rounds even if Judge asks to continue", async () => {

@@ -4,7 +4,7 @@ import { runDecisionCouncilLoop, type DecisionCouncilWorkflowDeps } from "./work
 import { DecisionCouncilRunFailedError } from "./errors.js";
 import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
 import { CopilotPersonaWorker } from "./personaWorker.js";
-import { resolvePersonaSet } from "./personas.js";
+import { resolvePersonaSet, resolvePersonaSetByName } from "./personas.js";
 import {
   DecisionCouncilInputSchema,
   createInitialRunState,
@@ -15,6 +15,7 @@ import type { z } from "zod";
 
 export type RunDecisionCouncilOptions = {
   personaSet?: PersonaSet;
+  personaSetName?: string;
   outputDir?: string;
   inputPath?: string;
   logger?: DecisionCouncilLogger;
@@ -27,7 +28,9 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
   const startedAt = performance.now();
   const runId = `council-${Date.now().toString(36)}`;
   const parsedInput = DecisionCouncilInputSchema.parse(input);
-  const personaSet = resolvePersonaSet(options.personaSet);
+  const personaSet = options.personaSet
+    ? resolvePersonaSet(options.personaSet)
+    : resolvePersonaSetByName(options.personaSetName ?? parsedInput.personaSetName);
   const bamlAdapters = new GeneratedBamlAdapters();
   const deps: DecisionCouncilWorkflowDeps = {
     personaWorker: options.deps?.personaWorker ?? new CopilotPersonaWorker(),
