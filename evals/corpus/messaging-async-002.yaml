@@ -1,0 +1,64 @@
+id: messaging-async-002
+domain: messaging-async
+difficulty: advanced
+title: Reliable event publishing from a database transaction
+prompt: >-
+  When a service commits a database change it must also publish an event, without
+  losing events if the broker is briefly unavailable. Should we use a dual-write,
+  the transactional outbox pattern, or two-phase commit (2PC)?
+context:
+  - The database and message broker are separate systems.
+  - Losing or duplicating events causes downstream inconsistency.
+constraints:
+  - Atomicity between the state change and the event is required.
+referenceAnswer:
+  recommendation: >-
+    Use the transactional outbox pattern: write the event to an outbox table in
+    the same database transaction as the state change, then a relay (polling or
+    CDC) publishes it to the broker with at-least-once delivery.
+  rationale:
+    - Writing state and outbox row in one transaction makes them atomic without
+      distributed transactions.
+    - A relay decouples publishing from the broker's availability and gives
+      at-least-once delivery.
+  strongestObjections:
+    - The outbox adds a relay/CDC component and at-least-once means consumers must
+      be idempotent.
+    - It introduces some publish latency versus a direct write.
+  conditions:
+    - 2PC is only justifiable when both systems support it and you truly need
+      synchronous atomic commit despite its availability/performance cost.
+  viableAlternatives:
+    - Change-data-capture streaming the outbox (e.g. Debezium)
+    - Two-phase commit (rarely justified)
+  redFlags:
+    - Dual-writing to the DB and broker in app code, which loses events whenever
+      the second write fails.
+sources:
+  - https://microservices.io/patterns/data/transactional-outbox.html
+  - https://debezium.io/documentation/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.
