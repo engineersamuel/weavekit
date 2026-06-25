@@ -1,0 +1,64 @@
+id: data-store-002
+domain: data-store
+difficulty: advanced
+title: Vector storage for RAG retrieval
+prompt: >-
+  We are adding retrieval-augmented generation over our docs. We already run
+  PostgreSQL. Should we store and search embeddings in pgvector, or stand up a
+  dedicated vector database like Qdrant or Pinecone?
+context:
+  - Corpus is on the order of a few hundred thousand chunks today.
+  - We need metadata filtering alongside similarity search.
+constraints:
+  - Prefer to minimize new infrastructure if quality is comparable.
+referenceAnswer:
+  recommendation: >-
+    Start with pgvector inside the existing PostgreSQL since the corpus is modest
+    and you need metadata filtering next to your relational data; move to a
+    dedicated vector DB only when scale or ANN features demand it.
+  rationale:
+    - At a few hundred thousand vectors, pgvector with an HNSW index performs
+      well and avoids new infrastructure.
+    - Co-locating embeddings with relational metadata makes filtered search a
+      simple SQL join.
+  strongestObjections:
+    - Dedicated vector DBs (Qdrant, Pinecone) offer faster filtered ANN, sharding,
+      and hybrid search at large scale.
+    - pgvector can strain a primary OLTP database under heavy vector load.
+  conditions:
+    - Move to a dedicated vector DB when you exceed millions of vectors, need
+      high-QPS filtered ANN, or want hybrid (keyword+vector) search built in.
+  viableAlternatives:
+    - Qdrant (self-hostable filtered ANN)
+    - Pinecone (managed vector DB)
+  redFlags:
+    - Adding a separate vector database on day one for a small corpus you already
+      could serve from Postgres.
+  sources:
+    - https://github.com/pgvector/pgvector
+    - https://qdrant.tech/documentation/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.
