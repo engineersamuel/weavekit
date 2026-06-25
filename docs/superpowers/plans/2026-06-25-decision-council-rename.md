@@ -1,25 +1,27 @@
-# Decision Council Rename Implementation Plan
+# Glueplane Decision Council Rename Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rename the active v0 workflow from Design Council/Council to Decision Council end to end, intentionally breaking old CLI/API/artifact compatibility.
+**Goal:** Rename the project from Weavekit/weavekit to Glueplane/glueplane and rename the active v0 workflow from Design Council/Council to Decision Council end to end, intentionally breaking old CLI/API/artifact compatibility.
 
-**Architecture:** Keep the existing finite fan-out/fan-in workflow and rename the product seam around it. The public API becomes `runDecisionCouncil(input, options)`, implementation moves to `src/decision-council/*`, BAML contracts and generated client symbols use Decision Council names, and the CLI/artifacts/log events use decision-council terminology without legacy aliases.
+**Architecture:** Glueplane is the package, binary, and product name; Decision Council is the first workflow. Keep the existing finite fan-out/fan-in workflow and rename the workflow seam around it. The public API becomes `runDecisionCouncil(input, options)`, implementation moves to `src/decision-council/*`, BAML contracts and generated client symbols use Decision Council names, and the CLI/artifacts/log events use decision-council terminology without legacy aliases.
 
 **Tech Stack:** TypeScript, Vitest, Zod, BAML, GitHub Copilot SDK, Flue runtime, npm scripts.
 
 ## Global Constraints
 
 - This is an intentional breaking rename; do not keep a `council` CLI alias.
+- Project/product name: `Weavekit` becomes `Glueplane`.
+- Package, binary, and command examples: `weavekit` becomes `glueplane`.
 - Do not keep old artifact filenames.
 - Do not introduce a second workflow beside the old one.
 - Do not change persona behavior, round scheduling, BAML validation policy, or stop policy.
-- Do not broaden Weavekit into a general workflow framework beyond the current Decision Council surface.
+- Do not broaden Glueplane into a general workflow framework beyond the current Decision Council surface.
 - Preserve the `nextRoundBrief: null` schema boundary fix.
 - Active source, tests, README, example, BAML prompt, generated client, and artifact assertions must not refer to `Design Council` except dated historical docs that are intentionally preserved.
 - Public exports expose `DecisionCouncil*` names with no `Council*` compatibility aliases.
 - After BAML changes, run `npm run baml-generate` and commit generated files.
-- Existing unrelated local changes may be present in `examples/design-question.md`, `src/council/types.ts`, `tests/council/types.test.ts`, and `SPIKE_PLAN.md`; do not discard user work.
+- Existing unrelated local changes may be present in `examples/design-question.md` and `SPIKE_PLAN.md`; do not discard user work.
 
 ---
 
@@ -38,7 +40,7 @@
 - Rename test directory `tests/council/` to `tests/decision-council/`.
 - Rename `baml_src/council.baml` to `baml_src/decision_council.baml`.
 - Rename active example `examples/design-question.md` to `examples/decision-question.md`.
-- Update `src/cli.ts`, `src/index.ts`, `package.json`, `README.md`, and generated files under `src/generated/baml_client/`.
+- Update `src/cli.ts`, `src/index.ts`, `package.json`, `package-lock.json`, `README.md`, and generated files under `src/generated/baml_client/`.
 
 ---
 
@@ -358,6 +360,7 @@ git commit -m "refactor: rename council domain API to decision council"
   - `runDecisionCouncil(input: z.input<typeof DecisionCouncilInputSchema>, options?: RunDecisionCouncilOptions): Promise<DecisionCouncilReport>`
   - `writeDecisionCouncilArtifacts(args): Promise<DecisionCouncilArtifacts>`
   - structured event names prefixed with `decision_council.`
+  - CLI usage string: `Usage: glueplane decision-council run --input <path> [--output <dir>]`
 
 - [ ] **Step 1: Write failing CLI tests**
 
@@ -394,7 +397,7 @@ describe("CLI", () => {
 
   it("rejects the removed council run command", () => {
     expect(() => parseDecisionCouncilCliArgs(["council", "run", "--input", "question.md"])).toThrow(
-      "Usage: weavekit decision-council run --input <path> [--output <dir>]",
+      "Usage: glueplane decision-council run --input <path> [--output <dir>]",
     );
   });
 
@@ -416,7 +419,7 @@ describe("CLI", () => {
   });
 
   it("reads Markdown input into DecisionCouncilInput", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "weavekit-cli-"));
+    const dir = await mkdtemp(join(tmpdir(), "glueplane-cli-"));
     const inputPath = join(dir, "question.md");
 
     try {
@@ -546,7 +549,7 @@ export type DecisionCouncilCliArgs = {
   logFormat: LogFormat;
 };
 
-const usage = "Usage: weavekit decision-council run --input <path> [--output <dir>]";
+const usage = "Usage: glueplane decision-council run --input <path> [--output <dir>]";
 
 export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
   if (argv[0] !== "decision-council" || argv[1] !== "run") {
@@ -1162,6 +1165,7 @@ git commit -m "refactor: rename baml contracts for decision council"
 
 **Files:**
 - Modify: `package.json`
+- Modify: `package-lock.json`
 - Modify: `README.md`
 - Move: `examples/design-question.md` -> `examples/decision-question.md`
 - Modify: `ideas/observability.md`
@@ -1170,25 +1174,31 @@ git commit -m "refactor: rename baml contracts for decision council"
 **Interfaces:**
 - Consumes: `decision-council` CLI command from Task 2.
 - Produces:
+  - package name: `"glueplane"`
+  - binary: `"glueplane": "./dist/cli.js"`
   - npm script: `"decision-council": "tsx src/cli.ts"`
   - active example path: `examples/decision-question.md`
-  - README commands using `npm run decision-council -- decision-council run --input examples/decision-question.md --output runs/example` and `nub run decision-council decision-council run --input examples/decision-question.md --output runs/example`
+  - README commands using `npm run decision-council -- decision-council run --input examples/decision-question.md --output runs/example`, `glueplane decision-council run --input examples/decision-question.md --output runs/example`, and `nub run decision-council decision-council run --input examples/decision-question.md --output runs/example`
 
 - [ ] **Step 1: Write a failing cleanup check**
 
 Run:
 
 ```bash
-rg -n "Design Council|design council|CouncilReport|CouncilRunState|council run|npm run council|run\\.council|(^|[^_[:alnum:]])council\\." README.md package.json examples src tests baml_src ideas
+rg -n "Weavekit|weavekit|Design Council|design council|CouncilReport|CouncilRunState|council run|npm run council|run\\.council|(^|[^_[:alnum:]])council\\." README.md package.json package-lock.json examples src tests baml_src ideas
 ```
 
 Expected: matches in active files. Dated docs under `docs/superpowers/specs/2026-06-24-*` and `docs/superpowers/plans/2026-06-24-*` are intentionally excluded from this command.
 
-- [ ] **Step 2: Rename package script**
+- [ ] **Step 2: Rename package, binary, and script**
 
-Edit `package.json` scripts:
+Edit `package.json` package/bin/scripts:
 
 ```json
+"name": "glueplane",
+"bin": {
+  "glueplane": "./dist/cli.js"
+},
 "scripts": {
   "test": "vitest run",
   "typecheck": "tsc --noEmit",
@@ -1198,7 +1208,17 @@ Edit `package.json` scripts:
 }
 ```
 
-- [ ] **Step 3: Rename and rewrite the active example**
+- [ ] **Step 3: Update lockfile package metadata**
+
+Run:
+
+```bash
+npm install --package-lock-only
+```
+
+Expected: `package-lock.json` updates root package metadata from `weavekit` to `glueplane`.
+
+- [ ] **Step 4: Rename and rewrite the active example**
 
 Run:
 
@@ -1211,16 +1231,20 @@ Edit `examples/decision-question.md` to ask a generic decision question. Preserv
 ```md
 # Decision Question
 
-Compare whether WeaveKit should use Mastra, LangGraph, or a minimal custom subprocess orchestrator for the v0 workflow and agent harness layer.
+Compare whether Glueplane should use Mastra, LangGraph, or a minimal custom subprocess orchestrator for the v0 workflow and agent harness layer.
 
 Help me make a decision by surfacing the strongest tradeoffs, risks, assumptions, and the smallest experiment that would reduce uncertainty.
 ```
 
-- [ ] **Step 4: Update README usage and observability copy**
+- [ ] **Step 5: Update README usage and observability copy**
 
 Edit `README.md` top section:
 
 ```md
+# Glueplane
+
+Glueplane is a TypeScript-first playground for orchestrating GitHub Copilot SDK agents through explicit, typed workflows.
+
 The v0 workflow is a Decision Council. It runs four debating personas, normalizes their critiques through BAML, asks a Judge reducer whether to continue, and writes:
 
 - `DecisionCouncilReport.md`
@@ -1235,6 +1259,12 @@ Rename the run section:
 
 ```bash
 npm run decision-council -- decision-council run --input examples/decision-question.md --output runs/example
+```
+
+With the built CLI:
+
+```bash
+glueplane decision-council run --input examples/decision-question.md --output runs/example
 ```
 
 With nub:
@@ -1268,21 +1298,21 @@ Update recommended span names:
 - `write.decision_council.artifacts`
 ```
 
-- [ ] **Step 5: Update active observability note**
+- [ ] **Step 6: Update active observability note**
 
-Edit `ideas/observability.md` to use `Decision Council`, `decision_council.*`, and `DecisionCouncilReport.md` where it discusses the active workflow. Do not rewrite unrelated ideas.
+Edit `ideas/observability.md` to use `Glueplane`, `Decision Council`, `decision_council.*`, and `DecisionCouncilReport.md` where it discusses the active workflow. Do not rewrite unrelated ideas.
 
-- [ ] **Step 6: Run cleanup check to verify pass**
+- [ ] **Step 7: Run cleanup check to verify pass**
 
 Run:
 
 ```bash
-rg -n "Design Council|design council|CouncilReport|CouncilRunState|council run|npm run council|run\\.council|(^|[^_[:alnum:]])council\\." README.md package.json examples src tests baml_src ideas
+rg -n "Weavekit|weavekit|Design Council|design council|CouncilReport|CouncilRunState|council run|npm run council|run\\.council|(^|[^_[:alnum:]])council\\." README.md package.json package-lock.json examples src tests baml_src ideas
 ```
 
 Expected: no matches.
 
-- [ ] **Step 7: Run docs-adjacent tests**
+- [ ] **Step 8: Run docs-adjacent tests**
 
 Run:
 
@@ -1292,12 +1322,12 @@ npm test -- tests/cli.test.ts tests/decision-council/logger.test.ts tests/decisi
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add package.json README.md examples ideas tests src baml_src
+git add package.json package-lock.json README.md examples ideas tests src baml_src docs/superpowers/specs/2026-06-25-decision-council-rename-design.md docs/superpowers/plans/2026-06-25-decision-council-rename.md
 git add -u examples/design-question.md
-git commit -m "docs: update usage for decision council"
+git commit -m "refactor: rename project to glueplane"
 ```
 
 ---
@@ -1358,7 +1388,7 @@ Expected: no diff after the second `npm run baml-generate`.
 Run:
 
 ```bash
-rg -n "Design Council|design council|CouncilReport|CouncilRunState|council run|npm run council|run\\.council|(^|[^_[:alnum:]])council\\." README.md package.json examples src tests baml_src ideas
+rg -n "Weavekit|weavekit|Design Council|design council|CouncilReport|CouncilRunState|council run|npm run council|run\\.council|(^|[^_[:alnum:]])council\\." README.md package.json package-lock.json examples src tests baml_src ideas
 ```
 
 Expected: no matches.
@@ -1384,7 +1414,7 @@ npm run decision-council -- council run --input examples/decision-question.md --
 Expected: non-zero exit and stderr contains:
 
 ```text
-Usage: weavekit decision-council run --input <path> [--output <dir>]
+Usage: glueplane decision-council run --input <path> [--output <dir>]
 ```
 
 - [ ] **Step 8: Verify new CLI usage reaches runtime configuration**
@@ -1412,7 +1442,7 @@ Expected: only files intentionally changed by this rename are staged or modified
 If Steps 1-8 required code or docs fixes, commit them:
 
 ```bash
-git add src tests baml_src README.md package.json examples ideas
+git add src tests baml_src README.md package.json package-lock.json examples ideas docs/superpowers/specs/2026-06-25-decision-council-rename-design.md docs/superpowers/plans/2026-06-25-decision-council-rename.md
 git commit -m "fix: complete decision council rename"
 ```
 
