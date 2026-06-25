@@ -8,5 +8,5 @@ export type {
   PersonaSet,
 } from "./decision-council/types.js";
 export { defaultPersonaSet, resolvePersonaSet } from "./decision-council/personas.js";
-export { runDecisionCouncil, type RunDecisionCouncilOptions } from "./decision-council/runner.js";
-export { createDecisionCouncilWorkflow, type DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js";
+export { runCouncil as runDecisionCouncil, type RunCouncilOptions as RunDecisionCouncilOptions } from "./decision-council/runner.js";
+export { createCouncilWorkflow as createDecisionCouncilWorkflow, type CouncilWorkflowDeps as DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js";

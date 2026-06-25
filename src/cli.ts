@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { runCouncil } from "./council/runner.js";
-import { CouncilRunFailedError } from "./council/errors.js";
-import { createConsoleCouncilLogger, createJsonCouncilLogger, createSilentCouncilLogger, type CouncilLogger } from "./council/logger.js";
-import type { CouncilInput } from "./council/types.js";
+import { runCouncil } from "./decision-council/runner.js";
+import { CouncilRunFailedError } from "./decision-council/errors.js";
+import { createConsoleCouncilLogger, createJsonCouncilLogger, createSilentCouncilLogger, type CouncilLogger } from "./decision-council/logger.js";
+import type { CouncilInput } from "./decision-council/types.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 

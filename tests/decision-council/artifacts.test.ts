@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderCouncilReportMarkdown, writeCouncilArtifacts } from "../../src/council/artifacts.js";
-import type { CouncilRunState } from "../../src/council/types.js";
+import { renderCouncilReportMarkdown, writeCouncilArtifacts } from "../../src/decision-council/artifacts.js";
+import type { CouncilRunState } from "../../src/decision-council/types.js";
 
 const report = {
   recommendation: "Use Flue for v0.",

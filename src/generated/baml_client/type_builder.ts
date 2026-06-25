@@ -31,18 +31,22 @@ export default class TypeBuilder {
     
     PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "overallSummary" | "summary" | "claims" | "risks" | "questions" | "recommendations">;
     
+    PersonaDefinition: ClassViewer<'PersonaDefinition', "id" | "name" | "description">;
+    
     PersonaFailure: ClassViewer<'PersonaFailure', "personaId" | "message" | "retryable">;
     
-    RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
+    RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text" | "transcript" | "metadata">;
     
     RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "nextRoundBrief">;
+    
+    RoundBrief: ClassViewer<'RoundBrief', "roundNumber" | "prompt" | "focus">;
     
     
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "CouncilReport","PersonaCritique","PersonaFailure","RawPersonaResult","RoundAssessment",
+            "CouncilReport","PersonaCritique","PersonaDefinition","PersonaFailure","RawPersonaResult","RoundAssessment","RoundBrief",
           ]),
           enums: new Set([
             
@@ -58,16 +62,24 @@ export default class TypeBuilder {
           "personaId","overallSummary","summary","claims","risks","questions","recommendations",
         ]);
         
+        this.PersonaDefinition = this.tb.classViewer("PersonaDefinition", [
+          "id","name","description",
+        ]);
+        
         this.PersonaFailure = this.tb.classViewer("PersonaFailure", [
           "personaId","message","retryable",
         ]);
         
         this.RawPersonaResult = this.tb.classViewer("RawPersonaResult", [
-          "personaId","text",
+          "personaId","text","transcript","metadata",
         ]);
         
         this.RoundAssessment = this.tb.classViewer("RoundAssessment", [
           "roundNumber","consensus","disagreements","confidence","convergence","shouldContinue","diminishingReturns","nextRoundBrief",
+        ]);
+        
+        this.RoundBrief = this.tb.classViewer("RoundBrief", [
+          "roundNumber","prompt","focus",
         ]);
         
         

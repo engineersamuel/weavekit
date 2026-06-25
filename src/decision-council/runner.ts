@@ -3,7 +3,7 @@ import { writeCouncilArtifacts } from "./artifacts.js";
 import { runCouncilLoop, type CouncilWorkflowDeps } from "./workflow.js";
 import { CouncilRunFailedError } from "./errors.js";
 import { errorMessage, timestamp, type CouncilLogger } from "./logger.js";
-import { CopilotPersonaWorker } from "./personaWorker.js";
+import { BamlPersonaWorker } from "./personaWorker.js";
 import { resolvePersonaSet } from "./personas.js";
 import {
   CouncilInputSchema,
@@ -30,7 +30,7 @@ export async function runCouncil(input: z.input<typeof CouncilInputSchema>, opti
   const personaSet = resolvePersonaSet(options.personaSet);
   const bamlAdapters = new GeneratedBamlAdapters();
   const deps: CouncilWorkflowDeps = {
-    personaWorker: options.deps?.personaWorker ?? new CopilotPersonaWorker(),
+    personaWorker: options.deps?.personaWorker ?? new BamlPersonaWorker(),
     normalizer: options.deps?.normalizer ?? bamlAdapters,
     judge: options.deps?.judge ?? bamlAdapters,
     logger: options.logger,
@@ -90,3 +90,6 @@ export async function runCouncil(input: z.input<typeof CouncilInputSchema>, opti
     throw error;
   }
 }
+
+export const runDecisionCouncil = runCouncil;
+export type RunDecisionCouncilOptions = RunCouncilOptions;

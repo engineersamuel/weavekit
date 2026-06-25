@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { runCouncil } from "../../src/council/runner.js";
-import { createCouncilWorkflow } from "../../src/council/workflow.js";
-import { defaultPersonaSet } from "../../src/council/personas.js";
-import type { JudgeReducer, CritiqueNormalizer } from "../../src/council/bamlAdapters.js";
-import type { PersonaWorker } from "../../src/council/personaWorker.js";
+import { runCouncil } from "../../src/decision-council/runner.js";
+import { createCouncilWorkflow } from "../../src/decision-council/workflow.js";
+import { defaultPersonaSet } from "../../src/decision-council/personas.js";
+import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
+import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
 
 function fakeWorker(failPersonaIds: string[] = []): PersonaWorker {
   return {

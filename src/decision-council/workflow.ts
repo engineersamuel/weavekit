@@ -21,6 +21,8 @@ export type CouncilWorkflowDeps = {
   runId?: string;
 };
 
+export type DecisionCouncilWorkflowDeps = CouncilWorkflowDeps;
+
 function createRoundBrief(state: CouncilRunState): RoundBrief {
   const roundNumber = state.rounds.length + 1;
   const previous = state.rounds.at(-1);
@@ -328,3 +330,5 @@ export function createCouncilWorkflow(deps: CouncilWorkflowDeps) {
     },
   });
 }
+
+export const createDecisionCouncilWorkflow = createCouncilWorkflow;

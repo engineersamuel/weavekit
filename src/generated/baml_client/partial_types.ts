@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  CouncilReport,  PersonaCritique,  PersonaFailure,  RawPersonaResult,  RoundAssessment } from "./types.js"
+import type {  CouncilReport,  PersonaCritique,  PersonaDefinition,  PersonaFailure,  RawPersonaResult,  RoundAssessment,  RoundBrief } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -56,6 +56,11 @@ export namespace partial_types {
       questions: string[]
       recommendations: string[]
     }
+    export interface PersonaDefinition {
+      id?: string | null
+      name?: string | null
+      description?: string | null
+    }
     export interface PersonaFailure {
       personaId?: string | null
       message?: string | null
@@ -64,6 +69,8 @@ export namespace partial_types {
     export interface RawPersonaResult {
       personaId?: string | null
       text?: string | null
+      transcript: string[]
+      metadata: Record<string, string>
     }
     export interface RoundAssessment {
       roundNumber?: number | null
@@ -74,5 +81,10 @@ export namespace partial_types {
       shouldContinue?: boolean | null
       diminishingReturns?: boolean | null
       nextRoundBrief?: string | null
+    }
+    export interface RoundBrief {
+      roundNumber?: number | null
+      prompt?: string | null
+      focus?: string | null
     }
 }

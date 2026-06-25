@@ -1,10 +1,16 @@
 import { z } from "zod";
+import type {
+  CouncilReport as GeneratedCouncilReport,
+  PersonaCritique as GeneratedPersonaCritique,
+  PersonaFailure as GeneratedPersonaFailure,
+  RawPersonaResult as GeneratedRawPersonaResult,
+  RoundAssessment as GeneratedRoundAssessment,
+} from "../generated/baml_client/index.js";
 
 export const PersonaDefinitionSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().min(1),
-  prompt: z.string().min(1),
 });
 
 export type PersonaDefinition = z.infer<typeof PersonaDefinitionSchema>;
@@ -24,6 +30,8 @@ export const DecisionCouncilInputSchema = z.object({
 });
 
 export type DecisionCouncilInput = z.infer<typeof DecisionCouncilInputSchema>;
+export type CouncilInput = DecisionCouncilInput;
+export const CouncilInputSchema = DecisionCouncilInputSchema;
 
 export const RoundBriefSchema = z.object({
   roundNumber: z.number().int().positive(),
@@ -43,7 +51,8 @@ export const DecisionPersonaCritiqueSchema = z.object({
   recommendations: z.array(z.string().min(1)),
 });
 
-export type DecisionPersonaCritique = z.infer<typeof DecisionPersonaCritiqueSchema>;
+export type DecisionPersonaCritique = GeneratedPersonaCritique;
+export type PersonaCritique = DecisionPersonaCritique;
 
 export const DecisionPersonaFailureSchema = z.object({
   personaId: z.string().min(1),
@@ -51,7 +60,8 @@ export const DecisionPersonaFailureSchema = z.object({
   retryable: z.boolean(),
 });
 
-export type DecisionPersonaFailure = z.infer<typeof DecisionPersonaFailureSchema>;
+export type DecisionPersonaFailure = GeneratedPersonaFailure;
+export type PersonaFailure = DecisionPersonaFailure;
 
 export const RawPersonaResultSchema = z.object({
   personaId: z.string().min(1),
@@ -60,7 +70,7 @@ export const RawPersonaResultSchema = z.object({
   metadata: z.record(z.string(), z.string()).default({}),
 });
 
-export type RawPersonaResult = z.infer<typeof RawPersonaResultSchema>;
+export type RawPersonaResult = GeneratedRawPersonaResult;
 
 export const DecisionRoundAssessmentSchema = z.object({
   roundNumber: z.number().int().positive(),
@@ -73,7 +83,10 @@ export const DecisionRoundAssessmentSchema = z.object({
   nextRoundBrief: z.preprocess((value) => (value === null ? undefined : value), z.string().min(1).optional()),
 });
 
-export type DecisionRoundAssessment = z.infer<typeof DecisionRoundAssessmentSchema>;
+export type DecisionRoundAssessment = Omit<GeneratedRoundAssessment, "nextRoundBrief"> & {
+  nextRoundBrief?: string;
+};
+export type RoundAssessment = DecisionRoundAssessment;
 
 export const DecisionCouncilReportSchema = z.object({
   recommendation: z.string().min(1),
@@ -87,7 +100,8 @@ export const DecisionCouncilReportSchema = z.object({
   failedPersonas: z.array(DecisionPersonaFailureSchema),
 });
 
-export type DecisionCouncilReport = z.infer<typeof DecisionCouncilReportSchema>;
+export type DecisionCouncilReport = GeneratedCouncilReport;
+export type CouncilReport = DecisionCouncilReport;
 
 export const DecisionCouncilRoundSchema = z.object({
   brief: RoundBriefSchema,
@@ -98,6 +112,7 @@ export const DecisionCouncilRoundSchema = z.object({
 });
 
 export type DecisionCouncilRound = z.infer<typeof DecisionCouncilRoundSchema>;
+export type CouncilRound = DecisionCouncilRound;
 
 export const DecisionCouncilRunStateSchema = z.object({
   input: DecisionCouncilInputSchema,
@@ -109,6 +124,8 @@ export const DecisionCouncilRunStateSchema = z.object({
 });
 
 export type DecisionCouncilRunState = z.infer<typeof DecisionCouncilRunStateSchema>;
+export type CouncilRunState = DecisionCouncilRunState;
+export const CouncilRunStateSchema = DecisionCouncilRunStateSchema;
 
 export function createInitialRunState(input: z.input<typeof DecisionCouncilInputSchema>, personaSet: PersonaSet): DecisionCouncilRunState {
   const parsedInput = DecisionCouncilInputSchema.parse(input);
