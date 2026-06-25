@@ -1,4 +1,6 @@
 import { b } from "../generated/baml_client/index.js";
+import { toBamlCallOptions, type BamlEnv, type BamlRouteOptions } from "./bamlRouting.js";
+import type { ModelRouter, RouteTaskKind } from "./modelRouter.js";
 import {
   DecisionCouncilReportSchema,
   DecisionPersonaCritiqueSchema,
@@ -6,8 +8,8 @@ import {
   type DecisionCouncilReport,
   type DecisionPersonaCritique,
   type DecisionPersonaFailure,
-  type RawPersonaResult,
   type DecisionRoundAssessment,
+  type RawPersonaResult,
 } from "./types.js";
 
 export type CritiqueNormalizer = {
@@ -27,12 +29,54 @@ export type JudgeReducer = {
   }): Promise<DecisionCouncilReport>;
 };
 
+// Structural seam over the generated client so adapters can be tested without a live proxy.
+export type RoutableBamlClient = {
+  NormalizePersonaCritique(
+    args: { personaId: string; text: string },
+    options?: BamlRouteOptions,
+  ): Promise<DecisionPersonaCritique>;
+  AssessCouncilRound(
+    roundNumber: number,
+    critiques: DecisionPersonaCritique[],
+    failures: DecisionPersonaFailure[],
+    options?: BamlRouteOptions,
+  ): Promise<DecisionRoundAssessment>;
+  CreateCouncilReport(
+    critiques: DecisionPersonaCritique[],
+    assessments: DecisionRoundAssessment[],
+    failures: DecisionPersonaFailure[],
+    options?: BamlRouteOptions,
+  ): Promise<DecisionCouncilReport>;
+};
+
 export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
+  private readonly router?: ModelRouter;
+  private readonly bamlEnv: BamlEnv;
+  private readonly client: RoutableBamlClient;
+
+  constructor(args: { router?: ModelRouter; bamlEnv?: BamlEnv; bamlClient?: RoutableBamlClient } = {}) {
+    this.router = args.router;
+    this.bamlEnv = args.bamlEnv ?? {
+      baseUrl: process.env.COPILOT_PROXY_BASE_URL,
+      apiKey: process.env.COPILOT_PROXY_API_KEY,
+    };
+    this.client = args.bamlClient ?? (b as unknown as RoutableBamlClient);
+  }
+
+  private async optionsFor(taskKind: RouteTaskKind, summary?: string): Promise<BamlRouteOptions | undefined> {
+    if (!this.router) {
+      return undefined;
+    }
+    const decision = await this.router.route({ taskKind, summary });
+    return toBamlCallOptions(decision, this.bamlEnv);
+  }
+
   async normalizeCritique(raw: RawPersonaResult): Promise<DecisionPersonaCritique> {
-    const result = await b.NormalizePersonaCritique({
-      personaId: raw.personaId,
-      text: raw.text,
-    });
+    const options = await this.optionsFor("normalize", raw.text);
+    const result = await this.client.NormalizePersonaCritique(
+      { personaId: raw.personaId, text: raw.text },
+      options,
+    );
     return DecisionPersonaCritiqueSchema.parse(result);
   }
 
@@ -41,7 +85,13 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
     critiques: DecisionPersonaCritique[];
     failures: DecisionPersonaFailure[];
   }): Promise<DecisionRoundAssessment> {
-    const result = await b.AssessCouncilRound(args.roundNumber, args.critiques, args.failures);
+    const options = await this.optionsFor("assess");
+    const result = await this.client.AssessCouncilRound(
+      args.roundNumber,
+      args.critiques,
+      args.failures,
+      options,
+    );
     return DecisionRoundAssessmentSchema.parse(result);
   }
 
@@ -50,7 +100,13 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
     assessments: DecisionRoundAssessment[];
     failures: DecisionPersonaFailure[];
   }): Promise<DecisionCouncilReport> {
-    const result = await b.CreateCouncilReport(args.critiques, args.assessments, args.failures);
+    const options = await this.optionsFor("report");
+    const result = await this.client.CreateCouncilReport(
+      args.critiques,
+      args.assessments,
+      args.failures,
+      options,
+    );
     return DecisionCouncilReportSchema.parse(result);
   }
 }
