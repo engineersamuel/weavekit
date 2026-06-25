@@ -37,12 +37,14 @@ export default class TypeBuilder {
     
     RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "nextRoundBrief">;
     
+    RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
+    
     
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "CouncilReport","PersonaCritique","PersonaFailure","RawPersonaResult","RoundAssessment",
+            "CouncilReport","PersonaCritique","PersonaFailure","RawPersonaResult","RoundAssessment","RoutingDecision",
           ]),
           enums: new Set([
             
@@ -68,6 +70,10 @@ export default class TypeBuilder {
         
         this.RoundAssessment = this.tb.classViewer("RoundAssessment", [
           "roundNumber","consensus","disagreements","confidence","convergence","shouldContinue","diminishingReturns","nextRoundBrief",
+        ]);
+        
+        this.RoutingDecision = this.tb.classViewer("RoutingDecision", [
+          "clientName","model","reasoningEffort","rationale",
         ]);
         
         

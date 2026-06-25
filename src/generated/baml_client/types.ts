@@ -95,3 +95,11 @@ export interface RoundAssessment {
   nextRoundBrief?: string | null
   
 }
+
+export interface RoutingDecision {
+  clientName?: string | null
+  model: string
+  reasoningEffort?: string | null
+  rationale: string
+  
+}
