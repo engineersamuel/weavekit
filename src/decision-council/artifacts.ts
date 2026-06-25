@@ -80,8 +80,8 @@ export async function writeDecisionCouncilArtifacts(args: {
   const debugDir = join(outputDir, "debug");
   await mkdir(debugDir, { recursive: true });
 
-  const reportPath = join(outputDir, "CouncilReport.md");
-  const statePath = join(outputDir, "CouncilRunState.json");
+  const reportPath = join(outputDir, "DecisionCouncilReport.md");
+  const statePath = join(outputDir, "DecisionCouncilRunState.json");
 
   await writeFile(reportPath, renderDecisionCouncilReportMarkdown(state.finalReport), "utf8");
   await writeFile(statePath, JSON.stringify(state, null, 2) + "\n", "utf8");

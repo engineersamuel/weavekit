@@ -4,8 +4,8 @@ Weavekit is a TypeScript-first playground for orchestrating GitHub Copilot SDK a
 
 The v0 workflow is a Design Council. It runs four debating personas, normalizes their critiques through BAML, asks a Judge reducer whether to continue, and writes:
 
-- `CouncilReport.md`
-- `CouncilRunState.json`
+- `DecisionCouncilReport.md`
+- `DecisionCouncilRunState.json`
 - raw transcript debug files
 
 ## Setup
@@ -40,13 +40,13 @@ GitHub Copilot SDK authentication for persona workers follows the SDK's local au
 ## Run the Design Council
 
 ```bash
-npm run council -- council run --input examples/design-question.md --output runs/example
+npm run council -- decision-council run --input examples/design-question.md --output runs/example
 ```
 
 With nub:
 
 ```bash
-nub run council council run --input examples/design-question.md --output runs/example
+nub run council decision-council run --input examples/design-question.md --output runs/example
 ```
 
 The CLI prints compact rich progress to stderr while the council runs: run start, round start, persona start/finish/failure, BAML normalization/Judge/report phases, artifact paths, and final stop reason. After each successful BAML normalization, pretty logs include one indented summary of that persona's normalized stance:
@@ -61,15 +61,15 @@ Rounds use a shared fan-out/fan-in model. Round 1 sends the initial brief to eve
 The final stdout includes the recommendation plus a link to the Markdown report:
 
 ```text
-Markdown report: runs/example/CouncilReport.md
+Markdown report: runs/example/DecisionCouncilReport.md
 ```
 
 Use `--log-format` to control progress output:
 
 ```bash
-nub run council council run --input examples/design-question.md --output runs/example --log-format pretty
-nub run council council run --input examples/design-question.md --output runs/example --log-format json
-nub run council council run --input examples/design-question.md --output runs/example --log-format silent
+nub run council decision-council run --input examples/design-question.md --output runs/example --log-format pretty
+nub run council decision-council run --input examples/design-question.md --output runs/example --log-format json
+nub run council decision-council run --input examples/design-question.md --output runs/example --log-format silent
 ```
 
 `pretty` is colored human-readable progress. `json` emits newline-delimited structured events such as `council.run.started`, `council.persona.completed`, and `council.baml.completed`. `silent` suppresses Weavekit progress logs.
@@ -77,15 +77,15 @@ nub run council council run --input examples/design-question.md --output runs/ex
 BAML can print large raw prompts/responses. Use `BAML_LOG=warn` when you want Weavekit's progress logs without BAML's verbose prompt dump:
 
 ```bash
-BAML_LOG=warn COPILOT_PROXY_API_KEY="anything" nub run council council run --input examples/design-question.md --output runs/example
+BAML_LOG=warn COPILOT_PROXY_API_KEY="anything" nub run council decision-council run --input examples/design-question.md --output runs/example
 ```
 
 ## Observability
 
-The direct CLI path uses Weavekit's typed `CouncilLogger` events. Use `--log-format json` to capture them as JSONL:
+The direct CLI path uses Weavekit's typed `DecisionCouncilLogger` events. Use `--log-format json` to capture them as JSONL:
 
 ```bash
-BAML_LOG=warn nub run council council run --input examples/design-question.md --output runs/example --log-format json 2> runs/example/events.jsonl
+BAML_LOG=warn nub run council decision-council run --input examples/design-question.md --output runs/example --log-format json 2> runs/example/events.jsonl
 ```
 
 Recommended span names if you export those events to OpenTelemetry:
@@ -96,7 +96,7 @@ Recommended span names if you export those events to OpenTelemetry:
 - `run.council.baml`
 - `write.council.artifacts`
 
-Flue runtime observability applies when running through the exported `createCouncilWorkflow(...)` registration seam. Register Flue's observer or OpenTelemetry instrumentation in the application entrypoint that hosts the workflow:
+Flue runtime observability applies when running through the exported `createDecisionCouncilWorkflow(...)` registration seam. Register Flue's observer or OpenTelemetry instrumentation in the application entrypoint that hosts the workflow:
 
 ```ts
 import { instrument, observe } from "@flue/runtime";
