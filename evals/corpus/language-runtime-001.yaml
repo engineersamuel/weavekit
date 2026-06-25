@@ -1,0 +1,65 @@
+id: language-runtime-001
+domain: language-runtime
+difficulty: intermediate
+title: Language for a high-throughput network service
+prompt: >-
+  We are writing a high-throughput, latency-sensitive network proxy/service.
+  Should we write it in Go, Rust, or Node.js/TypeScript?
+context:
+  - Workload is heavily concurrent I/O with some CPU-bound parsing.
+  - The team is mixed and ships on a deadline.
+constraints:
+  - Predictable tail latency matters.
+  - Operational simplicity is valued.
+referenceAnswer:
+  recommendation: >-
+    Default to Go: its goroutine concurrency, garbage collection, and simple
+    deployment fit a high-throughput network service while keeping the team
+    productive on a deadline.
+  rationale:
+    - Go's concurrency model and standard library suit network services with
+      minimal ceremony.
+    - Single static binary and mature tooling keep operations simple.
+  strongestObjections:
+    - Rust delivers the best tail latency and memory safety with no GC pauses for
+      the hottest paths.
+    - Node/TS maximizes team velocity if the team is JS-first and the work is
+      I/O-bound.
+  conditions:
+    - Choose Rust when you need maximum performance, no GC pauses, or fine-grained
+      memory control in the hot path and can absorb the learning curve.
+    - Choose Node/TS when the service is I/O-bound glue and the team is JS-first.
+  viableAlternatives:
+    - Rust (max performance, no GC)
+    - Node.js/TypeScript (team velocity, I/O-bound)
+  redFlags:
+    - Choosing Rust for a deadline-driven CRUD-ish service mainly for performance
+      bragging rights.
+sources:
+  - https://go.dev/doc/effective_go
+  - https://doc.rust-lang.org/book/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

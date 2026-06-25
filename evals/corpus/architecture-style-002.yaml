@@ -1,0 +1,67 @@
+id: architecture-style-002
+domain: architecture-style
+difficulty: advanced
+title: Event-driven vs request/response for order processing
+prompt: >-
+  We are designing an order-processing system spanning checkout, payment,
+  inventory, and fulfillment. Should the services communicate via event-driven
+  messaging, synchronous request/response, or a hybrid?
+context:
+  - Some steps need an immediate answer to the user (payment authorization).
+  - Other steps are side effects that can complete asynchronously.
+constraints:
+  - Must not lose orders if a downstream service is briefly down.
+referenceAnswer:
+  recommendation: >-
+    Use a hybrid: synchronous request/response for the user-facing path that
+    needs an immediate, consistent answer (e.g. payment authorization), and
+    asynchronous events for cross-service side effects (inventory, fulfillment)
+    to decouple and tolerate downstream outages.
+  rationale:
+    - User-facing steps need immediate, consistent responses, which sync calls
+      provide simply.
+    - Side effects benefit from event decoupling and durable queues so a brief
+      outage does not lose orders.
+  strongestObjections:
+    - A hybrid means operating both styles and reasoning about eventual
+      consistency.
+    - Fully event-driven maximizes decoupling and auditability.
+  conditions:
+    - Lean fully event-driven when nearly everything is async and you need a
+      replayable event log/audit trail.
+    - Lean mostly synchronous when the domain is simple and strong consistency is
+      paramount.
+  viableAlternatives:
+    - Fully event-driven (max decoupling, eventual consistency)
+    - Mostly synchronous request/response (simplicity, strong consistency)
+  redFlags:
+    - Going fully event-driven everywhere and pushing eventual-consistency
+      complexity onto flows that needed a simple synchronous answer.
+sources:
+  - https://martinfowler.com/articles/201701-event-driven.html
+  - https://microservices.io/patterns/data/saga.html
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

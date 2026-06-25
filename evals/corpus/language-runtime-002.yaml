@@ -1,0 +1,61 @@
+id: language-runtime-002
+domain: language-runtime
+difficulty: intro
+title: Language for an ML-adjacent backend with a web API
+prompt: >-
+  We are building a backend that does some data/ML work (feature processing,
+  model inference) and also exposes a web API. Should we use Python, TypeScript,
+  or Go?
+context:
+  - The ML/data ecosystem we depend on is Python-first.
+  - The web API surface is modest.
+constraints:
+  - Reuse existing data-science code where possible.
+referenceAnswer:
+  recommendation: >-
+    Use Python: the data/ML ecosystem is Python-first, so co-locating model code
+    and a modest web API (FastAPI) avoids cross-language glue.
+  rationale:
+    - The ML libraries and existing data-science code are Python-native.
+    - FastAPI gives a perfectly capable modern web API in the same language.
+  strongestObjections:
+    - TypeScript offers a stronger type system and is better if the product is
+      web-first.
+    - Go gives better raw performance and operational simplicity.
+  conditions:
+    - Choose TypeScript when the system is web-first with only light ML.
+    - Choose Go when throughput/ops dominate and ML is offloaded to a service.
+  viableAlternatives:
+    - TypeScript (web-first)
+    - Go (performance/ops)
+  redFlags:
+    - Splitting into two languages prematurely and paying serialization/glue cost
+      for a modest API.
+sources:
+  - https://fastapi.tiangolo.com/
+  - https://docs.python.org/3/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.
