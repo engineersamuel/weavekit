@@ -53,7 +53,7 @@ describe("council logger", () => {
     expect(write.mock.calls[0]![0]).toContain("persona completed");
   });
 
-  it("formats normalized critique summaries as indented child lines", () => {
+  it("renders normalized critique summaries as a prettyjson detail block", () => {
     const formatted = formatDecisionCouncilEvent(
       {
         type: "council.baml.completed",
@@ -68,9 +68,13 @@ describe("council logger", () => {
       { color: false },
     );
 
-    expect(formatted).toContain("baml completed round=1 persona=pragmatic operation=normalize duration=4.5s");
+    expect(formatted).toContain("[2026-06-24T18:00:00.000Z] baml completed");
+    expect(formatted).toContain("operation:");
+    expect(formatted).toContain("normalize");
+    expect(formatted).toContain("duration:");
+    expect(formatted).toContain("4.5s");
     expect(formatted).toContain(
-      "\n    -> Pragmatic persona recommends a minimal validation spike before adopting Flue/BAML.",
+      "Pragmatic persona recommends a minimal validation spike before adopting Flue/BAML.",
     );
   });
 
@@ -89,9 +93,10 @@ describe("council logger", () => {
       { color: false },
     );
 
-    expect(bamlLine).toContain(
-      "baml completed round=1 persona=pragmatic operation=normalize model=claude-haiku-4-5 duration=5.0s",
-    );
+    expect(bamlLine).toContain("baml completed");
+    expect(bamlLine).toContain("model:");
+    expect(bamlLine).toContain("claude-haiku-4-5");
+    expect(bamlLine).toContain("5.0s");
 
     const personaLine = formatDecisionCouncilEvent(
       {
@@ -106,10 +111,13 @@ describe("council logger", () => {
       { color: false },
     );
 
-    expect(personaLine).toContain("persona completed round=1 persona=skeptic model=claude-sonnet-4.5 duration=1.2s");
+    expect(personaLine).toContain("persona completed");
+    expect(personaLine).toContain("model:");
+    expect(personaLine).toContain("claude-sonnet-4.5");
+    expect(personaLine).toContain("1.2s");
   });
 
-  it("omits the model token when no model is present", () => {
-    expect(formatDecisionCouncilEvent(event, { color: false })).not.toContain("model=");
+  it("omits the model field when no model is present", () => {
+    expect(formatDecisionCouncilEvent(event, { color: false })).not.toContain("model:");
   });
 });

@@ -49,11 +49,16 @@ With nub:
 nub run council decision-council run --input examples/design-question.md --output runs/example
 ```
 
-The CLI prints compact rich progress to stderr while the council runs: run start, round start, persona start/finish/failure, BAML normalization/Judge/report phases, artifact paths, and final stop reason. After each successful BAML normalization, pretty logs include one indented summary of that persona's normalized stance:
+The CLI prints rich progress to stderr while the council runs: run start, round start, persona start/finish/failure, BAML normalization/Judge/report phases, artifact paths, and final stop reason. Each event renders as a colored, YAML-style block (via [prettyjson](https://www.npmjs.com/package/prettyjson)) under a status-colored header. After each successful BAML normalization, the block includes the persona's normalized stance summary:
 
 ```text
-[2026-06-24T19:42:21.962Z] baml completed round=1 persona=pragmatic operation=normalize duration=4.5s
-    -> Pragmatic persona recommends a minimal validation spike before adopting Flue/BAML.
+[2026-06-24T19:42:21.962Z] baml completed
+  runId:       run-1
+  roundNumber: 1
+  personaId:   pragmatic
+  operation:   normalize
+  summary:     Pragmatic persona recommends a minimal validation spike before adopting Flue/BAML.
+  duration:    4.5s
 ```
 
 Rounds use a shared fan-out/fan-in model. Round 1 sends the initial brief to every persona. Round 2+ sends one shared Judge brief, produced from the previous round's full set of normalized critiques, to every persona; the Judge then assesses the current round's full critique set together.
@@ -72,7 +77,7 @@ nub run council decision-council run --input examples/design-question.md --outpu
 nub run council decision-council run --input examples/design-question.md --output runs/example --log-format silent
 ```
 
-`pretty` is colored human-readable progress. `json` emits newline-delimited structured events such as `council.run.started`, `council.persona.completed`, and `council.baml.completed`. `silent` suppresses Weavekit progress logs.
+`pretty` is colored, YAML-style human-readable progress (rendered with prettyjson). `json` emits newline-delimited structured events such as `council.run.started`, `council.persona.completed`, and `council.baml.completed`. `silent` suppresses Weavekit progress logs.
 
 BAML can print large raw prompts/responses. Use `BAML_LOG=warn` when you want Weavekit's progress logs without BAML's verbose prompt dump:
 

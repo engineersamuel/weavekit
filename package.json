@@ -20,6 +20,7 @@
     "@flue/runtime": "^1.0.0-beta.5",
     "@github/copilot-sdk": "^0.1.0",
     "picocolors": "^1.1.1",
+    "prettyjson": "^1.2.5",
     "promptfoo": "^0.121.17",
     "smol-toml": "^1.7.0",
     "valibot": "^1.0.0",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "@types/prettyjson": "^0.0.33",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0"
