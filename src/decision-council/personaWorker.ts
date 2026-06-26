@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import type { PersonaDefinition, RawPersonaResult, RoundBrief } from "./types.js";
 import type { ModelRouter } from "./modelRouter.js";
+import { composePersonaPrompt } from "../personas/composer.js";
 
 const require = createRequire(import.meta.url);
 
@@ -88,19 +89,7 @@ export type PersonaWorker = {
 };
 
 export function buildPersonaPrompt(persona: PersonaDefinition, brief: RoundBrief): string {
-  return [
-    `You are ${persona.name}.`,
-    "",
-    persona.prompt,
-    "",
-    `Round ${brief.roundNumber}`,
-    `Focus: ${brief.focus}`,
-    "",
-    "Design/question:",
-    brief.prompt,
-    "",
-    "Return a concise critique with claims, risks, questions, and recommendations.",
-  ].join("\n");
+  return composePersonaPrompt(persona, { brief });
 }
 
 export function resolveCopilotCliPath(): string {

@@ -1,20 +1,15 @@
 import { z } from "zod";
+import {
+  PersonaDefinitionSchema,
+  PersonaSetSchema,
+  RoundBriefSchema,
+  type PersonaDefinition,
+  type PersonaSet,
+  type RoundBrief,
+} from "../personas/schema.js";
 
-export const PersonaDefinitionSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().min(1),
-  prompt: z.string().min(1),
-});
-
-export type PersonaDefinition = z.infer<typeof PersonaDefinitionSchema>;
-
-export const PersonaSetSchema = z.object({
-  name: z.string().min(1),
-  personas: z.array(PersonaDefinitionSchema).min(2),
-});
-
-export type PersonaSet = z.infer<typeof PersonaSetSchema>;
+export { PersonaDefinitionSchema, PersonaSetSchema, RoundBriefSchema };
+export type { PersonaDefinition, PersonaSet, RoundBrief };
 
 export const DecisionCouncilInputSchema = z.object({
   prompt: z.string().min(1),
@@ -24,14 +19,6 @@ export const DecisionCouncilInputSchema = z.object({
 });
 
 export type DecisionCouncilInput = z.infer<typeof DecisionCouncilInputSchema>;
-
-export const RoundBriefSchema = z.object({
-  roundNumber: z.number().int().positive(),
-  prompt: z.string().min(1),
-  focus: z.string().min(1),
-});
-
-export type RoundBrief = z.infer<typeof RoundBriefSchema>;
 
 export const DecisionPersonaCritiqueSchema = z.object({
   personaId: z.string().min(1),

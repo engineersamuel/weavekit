@@ -9,15 +9,15 @@ import {
   getStopErrors,
   resolveCopilotCliPath,
 } from "../../src/decision-council/personaWorker.js";
-import type { PersonaDefinition, RoundBrief } from "../../src/decision-council/types.js";
+import { PersonaDefinitionSchema, type PersonaDefinition, type RoundBrief } from "../../src/decision-council/types.js";
 import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
 
-const persona: PersonaDefinition = {
+const persona: PersonaDefinition = PersonaDefinitionSchema.parse({
   id: "skeptic",
   name: "Skeptic",
   description: "Challenges weak evidence.",
   prompt: "Challenge weak evidence.",
-};
+});
 
 const brief: RoundBrief = {
   roundNumber: 1,
