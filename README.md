@@ -2,7 +2,7 @@
 
 Weavekit is a TypeScript-first playground for orchestrating GitHub Copilot SDK agents through explicit, typed workflows.
 
-The v0 workflow is a Design Council. It runs four debating personas, normalizes their critiques through BAML, asks a Judge reducer whether to continue, and writes:
+The v0 workflow is a Design Council. It selects a compact, task-appropriate persona subset each round (or follows a deterministic named set override), normalizes critiques through BAML, asks a Judge reducer whether to continue, and writes:
 
 - `DecisionCouncilReport.md`
 - `DecisionCouncilRunState.json`
@@ -55,7 +55,7 @@ The CLI prints rich progress to stderr while the council runs: run start, round 
   duration:    4.5s
 ```
 
-Rounds use a shared fan-out/fan-in model. Round 1 sends the initial brief to every persona. Round 2+ sends one shared Judge brief, produced from the previous round's full set of normalized critiques, to every persona; the Judge then assesses the current round's full critique set together.
+Rounds use a shared fan-out/fan-in model. Round 1 sends the initial brief to the selected personas for that round. Round 2+ sends one shared Judge brief, produced from the previous round's full set of normalized critiques, to the newly selected personas; the Judge then assesses the current round's full critique set together.
 
 The final stdout includes the recommendation plus a link to the Markdown report:
 

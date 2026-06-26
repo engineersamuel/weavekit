@@ -416,6 +416,30 @@ describe("runDecisionCouncil", () => {
     expect([...seen].sort()).toEqual(["dialectic-adversary", "dialectic-advocate", "hostile-auditor"]);
   });
 
+  it("prefers options.personaSet over personaSetName values in input/options", async () => {
+    const seen = new Set<string>();
+    const customSet = {
+      name: "custom",
+      personas: [defaultPersonaSet.personas[0]!, defaultPersonaSet.personas[2]!],
+    };
+
+    await expect(
+      runCouncilForTest(
+        { prompt: "Use the supplied set.", personaSetName: "nonexistent" },
+        {
+          personaSet: customSet,
+          deps: {
+            personaWorker: recordingWorker(seen),
+            normalizer,
+            judge: judge(1),
+          },
+        },
+      ),
+    ).resolves.toBeDefined();
+
+    expect([...seen].sort()).toEqual(customSet.personas.map((persona) => persona.id).sort());
+  });
+
   it("stops at max three rounds even if Judge asks to continue", async () => {
     let assessmentCount = 0;
     const trackingJudge: JudgeReducer = {

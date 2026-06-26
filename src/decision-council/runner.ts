@@ -32,22 +32,24 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
   const startedAt = performance.now();
   const runId = `council-${Date.now().toString(36)}`;
   const parsedInput = DecisionCouncilInputSchema.parse(input);
-  const explicitPersonaSetName = options.personaSetName ?? parsedInput.personaSetName;
-  const staticPersonaSet = options.personaSet
-    ? resolvePersonaSet(options.personaSet)
-    : explicitPersonaSetName
-      ? resolvePersonaSetByName(explicitPersonaSetName)
-      : undefined;
-  const candidatePool = staticPersonaSet ? [] : listPersonas();
+  const explicitPersonaSet = options.personaSet ? resolvePersonaSet(options.personaSet) : undefined;
+  let staticPersonaSet = explicitPersonaSet;
+  if (!staticPersonaSet) {
+    const explicitPersonaSetName = options.personaSetName ?? parsedInput.personaSetName;
+    if (explicitPersonaSetName) {
+      staticPersonaSet = resolvePersonaSetByName(explicitPersonaSetName);
+    }
+  }
+  const candidatePool = staticPersonaSet ? undefined : listPersonas();
   const personaSelector = staticPersonaSet
     ? createStaticPersonaSelector(staticPersonaSet)
     : (options.deps?.personaSelector ??
       createBamlPersonaSelector({
-        candidatePersonas: candidatePool,
+        candidatePersonas: candidatePool!,
         minPersonas: 2,
         maxPersonas: 6,
       }));
-  const runVisiblePersonaSet = staticPersonaSet ?? { name: "candidates", personas: candidatePool };
+  const runVisiblePersonaSet = staticPersonaSet ?? { name: "candidates", personas: candidatePool! };
   const router = options.router ?? createDefaultModelRouter(defaultRouteModelCall);
   const bamlAdapters = new GeneratedBamlAdapters({ router });
   const maxRounds = options.maxRounds ?? 3;
