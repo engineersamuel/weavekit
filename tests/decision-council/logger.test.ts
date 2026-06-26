@@ -74,23 +74,42 @@ describe("council logger", () => {
     );
   });
 
-  it("formats shared Judge round context as an indented child line", () => {
-    const formatted = formatDecisionCouncilEvent(
+  it("decorates baml and persona events with the model in use", () => {
+    const bamlLine = formatDecisionCouncilEvent(
       {
-        type: "council.round.started",
+        type: "council.baml.completed",
         timestamp: "2026-06-24T18:00:00.000Z",
         runId: "run-1",
-        roundNumber: 2,
-        focus: "Focus on validation criteria.",
-        focusSource: "judge",
-        previousRoundNumber: 1,
+        roundNumber: 1,
+        personaId: "pragmatic",
+        operation: "normalize",
+        model: "claude-haiku-4-5",
+        durationMs: 5000,
       },
       { color: false },
     );
 
-    expect(formatted).toContain('round started round=2 focus="Focus on validation criteria."');
-    expect(formatted).toContain(
-      "\n    -> Shared Judge brief from round 1; all personas respond to this focus, then the Judge assesses the round 2 set together.",
+    expect(bamlLine).toContain(
+      "baml completed round=1 persona=pragmatic operation=normalize model=claude-haiku-4-5 duration=5.0s",
     );
+
+    const personaLine = formatDecisionCouncilEvent(
+      {
+        type: "council.persona.completed",
+        timestamp: "2026-06-24T18:00:00.000Z",
+        runId: "run-1",
+        roundNumber: 1,
+        personaId: "skeptic",
+        model: "claude-sonnet-4.5",
+        durationMs: 1234,
+      },
+      { color: false },
+    );
+
+    expect(personaLine).toContain("persona completed round=1 persona=skeptic model=claude-sonnet-4.5 duration=1.2s");
+  });
+
+  it("omits the model token when no model is present", () => {
+    expect(formatDecisionCouncilEvent(event, { color: false })).not.toContain("model=");
   });
 });

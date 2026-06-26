@@ -130,6 +130,44 @@ describe("BAML adapter seams", () => {
       expect(capture.options[0]).toBeUndefined();
     });
 
+    it("reports the routed model via the onModel callback", async () => {
+      const capture = { options: [] as unknown[] };
+      const adapters = new GeneratedBamlAdapters({
+        router: new PolicyModelRouter(),
+        bamlClient: fakeBamlClient(capture),
+        bamlEnv: {},
+      });
+
+      let normalizeModel: string | undefined;
+      await adapters.normalizeCritique(
+        { personaId: "skeptic", text: "raw", transcript: [], metadata: {} },
+        (model) => {
+          normalizeModel = model;
+        },
+      );
+      expect(normalizeModel).toBe("claude-haiku-4-5");
+
+      let assessModel: string | undefined;
+      await adapters.assessRound({ roundNumber: 1, critiques: [], failures: [] }, (model) => {
+        assessModel = model;
+      });
+      expect(assessModel).toBe("claude-sonnet-4-6");
+    });
+
+    it("reports an undefined model via onModel when no router is configured", async () => {
+      const capture = { options: [] as unknown[] };
+      const adapters = new GeneratedBamlAdapters({ bamlClient: fakeBamlClient(capture) });
+
+      let observed: string | undefined = "unset";
+      await adapters.normalizeCritique(
+        { personaId: "skeptic", text: "raw", transcript: [], metadata: {} },
+        (model) => {
+          observed = model;
+        },
+      );
+      expect(observed).toBeUndefined();
+    });
+
     it("trims critiques to per-persona summaries for the final report", async () => {
       const reportCritiques: unknown[] = [];
       const client: RoutableBamlClient = {

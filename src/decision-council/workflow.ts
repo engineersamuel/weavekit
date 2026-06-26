@@ -86,6 +86,7 @@ export async function runDecisionCouncilRound(
           runId,
           roundNumber: brief.roundNumber,
           personaId: persona.id,
+          model: result.metadata.model,
           durationMs: performance.now() - startedAt,
         });
         return result;
@@ -122,6 +123,7 @@ export async function runDecisionCouncilRound(
   const critiqueResults = await Promise.allSettled(
     rawResults.map(async (raw) => {
       const startedAt = performance.now();
+      let model: string | undefined;
       deps.logger?.event({
         type: "council.baml.started",
         timestamp: timestamp(),
@@ -132,7 +134,9 @@ export async function runDecisionCouncilRound(
       });
 
       try {
-        const critique = await deps.normalizer.normalizeCritique(raw);
+        const critique = await deps.normalizer.normalizeCritique(raw, (resolved) => {
+          model = resolved;
+        });
         deps.logger?.event({
           type: "council.baml.completed",
           timestamp: timestamp(),
@@ -140,6 +144,7 @@ export async function runDecisionCouncilRound(
           roundNumber: brief.roundNumber,
           operation: "normalize",
           personaId: raw.personaId,
+          model,
           durationMs: performance.now() - startedAt,
           summary: critique.overallSummary,
         });
@@ -152,6 +157,7 @@ export async function runDecisionCouncilRound(
           roundNumber: brief.roundNumber,
           operation: "normalize",
           personaId: raw.personaId,
+          model,
           durationMs: performance.now() - startedAt,
           error: errorMessage(error),
         });
@@ -177,6 +183,7 @@ export async function runDecisionCouncilRound(
   }
 
   const assessStartedAt = performance.now();
+  let assessModel: string | undefined;
   deps.logger?.event({
     type: "council.baml.started",
     timestamp: timestamp(),
@@ -185,11 +192,16 @@ export async function runDecisionCouncilRound(
     operation: "assess",
   });
   const assessment = await deps.judge
-    .assessRound({
-      roundNumber: brief.roundNumber,
-      critiques,
-      failures,
-    })
+    .assessRound(
+      {
+        roundNumber: brief.roundNumber,
+        critiques,
+        failures,
+      },
+      (resolved) => {
+        assessModel = resolved;
+      },
+    )
     .then((result) => {
       deps.logger?.event({
         type: "council.baml.completed",
@@ -197,6 +209,7 @@ export async function runDecisionCouncilRound(
         runId,
         roundNumber: brief.roundNumber,
         operation: "assess",
+        model: assessModel,
         durationMs: performance.now() - assessStartedAt,
       });
       return result;
@@ -208,6 +221,7 @@ export async function runDecisionCouncilRound(
         runId,
         roundNumber: brief.roundNumber,
         operation: "assess",
+        model: assessModel,
         durationMs: performance.now() - assessStartedAt,
         error: errorMessage(error),
       });
@@ -248,6 +262,7 @@ export async function runDecisionCouncilRound(
   }
 
   const reportStartedAt = performance.now();
+  let reportModel: string | undefined;
   deps.logger?.event({
     type: "council.baml.started",
     timestamp: timestamp(),
@@ -255,17 +270,23 @@ export async function runDecisionCouncilRound(
     operation: "report",
   });
   const finalReport = await deps.judge
-    .createFinalReport({
-      critiques: allCritiques,
-      assessments,
-      failures: allFailures,
-    })
+    .createFinalReport(
+      {
+        critiques: allCritiques,
+        assessments,
+        failures: allFailures,
+      },
+      (resolved) => {
+        reportModel = resolved;
+      },
+    )
     .then((result) => {
       deps.logger?.event({
         type: "council.baml.completed",
         timestamp: timestamp(),
         runId,
         operation: "report",
+        model: reportModel,
         durationMs: performance.now() - reportStartedAt,
       });
       return result;
@@ -276,6 +297,7 @@ export async function runDecisionCouncilRound(
         timestamp: timestamp(),
         runId,
         operation: "report",
+        model: reportModel,
         durationMs: performance.now() - reportStartedAt,
         error: errorMessage(error),
       });

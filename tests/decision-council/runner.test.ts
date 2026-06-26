@@ -157,6 +157,44 @@ describe("runDecisionCouncil", () => {
     );
   });
 
+  it("decorates persona and baml completed events with the model in use", async () => {
+    const events: unknown[] = [];
+    const modelReportingNormalizer: CritiqueNormalizer = {
+      async normalizeCritique(raw, onModel) {
+        onModel?.("claude-haiku-4-5");
+        return normalizer.normalizeCritique(raw);
+      },
+    };
+
+    await runDecisionCouncil(
+      { prompt: "Decorate completed events with the model." },
+      {
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer: modelReportingNormalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+        logger: {
+          event(event) {
+            events.push(event);
+          },
+        },
+      },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "council.persona.completed", model: "fake" }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "council.baml.completed",
+        operation: "normalize",
+        model: "claude-haiku-4-5",
+      }),
+    );
+  });
+
   it("overwrites hallucinated failedPersonas from judge with authoritative run-state failures", async () => {
     // The LLM can fabricate or drop failed personas; deterministic run-state must win.
     const hallucinatingJudge: JudgeReducer = {

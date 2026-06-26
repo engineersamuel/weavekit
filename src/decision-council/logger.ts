@@ -25,6 +25,7 @@ export type DecisionCouncilEvent =
       runId: string;
       roundNumber: number;
       personaId: string;
+      model?: string;
       durationMs?: number;
       error?: string;
     }
@@ -35,6 +36,7 @@ export type DecisionCouncilEvent =
       roundNumber?: number;
       operation: "normalize" | "assess" | "report";
       personaId?: string;
+      model?: string;
       durationMs?: number;
       summary?: string;
       error?: string;
@@ -136,6 +138,7 @@ export function formatDecisionCouncilEvent(event: DecisionCouncilEvent, options:
   if ("roundNumber" in event && event.roundNumber !== undefined) parts.push(`round=${event.roundNumber}`);
   if ("personaId" in event && event.personaId) parts.push(`persona=${event.personaId}`);
   if ("operation" in event) parts.push(`operation=${event.operation}`);
+  if ("model" in event && event.model) parts.push(`model=${event.model}`);
   if ("durationMs" in event && typeof event.durationMs === "number") parts.push(`duration=${seconds(event.durationMs)}`);
 
   switch (event.type) {
