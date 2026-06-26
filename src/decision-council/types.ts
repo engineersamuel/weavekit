@@ -45,6 +45,14 @@ export const DecisionPersonaCritiqueSchema = z.object({
 
 export type DecisionPersonaCritique = z.infer<typeof DecisionPersonaCritiqueSchema>;
 
+// Lean per-persona view fed to the report LLM call. The full critique stays authoritative
+// in the run state; the report only needs the synthesized summaries (mirrors the BAML
+// PersonaCritiqueSummary class), keeping the slow report generation within the proxy timeout.
+export type DecisionPersonaCritiqueSummary = Pick<
+  DecisionPersonaCritique,
+  "personaId" | "overallSummary" | "summary"
+>;
+
 export const DecisionPersonaFailureSchema = z.object({
   personaId: z.string().min(1),
   message: z.string().min(1),

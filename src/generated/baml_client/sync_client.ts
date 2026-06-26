@@ -22,7 +22,7 @@ import type { BamlRuntime, FunctionResult, BamlCtxManager, Image, Audio, Pdf, Vi
 import { toBamlError, BamlAbortError, ClientRegistry, type HTTPRequest } from "@boundaryml/baml"
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type * as types from "./types.js"
-import type {CouncilReport, PersonaCritique, PersonaFailure, RawPersonaResult, RoundAssessment, RoutingDecision} from "./types.js"
+import type {CouncilReport, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, RawPersonaResult, RoundAssessment, RoutingDecision} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { HttpRequest, HttpStreamRequest } from "./sync_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -148,7 +148,7 @@ export class BamlSyncClient {
   }
   
   CreateCouncilReport(
-      critiques: types.PersonaCritique[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
+      critiques: types.PersonaCritiqueSummary[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
       __baml_options__?: BamlCallOptions<never>
   ): types.CouncilReport {
     try {

@@ -71,6 +71,13 @@ export interface PersonaCritique {
   
 }
 
+export interface PersonaCritiqueSummary {
+  personaId: string
+  overallSummary: string
+  summary: string
+  
+}
+
 export interface PersonaFailure {
   personaId: string
   message: string

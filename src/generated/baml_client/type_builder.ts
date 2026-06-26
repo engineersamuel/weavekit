@@ -31,6 +31,8 @@ export default class TypeBuilder {
     
     PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "overallSummary" | "summary" | "claims" | "risks" | "questions" | "recommendations">;
     
+    PersonaCritiqueSummary: ClassViewer<'PersonaCritiqueSummary', "personaId" | "overallSummary" | "summary">;
+    
     PersonaFailure: ClassViewer<'PersonaFailure', "personaId" | "message" | "retryable">;
     
     RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
@@ -44,7 +46,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "CouncilReport","PersonaCritique","PersonaFailure","RawPersonaResult","RoundAssessment","RoutingDecision",
+            "CouncilReport","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","RawPersonaResult","RoundAssessment","RoutingDecision",
           ]),
           enums: new Set([
             
@@ -58,6 +60,10 @@ export default class TypeBuilder {
         
         this.PersonaCritique = this.tb.classViewer("PersonaCritique", [
           "personaId","overallSummary","summary","claims","risks","questions","recommendations",
+        ]);
+        
+        this.PersonaCritiqueSummary = this.tb.classViewer("PersonaCritiqueSummary", [
+          "personaId","overallSummary","summary",
         ]);
         
         this.PersonaFailure = this.tb.classViewer("PersonaFailure", [

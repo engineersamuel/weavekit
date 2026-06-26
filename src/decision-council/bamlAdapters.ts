@@ -7,6 +7,7 @@ import {
   DecisionRoundAssessmentSchema,
   type DecisionCouncilReport,
   type DecisionPersonaCritique,
+  type DecisionPersonaCritiqueSummary,
   type DecisionPersonaFailure,
   type DecisionRoundAssessment,
   type RawPersonaResult,
@@ -42,7 +43,7 @@ export type RoutableBamlClient = {
     options?: BamlRouteOptions,
   ): Promise<DecisionRoundAssessment>;
   CreateCouncilReport(
-    critiques: DecisionPersonaCritique[],
+    critiques: DecisionPersonaCritiqueSummary[],
     assessments: DecisionRoundAssessment[],
     failures: DecisionPersonaFailure[],
     options?: BamlRouteOptions,
@@ -101,8 +102,17 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
     failures: DecisionPersonaFailure[];
   }): Promise<DecisionCouncilReport> {
     const options = await this.optionsFor("report");
+    // Feed only per-persona summaries to the report call. The full critiques (with claims,
+    // risks, questions, recommendations) stay authoritative in the run state; sending them
+    // verbatim made the report generation large enough to intermittently exceed the proxy
+    // timeout. The Judge assessments already carry the cross-persona synthesis.
+    const critiqueSummaries: DecisionPersonaCritiqueSummary[] = args.critiques.map((critique) => ({
+      personaId: critique.personaId,
+      overallSummary: critique.overallSummary,
+      summary: critique.summary,
+    }));
     const result = await this.client.CreateCouncilReport(
-      args.critiques,
+      critiqueSummaries,
       args.assessments,
       args.failures,
       options,

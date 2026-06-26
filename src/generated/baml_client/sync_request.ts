@@ -22,7 +22,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video } from "@bou
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
 import type * as types from "./types.js"
-import type {CouncilReport, PersonaCritique, PersonaFailure, RawPersonaResult, RoundAssessment, RoutingDecision} from "./types.js"
+import type {CouncilReport, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, RawPersonaResult, RoundAssessment, RoutingDecision} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import type * as events from "./events.js"
 
@@ -72,7 +72,7 @@ export class HttpRequest {
   }
   
   CreateCouncilReport(
-      critiques: types.PersonaCritique[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
+      critiques: types.PersonaCritiqueSummary[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -210,7 +210,7 @@ export class HttpStreamRequest {
   }
   
   CreateCouncilReport(
-      critiques: types.PersonaCritique[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
+      critiques: types.PersonaCritiqueSummary[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {

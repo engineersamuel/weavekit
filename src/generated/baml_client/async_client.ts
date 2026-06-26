@@ -24,7 +24,7 @@ import { toBamlError, BamlStream, BamlAbortError, Collector, ClientRegistry } fr
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type { partial_types } from "./partial_types.js"
 import type * as types from "./types.js"
-import type {CouncilReport, PersonaCritique, PersonaFailure, RawPersonaResult, RoundAssessment, RoutingDecision} from "./types.js"
+import type {CouncilReport, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, RawPersonaResult, RoundAssessment, RoutingDecision} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { AsyncHttpRequest, AsyncHttpStreamRequest } from "./async_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -154,7 +154,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
             
         async CreateCouncilReport(
-        critiques: types.PersonaCritique[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
+        critiques: types.PersonaCritiqueSummary[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
         __baml_options__?: BamlCallOptions<never>
         ): Promise<types.CouncilReport> {
           try {
@@ -410,7 +410,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   }
                   
             CreateCouncilReport(
-            critiques: types.PersonaCritique[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
+            critiques: types.PersonaCritiqueSummary[],assessments: types.RoundAssessment[],failures: types.PersonaFailure[],
             __baml_options__?: BamlCallOptions<never>
             ): BamlStream<partial_types.CouncilReport, types.CouncilReport>
               {
