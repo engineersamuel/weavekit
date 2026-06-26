@@ -118,12 +118,46 @@ function parseJson(command: string, stdout: string): unknown {
   }
 }
 
+const SINGLETON_ARRAY_WRAPPERS = ["allDetails", "updatedIssues", "closedIssues"] as const;
+
+function extractSingletonArrayItem(command: string, obj: Record<string, unknown>): unknown {
+  for (const key of SINGLETON_ARRAY_WRAPPERS) {
+    if (!(key in obj)) continue;
+    const arr = obj[key];
+    if (!Array.isArray(arr)) continue;
+    if (arr.length === 0) {
+      throw new WorkQueueBackendError(
+        `bd ${command} returned empty ${key} array; expected exactly 1 item`,
+        { command, wrapper: key, length: 0 },
+      );
+    }
+    if (arr.length > 1) {
+      throw new WorkQueueBackendError(
+        `bd ${command} returned ${key} array with ${arr.length} items; expected exactly 1`,
+        { command, wrapper: key, length: arr.length },
+      );
+    }
+    return arr[0];
+  }
+  return undefined;
+}
+
 function parseWorkItem(command: string, stdout: string): WorkItem {
   const raw = parseJson(command, stdout);
-  const candidate =
-    typeof raw === "object" && raw !== null && "issue" in raw
-      ? (raw as { issue: unknown }).issue
-      : raw;
+  let candidate: unknown;
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as Record<string, unknown>;
+    const fromWrapper = extractSingletonArrayItem(command, obj);
+    if (fromWrapper !== undefined) {
+      candidate = fromWrapper;
+    } else if ("issue" in obj) {
+      candidate = obj.issue;
+    } else {
+      candidate = raw;
+    }
+  } else {
+    candidate = raw;
+  }
   return normalizeBeadsIssue(BeadsRawIssueSchema.parse(candidate));
 }
 

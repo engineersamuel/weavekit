@@ -182,6 +182,72 @@ describe("BeadsCliWorkQueue — Beads native JSON shape", () => {
   });
 });
 
+describe("BeadsCliWorkQueue — real Beads singleton array wrappers", () => {
+  it("accepts allDetails array from bd show --json", async () => {
+    const issue = { id: "bd-s1", title: "Show me", status: "open", issue_type: "task", priority: 1 };
+    const queue = new BeadsCliWorkQueue({
+      cwd: "/repo",
+      runCommand: runnerFor([], [{ allDetails: [issue] }]),
+    });
+
+    const item = await queue.show("bd-s1");
+
+    expect(item.id).toBe("bd-s1");
+    expect(item.type).toBe("task");
+  });
+
+  it("accepts updatedIssues array from bd update --claim --json", async () => {
+    const issue = { id: "bd-c2", title: "Claim me", status: "in_progress", issue_type: "story", priority: 2 };
+    const queue = new BeadsCliWorkQueue({
+      cwd: "/repo",
+      runCommand: runnerFor([], [{ updatedIssues: [issue] }]),
+    });
+
+    const item = await queue.claim("bd-c2");
+
+    expect(item.id).toBe("bd-c2");
+    expect(item.status).toBe("in_progress");
+    expect(item.type).toBe("story");
+  });
+
+  it("accepts closedIssues array from bd close --json", async () => {
+    const issue = { id: "bd-cl3", title: "Close me", status: "closed", issue_type: "decision", priority: 0 };
+    const queue = new BeadsCliWorkQueue({
+      cwd: "/repo",
+      runCommand: runnerFor([], [{ closedIssues: [issue] }]),
+    });
+
+    const item = await queue.close("bd-cl3", { reason: "Done" });
+
+    expect(item.id).toBe("bd-cl3");
+    expect(item.status).toBe("closed");
+    expect(item.type).toBe("decision");
+  });
+
+  it("rejects empty singleton wrapper with clear error naming command and wrapper", async () => {
+    const queue = new BeadsCliWorkQueue({
+      cwd: "/repo",
+      runCommand: runnerFor([], [{ allDetails: [] }]),
+    });
+
+    await expect(queue.show("bd-s1")).rejects.toThrow(
+      "bd show returned empty allDetails array; expected exactly 1 item",
+    );
+  });
+
+  it("rejects multi-item singleton wrapper with clear error naming command and wrapper", async () => {
+    const issue = { id: "bd-x", title: "Multi", status: "open", issue_type: "task", priority: 1 };
+    const queue = new BeadsCliWorkQueue({
+      cwd: "/repo",
+      runCommand: runnerFor([], [{ updatedIssues: [issue, issue] }]),
+    });
+
+    await expect(queue.claim("bd-x")).rejects.toThrow(
+      "bd update returned updatedIssues array with 2 items; expected exactly 1",
+    );
+  });
+});
+
 describe("normalizeRunnerError", () => {
   it("maps numeric code to exitCode and omits causeCode", () => {
     const err = Object.assign(new Error("exited"), { code: 2, stdout: "out", stderr: "err" });
