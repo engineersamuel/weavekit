@@ -111,6 +111,12 @@ describe("CLI", () => {
     expect(parsed.maxRounds).toBe(2);
   });
 
+  it("reports usage with dynamic chooser and deterministic override guidance", () => {
+    expect(() => parseDecisionCouncilCliArgs(["decision-council", "plan", "--input", "x.md"])).toThrow(
+      /omit --persona-set for dynamic persona selection; provide --persona-set <name> for deterministic static selection\./,
+    );
+  });
+
   it("reads Markdown input into DecisionCouncilInput", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-cli-"));
     const inputPath = join(dir, "question.md");
