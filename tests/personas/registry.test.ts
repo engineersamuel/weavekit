@@ -43,7 +43,7 @@ describe("default persona registry", () => {
   });
 
   it("lists the registered sets", () => {
-    expect(listPersonaSets().sort()).toEqual(["default", "strategic"]);
+    expect(listPersonaSets().sort()).toEqual(["default", "dialectic", "strategic"]);
   });
 
   it("resolvePersonaSetByName defaults to the default set", () => {
@@ -87,5 +87,39 @@ describe("registry directory resolution", () => {
     } finally {
       if (prev !== undefined) process.env.WEAVEKIT_PERSONAS_DIR = prev;
     }
+  });
+});
+
+describe("dialectic persona set", () => {
+  it("contains the advocate, adversary, and hostile auditor in order", () => {
+    const set = getPersonaSet("dialectic");
+    expect(set.personas.map((p) => p.id)).toEqual([
+      "dialectic-advocate",
+      "dialectic-adversary",
+      "hostile-auditor",
+    ]);
+  });
+
+  it("loads each believer with a stance, decorrelation ignores, and anti-hedging", () => {
+    const advocate = getPersona("dialectic-advocate");
+    expect(advocate.archetype).toBe("believer");
+    expect(advocate.stance).toMatch(/sound/i);
+    expect(advocate.ignores.length).toBeGreaterThan(0);
+    expect(advocate.antiHedging).toBeTruthy();
+
+    const adversary = getPersona("dialectic-adversary");
+    expect(adversary.archetype).toBe("believer");
+    expect(adversary.ignores.length).toBeGreaterThan(0);
+
+    const auditor = getPersona("hostile-auditor");
+    expect(auditor.archetype).toBe("auditor");
+  });
+
+  it("loads the synthesist but keeps it out of every set", () => {
+    expect(getPersona("synthesist").archetype).toBe("synthesist");
+    const inAnySet = listPersonaSets().some((name) =>
+      getPersonaSet(name).personas.some((p) => p.id === "synthesist"),
+    );
+    expect(inAnySet).toBe(false);
   });
 });
