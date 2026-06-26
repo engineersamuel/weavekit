@@ -1,0 +1,125 @@
+# Beads Work Queue Integration
+
+## Decision
+
+Weavekit treats Beads as an optional external work queue, not as the workflow runtime state store.
+
+- Beads owns work items, dependencies, ready queues, formulas, molecules, gates, and Dolt sync.
+- Weavekit owns workflow execution, typed run state, BAML fan-in contracts, reports, and debug artifacts.
+- Flue remains the workflow hosting/connector seam for long-running or externally triggered workflows.
+
+## Why this shape
+
+This keeps the weavekit interface deep. Callers can use `WorkQueueBackend` without learning Beads CLI flags,
+Dolt remotes, server mode, formula search paths, or JSON output details. The Beads adapter localizes that
+knowledge in `src/work-queue/beads.ts`.
+
+## Setup
+
+Install Beads from its upstream instructions, then initialize it manually:
+
+```bash
+bd init --stealth
+```
+
+Use `--stealth` so Beads does not rewrite repository agent instruction files during local experimentation.
+The repository ignores `.beads/` and `.beads-wisp/`; sync shared work through Dolt remotes using Beads
+commands such as `bd dolt push` and `bd dolt pull`.
+
+## Command mapping
+
+| Weavekit command | Beads command |
+| --- | --- |
+| `weavekit work ready` | `bd ready --json` |
+| `weavekit work show <id>` | `bd show <id> --json` |
+| `weavekit work claim <id>` | `bd update <id> --claim --json` |
+| `weavekit work create ...` | `bd create ... --json` |
+| `weavekit work close <id> --reason ...` | `bd close <id> --reason ... --json` |
+| `weavekit work sync` | `bd dolt push` |
+
+## Workflow fit
+
+Use Beads for queue selection and dependency-aware orchestration around weavekit runs:
+
+1. A human or agent creates a Beads issue for a decision or workflow.
+2. `bd ready` decides what is unblocked.
+3. `weavekit decision-council run --work-item <id> --claim-work-item` claims the item before running.
+4. The Decision Council writes its normal artifacts.
+5. `--close-work-item` closes the source item with a report reference.
+6. `--create-follow-up-work-item` creates one `discovered-from` work item from the report's next experiment.
+7. `--sync-work-queue` runs `bd dolt push`.
+
+Do not store every persona response, round brief, or BAML call as a Beads item. Those are workflow execution
+state and already live in `DecisionCouncilRunState.json` plus debug artifacts.
+
+## Formula example
+
+Use a Beads formula when a repeatable weavekit workflow needs a dependency graph:
+
+```toml
+formula = "weavekit-decision-review"
+description = "Frame, run, review, and follow up on a Decision Council question"
+version = 1
+type = "workflow"
+
+[vars.topic]
+required = true
+
+[[steps]]
+id = "frame-question"
+title = "Frame decision question: {{topic}}"
+type = "human"
+
+[[steps]]
+id = "run-council"
+title = "Run Decision Council for {{topic}}"
+needs = ["frame-question"]
+
+[[steps]]
+id = "review-report"
+title = "Review Decision Council report for {{topic}}"
+needs = ["run-council"]
+type = "human"
+
+[[steps]]
+id = "capture-follow-up"
+title = "Create follow-up work from next experiment"
+needs = ["review-report"]
+```
+
+## Gate example
+
+Use a human gate for explicit approval before an automated follow-up:
+
+```toml
+formula = "weavekit-gated-follow-up"
+version = 1
+type = "workflow"
+
+[[steps]]
+id = "run-council"
+title = "Run Decision Council"
+
+[[steps]]
+id = "approval"
+title = "Approve next experiment"
+needs = ["run-council"]
+type = "human"
+
+[steps.gate]
+type = "human"
+approvers = ["owner"]
+
+[[steps]]
+id = "implement-next-experiment"
+title = "Implement approved next experiment"
+needs = ["approval"]
+```
+
+## Non-goals
+
+- No Beads requirement for normal weavekit library usage.
+- No automatic `bd init`.
+- No automatic network sync unless `--sync-work-queue` is supplied.
+- No replacement of Flue durability.
+- No replacement of `DecisionCouncilRunState.json`.
