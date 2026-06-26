@@ -172,4 +172,8 @@ describe("CLI", () => {
     expect(result.stderr).not.toContain("Unknown file extension");
     expect(result.stderr).not.toContain("SKILL.md");
   });
+
+  it("recognizes work queue command dispatch separately from decision-council", () => {
+    expect(() => parseDecisionCouncilCliArgs(["work", "ready"])).toThrow("Usage: weavekit decision-council run");
+  });
 });

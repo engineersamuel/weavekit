@@ -7,6 +7,7 @@ import { createSmokeModelRouter } from "./decision-council/modelRouter.js";
 import { createConsoleDecisionCouncilLogger, createJsonDecisionCouncilLogger, createSilentDecisionCouncilLogger, type DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
 import { startTelemetry, type TelemetryHandle } from "./telemetry/bootstrap.js";
+import { runWorkQueueCli } from "./work-queue/cli.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 
@@ -105,7 +106,13 @@ export async function main(): Promise<void> {
   }
 
   try {
-    const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
+    const argv = process.argv.slice(2);
+    if (argv[0] === "work") {
+      await runWorkQueueCli(argv.slice(1));
+      return;
+    }
+
+    const args = parseDecisionCouncilCliArgs(argv);
     const input = await readDecisionCouncilInputFile(args.inputPath);
     const report = await runDecisionCouncil(input, {
       outputDir: args.outputDir,
