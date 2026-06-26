@@ -53,6 +53,30 @@ export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
   },
 };
 
+// Smoke policy: pin every task kind to gpt-5-mini for fast integration smoke tests. BAML kinds
+// use the CopilotProxyGpt5Mini client (model gpt-5-mini); persona uses the gpt-5-mini SDK model id.
+export const SMOKE_ROUTING_POLICY: RoutingPolicy = {
+  normalize: {
+    clientName: "CopilotProxyGpt5Mini",
+    model: "gpt-5-mini",
+    rationale: "Smoke: fast structured extraction on gpt-5-mini.",
+  },
+  assess: {
+    clientName: "CopilotProxyGpt5Mini",
+    model: "gpt-5-mini",
+    rationale: "Smoke: fast Judge decision on gpt-5-mini.",
+  },
+  report: {
+    clientName: "CopilotProxyGpt5Mini",
+    model: "gpt-5-mini",
+    rationale: "Smoke: fast report synthesis on gpt-5-mini.",
+  },
+  persona: {
+    model: "gpt-5-mini",
+    rationale: "Smoke: fast persona debate on gpt-5-mini.",
+  },
+};
+
 export class PolicyModelRouter implements ModelRouter {
   private readonly policy: RoutingPolicy;
 
@@ -65,6 +89,10 @@ export class PolicyModelRouter implements ModelRouter {
   }
 }
 
+// Router for the smoke path: a pure policy router pinned to gpt-5-mini for personas and BAML calls.
+export function createSmokeModelRouter(): ModelRouter {
+  return new PolicyModelRouter(SMOKE_ROUTING_POLICY);
+}
 export type RouteModelCallInput = {
   taskKind: string;
   summary: string;

@@ -364,6 +364,34 @@ describe("runDecisionCouncil", () => {
     expect(assessmentCount).toBe(3);
   });
 
+  it("stops after a single round when maxRounds is 1, even if Judge asks to continue", async () => {
+    let assessmentCount = 0;
+    const trackingJudge: JudgeReducer = {
+      async assessRound({ roundNumber, critiques, failures }) {
+        assessmentCount++;
+        return judge(10).assessRound({ roundNumber, critiques, failures });
+      },
+      createFinalReport: judge(10).createFinalReport,
+    };
+
+    const report = await runDecisionCouncil(
+      { prompt: "Run a fast smoke round." },
+      {
+        personaSetName: "smoke",
+        maxRounds: 1,
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: trackingJudge,
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    expect(report.recommendation).toBe("Use Flue for v0.");
+    expect(assessmentCount).toBe(1);
+  });
+
   it("fails when fewer than two debating personas succeed", async () => {
     await expect(
       runDecisionCouncil(

@@ -17,6 +17,7 @@ import { createDefaultModelRouter, defaultRouteModelCall, type ModelRouter } fro
 export type RunDecisionCouncilOptions = {
   personaSet?: PersonaSet;
   personaSetName?: string;
+  maxRounds?: number;
   outputDir?: string;
   inputPath?: string;
   logger?: DecisionCouncilLogger;
@@ -35,6 +36,7 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
     : resolvePersonaSetByName(options.personaSetName ?? parsedInput.personaSetName);
   const router = options.router ?? createDefaultModelRouter(defaultRouteModelCall);
   const bamlAdapters = new GeneratedBamlAdapters({ router });
+  const maxRounds = options.maxRounds ?? 3;
   const deps: DecisionCouncilWorkflowDeps = {
     personaWorker: options.deps?.personaWorker ?? new CopilotPersonaWorker({ router }),
     normalizer: options.deps?.normalizer ?? bamlAdapters,
@@ -50,11 +52,11 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
     inputPath: options.inputPath,
     outputDir: options.outputDir,
     personaCount: personaSet.personas.length,
-    maxRounds: 3,
+    maxRounds,
   });
 
   try {
-    const initialState = createInitialRunState(parsedInput, personaSet);
+    const initialState = createInitialRunState(parsedInput, personaSet, maxRounds);
     const finalState = await runDecisionCouncilLoop(initialState, deps);
 
     if (!finalState.finalReport) {

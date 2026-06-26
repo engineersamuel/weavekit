@@ -17,4 +17,5 @@ export const personaSetRegistry: Record<string, PersonaSet> = {
   default: defaultPersonaSet,
   strategic: strategicPersonaSet,
   dialectic: getPersonaSet("dialectic"),
+  smoke: getPersonaSet("smoke"),
 };
