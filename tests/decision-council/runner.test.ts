@@ -1,3 +1,4 @@
+import { trace } from "@opentelemetry/api";
 import { describe, expect, it, vi } from "vitest";
 import { runDecisionCouncil, type RunDecisionCouncilOptions } from "../../src/decision-council/runner.js";
 import { runDecisionCouncilLoop } from "../../src/decision-council/workflow.js";
@@ -636,5 +637,11 @@ describe("createDecisionCouncilWorkflow", () => {
         { flueTools: [tool as never], flueModel: "github-copilot/gpt-4o" },
       ),
     ).not.toThrow();
+  });
+});
+
+describe("telemetry deps", () => {
+  it("loads OpenTelemetry API package", () => {
+    expect(trace.getTracer).toBeTypeOf("function");
   });
 });
