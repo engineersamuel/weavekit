@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "bin": {
-    "weavekit": "./dist/cli.js"
+    "weavekit": "./dist/src/cli.js"
   },
   "scripts": {
     "test": "vitest run",

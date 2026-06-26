@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { runDecisionCouncil, type RunDecisionCouncilOptions } from "../../src/decision-council/runner.js";
-import { createDecisionCouncilWorkflow, runDecisionCouncilLoop } from "../../src/decision-council/workflow.js";
+import { runDecisionCouncilLoop } from "../../src/decision-council/workflow.js";
+import { createDecisionCouncilWorkflow } from "../../src/flue/decisionCouncilWorkflowDefinition.js";
 import { defaultPersonaSet } from "../../src/decision-council/personas.js";
 import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
