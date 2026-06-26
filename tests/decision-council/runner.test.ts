@@ -861,6 +861,52 @@ describe("runDecisionCouncil", () => {
     expect(rootSpan?.ended).toBe(true);
   });
 
+  it("emits council.run.started and council.run.failed on claim failure and does not close/sync/create follow-up", async () => {
+    const events: string[] = [];
+    const claimError = new Error("claim rejected");
+    const backend = {
+      async ready() { return []; },
+      async show() { throw new Error("not used"); },
+      async claim(_id: string) { throw claimError; },
+      async create() { events.push("create"); throw new Error("not used"); },
+      async close(_id: string, _input: { reason: string }) { events.push("close"); throw new Error("not used"); },
+      async sync() { events.push("sync"); },
+    };
+
+    const loggedEvents: string[] = [];
+    await expect(
+      runDecisionCouncil(
+        { prompt: "Claim will fail." },
+        {
+          workQueue: {
+            backend,
+            workItemId: "bd-root",
+            claimOnStart: true,
+            closeOnSuccess: true,
+            syncOnComplete: true,
+          },
+          deps: {
+            personaWorker: fakeWorker(),
+            normalizer,
+            judge: judge(1),
+            writeArtifacts: false,
+          },
+          logger: {
+            event(event) {
+              loggedEvents.push(event.type);
+            },
+          },
+        },
+      ),
+    ).rejects.toThrow("claim rejected");
+
+    expect(loggedEvents).toContain("council.run.started");
+    expect(loggedEvents).toContain("council.run.failed");
+    expect(events).not.toContain("close");
+    expect(events).not.toContain("sync");
+    expect(events).not.toContain("create");
+  });
+
   it("claims and closes a work item only when work queue options are supplied", async () => {
     const events: string[] = [];
     const backend = {
