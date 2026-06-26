@@ -168,3 +168,24 @@ npm test
 npm run typecheck
 npm run build
 ```
+
+## Evaluating the Decision Council
+
+`evals/corpus/*.yaml` holds open-ended technical *decision* questions, each with a
+detailed reference answer and a weighted rubric. The eval harness runs two
+providers against every question — the Decision Council (`runDecisionCouncil`,
+in-memory) and a vanilla `copilot -p` baseline (no extra prompting) — and grades
+both with a reference-guided LLM judge via promptfoo.
+
+```bash
+# Grade every corpus item (council vs vanilla Copilot CLI):
+npm run eval
+
+# Grade specific items by id:
+npm run eval -- orchestration-framework-001 data-store-001
+```
+
+Judge configuration (OpenAI-compatible) via env: `EVAL_JUDGE_BASE_URL`
+(default `http://127.0.0.1:8080/v1`), `EVAL_JUDGE_API_KEY`, `EVAL_JUDGE_MODEL`.
+Baseline model via `EVAL_COPILOT_MODEL` (default `auto`). Results are written to
+`evals/results/<timestamp>/` (gitignored).
