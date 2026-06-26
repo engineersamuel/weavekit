@@ -4,7 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { formatDecisionCouncilSuccessMessage, parseDecisionCouncilCliArgs, readDecisionCouncilInputFile } from "../src/cli.js";
+import { formatDecisionCouncilSuccessMessage, formatWorkQueueBackendError, parseDecisionCouncilCliArgs, readDecisionCouncilInputFile } from "../src/cli.js";
+import { WorkQueueBackendError } from "../src/work-queue/backend.js";
 
 function runCommand(command: string, args: string[]): Promise<{ code: number | null; stderr: string; stdout: string }> {
   return new Promise((resolve, reject) => {
@@ -213,5 +214,83 @@ describe("CLI", () => {
     expect(() =>
       parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--work-item"]),
     ).toThrow("Missing value for --work-item <id>.");
+  });
+
+  it("rejects --claim-work-item without --work-item", () => {
+    expect(() =>
+      parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--claim-work-item"]),
+    ).toThrow("require --work-item <id>");
+  });
+
+  it("rejects --close-work-item without --work-item", () => {
+    expect(() =>
+      parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--close-work-item"]),
+    ).toThrow("require --work-item <id>");
+  });
+
+  it("rejects --create-follow-up-work-item without --work-item", () => {
+    expect(() =>
+      parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--create-follow-up-work-item"]),
+    ).toThrow("require --work-item <id>");
+  });
+
+  it("rejects --sync-work-queue without --work-item", () => {
+    expect(() =>
+      parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--sync-work-queue"]),
+    ).toThrow("require --work-item <id>");
+  });
+
+  it("accepts lifecycle flags when --work-item is provided", () => {
+    const parsed = parseDecisionCouncilCliArgs([
+      "decision-council", "run", "--input", "x.md",
+      "--work-item", "bd-abc",
+      "--claim-work-item", "--sync-work-queue",
+    ]);
+    expect(parsed.workItemId).toBe("bd-abc");
+    expect(parsed.claimWorkItem).toBe(true);
+    expect(parsed.syncWorkQueue).toBe(true);
+  });
+});
+
+describe("formatWorkQueueBackendError", () => {
+  it("includes exit code, stdout, and stderr from causeDetails", () => {
+    const err = new WorkQueueBackendError("bd ready failed with exit code 2", {
+      args: ["ready"],
+      exitCode: 2,
+      stdout: "some output",
+      stderr: "error text",
+    });
+
+    const formatted = formatWorkQueueBackendError(err);
+
+    expect(formatted).toContain("bd ready failed with exit code 2");
+    expect(formatted).toContain("exit code: 2");
+    expect(formatted).toContain("stdout: some output");
+    expect(formatted).toContain("stderr: error text");
+  });
+
+  it("omits stdout/stderr lines when they are empty", () => {
+    const err = new WorkQueueBackendError("bd show failed with exit code 1", {
+      args: ["show", "bd-x"],
+      exitCode: 1,
+      stdout: "",
+      stderr: "",
+    });
+
+    const formatted = formatWorkQueueBackendError(err);
+
+    expect(formatted).toContain("bd show failed with exit code 1");
+    expect(formatted).toContain("exit code: 1");
+    expect(formatted).not.toContain("stdout:");
+    expect(formatted).not.toContain("stderr:");
+  });
+
+  it("returns just the message when causeDetails has no numeric exitCode", () => {
+    const err = new WorkQueueBackendError("bd ready returned invalid JSON", { stdout: "bad", error: new Error("x") });
+
+    const formatted = formatWorkQueueBackendError(err);
+
+    expect(formatted).toContain("bd ready returned invalid JSON");
+    expect(formatted).not.toContain("exit code:");
   });
 });

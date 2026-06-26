@@ -17,7 +17,7 @@ export const WorkDependencySchema = z.object({
 
 export type WorkDependency = z.infer<typeof WorkDependencySchema>;
 
-export const WorkItemTypeSchema = z.enum(["bug", "feature", "task", "epic", "chore"]);
+export const WorkItemTypeSchema = z.enum(["bug", "feature", "task", "epic", "chore", "decision", "spike", "story", "milestone"]);
 export type WorkItemType = z.infer<typeof WorkItemTypeSchema>;
 
 export const WorkItemStatusSchema = z.enum(["open", "in_progress", "blocked", "closed"]);

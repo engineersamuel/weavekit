@@ -6,7 +6,10 @@ import {
   CompleteWorkItemInputSchema,
   CreateWorkItemInputSchema,
   ReadyWorkFilterSchema,
+  WorkDependencyTypeSchema,
   WorkItemSchema,
+  WorkItemStatusSchema,
+  WorkItemTypeSchema,
   type CompleteWorkItemInput,
   type CreateWorkItemInput,
   type ReadyWorkFilter,
@@ -14,7 +17,43 @@ import {
 } from "./schema.js";
 
 const execFileAsync = promisify(execFile);
-const WorkItemListSchema = z.array(WorkItemSchema);
+
+// Beads emits `issue_type` instead of `type` and `dependency_type` instead of `type` in deps.
+const BeadsRawDepSchema = z.object({
+  dependency_type: WorkDependencyTypeSchema.optional(),
+  type: WorkDependencyTypeSchema.optional(),
+  id: z.string().min(1),
+});
+
+const BeadsRawIssueSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().min(1).optional(),
+  status: WorkItemStatusSchema,
+  issue_type: WorkItemTypeSchema.optional(),
+  type: WorkItemTypeSchema.optional(),
+  priority: z.number().int().min(0).max(4),
+  assignee: z.string().min(1).optional(),
+  labels: z.array(z.string().min(1)).default([]),
+  dependencies: z.array(BeadsRawDepSchema).default([]),
+});
+
+function normalizeBeadsIssue(raw: z.infer<typeof BeadsRawIssueSchema>): WorkItem {
+  return WorkItemSchema.parse({
+    id: raw.id,
+    title: raw.title,
+    description: raw.description,
+    status: raw.status,
+    type: raw.issue_type ?? raw.type,
+    priority: raw.priority,
+    assignee: raw.assignee,
+    labels: raw.labels,
+    dependencies: raw.dependencies.map((d) => ({
+      type: d.dependency_type ?? d.type,
+      id: d.id,
+    })),
+  });
+}
 
 export type BeadsCommandResult = {
   stdout: string;
@@ -85,7 +124,7 @@ function parseWorkItem(command: string, stdout: string): WorkItem {
     typeof raw === "object" && raw !== null && "issue" in raw
       ? (raw as { issue: unknown }).issue
       : raw;
-  return WorkItemSchema.parse(candidate);
+  return normalizeBeadsIssue(BeadsRawIssueSchema.parse(candidate));
 }
 
 function parseWorkItemList(command: string, stdout: string): WorkItem[] {
@@ -94,7 +133,7 @@ function parseWorkItemList(command: string, stdout: string): WorkItem[] {
     typeof raw === "object" && raw !== null && "items" in raw
       ? (raw as { items: unknown }).items
       : raw;
-  return WorkItemListSchema.parse(candidate);
+  return z.array(BeadsRawIssueSchema).parse(candidate).map(normalizeBeadsIssue);
 }
 
 export class BeadsCliWorkQueue implements WorkQueueBackend {

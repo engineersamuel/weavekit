@@ -9,6 +9,7 @@ import type { DecisionCouncilInput } from "./decision-council/types.js";
 import { startTelemetry, type TelemetryHandle } from "./telemetry/bootstrap.js";
 import { runWorkQueueCli } from "./work-queue/cli.js";
 import { BeadsCliWorkQueue } from "./work-queue/beads.js";
+import { WorkQueueBackendError } from "./work-queue/backend.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 
@@ -78,6 +79,15 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
   }
   const workItemId = workItemIndex === -1 ? undefined : argv[workItemIndex + 1];
 
+  const claimWorkItem = argv.includes("--claim-work-item");
+  const closeWorkItem = argv.includes("--close-work-item");
+  const createFollowUpWorkItem = argv.includes("--create-follow-up-work-item");
+  const syncWorkQueue = argv.includes("--sync-work-queue");
+
+  if ((claimWorkItem || closeWorkItem || createFollowUpWorkItem || syncWorkQueue) && !workItemId) {
+    throw new Error("--claim-work-item, --close-work-item, --create-follow-up-work-item, and --sync-work-queue require --work-item <id>.");
+  }
+
   return {
     inputPath: argv[inputIndex + 1]!,
     outputDir: outputIndex === -1 ? "runs/latest" : argv[outputIndex + 1] ?? "runs/latest",
@@ -86,10 +96,10 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     maxRounds,
     smoke,
     workItemId,
-    claimWorkItem: argv.includes("--claim-work-item"),
-    closeWorkItem: argv.includes("--close-work-item"),
-    createFollowUpWorkItem: argv.includes("--create-follow-up-work-item"),
-    syncWorkQueue: argv.includes("--sync-work-queue"),
+    claimWorkItem,
+    closeWorkItem,
+    createFollowUpWorkItem,
+    syncWorkQueue,
   };
 }
 
@@ -111,6 +121,23 @@ export function createDecisionCouncilLogger(format: LogFormat): DecisionCouncilL
   if (format === "json") return createJsonDecisionCouncilLogger();
   if (format === "silent") return createSilentDecisionCouncilLogger();
   return createConsoleDecisionCouncilLogger();
+}
+
+export function formatWorkQueueBackendError(error: WorkQueueBackendError): string {
+  const lines: string[] = [error.message];
+  const details = error.causeDetails as Record<string, unknown> | undefined;
+  if (details !== null && typeof details === "object") {
+    if (typeof details["exitCode"] === "number") {
+      lines.push(`exit code: ${details["exitCode"]}`);
+    }
+    if (typeof details["stdout"] === "string" && details["stdout"]) {
+      lines.push(`stdout: ${details["stdout"]}`);
+    }
+    if (typeof details["stderr"] === "string" && details["stderr"]) {
+      lines.push(`stderr: ${details["stderr"]}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 export async function main(): Promise<void> {
@@ -164,7 +191,12 @@ export async function main(): Promise<void> {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
+    const message =
+      error instanceof WorkQueueBackendError
+        ? formatWorkQueueBackendError(error)
+        : error instanceof Error
+          ? error.message
+          : String(error);
     process.stderr.write(`${message}\n`);
     process.exitCode = error instanceof DecisionCouncilRunFailedError ? error.exitCode : 1;
   });
