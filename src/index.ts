@@ -26,6 +26,7 @@ export {
 export type {
   PersonaArchetype,
   PersonaMode,
+  PersonaSelectorEvent,
   PersonaSelectionInput,
   PersonaSelectionResult,
   PersonaSelector,

@@ -25,8 +25,37 @@ export type PersonaSelectionResult = {
   rationale: string;
 };
 
+export type PersonaSelectorEvent = {
+  type: "persona.selector.failed";
+  workflowName: string;
+  roundNumber?: number;
+  error: string;
+};
+
 export interface PersonaSelector {
   choosePersonas(input: PersonaSelectionInput): Promise<PersonaSelectionResult>;
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function emitSelectorFailureEvent(
+  onEvent: ((event: PersonaSelectorEvent) => void) | undefined,
+  input: PersonaSelectionInput,
+  error: unknown,
+): void {
+  if (!onEvent) return;
+  try {
+    onEvent({
+      type: "persona.selector.failed",
+      workflowName: input.workflowName,
+      roundNumber: input.roundNumber,
+      error: toErrorMessage(error),
+    });
+  } catch {
+    // Selector failures should preserve original error semantics even if observers fail.
+  }
 }
 
 function toCandidateCard(persona: PersonaDefinition): PersonaChoiceCandidate {
@@ -101,45 +130,51 @@ export function createBamlPersonaSelector(args: {
   candidatePersonas?: PersonaDefinition[];
   minPersonas?: number;
   maxPersonas?: number;
+  onEvent?: (event: PersonaSelectorEvent) => void;
 } = {}): PersonaSelector {
   const bamlClient = args.bamlClient ?? b;
 
   return {
     async choosePersonas(input: PersonaSelectionInput): Promise<PersonaSelectionResult> {
-      const candidates = resolveCandidates(input, args.candidatePersonas);
-      const { minPersonas, maxPersonas } = resolveSelectionRange(input, args);
+      try {
+        const candidates = resolveCandidates(input, args.candidatePersonas);
+        const { minPersonas, maxPersonas } = resolveSelectionRange(input, args);
 
-      if (candidates.length < minPersonas) {
-        throw new Error(
-          `Persona chooser requires at least ${minPersonas} candidates, but only ${candidates.length} were provided.`,
-        );
+        if (candidates.length < minPersonas) {
+          throw new Error(
+            `Persona chooser requires at least ${minPersonas} candidates, but only ${candidates.length} were provided.`,
+          );
+        }
+
+        const request: PersonaSelectionRequest = {
+          workflowName: input.workflowName,
+          workflowPurpose: input.workflowPurpose,
+          taskPrompt: input.taskPrompt,
+          context: input.context ?? [],
+          constraints: input.constraints ?? [],
+          roundNumber: input.roundNumber,
+          roundFocus: input.roundFocus,
+          previousSelectionIds: input.previousSelectionIds ?? [],
+          previousRoundSignals: input.previousRoundSignals ?? [],
+          minPersonas,
+          maxPersonas,
+          candidates: candidates.map(toCandidateCard),
+        };
+
+        const selection = await bamlClient.ChoosePersonasForTask(request);
+        const selectedPersonas = resolveSelectedPersonas(selection.personaIds, candidates, minPersonas, maxPersonas);
+
+        return {
+          personaSet: {
+            name: "selected",
+            personas: selectedPersonas,
+          },
+          rationale: selection.rationale,
+        };
+      } catch (error) {
+        emitSelectorFailureEvent(args.onEvent, input, error);
+        throw error;
       }
-
-      const request: PersonaSelectionRequest = {
-        workflowName: input.workflowName,
-        workflowPurpose: input.workflowPurpose,
-        taskPrompt: input.taskPrompt,
-        context: input.context ?? [],
-        constraints: input.constraints ?? [],
-        roundNumber: input.roundNumber,
-        roundFocus: input.roundFocus,
-        previousSelectionIds: input.previousSelectionIds ?? [],
-        previousRoundSignals: input.previousRoundSignals ?? [],
-        minPersonas,
-        maxPersonas,
-        candidates: candidates.map(toCandidateCard),
-      };
-
-      const selection = await bamlClient.ChoosePersonasForTask(request);
-      const selectedPersonas = resolveSelectedPersonas(selection.personaIds, candidates, minPersonas, maxPersonas);
-
-      return {
-        personaSet: {
-          name: "selected",
-          personas: selectedPersonas,
-        },
-        rationale: selection.rationale,
-      };
     },
   };
 }

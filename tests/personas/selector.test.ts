@@ -150,6 +150,53 @@ describe("createBamlPersonaSelector", () => {
       "Persona chooser selected 1 personas; expected 2-2.",
     );
   });
+
+  it("emits a structured failure event for validation failures", async () => {
+    const onEvent = vi.fn();
+    const selector = createBamlPersonaSelector({
+      candidatePersonas: [candidateA, candidateB],
+      minPersonas: 3,
+      onEvent,
+      bamlClient: {
+        async ChoosePersonasForTask() {
+          return { personaIds: ["socratic", "builder"], rationale: "Not reached." };
+        },
+      },
+    });
+
+    await expect(selector.choosePersonas(baseInput)).rejects.toThrow(
+      "Persona chooser requires at least 3 candidates, but only 2 were provided.",
+    );
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledWith({
+      type: "persona.selector.failed",
+      workflowName: "decision-council",
+      roundNumber: 2,
+      error: "Persona chooser requires at least 3 candidates, but only 2 were provided.",
+    });
+  });
+
+  it("emits a structured failure event for chooser call failures", async () => {
+    const onEvent = vi.fn();
+    const selector = createBamlPersonaSelector({
+      candidatePersonas: [candidateA, candidateB],
+      onEvent,
+      bamlClient: {
+        async ChoosePersonasForTask() {
+          throw new Error("Chooser call failed.");
+        },
+      },
+    });
+
+    await expect(selector.choosePersonas(baseInput)).rejects.toThrow("Chooser call failed.");
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledWith({
+      type: "persona.selector.failed",
+      workflowName: "decision-council",
+      roundNumber: 2,
+      error: "Chooser call failed.",
+    });
+  });
 });
 
 describe("createStaticPersonaSelector", () => {

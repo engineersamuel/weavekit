@@ -26,6 +26,7 @@ export {
 export {
   createBamlPersonaSelector,
   createStaticPersonaSelector,
+  type PersonaSelectorEvent,
   type PersonaSelectionInput,
   type PersonaSelectionResult,
   type PersonaSelector,
