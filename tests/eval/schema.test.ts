@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { loadCorpusItem, formatQuestion, formatReference } from "../../src/eval/schema.js";
 
 const VALID = `

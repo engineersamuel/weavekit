@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { CouncilProvider } from "../../src/eval/providers/council.js";
 import type { DecisionCouncilReport } from "../../src/index.js";
 

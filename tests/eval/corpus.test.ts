@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { loadCorpus } from "../../src/eval/schema.js";
 
 describe("evals/corpus", () => {

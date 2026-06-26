@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { EventEmitter } from "node:events";
 import { CopilotCliProvider } from "../../src/eval/providers/copilot.js";
 

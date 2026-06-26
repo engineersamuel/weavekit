@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { buildSuite, buildAssertions } from "../../src/eval/buildSuite.js";
 import { loadCorpusItem } from "../../src/eval/schema.js";
 import type { ApiProvider } from "promptfoo";
