@@ -60,6 +60,18 @@ export interface CouncilReport {
   
 }
 
+export interface PersonaChoiceCandidate {
+  id: string
+  name: string
+  description: string
+  archetype?: string | null
+  tags: string[]
+  modes: string[]
+  selectionHints: string[]
+  selectionAntiHints: string[]
+  
+}
+
 export interface PersonaCritique {
   personaId: string
   overallSummary: string
@@ -82,6 +94,28 @@ export interface PersonaFailure {
   personaId: string
   message: string
   retryable: boolean
+  
+}
+
+export interface PersonaSelection {
+  personaIds: string[]
+  rationale: string
+  
+}
+
+export interface PersonaSelectionRequest {
+  workflowName: string
+  workflowPurpose: string
+  taskPrompt: string
+  context: string[]
+  constraints: string[]
+  roundNumber?: number | null
+  roundFocus?: string | null
+  previousSelectionIds: string[]
+  previousRoundSignals: string[]
+  minPersonas: number
+  maxPersonas: number
+  candidates: PersonaChoiceCandidate[]
   
 }
 
