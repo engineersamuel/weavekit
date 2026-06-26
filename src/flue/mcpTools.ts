@@ -27,6 +27,8 @@ export async function connectConfiguredMcpTools(
 
   try {
     for (const spec of specs) {
+      if (!spec.enabled) continue;
+
       const options: McpServerOptions = {
         url: spec.url,
         transport: spec.transport,
@@ -37,7 +39,7 @@ export async function connectConfiguredMcpTools(
       connections.push({
         name: connection.name,
         tools: connection.tools.filter((tool) => isAllowedTool(tool, spec)),
-        close: () => connection.close(),
+        close: async (): Promise<void> => connection.close(),
       });
     }
   } catch (error) {

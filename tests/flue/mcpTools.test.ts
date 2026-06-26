@@ -53,4 +53,31 @@ describe("connectConfiguredMcpTools", () => {
     await expect(connectConfiguredMcpTools(specs, connect)).rejects.toThrow("context7 unavailable");
     expect(closeA).toHaveBeenCalledOnce();
   });
+
+  it("skips disabled specs and does not connect to them", async () => {
+    const specsWithDisabled: RemoteFlueMcpSpec[] = [
+      { name: "EngHub", kind: "remote", enabled: true, url: "https://mcp.eng.ms", transport: "streamable-http" },
+      { name: "context7", kind: "remote", enabled: false, url: "https://mcp.context7.com/mcp", transport: "streamable-http", tools: ["query-docs"] },
+    ];
+    const connect = vi.fn(async (name: string) => ({ name, tools: [], close: vi.fn(async () => undefined) }) satisfies McpServerConnection);
+
+    const result = await connectConfiguredMcpTools(specsWithDisabled, connect);
+
+    expect(connect).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledWith("EngHub", { url: "https://mcp.eng.ms", transport: "streamable-http" });
+    expect(connect).not.toHaveBeenCalledWith("context7", expect.any(Object));
+    expect(result.connections).toHaveLength(1);
+  });
+
+  it("preserves async Promise<void> signature for wrapped close function", async () => {
+    const innerClose = vi.fn(async () => undefined);
+    const connect = vi.fn(async (name: string) => ({ name, tools: [], close: innerClose }) satisfies McpServerConnection);
+
+    const result = await connectConfiguredMcpTools(specs, connect);
+    const wrappedClose = result.connections[0].close;
+
+    expect(wrappedClose()).toBeInstanceOf(Promise);
+    await wrappedClose();
+    expect(innerClose).toHaveBeenCalled();
+  });
 });
