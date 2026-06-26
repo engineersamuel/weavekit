@@ -39,6 +39,10 @@ describe("council artifacts", () => {
       rounds: [
         {
           brief: { roundNumber: 1, prompt: "Question", focus: "Initial critique" },
+          personaSelection: {
+            personaIds: ["socratic", "socratic"],
+            rationale: "Fixture with duplicate IDs verifies transcript file uniqueness.",
+          },
           rawResults: [
             {
               personaId: "socratic",
@@ -93,6 +97,10 @@ describe("council artifacts", () => {
       rounds: [
         {
           brief: { roundNumber: 1, prompt: "Question", focus: "Initial critique" },
+          personaSelection: {
+            personaIds: ["socratic", "pragmatic"],
+            rationale: "Fixture uses a representative selected set.",
+          },
           rawResults: [
             {
               personaId: "socratic",

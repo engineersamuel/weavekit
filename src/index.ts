@@ -14,10 +14,20 @@ export { createDecisionCouncilWorkflow, type DecisionCouncilWorkflowDeps } from 
 // Reusable, workflow-agnostic persona subsystem.
 export {
   composePersonaPrompt,
+  createBamlPersonaSelector,
+  createStaticPersonaSelector,
   getPersona,
   getPersonaSet,
+  listPersonas,
   listPersonaSets,
   PersonaArchetypeSchema,
   PersonaModeSchema,
 } from "./personas/index.js";
-export type { PersonaArchetype, PersonaMode } from "./personas/index.js";
+export type {
+  PersonaArchetype,
+  PersonaMode,
+  PersonaSelectorEvent,
+  PersonaSelectionInput,
+  PersonaSelectionResult,
+  PersonaSelector,
+} from "./personas/index.js";

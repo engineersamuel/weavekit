@@ -20,7 +20,9 @@ export type DecisionCouncilCliArgs = {
 
 export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
   if (argv[0] !== "decision-council" || argv[1] !== "run") {
-    throw new Error("Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>]");
+    throw new Error(
+      "Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>] (omit --persona-set for dynamic persona selection; provide --persona-set <name> for deterministic static selection.)",
+    );
   }
 
   const inputIndex = argv.indexOf("--input");

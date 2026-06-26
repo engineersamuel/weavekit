@@ -33,6 +33,8 @@ export const PersonaDefinitionSchema = z.object({
   ignores: z.array(z.string().min(1)).default([]),
   modes: z.array(PersonaModeSchema).default([]),
   tags: z.array(z.string().min(1)).default([]),
+  selectionHints: z.array(z.string().min(1)).default([]),
+  selectionAntiHints: z.array(z.string().min(1)).default([]),
   specRef: z.string().min(1).optional(),
 });
 

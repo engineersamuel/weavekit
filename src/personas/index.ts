@@ -16,9 +16,18 @@ export {
   defaultRegistry,
   getPersona,
   getPersonaSet,
+  listPersonas,
   listPersonaSets,
   resolvePersonaSet,
   resolvePersonaSetByName,
   resolvePersonasDir,
   type PersonaRegistry,
 } from "./registry.js";
+export {
+  createBamlPersonaSelector,
+  createStaticPersonaSelector,
+  type PersonaSelectorEvent,
+  type PersonaSelectionInput,
+  type PersonaSelectionResult,
+  type PersonaSelector,
+} from "./selector.js";

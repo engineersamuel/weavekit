@@ -2,7 +2,7 @@
 
 Weavekit is a TypeScript-first playground for orchestrating GitHub Copilot SDK agents through explicit, typed workflows.
 
-The v0 workflow is a Design Council. It runs four debating personas, normalizes their critiques through BAML, asks a Judge reducer whether to continue, and writes:
+The v0 workflow is a Design Council. It selects a compact, task-appropriate persona subset each round (or follows a deterministic named set override), normalizes critiques through BAML, asks a Judge reducer whether to continue, and writes:
 
 - `DecisionCouncilReport.md`
 - `DecisionCouncilRunState.json`
@@ -11,8 +11,8 @@ The v0 workflow is a Design Council. It runs four debating personas, normalizes 
 ## Setup
 
 ```bash
-npm install
-npm run baml-generate
+nub install
+nub run baml-generate
 ```
 
 Run the local Copilot proxy on port 8080 before running the real workflow. The BAML clients use the proxy's OpenAI-compatible `/v1/chat/completions` endpoint. Set `BAML_MODEL` for the fallback `DefaultClient` (e.g., `gpt-5-mini`); note the decision council routes its BAML calls to fixed policy clients by default, so `BAML_MODEL` does not drive them (see [Model + effort routing](#model--effort-routing)).
@@ -40,12 +40,6 @@ GitHub Copilot SDK authentication for persona workers follows the SDK's local au
 ## Run the Design Council
 
 ```bash
-npm run council -- decision-council run --input examples/design-question.md --output runs/example
-```
-
-With nub:
-
-```bash
 nub run council decision-council run --input examples/design-question.md --output runs/example
 ```
 
@@ -61,7 +55,7 @@ The CLI prints rich progress to stderr while the council runs: run start, round 
   duration:    4.5s
 ```
 
-Rounds use a shared fan-out/fan-in model. Round 1 sends the initial brief to every persona. Round 2+ sends one shared Judge brief, produced from the previous round's full set of normalized critiques, to every persona; the Judge then assesses the current round's full critique set together.
+Rounds use a shared fan-out/fan-in model. Round 1 sends the initial brief to the selected personas for that round. Round 2+ sends one shared Judge brief, produced from the previous round's full set of normalized critiques, to the newly selected personas; the Judge then assesses the current round's full critique set together.
 
 The final stdout includes the recommendation plus a link to the Markdown report:
 
@@ -87,10 +81,11 @@ BAML_LOG=warn COPILOT_PROXY_API_KEY="anything" nub run council decision-council 
 
 ## Personas and persona sets
 
-The council debates a **persona set**. Select one with `--persona-set <name>`; omitting it uses `default`.
+By default, the council chooses personas dynamically each round. Pass `--persona-set <name>` to bypass dynamic selection with a deterministic static set (recommended for reproducible runs).
 
 ```bash
-nub run council decision-council run --input examples/design-question.md --persona-set strategic
+nub run council decision-council run --input examples/design-question.md
+nub run council decision-council run --input examples/design-question.md --persona-set default
 ```
 
 | Set | Personas | Use for |
@@ -125,12 +120,21 @@ mise run council:smoke
 
 ### Reusing personas in other workflows
 
-Personas live in a workflow-agnostic registry under [`personas/`](personas/): one TOML file per persona (`personas/<id>.toml`) plus a portable canonical spec (`personas/<id>.md`), grouped into named sets in [`personas/sets.toml`](personas/sets.toml). Any workflow can load them directly from the package's persona subsystem (re-exported from `src/index.ts`):
+Personas live in a workflow-agnostic registry under [`personas/`](personas/): one TOML file per persona (`personas/<id>.toml`) plus a portable canonical spec (`personas/<id>.md`), grouped into named sets in [`personas/sets.toml`](personas/sets.toml). Future workflows can reuse `createBamlPersonaSelector` (dynamic chooser) or `createStaticPersonaSelector` (deterministic static selection) from `weavekit`, alongside direct registry APIs:
 
 ```ts
-import { getPersona, getPersonaSet, listPersonaSets, composePersonaPrompt } from "weavekit";
+import {
+  createBamlPersonaSelector,
+  createStaticPersonaSelector,
+  getPersona,
+  getPersonaSet,
+  listPersonaSets,
+  composePersonaPrompt,
+} from "weavekit";
 
 const sunTzu = getPersona("sun-tzu");
+const dynamicSelector = createBamlPersonaSelector({ candidatePersonas: getPersonaSet("default").personas, minPersonas: 2, maxPersonas: 6 });
+const staticSelector = createStaticPersonaSelector(getPersonaSet("default"));
 const message = composePersonaPrompt(sunTzu, {
   brief: { roundNumber: 1, prompt: "Should we out-build a larger competitor?", focus: "Strategy" },
 });
@@ -164,7 +168,7 @@ Before choosing a production router model, measure TTFT and total latency across
 ```bash
 export COPILOT_PROXY_BASE_URL="http://127.0.0.1:8080/v1"
 export COPILOT_PROXY_API_KEY="anything"
-npm run bench:router
+nub run bench:router
 ```
 
 This prints a table of TTFT and total latency per candidate router model. It is a standalone diagnostic, not part of `npm test`.
@@ -214,7 +218,7 @@ const dispose = instrument(createOpenTelemetryInstrumentation({
 Install the Flue OpenTelemetry bridge only in apps that export telemetry:
 
 ```bash
-npm install @flue/opentelemetry @opentelemetry/api
+nub install @flue/opentelemetry @opentelemetry/api
 ```
 
 Keep `OTEL_GENAI_CAPTURE_CONTENT` unset or `false` unless you have reviewed prompt/content retention, because Flue events can include model-visible content.
@@ -222,9 +226,10 @@ Keep `OTEL_GENAI_CAPTURE_CONTENT` unset or `false` unless you have reviewed prom
 ## Verify
 
 ```bash
-npm test
-npm run typecheck
-npm run build
+nub run baml-generate
+nub run test
+nub run typecheck
+nub run build
 ```
 
 ## Evaluating the Decision Council
@@ -237,13 +242,13 @@ both with a reference-guided LLM judge via promptfoo.
 
 ```bash
 # Grade every corpus item (council vs vanilla Copilot CLI):
-npm run eval
+nub run eval
 
 # Grade specific items by id:
-npm run eval -- orchestration-framework-001 data-store-001
+nub run eval -- orchestration-framework-001 data-store-001
 
 # Run up to 4 promptfoo eval cells concurrently:
-npm run eval -- --max-concurrency 4 orchestration-framework-001 data-store-001
+nub run eval -- --max-concurrency 4 orchestration-framework-001 data-store-001
 ```
 
 Judge configuration (OpenAI-compatible) via env: `EVAL_JUDGE_BASE_URL`

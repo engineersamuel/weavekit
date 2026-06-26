@@ -4,6 +4,7 @@ import type { CritiqueNormalizer, JudgeReducer } from "./bamlAdapters.js";
 import { DecisionCouncilRunFailedError } from "./errors.js";
 import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
 import type { PersonaWorker } from "./personaWorker.js";
+import type { PersonaSelector } from "../personas/selector.js";
 import {
   DecisionCouncilRunStateSchema,
   type DecisionCouncilRound,
@@ -15,6 +16,7 @@ import {
 } from "./types.js";
 
 export type DecisionCouncilWorkflowDeps = {
+  personaSelector: PersonaSelector;
   personaWorker: PersonaWorker;
   normalizer: CritiqueNormalizer;
   judge: JudgeReducer;
@@ -31,6 +33,14 @@ function createRoundBrief(state: DecisionCouncilRunState): RoundBrief {
     prompt: state.input.prompt,
     focus: previous?.assessment.nextRoundBrief ?? "Initial critique",
   };
+}
+
+function previousRoundSignals(state: DecisionCouncilRunState): string[] {
+  return state.rounds.flatMap((round) => [
+    `Round ${round.brief.roundNumber} consensus: ${round.assessment.consensus}`,
+    `Round ${round.brief.roundNumber} disagreements: ${round.assessment.disagreements.join("; ") || "none"}`,
+    `Round ${round.brief.roundNumber} selected personas: ${round.personaSelection.personaIds.join(", ")}`,
+  ]);
 }
 
 function toFailure(personaId: string, error: unknown): DecisionPersonaFailure {
@@ -67,13 +77,58 @@ export async function runDecisionCouncilRound(
   const rawResults: RawPersonaResult[] = [];
   const failures: DecisionPersonaFailure[] = [];
   const critiques: DecisionPersonaCritique[] = [];
+  const personasStartedAt = performance.now();
+  deps.logger?.event({
+    type: "council.personas.started",
+    timestamp: timestamp(),
+    runId,
+    roundNumber: brief.roundNumber,
+    candidatePersonaCount: state.personas.length,
+  });
+
+  let selection: Awaited<ReturnType<PersonaSelector["choosePersonas"]>>;
+  try {
+    selection = await deps.personaSelector.choosePersonas({
+      workflowName: "decision-council",
+      workflowPurpose: "Produce a balanced recommendation across multiple persona viewpoints.",
+      taskPrompt: state.input.prompt,
+      context: state.input.context,
+      constraints: state.input.constraints,
+      roundNumber: brief.roundNumber,
+      roundFocus: brief.focus,
+      previousSelectionIds: state.rounds.at(-1)?.personaSelection.personaIds ?? [],
+      previousRoundSignals: previousRoundSignals(state),
+      candidatePersonas: state.personas,
+      minPersonas: 2,
+      maxPersonas: 6,
+    });
+    deps.logger?.event({
+      type: "council.personas.completed",
+      timestamp: timestamp(),
+      runId,
+      roundNumber: brief.roundNumber,
+      personaIds: selection.personaSet.personas.map((persona) => persona.id),
+      rationale: selection.rationale,
+      durationMs: performance.now() - personasStartedAt,
+    });
+  } catch (error) {
+    deps.logger?.event({
+      type: "council.personas.failed",
+      timestamp: timestamp(),
+      runId,
+      roundNumber: brief.roundNumber,
+      durationMs: performance.now() - personasStartedAt,
+      error: errorMessage(error),
+    });
+    throw error;
+  }
 
   type Outcome =
     | { stage: "ok"; raw: RawPersonaResult; critique: DecisionPersonaCritique }
     | { stage: "persona-failed"; failure: DecisionPersonaFailure }
     | { stage: "normalize-failed"; raw: RawPersonaResult; failure: DecisionPersonaFailure };
 
-  async function processPersona(persona: (typeof state.personas)[number]): Promise<Outcome> {
+  async function processPersona(persona: (typeof selection.personaSet.personas)[number]): Promise<Outcome> {
     const personaStartedAt = performance.now();
     deps.logger?.event({
       type: "council.persona.started",
@@ -151,7 +206,7 @@ export async function runDecisionCouncilRound(
     }
   }
 
-  const outcomes = await Promise.all(state.personas.map((persona) => processPersona(persona)));
+  const outcomes = await Promise.all(selection.personaSet.personas.map((persona) => processPersona(persona)));
 
   for (const outcome of outcomes) {
     if (outcome.stage === "ok") {
@@ -223,6 +278,10 @@ export async function runDecisionCouncilRound(
 
   const round: DecisionCouncilRound = {
     brief,
+    personaSelection: {
+      personaIds: selection.personaSet.personas.map((persona) => persona.id),
+      rationale: selection.rationale,
+    },
     rawResults,
     critiques,
     failures,

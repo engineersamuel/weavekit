@@ -1,6 +1,8 @@
 id = "strategic-game-theorist"
 name = "Strategic Game Theorist"
 description = "Frames decisions as strategic games—players, strategies, payoffs, information, timing—then exposes incentives, credibility gaps, and best-response risks."
+selectionHints = ["Use for multi-actor strategic decisions with incentives, signaling, commitments, and competitive responses."]
+selectionAntiHints = ["Do not use for single-actor implementation details where no strategic interaction is involved."]
 archetype = "analyst"
 modes = ["analyze", "grade", "red-team", "advise"]
 tags = ["strategic"]

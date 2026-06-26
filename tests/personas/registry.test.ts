@@ -3,6 +3,7 @@ import {
   buildRegistry,
   getPersona,
   getPersonaSet,
+  listPersonas,
   listPersonaSets,
   resolvePersonaSet,
   resolvePersonaSetByName,
@@ -57,6 +58,25 @@ describe("default persona registry", () => {
 
   it("lists the registered sets", () => {
     expect(listPersonaSets().sort()).toEqual(["default", "dialectic", "smoke", "strategic"]);
+  });
+
+  it("lists personas as clones so callers cannot mutate the registry", () => {
+    const personas = listPersonas();
+    personas[0]!.name = "Changed";
+    personas[0]!.selectionHints.push("bad");
+
+    const reloaded = listPersonas();
+    expect(reloaded[0]!.name).not.toBe("Changed");
+    expect(reloaded[0]!.selectionHints).not.toContain("bad");
+  });
+
+  it("ensures each shipped persona has useful selector-facing metadata", () => {
+    const personas = listPersonas();
+    expect(personas.length).toBeGreaterThan(0);
+    for (const persona of personas) {
+      const usefulDescription = persona.description.trim().length >= 20;
+      expect(usefulDescription || persona.selectionHints.length > 0).toBe(true);
+    }
   });
 
   it("resolvePersonaSetByName defaults to the default set", () => {

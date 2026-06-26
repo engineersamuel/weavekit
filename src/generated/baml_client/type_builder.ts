@@ -29,11 +29,17 @@ export default class TypeBuilder {
     
     CouncilReport: ClassViewer<'CouncilReport', "recommendation" | "rationale" | "strongestObjections" | "unresolvedQuestions" | "confidence" | "convergence" | "nextExperiment" | "finalReportMarkdown" | "failedPersonas">;
     
+    PersonaChoiceCandidate: ClassViewer<'PersonaChoiceCandidate', "id" | "name" | "description" | "archetype" | "tags" | "modes" | "selectionHints" | "selectionAntiHints">;
+    
     PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "overallSummary" | "summary" | "claims" | "risks" | "questions" | "recommendations">;
     
     PersonaCritiqueSummary: ClassViewer<'PersonaCritiqueSummary', "personaId" | "overallSummary" | "summary">;
     
     PersonaFailure: ClassViewer<'PersonaFailure', "personaId" | "message" | "retryable">;
+    
+    PersonaSelection: ClassViewer<'PersonaSelection', "personaIds" | "rationale">;
+    
+    PersonaSelectionRequest: ClassViewer<'PersonaSelectionRequest', "workflowName" | "workflowPurpose" | "taskPrompt" | "context" | "constraints" | "roundNumber" | "roundFocus" | "previousSelectionIds" | "previousRoundSignals" | "minPersonas" | "maxPersonas" | "candidates">;
     
     RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
     
@@ -46,7 +52,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "CouncilReport","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","RawPersonaResult","RoundAssessment","RoutingDecision",
+            "CouncilReport","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","RawPersonaResult","RoundAssessment","RoutingDecision",
           ]),
           enums: new Set([
             
@@ -56,6 +62,10 @@ export default class TypeBuilder {
         
         this.CouncilReport = this.tb.classViewer("CouncilReport", [
           "recommendation","rationale","strongestObjections","unresolvedQuestions","confidence","convergence","nextExperiment","finalReportMarkdown","failedPersonas",
+        ]);
+        
+        this.PersonaChoiceCandidate = this.tb.classViewer("PersonaChoiceCandidate", [
+          "id","name","description","archetype","tags","modes","selectionHints","selectionAntiHints",
         ]);
         
         this.PersonaCritique = this.tb.classViewer("PersonaCritique", [
@@ -68,6 +78,14 @@ export default class TypeBuilder {
         
         this.PersonaFailure = this.tb.classViewer("PersonaFailure", [
           "personaId","message","retryable",
+        ]);
+        
+        this.PersonaSelection = this.tb.classViewer("PersonaSelection", [
+          "personaIds","rationale",
+        ]);
+        
+        this.PersonaSelectionRequest = this.tb.classViewer("PersonaSelectionRequest", [
+          "workflowName","workflowPurpose","taskPrompt","context","constraints","roundNumber","roundFocus","previousSelectionIds","previousRoundSignals","minPersonas","maxPersonas","candidates",
         ]);
         
         this.RawPersonaResult = this.tb.classViewer("RawPersonaResult", [

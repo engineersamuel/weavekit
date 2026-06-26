@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  CouncilReport,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  RawPersonaResult,  RoundAssessment,  RoutingDecision } from "./types.js"
+import type {  CouncilReport,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  RawPersonaResult,  RoundAssessment,  RoutingDecision } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -47,6 +47,16 @@ export namespace partial_types {
       finalReportMarkdown?: string | null
       failedPersonas: PersonaFailure[]
     }
+    export interface PersonaChoiceCandidate {
+      id?: string | null
+      name?: string | null
+      description?: string | null
+      archetype?: string | null
+      tags: string[]
+      modes: string[]
+      selectionHints: string[]
+      selectionAntiHints: string[]
+    }
     export interface PersonaCritique {
       personaId?: string | null
       overallSummary?: string | null
@@ -65,6 +75,24 @@ export namespace partial_types {
       personaId?: string | null
       message?: string | null
       retryable?: boolean | null
+    }
+    export interface PersonaSelection {
+      personaIds: string[]
+      rationale?: string | null
+    }
+    export interface PersonaSelectionRequest {
+      workflowName?: string | null
+      workflowPurpose?: string | null
+      taskPrompt?: string | null
+      context: string[]
+      constraints: string[]
+      roundNumber?: number | null
+      roundFocus?: string | null
+      previousSelectionIds: string[]
+      previousRoundSignals: string[]
+      minPersonas?: number | null
+      maxPersonas?: number | null
+      candidates: PersonaChoiceCandidate[]
     }
     export interface RawPersonaResult {
       personaId?: string | null
