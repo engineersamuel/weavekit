@@ -33,9 +33,9 @@ referenceAnswer:
   redFlags:
     - Adopting Kafka as a general-purpose task queue for low-volume work where SQS
       suffices.
-sources:
-  - https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html
-  - https://kafka.apache.org/documentation/
+  sources:
+    - https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html
+    - https://kafka.apache.org/documentation/
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

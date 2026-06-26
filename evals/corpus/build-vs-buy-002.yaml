@@ -30,9 +30,9 @@ referenceAnswer:
   redFlags:
     - Standing up and operating a full self-hosted observability cluster with a
       tiny team before it is justified.
-sources:
-  - https://opentelemetry.io/docs/
-  - https://grafana.com/docs/
+  sources:
+    - https://opentelemetry.io/docs/
+    - https://grafana.com/docs/
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

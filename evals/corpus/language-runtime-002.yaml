@@ -31,9 +31,9 @@ referenceAnswer:
   redFlags:
     - Splitting into two languages prematurely and paying serialization/glue cost
       for a modest API.
-sources:
-  - https://fastapi.tiangolo.com/
-  - https://docs.python.org/3/
+  sources:
+    - https://fastapi.tiangolo.com/
+    - https://docs.python.org/3/
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

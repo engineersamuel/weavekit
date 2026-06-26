@@ -35,9 +35,9 @@ referenceAnswer:
   redFlags:
     - Choosing Rust for a deadline-driven CRUD-ish service mainly for performance
       bragging rights.
-sources:
-  - https://go.dev/doc/effective_go
-  - https://doc.rust-lang.org/book/
+  sources:
+    - https://go.dev/doc/effective_go
+    - https://doc.rust-lang.org/book/
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

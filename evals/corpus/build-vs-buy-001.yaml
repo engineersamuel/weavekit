@@ -31,9 +31,9 @@ referenceAnswer:
   redFlags:
     - Rolling your own session/password/crypto stack as a small team without
       security expertise.
-sources:
-  - https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
-  - https://auth0.com/docs
+  sources:
+    - https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
+    - https://auth0.com/docs
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

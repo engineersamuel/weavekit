@@ -34,9 +34,9 @@ referenceAnswer:
   redFlags:
     - Forcing gRPC as a public browser-facing API where it is awkward to consume
       and cache.
-sources:
-  - https://graphql.org/learn/
-  - https://grpc.io/docs/what-is-grpc/introduction/
+  sources:
+    - https://graphql.org/learn/
+    - https://grpc.io/docs/what-is-grpc/introduction/
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

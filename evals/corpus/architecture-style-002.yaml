@@ -37,9 +37,9 @@ referenceAnswer:
   redFlags:
     - Going fully event-driven everywhere and pushing eventual-consistency
       complexity onto flows that needed a simple synchronous answer.
-sources:
-  - https://martinfowler.com/articles/201701-event-driven.html
-  - https://microservices.io/patterns/data/saga.html
+  sources:
+    - https://martinfowler.com/articles/201701-event-driven.html
+    - https://microservices.io/patterns/data/saga.html
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

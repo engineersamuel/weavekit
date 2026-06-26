@@ -20,4 +20,44 @@ describe("evals/corpus", () => {
       expect(Math.abs(sum - 1)).toBeLessThan(1e-3);
     }
   });
+
+  it("has exactly 15 items", () => {
+    expect(items.length).toBe(15);
+  });
+
+  it("has exact per-domain distribution", () => {
+    const domainCounts = items.reduce((acc, item) => {
+      acc[item.domain] = (acc[item.domain] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    expect(domainCounts).toEqual({
+      "api-protocol": 2,
+      "architecture-style": 2,
+      "build-vs-buy": 2,
+      "data-store": 2,
+      "deploy": 1,
+      "language-runtime": 2,
+      "messaging-async": 2,
+      "orchestration-framework": 2,
+    });
+  });
+
+  it("every item has the standard 4-criterion rubric", () => {
+    const expectedCriteria = [
+      "defensible-recommendation",
+      "tradeoffs-and-objections",
+      "conditions-and-alternatives",
+      "red-flags-avoided",
+    ];
+    const expectedWeights = [0.35, 0.3, 0.2, 0.15];
+
+    for (const item of items) {
+      expect(item.rubric.length).toBe(4);
+      const criteria = item.rubric.map((c) => c.criterion);
+      const weights = item.rubric.map((c) => c.weight);
+      expect(criteria).toEqual(expectedCriteria);
+      expect(weights).toEqual(expectedWeights);
+    }
+  });
 });

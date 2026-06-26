@@ -30,9 +30,9 @@ referenceAnswer:
   redFlags:
     - Tight-interval polling as the primary mechanism for a UI that must feel
       live, wasting resources and adding latency.
-sources:
-  - https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
-  - https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API
+  sources:
+    - https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+    - https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

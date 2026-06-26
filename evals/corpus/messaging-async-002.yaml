@@ -34,9 +34,9 @@ referenceAnswer:
   redFlags:
     - Dual-writing to the DB and broker in app code, which loses events whenever
       the second write fails.
-sources:
-  - https://microservices.io/patterns/data/transactional-outbox.html
-  - https://debezium.io/documentation/
+  sources:
+    - https://microservices.io/patterns/data/transactional-outbox.html
+    - https://debezium.io/documentation/
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

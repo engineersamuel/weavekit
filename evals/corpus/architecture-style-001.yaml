@@ -31,9 +31,9 @@ referenceAnswer:
   redFlags:
     - Adopting microservices on day one with a 3-person team and unstable
       requirements.
-sources:
-  - https://martinfowler.com/bliki/MonolithFirst.html
-  - https://martinfowler.com/articles/microservices.html
+  sources:
+    - https://martinfowler.com/bliki/MonolithFirst.html
+    - https://martinfowler.com/articles/microservices.html
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

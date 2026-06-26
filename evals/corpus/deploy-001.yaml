@@ -33,9 +33,9 @@ referenceAnswer:
   redFlags:
     - Running a self-managed Kubernetes cluster for a two-person team's first CRUD
       service.
-sources:
-  - https://cloud.google.com/run/docs
-  - https://kubernetes.io/docs/concepts/overview/
+  sources:
+    - https://cloud.google.com/run/docs
+    - https://kubernetes.io/docs/concepts/overview/
 rubric:
   - criterion: defensible-recommendation
     weight: 0.35

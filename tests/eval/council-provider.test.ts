@@ -34,7 +34,12 @@ describe("CouncilProvider", () => {
       options: { deps: { writeArtifacts: false } },
     });
     expect(res.output).toBe("# Report\nUse A.");
-    expect(res.metadata).toMatchObject({ recommendation: "Use A", confidence: 0.8 });
+    expect(res.metadata).toEqual({
+      recommendation: "Use A",
+      confidence: 0.8,
+      convergence: 0.9,
+      failedPersonas: [],
+    });
   });
 
   it("returns an error string when the council throws", async () => {

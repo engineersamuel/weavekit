@@ -39,7 +39,7 @@ export class CouncilProvider implements ApiProvider {
           recommendation: report.recommendation,
           confidence: report.confidence,
           convergence: report.convergence,
-          failedPersonas: report.failedPersonas.length,
+          failedPersonas: report.failedPersonas,
         },
       };
     } catch (error) {
