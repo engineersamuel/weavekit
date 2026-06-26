@@ -16,6 +16,7 @@ export {
   composePersonaPrompt,
   getPersona,
   getPersonaSet,
+  listPersonas,
   listPersonaSets,
   PersonaArchetypeSchema,
   PersonaModeSchema,

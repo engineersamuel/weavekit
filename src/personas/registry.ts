@@ -14,6 +14,7 @@ const SETS_FILE = "sets.toml";
 export interface PersonaRegistry {
   getPersona(id: string): PersonaDefinition;
   getPersonaSet(name: string): PersonaSet;
+  listPersonas(): PersonaDefinition[];
   listPersonaSets(): string[];
   resolvePersonaSet(set?: PersonaSet): PersonaSet;
   resolvePersonaSetByName(name?: string): PersonaSet;
@@ -109,6 +110,10 @@ export function buildRegistry(dir: string): PersonaRegistry {
     return set;
   }
 
+  function listPersonas(): PersonaDefinition[] {
+    return [...personasById.values()].map((persona) => structuredClone(persona));
+  }
+
   function listPersonaSets(): string[] {
     return [...setsByName.keys()];
   }
@@ -124,7 +129,7 @@ export function buildRegistry(dir: string): PersonaRegistry {
     return resolvePersonaSet(getPersonaSet(name));
   }
 
-  return { getPersona, getPersonaSet, listPersonaSets, resolvePersonaSet, resolvePersonaSetByName };
+  return { getPersona, getPersonaSet, listPersonas, listPersonaSets, resolvePersonaSet, resolvePersonaSetByName };
 }
 
 // Eager default registry: sync file I/O at module load preserves the synchronous
@@ -133,6 +138,7 @@ export const defaultRegistry: PersonaRegistry = buildRegistry(resolvePersonasDir
 
 export const getPersona = (id: string): PersonaDefinition => defaultRegistry.getPersona(id);
 export const getPersonaSet = (name: string): PersonaSet => defaultRegistry.getPersonaSet(name);
+export const listPersonas = (): PersonaDefinition[] => defaultRegistry.listPersonas();
 export const listPersonaSets = (): string[] => defaultRegistry.listPersonaSets();
 export const resolvePersonaSet = (set?: PersonaSet): PersonaSet => defaultRegistry.resolvePersonaSet(set);
 export const resolvePersonaSetByName = (name?: string): PersonaSet =>

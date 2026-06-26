@@ -16,6 +16,7 @@ export {
   defaultRegistry,
   getPersona,
   getPersonaSet,
+  listPersonas,
   listPersonaSets,
   resolvePersonaSet,
   resolvePersonaSetByName,

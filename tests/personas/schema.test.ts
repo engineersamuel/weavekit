@@ -19,6 +19,8 @@ describe("PersonaDefinitionSchema", () => {
     expect(persona.ignores).toEqual([]);
     expect(persona.modes).toEqual([]);
     expect(persona.tags).toEqual([]);
+    expect(persona.selectionHints).toEqual([]);
+    expect(persona.selectionAntiHints).toEqual([]);
     expect(persona.archetype).toBeUndefined();
     expect(persona.stance).toBeUndefined();
   });
@@ -36,11 +38,15 @@ describe("PersonaDefinitionSchema", () => {
       ignores: ["Cost framing — defer to the Adversary."],
       modes: ["believe", "analyze"],
       tags: ["dialectic", "thesis"],
+      selectionHints: ["Use for committed case-making and thesis defense."],
+      selectionAntiHints: ["Avoid when a neutral synthesis is needed."],
       specRef: "dialectic-advocate.md",
     });
 
     expect(persona.archetype).toBe("believer");
     expect(persona.modes).toEqual(["believe", "analyze"]);
+    expect(persona.selectionHints).toEqual(["Use for committed case-making and thesis defense."]);
+    expect(persona.selectionAntiHints).toEqual(["Avoid when a neutral synthesis is needed."]);
     expect(persona.specRef).toBe("dialectic-advocate.md");
   });
 
