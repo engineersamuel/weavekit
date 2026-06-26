@@ -23,3 +23,10 @@ export {
   resolvePersonasDir,
   type PersonaRegistry,
 } from "./registry.js";
+export {
+  createBamlPersonaSelector,
+  createStaticPersonaSelector,
+  type PersonaSelectionInput,
+  type PersonaSelectionResult,
+  type PersonaSelector,
+} from "./selector.js";
