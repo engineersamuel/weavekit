@@ -1,0 +1,5 @@
+[sets.default]
+personas = ["socratic", "deep-module-dry", "pragmatic", "skeptic"]
+
+[sets.strategic]
+personas = ["socratic", "deep-module-dry", "pragmatic", "skeptic", "game-theorist"]
