@@ -35,6 +35,27 @@ export type BeadsCliWorkQueueOptions = {
   runCommand?: BeadsCommandRunner;
 };
 
+type NodeExecError = NodeJS.ErrnoException & {
+  stdout?: string;
+  stderr?: string;
+  code?: number | string;
+};
+
+export function normalizeRunnerError(args: string[], error: unknown): never {
+  const nodeError = error as NodeExecError;
+  // child_process sets code to the numeric exit code on non-zero exit,
+  // but to a string like "ENOENT" for OS-level failures (missing binary, etc.)
+  const exitCode = typeof nodeError.code === "number" ? nodeError.code : 1;
+  const causeCode = typeof nodeError.code === "string" ? nodeError.code : undefined;
+  throw new WorkQueueBackendError(`bd ${args[0] ?? ""} failed with exit code ${exitCode}`, {
+    args,
+    exitCode,
+    stdout: nodeError.stdout ?? "",
+    stderr: nodeError.stderr ?? nodeError.message,
+    ...(causeCode !== undefined ? { causeCode } : {}),
+  });
+}
+
 const defaultRunner: BeadsCommandRunner = async (bin, args, options) => {
   try {
     const result = await execFileAsync(bin, args, {
@@ -46,18 +67,7 @@ const defaultRunner: BeadsCommandRunner = async (bin, args, options) => {
 
     return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
   } catch (error) {
-    const nodeError = error as NodeJS.ErrnoException & {
-      stdout?: string;
-      stderr?: string;
-      code?: number | string;
-    };
-    const exitCode = typeof nodeError.code === "number" ? nodeError.code : 1;
-    throw new WorkQueueBackendError(`bd ${args[0] ?? ""} failed with exit code ${exitCode}`, {
-      args,
-      exitCode,
-      stdout: nodeError.stdout ?? "",
-      stderr: nodeError.stderr ?? nodeError.message,
-    });
+    normalizeRunnerError(args, error);
   }
 };
 

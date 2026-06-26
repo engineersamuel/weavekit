@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BeadsCliWorkQueue, type BeadsCommandRunner } from "../../src/work-queue/beads.js";
+import { BeadsCliWorkQueue, normalizeRunnerError, type BeadsCommandRunner } from "../../src/work-queue/beads.js";
+import { WorkQueueBackendError } from "../../src/work-queue/backend.js";
 
 function runnerFor(calls: string[][], outputs: unknown[]): BeadsCommandRunner {
   return async (_bin, args) => {
@@ -91,5 +92,32 @@ describe("BeadsCliWorkQueue", () => {
     await queue.sync();
 
     expect(calls).toEqual([["dolt", "push"]]);
+  });
+});
+
+describe("normalizeRunnerError", () => {
+  it("maps numeric code to exitCode and omits causeCode", () => {
+    const err = Object.assign(new Error("exited"), { code: 2, stdout: "out", stderr: "err" });
+    expect(() => normalizeRunnerError(["ready"], err)).toThrow(WorkQueueBackendError);
+    try {
+      normalizeRunnerError(["ready"], err);
+    } catch (e) {
+      const wqe = e as WorkQueueBackendError;
+      expect(wqe.message).toBe("bd ready failed with exit code 2");
+      expect(wqe.causeDetails).toMatchObject({ exitCode: 2, stdout: "out", stderr: "err" });
+      expect((wqe.causeDetails as Record<string, unknown>)["causeCode"]).toBeUndefined();
+    }
+  });
+
+  it("maps ENOENT string code to exitCode 1 and preserves causeCode", () => {
+    const err = Object.assign(new Error("spawn bd ENOENT"), { code: "ENOENT", stdout: undefined, stderr: undefined });
+    expect(() => normalizeRunnerError(["ready"], err)).toThrow(WorkQueueBackendError);
+    try {
+      normalizeRunnerError(["ready"], err);
+    } catch (e) {
+      const wqe = e as WorkQueueBackendError;
+      expect(wqe.message).toBe("bd ready failed with exit code 1");
+      expect(wqe.causeDetails).toMatchObject({ exitCode: 1, causeCode: "ENOENT" });
+    }
   });
 });
