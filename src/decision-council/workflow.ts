@@ -1,29 +1,28 @@
 import { defineAgent, defineWorkflow } from "@flue/runtime";
 import * as v from "valibot";
 import type { CritiqueNormalizer, JudgeReducer } from "./bamlAdapters.js";
-import { CouncilRunFailedError } from "./errors.js";
-import { errorMessage, timestamp, type CouncilLogger } from "./logger.js";
+import { DecisionCouncilRunFailedError } from "./errors.js";
+import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
 import type { PersonaWorker } from "./personaWorker.js";
 import {
-  CouncilRunStateSchema,
-  type CouncilRound,
-  type CouncilRunState,
-  type PersonaFailure,
+  DecisionCouncilRunStateSchema,
+  type DecisionCouncilRound,
+  type DecisionCouncilRunState,
+  type DecisionPersonaCritique,
+  type DecisionPersonaFailure,
   type RawPersonaResult,
   type RoundBrief,
 } from "./types.js";
 
-export type CouncilWorkflowDeps = {
+export type DecisionCouncilWorkflowDeps = {
   personaWorker: PersonaWorker;
   normalizer: CritiqueNormalizer;
   judge: JudgeReducer;
-  logger?: CouncilLogger;
+  logger?: DecisionCouncilLogger;
   runId?: string;
 };
 
-export type DecisionCouncilWorkflowDeps = CouncilWorkflowDeps;
-
-function createRoundBrief(state: CouncilRunState): RoundBrief {
+function createRoundBrief(state: DecisionCouncilRunState): RoundBrief {
   const roundNumber = state.rounds.length + 1;
   const previous = state.rounds.at(-1);
 
@@ -34,7 +33,7 @@ function createRoundBrief(state: CouncilRunState): RoundBrief {
   };
 }
 
-function toFailure(personaId: string, error: unknown): PersonaFailure {
+function toFailure(personaId: string, error: unknown): DecisionPersonaFailure {
   return {
     personaId,
     message: error instanceof Error ? error.message : String(error),
@@ -42,10 +41,10 @@ function toFailure(personaId: string, error: unknown): PersonaFailure {
   };
 }
 
-export async function runCouncilRound(
-  state: CouncilRunState,
-  deps: CouncilWorkflowDeps,
-): Promise<CouncilRunState> {
+export async function runDecisionCouncilRound(
+  state: DecisionCouncilRunState,
+  deps: DecisionCouncilWorkflowDeps,
+): Promise<DecisionCouncilRunState> {
   // Guard maxRounds as a fail-safe: caller (runCouncilLoop or external) should not call
   // this function when rounds.length >= maxRounds. This check prevents a single round
   // from exceeding the limit if the contract is violated.
@@ -66,118 +65,118 @@ export async function runCouncilRound(
     previousRoundNumber: state.rounds.at(-1)?.brief.roundNumber,
   });
   const rawResults: RawPersonaResult[] = [];
-  const failures: PersonaFailure[] = [];
+  const failures: DecisionPersonaFailure[] = [];
+  const critiques: DecisionPersonaCritique[] = [];
 
-  const personaResults = await Promise.allSettled(
-    state.personas.map(async (persona) => {
-      const startedAt = performance.now();
+  type Outcome =
+    | { stage: "ok"; raw: RawPersonaResult; critique: DecisionPersonaCritique }
+    | { stage: "persona-failed"; failure: DecisionPersonaFailure }
+    | { stage: "normalize-failed"; raw: RawPersonaResult; failure: DecisionPersonaFailure };
+
+  async function processPersona(persona: (typeof state.personas)[number]): Promise<Outcome> {
+    const personaStartedAt = performance.now();
+    deps.logger?.event({
+      type: "council.persona.started",
+      timestamp: timestamp(),
+      runId,
+      roundNumber: brief.roundNumber,
+      personaId: persona.id,
+    });
+
+    let raw: RawPersonaResult;
+    try {
+      raw = await deps.personaWorker.runPersona({ persona, brief });
       deps.logger?.event({
-        type: "council.persona.started",
+        type: "council.persona.completed",
         timestamp: timestamp(),
         runId,
         roundNumber: brief.roundNumber,
         personaId: persona.id,
+        model: raw.metadata.model,
+        durationMs: performance.now() - personaStartedAt,
       });
-
-      try {
-        const result = await deps.personaWorker.runPersona({ persona, brief });
-        deps.logger?.event({
-          type: "council.persona.completed",
-          timestamp: timestamp(),
-          runId,
-          roundNumber: brief.roundNumber,
-          personaId: persona.id,
-          durationMs: performance.now() - startedAt,
-        });
-        return result;
-      } catch (error) {
-        deps.logger?.event({
-          type: "council.persona.failed",
-          timestamp: timestamp(),
-          runId,
-          roundNumber: brief.roundNumber,
-          personaId: persona.id,
-          durationMs: performance.now() - startedAt,
-          error: errorMessage(error),
-        });
-        throw error;
-      }
-    }),
-  );
-
-  for (let index = 0; index < personaResults.length; index += 1) {
-    const persona = state.personas[index]!;
-    const result = personaResults[index]!;
-
-    if (result.status === "fulfilled") {
-      rawResults.push(result.value);
-    } else {
-      failures.push(toFailure(persona.id, result.reason));
-    }
-  }
-
-  if (rawResults.length < 2) {
-    throw new CouncilRunFailedError("Council requires at least two successful personas.");
-  }
-
-  const critiqueResults = await Promise.allSettled(
-    rawResults.map(async (raw) => {
-      const startedAt = performance.now();
+    } catch (error) {
       deps.logger?.event({
-        type: "council.baml.started",
+        type: "council.persona.failed",
+        timestamp: timestamp(),
+        runId,
+        roundNumber: brief.roundNumber,
+        personaId: persona.id,
+        durationMs: performance.now() - personaStartedAt,
+        error: errorMessage(error),
+      });
+      return { stage: "persona-failed", failure: toFailure(persona.id, error) };
+    }
+
+    const normalizeStartedAt = performance.now();
+    let model: string | undefined;
+    deps.logger?.event({
+      type: "council.baml.started",
+      timestamp: timestamp(),
+      runId,
+      roundNumber: brief.roundNumber,
+      operation: "normalize",
+      personaId: raw.personaId,
+    });
+
+    try {
+      const critique = await deps.normalizer.normalizeCritique(raw, (resolved) => {
+        model = resolved;
+      });
+      deps.logger?.event({
+        type: "council.baml.completed",
         timestamp: timestamp(),
         runId,
         roundNumber: brief.roundNumber,
         operation: "normalize",
         personaId: raw.personaId,
+        model,
+        durationMs: performance.now() - normalizeStartedAt,
+        summary: critique.overallSummary,
       });
-
-      try {
-        const critique = await deps.normalizer.normalizeCritique(raw);
-        deps.logger?.event({
-          type: "council.baml.completed",
-          timestamp: timestamp(),
-          runId,
-          roundNumber: brief.roundNumber,
-          operation: "normalize",
-          personaId: raw.personaId,
-          durationMs: performance.now() - startedAt,
-          summary: critique.overallSummary,
-        });
-        return critique;
-      } catch (error) {
-        deps.logger?.event({
-          type: "council.baml.failed",
-          timestamp: timestamp(),
-          runId,
-          roundNumber: brief.roundNumber,
-          operation: "normalize",
-          personaId: raw.personaId,
-          durationMs: performance.now() - startedAt,
-          error: errorMessage(error),
-        });
-        throw error;
-      }
-    }),
-  );
-
-  const critiques = [];
-  for (let index = 0; index < critiqueResults.length; index += 1) {
-    const raw = rawResults[index]!;
-    const result = critiqueResults[index]!;
-
-    if (result.status === "fulfilled") {
-      critiques.push(result.value);
-    } else {
-      failures.push(toFailure(raw.personaId, result.reason));
+      return { stage: "ok", raw, critique };
+    } catch (error) {
+      deps.logger?.event({
+        type: "council.baml.failed",
+        timestamp: timestamp(),
+        runId,
+        roundNumber: brief.roundNumber,
+        operation: "normalize",
+        personaId: raw.personaId,
+        model,
+        durationMs: performance.now() - normalizeStartedAt,
+        error: errorMessage(error),
+      });
+      return { stage: "normalize-failed", raw, failure: toFailure(raw.personaId, error) };
     }
   }
 
+  const outcomes = await Promise.all(state.personas.map((persona) => processPersona(persona)));
+
+  for (const outcome of outcomes) {
+    if (outcome.stage === "ok") {
+      rawResults.push(outcome.raw);
+      critiques.push(outcome.critique);
+    } else if (outcome.stage === "normalize-failed") {
+      rawResults.push(outcome.raw);
+      failures.push(outcome.failure);
+    } else {
+      failures.push(outcome.failure);
+    }
+  }
+
+  // Fusing the stages means degraded runs may normalize successful personas even if
+  // the raw-success guard later throws; this is failure-path only, bounded by persona count.
+  if (rawResults.length < 2) {
+    throw new DecisionCouncilRunFailedError("Council requires at least two successful personas.");
+  }
+
   if (critiques.length < 2) {
-    throw new CouncilRunFailedError("Council requires at least two normalized critiques.");
+    throw new DecisionCouncilRunFailedError("Council requires at least two normalized critiques.");
   }
 
   const assessStartedAt = performance.now();
+  let assessModel: string | undefined;
   deps.logger?.event({
     type: "council.baml.started",
     timestamp: timestamp(),
@@ -186,11 +185,16 @@ export async function runCouncilRound(
     operation: "assess",
   });
   const assessment = await deps.judge
-    .assessRound({
-      roundNumber: brief.roundNumber,
-      critiques,
-      failures,
-    })
+    .assessRound(
+      {
+        roundNumber: brief.roundNumber,
+        critiques,
+        failures,
+      },
+      (resolved) => {
+        assessModel = resolved;
+      },
+    )
     .then((result) => {
       deps.logger?.event({
         type: "council.baml.completed",
@@ -198,6 +202,7 @@ export async function runCouncilRound(
         runId,
         roundNumber: brief.roundNumber,
         operation: "assess",
+        model: assessModel,
         durationMs: performance.now() - assessStartedAt,
       });
       return result;
@@ -209,13 +214,14 @@ export async function runCouncilRound(
         runId,
         roundNumber: brief.roundNumber,
         operation: "assess",
+        model: assessModel,
         durationMs: performance.now() - assessStartedAt,
         error: errorMessage(error),
       });
       throw error;
     });
 
-  const round: CouncilRound = {
+  const round: DecisionCouncilRound = {
     brief,
     rawResults,
     critiques,
@@ -249,6 +255,7 @@ export async function runCouncilRound(
   }
 
   const reportStartedAt = performance.now();
+  let reportModel: string | undefined;
   deps.logger?.event({
     type: "council.baml.started",
     timestamp: timestamp(),
@@ -256,17 +263,23 @@ export async function runCouncilRound(
     operation: "report",
   });
   const finalReport = await deps.judge
-    .createFinalReport({
-      critiques: allCritiques,
-      assessments,
-      failures: allFailures,
-    })
+    .createFinalReport(
+      {
+        critiques: allCritiques,
+        assessments,
+        failures: allFailures,
+      },
+      (resolved) => {
+        reportModel = resolved;
+      },
+    )
     .then((result) => {
       deps.logger?.event({
         type: "council.baml.completed",
         timestamp: timestamp(),
         runId,
         operation: "report",
+        model: reportModel,
         durationMs: performance.now() - reportStartedAt,
       });
       return result;
@@ -277,6 +290,7 @@ export async function runCouncilRound(
         timestamp: timestamp(),
         runId,
         operation: "report",
+        model: reportModel,
         durationMs: performance.now() - reportStartedAt,
         error: errorMessage(error),
       });
@@ -296,27 +310,27 @@ export async function runCouncilRound(
   return { ...state, rounds, finalReport: authoritative, stopReason };
 }
 
-export async function runCouncilLoop(
-  initialState: CouncilRunState,
-  deps: CouncilWorkflowDeps,
-): Promise<CouncilRunState> {
-  let state = CouncilRunStateSchema.parse(initialState);
+export async function runDecisionCouncilLoop(
+  initialState: DecisionCouncilRunState,
+  deps: DecisionCouncilWorkflowDeps,
+): Promise<DecisionCouncilRunState> {
+  let state = DecisionCouncilRunStateSchema.parse(initialState);
 
   // Guard maxRounds at loop level as a safety measure.
-  // runCouncilRound also guards maxRounds to prevent a single round from exceeding the limit.
+  // runDecisionCouncilRound also guards maxRounds to prevent a single round from exceeding the limit.
   // The loop check ensures the outer loop terminates; the round check ensures each round
-  // respects the bound regardless of how runCouncilRound is called.
+  // respects the bound regardless of how runDecisionCouncilRound is called.
   while (!state.stopReason && state.rounds.length < state.maxRounds) {
-    state = await runCouncilRound(state, deps);
+    state = await runDecisionCouncilRound(state, deps);
   }
 
   return state;
 }
 
-// Exported for Flue server-registration seam: runCouncil (in runner.ts) uses the direct
-// runCouncilLoop for the CLI/library path (v0), while createCouncilWorkflow enables
+// Exported for Flue server-registration seam: runDecisionCouncil (in runner.ts) uses the direct
+// runDecisionCouncilLoop for the CLI/library path (v0), while createDecisionCouncilWorkflow enables
 // running the council as a Flue workflow on remote services (future integration).
-export function createCouncilWorkflow(deps: CouncilWorkflowDeps) {
+export function createDecisionCouncilWorkflow(deps: DecisionCouncilWorkflowDeps) {
   return defineWorkflow({
     agent: defineAgent(() => ({
       model: "anthropic/claude-haiku-4-5",
@@ -326,9 +340,7 @@ export function createCouncilWorkflow(deps: CouncilWorkflowDeps) {
     input: v.looseObject({}),
     output: v.looseObject({}),
     async run({ input }) {
-      return await runCouncilLoop(CouncilRunStateSchema.parse(input), deps);
+      return await runDecisionCouncilLoop(DecisionCouncilRunStateSchema.parse(input), deps);
     },
   });
 }
-
-export const createDecisionCouncilWorkflow = createCouncilWorkflow;

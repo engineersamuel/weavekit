@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { CouncilReport, CouncilRunState, PersonaFailure } from "./types.js";
+import type { DecisionCouncilReport, DecisionCouncilRunState, DecisionPersonaFailure } from "./types.js";
 
-export type CouncilArtifacts = {
+export type DecisionCouncilArtifacts = {
   reportPath: string;
   statePath: string;
   debugTranscriptPaths: string[];
@@ -16,7 +16,7 @@ function renderList(items: string[]): string {
   return items.map((item) => `- ${item}`).join("\n") + "\n";
 }
 
-function renderFailures(failures: PersonaFailure[]): string {
+function renderFailures(failures: DecisionPersonaFailure[]): string {
   if (failures.length === 0) {
     return "- None\n";
   }
@@ -26,7 +26,7 @@ function renderFailures(failures: PersonaFailure[]): string {
     .join("\n") + "\n";
 }
 
-export function renderCouncilReportMarkdown(report: CouncilReport): string {
+export function renderDecisionCouncilReportMarkdown(report: DecisionCouncilReport): string {
   if (report.finalReportMarkdown.trim().length > 0) {
     return report.finalReportMarkdown.endsWith("\n") ? report.finalReportMarkdown : `${report.finalReportMarkdown}\n`;
   }
@@ -66,10 +66,10 @@ export function renderCouncilReportMarkdown(report: CouncilReport): string {
   ].join("\n");
 }
 
-export async function writeCouncilArtifacts(args: {
+export async function writeDecisionCouncilArtifacts(args: {
   outputDir: string;
-  state: CouncilRunState;
-}): Promise<CouncilArtifacts> {
+  state: DecisionCouncilRunState;
+}): Promise<DecisionCouncilArtifacts> {
   const { outputDir, state } = args;
 
   if (!state.finalReport) {
@@ -80,10 +80,10 @@ export async function writeCouncilArtifacts(args: {
   const debugDir = join(outputDir, "debug");
   await mkdir(debugDir, { recursive: true });
 
-  const reportPath = join(outputDir, "CouncilReport.md");
-  const statePath = join(outputDir, "CouncilRunState.json");
+  const reportPath = join(outputDir, "DecisionCouncilReport.md");
+  const statePath = join(outputDir, "DecisionCouncilRunState.json");
 
-  await writeFile(reportPath, renderCouncilReportMarkdown(state.finalReport), "utf8");
+  await writeFile(reportPath, renderDecisionCouncilReportMarkdown(state.finalReport), "utf8");
   await writeFile(statePath, JSON.stringify(state, null, 2) + "\n", "utf8");
 
   const debugTranscriptPaths: string[] = [];

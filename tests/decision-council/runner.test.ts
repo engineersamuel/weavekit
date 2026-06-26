@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { runCouncil } from "../../src/decision-council/runner.js";
-import { createCouncilWorkflow } from "../../src/decision-council/workflow.js";
+import { runDecisionCouncil } from "../../src/decision-council/runner.js";
+import { createDecisionCouncilWorkflow } from "../../src/decision-council/workflow.js";
 import { defaultPersonaSet } from "../../src/decision-council/personas.js";
 import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
+import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
 
 function fakeWorker(failPersonaIds: string[] = []): PersonaWorker {
   return {
@@ -12,6 +13,20 @@ function fakeWorker(failPersonaIds: string[] = []): PersonaWorker {
         throw new Error(`${persona.id} failed`);
       }
 
+      return {
+        personaId: persona.id,
+        text: `${persona.name} critique for round ${brief.roundNumber}`,
+        transcript: [`assistant: ${persona.name}`],
+        metadata: { model: "fake" },
+      };
+    },
+  };
+}
+
+function recordingWorker(seen: Set<string>): PersonaWorker {
+  return {
+    async runPersona({ persona, brief }) {
+      seen.add(persona.id);
       return {
         personaId: persona.id,
         text: `${persona.name} critique for round ${brief.roundNumber}`,
@@ -66,11 +81,11 @@ function judge(roundsBeforeStop: number): JudgeReducer {
   };
 }
 
-describe("runCouncil", () => {
+describe("runDecisionCouncil", () => {
   it("emits progress events for the council run", async () => {
     const events: string[] = [];
 
-    await runCouncil(
+    await runDecisionCouncil(
       { prompt: "Log this run." },
       {
         deps: {
@@ -100,7 +115,7 @@ describe("runCouncil", () => {
   it("emits normalized summary and shared round source metadata", async () => {
     const events: unknown[] = [];
 
-    await runCouncil(
+    await runDecisionCouncil(
       { prompt: "Log summaries across rounds." },
       {
         deps: {
@@ -142,6 +157,83 @@ describe("runCouncil", () => {
     );
   });
 
+  it("decorates persona and baml completed events with the model in use", async () => {
+    const events: unknown[] = [];
+    const modelReportingNormalizer: CritiqueNormalizer = {
+      async normalizeCritique(raw, onModel) {
+        onModel?.("claude-haiku-4-5");
+        return normalizer.normalizeCritique(raw);
+      },
+    };
+
+    await runDecisionCouncil(
+      { prompt: "Decorate completed events with the model." },
+      {
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer: modelReportingNormalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+        logger: {
+          event(event) {
+            events.push(event);
+          },
+        },
+      },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "council.persona.completed", model: "fake" }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "council.baml.completed",
+        operation: "normalize",
+        model: "claude-haiku-4-5",
+      }),
+    );
+  });
+
+  it("normalizes each persona as soon as it finishes, overlapping slower personas", async () => {
+    const events: string[] = [];
+    const personaWorker: PersonaWorker = {
+      async runPersona({ persona, brief }) {
+        if (persona.id === "skeptic") {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+
+        events.push(`worker-done:${persona.id}`);
+        return {
+          personaId: persona.id,
+          text: `${persona.name} critique for round ${brief.roundNumber}`,
+          transcript: [`assistant: ${persona.name}`],
+          metadata: { model: "fake" },
+        };
+      },
+    };
+    const trackingNormalizer: CritiqueNormalizer = {
+      async normalizeCritique(raw, onModel) {
+        events.push(`normalize:${raw.personaId}`);
+        return normalizer.normalizeCritique(raw, onModel);
+      },
+    };
+
+    await runDecisionCouncil(
+      { prompt: "Normalize without waiting for slow personas." },
+      {
+        deps: {
+          personaWorker,
+          normalizer: trackingNormalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    expect(events.indexOf("normalize:socratic")).toBeLessThan(events.indexOf("worker-done:skeptic"));
+  });
+
   it("overwrites hallucinated failedPersonas from judge with authoritative run-state failures", async () => {
     // The LLM can fabricate or drop failed personas; deterministic run-state must win.
     const hallucinatingJudge: JudgeReducer = {
@@ -161,7 +253,7 @@ describe("runCouncil", () => {
       },
     };
 
-    const report = await runCouncil(
+    const report = await runDecisionCouncil(
       { prompt: "Test hallucination." },
       {
         deps: {
@@ -179,7 +271,7 @@ describe("runCouncil", () => {
   });
 
   it("runs personas, normalizes critiques, and returns a final report", async () => {
-    const report = await runCouncil(
+    const report = await runDecisionCouncil(
       { prompt: "Should Weavekit use Flue?" },
       {
         personaSet: defaultPersonaSet,
@@ -196,6 +288,56 @@ describe("runCouncil", () => {
     expect(report.failedPersonas).toEqual([]);
   });
 
+  it("selects strategic personas from the personaSetName option", async () => {
+    const strategicSeen = new Set<string>();
+    await runDecisionCouncil(
+      { prompt: "Pick a set." },
+      {
+        personaSetName: "strategic",
+        deps: {
+          personaWorker: recordingWorker(strategicSeen),
+          normalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    const defaultSeen = new Set<string>();
+    await runDecisionCouncil(
+      { prompt: "Pick a set." },
+      {
+        deps: {
+          personaWorker: recordingWorker(defaultSeen),
+          normalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    expect(strategicSeen.has("strategic-game-theorist")).toBe(true);
+    expect(defaultSeen.has("game-theorist")).toBe(false);
+  });
+
+  it("selects dialectic personas from the personaSetName option", async () => {
+    const seen = new Set<string>();
+    await runDecisionCouncil(
+      { prompt: "Pick a set." },
+      {
+        personaSetName: "dialectic",
+        deps: {
+          personaWorker: recordingWorker(seen),
+          normalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    expect([...seen].sort()).toEqual(["dialectic-adversary", "dialectic-advocate", "hostile-auditor"]);
+  });
+
   it("stops at max three rounds even if Judge asks to continue", async () => {
     let assessmentCount = 0;
     const trackingJudge: JudgeReducer = {
@@ -206,7 +348,7 @@ describe("runCouncil", () => {
       createFinalReport: judge(10).createFinalReport,
     };
 
-    const report = await runCouncil(
+    const report = await runDecisionCouncil(
       { prompt: "Keep debating forever." },
       {
         deps: {
@@ -224,7 +366,7 @@ describe("runCouncil", () => {
 
   it("fails when fewer than two debating personas succeed", async () => {
     await expect(
-      runCouncil(
+      runDecisionCouncil(
         { prompt: "Handle failures." },
         {
           deps: {
@@ -237,12 +379,30 @@ describe("runCouncil", () => {
       ),
     ).rejects.toThrow("Council requires at least two successful personas.");
   });
+
+  it("accepts a custom router without breaking the run", async () => {
+    const router: ModelRouter = {
+      async route() {
+        return { clientName: "CopilotProxyClaudeHaiku45", model: "claude-haiku-4-5", rationale: "test" };
+      },
+    };
+
+    const report = await runDecisionCouncil(
+      { prompt: "Route this run." },
+      {
+        router,
+        deps: { writeArtifacts: false, personaWorker: fakeWorker(), normalizer, judge: judge(1) },
+      },
+    );
+
+    expect(report.recommendation).toBeDefined();
+  });
 });
 
-describe("createCouncilWorkflow", () => {
+describe("createDecisionCouncilWorkflow", () => {
   it("returns a workflow object without throwing when called with valid deps", () => {
     expect(() =>
-      createCouncilWorkflow({
+      createDecisionCouncilWorkflow({
         personaWorker: fakeWorker(),
         normalizer,
         judge: judge(1),

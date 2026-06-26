@@ -1,0 +1,63 @@
+id: messaging-async-001
+domain: messaging-async
+difficulty: intermediate
+title: Message broker for async work
+prompt: >-
+  We need asynchronous messaging between services. Should we use Amazon SQS,
+  RabbitMQ, or Apache Kafka?
+context:
+  - Most traffic is task queues; one feature needs an event stream others replay.
+  - We run on AWS.
+constraints:
+  - Prefer the least operational overhead that meets the need.
+referenceAnswer:
+  recommendation: >-
+    Use SQS for the simple managed task queues, and reach for Kafka only for the
+    event-stream feature that needs replay and high-throughput retention. Avoid
+    standing up Kafka for everything.
+  rationale:
+    - SQS is fully managed and ideal for decoupled task queues on AWS with minimal
+      ops.
+    - Kafka's durable, replayable log fits the one stream-with-replay use case.
+  strongestObjections:
+    - Running two messaging systems adds operational surface.
+    - RabbitMQ offers flexible routing and could serve both needs in one system.
+  conditions:
+    - Choose RabbitMQ when you need rich routing topologies, priorities, or
+      request/reply and want one self-managed broker.
+    - Choose Kafka broadly only when high-throughput streaming with replay is
+      central, not incidental.
+  viableAlternatives:
+    - RabbitMQ (flexible routing, self-managed)
+    - Kafka everywhere (if streaming dominates)
+  redFlags:
+    - Adopting Kafka as a general-purpose task queue for low-volume work where SQS
+      suffices.
+  sources:
+    - https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html
+    - https://kafka.apache.org/documentation/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

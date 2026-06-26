@@ -1,26 +1,33 @@
-import { b } from "../generated/baml_client/index.js";
+import { createRequire } from "node:module";
 import type { PersonaDefinition, RawPersonaResult, RoundBrief } from "./types.js";
+import type { ModelRouter } from "./modelRouter.js";
+import { composePersonaPrompt } from "../personas/composer.js";
 
-const personaRunners: Record<string, (brief: RoundBrief) => Promise<RawPersonaResult>> = {
-  socratic: (brief) => b.RunSocraticQuestioner(brief),
-  "deep-module-dry": (brief) => b.RunDeepModuleDryArchitect(brief),
-  pragmatic: (brief) => b.RunPragmaticBuilder(brief),
-  skeptic: (brief) => b.RunSkeptic(brief),
+const require = createRequire(import.meta.url);
+
+type CopilotLikeClient = {
+  start(): Promise<void>;
+  createSession(config: unknown): Promise<{
+    sendAndWait(message: { prompt: string }, timeout?: number): Promise<{ data?: { content?: string } } | undefined>;
+    disconnect(): Promise<void>;
+  }>;
+  // Real SDK returns Error[] on stop; undefined is tolerated for mocks/no-error cases.
+  stop(): Promise<Error[] | undefined>;
 };
 
 /**
- * Reads stop errors attached to a persona result by `BamlPersonaWorker`.
+ * Reads stop errors attached to a persona result by `CopilotPersonaWorker`.
  * Returns the array of cleanup errors, or undefined if none were attached.
  */
 export function getResultStopErrors(result: RawPersonaResult): Error[] | undefined {
-  const r = result as unknown as Record<string, unknown>;
+  const r = result as Record<string, unknown>;
   const se = r._stopErrors;
   if (Array.isArray(se) && se.length > 0) return se as Error[];
   return undefined;
 }
 
 /**
- * Reads stop errors attached to a propagating error by `BamlPersonaWorker`.
+ * Reads stop errors attached to a propagating error by `CopilotPersonaWorker`.
  * Returns the array of cleanup errors, or undefined if none were attached.
  */
 export function getStopErrors(err: unknown): Error[] | undefined {
@@ -32,18 +39,18 @@ export function getStopErrors(err: unknown): Error[] | undefined {
 }
 
 /**
- * Reads a disconnect error attached to a persona result by `BamlPersonaWorker`.
+ * Reads a disconnect error attached to a persona result by `CopilotPersonaWorker`.
  * Returns the error, or undefined if none was attached.
  */
 export function getResultDisconnectError(result: RawPersonaResult): Error | undefined {
-  const r = result as unknown as Record<string, unknown>;
+  const r = result as Record<string, unknown>;
   const de = r._disconnectError;
   if (de instanceof Error) return de;
   return undefined;
 }
 
 /**
- * Reads a disconnect error attached to a propagating error by `BamlPersonaWorker`.
+ * Reads a disconnect error attached to a propagating error by `CopilotPersonaWorker`.
  * Returns the error, or undefined if none was attached.
  */
 export function getDisconnectError(err: unknown): Error | undefined {
@@ -55,22 +62,22 @@ export function getDisconnectError(err: unknown): Error | undefined {
 }
 
 function attachStopErrorsToResult(result: RawPersonaResult, stopErrors: Error[]): void {
-  (result as unknown as Record<string, unknown>)._stopErrors = stopErrors;
+  (result as Record<string, unknown>)._stopErrors = stopErrors;
 }
 
 function attachDisconnectErrorToResult(result: RawPersonaResult, disconnectErr: unknown): void {
-  (result as unknown as Record<string, unknown>)._disconnectError = disconnectErr;
+  (result as Record<string, unknown>)._disconnectError = disconnectErr;
 }
 
 function attachDisconnectError(err: unknown, disconnectErr: unknown): void {
   if (err !== null && typeof err === "object") {
-    (err as unknown as Record<string, unknown>).disconnectError = disconnectErr;
+    (err as Record<string, unknown>).disconnectError = disconnectErr;
   }
 }
 
 function attachStopErrors(err: unknown, stopErrors: Error[]): void {
   if (err !== null && typeof err === "object") {
-    (err as unknown as Record<string, unknown>).stopErrors = stopErrors;
+    (err as Record<string, unknown>).stopErrors = stopErrors;
   }
 }
 
@@ -81,41 +88,149 @@ export type PersonaWorker = {
   }): Promise<RawPersonaResult>;
 };
 
-export class BamlPersonaWorker implements PersonaWorker {
-  private readonly model: string;
+export function buildPersonaPrompt(persona: PersonaDefinition, brief: RoundBrief): string {
+  return composePersonaPrompt(persona, { brief });
+}
 
-  constructor(args: { model?: string } = {}) {
+export function resolveCopilotCliPath(): string {
+  return require.resolve("@github/copilot/npm-loader.js");
+}
+
+export class CopilotPersonaWorker implements PersonaWorker {
+  private readonly clientFactory: () => CopilotLikeClient | Promise<CopilotLikeClient>;
+  private readonly model: string;
+  private readonly timeoutMs: number;
+  private readonly onPermissionRequest: () => { kind: "approved" | "denied" };
+  private readonly router?: ModelRouter;
+  private readonly supportsReasoningEffort: (model: string) => boolean;
+
+  constructor(args: {
+    clientFactory?: () => CopilotLikeClient | Promise<CopilotLikeClient>;
+    model?: string;
+    timeoutMs?: number;
+    /** Permission handler for persona sessions. Defaults to deny-by-default. */
+    onPermissionRequest?: () => { kind: "approved" | "denied" };
+    router?: ModelRouter;
+    supportsReasoningEffort?: (model: string) => boolean;
+  } = {}) {
+    this.clientFactory = args.clientFactory ?? (async () => {
+      const { CopilotClient } = await import("@github/copilot-sdk");
+      return new CopilotClient({ cliPath: resolveCopilotCliPath() }) as unknown as CopilotLikeClient;
+    });
     this.model = args.model ?? "claude-sonnet-4.5";
+    this.timeoutMs = args.timeoutMs ?? 120_000;
+    this.onPermissionRequest = args.onPermissionRequest ?? (() => ({ kind: "denied" as const }));
+    this.router = args.router;
+    this.supportsReasoningEffort = args.supportsReasoningEffort ?? (() => false);
   }
 
   async runPersona(args: { persona: PersonaDefinition; brief: RoundBrief }): Promise<RawPersonaResult> {
     const { persona, brief } = args;
-    const runner = personaRunners[persona.id];
+    const client = await this.clientFactory();
+    await client.start();
 
-    if (!runner) {
-      throw new Error(`No BAML persona runner is registered for persona "${persona.id}".`);
-    }
+    let primaryError: unknown = undefined;
+    let successResult: RawPersonaResult | undefined = undefined;
 
     try {
-      const result = await runner(brief);
+      const decision = this.router
+        ? await this.router.route({
+            taskKind: "persona",
+            personaId: persona.id,
+            roundNumber: brief.roundNumber,
+            summary: brief.prompt,
+          })
+        : undefined;
+      const model = decision?.model ?? this.model;
 
-      if (result.text.trim().length === 0) {
-        throw new Error(`BAML persona ${persona.id} returned an empty response.`);
-      }
-
-      return {
-        ...result,
-        metadata: {
-          ...(result.metadata ?? {}),
-          model: this.model,
-        },
+      const sessionConfig: {
+        model: string;
+        reasoningEffort?: string;
+        agent: string;
+        customAgents: Array<{ name: string; displayName: string; description: string; prompt: string }>;
+        onPermissionRequest: () => { kind: "approved" | "denied" };
+      } = {
+        model,
+        agent: persona.id,
+        customAgents: [
+          {
+            name: persona.id,
+            displayName: persona.name,
+            description: persona.description,
+            prompt: persona.prompt,
+          },
+        ],
+        onPermissionRequest: this.onPermissionRequest,
       };
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("empty response")) {
-        throw error;
+      if (decision?.reasoningEffort && this.supportsReasoningEffort(model)) {
+        sessionConfig.reasoningEffort = decision.reasoningEffort;
       }
 
-      throw error;
+      const session = await client.createSession(sessionConfig);
+
+      let sendError: unknown = undefined;
+      try {
+        const response = await session.sendAndWait({ prompt: buildPersonaPrompt(persona, brief) }, this.timeoutMs);
+        const text = response?.data?.content ?? "";
+
+        if (text.trim().length === 0) {
+          throw new Error(`Copilot persona ${persona.id} returned an empty response.`);
+        }
+
+        successResult = {
+          personaId: persona.id,
+          text,
+          transcript: [`assistant: ${text}`],
+          metadata: { model },
+        };
+      } catch (err) {
+        sendError = err;
+        throw err;
+      } finally {
+        try {
+          await session.disconnect();
+        } catch (disconnectErr) {
+          if (sendError !== undefined) {
+            // Preserve original send error; attach disconnect error for inspection.
+            attachDisconnectError(sendError, disconnectErr);
+          } else {
+            // sendAndWait succeeded but disconnect failed — preserve the result and
+            // attach the disconnect error for inspection (mirrors stop-error behavior).
+            if (successResult !== undefined) {
+              attachDisconnectErrorToResult(successResult, disconnectErr);
+            }
+          }
+        }
+      }
+    } catch (_err) {
+      primaryError = _err;
     }
+
+    // Collect stop errors outside the try/finally so that stop() rejections are handled
+    // without masking a primary error, and stop errors on the success path don't discard the result.
+    let stopErrors: Error[] | undefined;
+    try {
+      const rawStop = await client.stop();
+      if (rawStop && rawStop.length > 0) stopErrors = rawStop;
+    } catch (stopRejection) {
+      stopErrors = [stopRejection instanceof Error ? stopRejection : new Error(String(stopRejection))];
+    }
+
+    if (successResult !== undefined) {
+      // Happy path: return the result and surface any cleanup errors for inspection.
+      if (stopErrors) {
+        attachStopErrorsToResult(successResult, stopErrors);
+      }
+      return successResult;
+    }
+
+    if (primaryError !== undefined) {
+      if (stopErrors) {
+        attachStopErrors(primaryError, stopErrors);
+      }
+      throw primaryError;
+    }
+
+    throw new Error("runPersona: unreachable state");
   }
 }

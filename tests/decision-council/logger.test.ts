@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  createConsoleCouncilLogger,
-  createJsonCouncilLogger,
-  createSilentCouncilLogger,
-  formatCouncilEvent,
-  type CouncilEvent,
+  createConsoleDecisionCouncilLogger,
+  createJsonDecisionCouncilLogger,
+  createSilentDecisionCouncilLogger,
+  formatDecisionCouncilEvent,
+  type DecisionCouncilEvent,
 } from "../../src/decision-council/logger.js";
 
 describe("council logger", () => {
-  const event: CouncilEvent = {
+  const event: DecisionCouncilEvent = {
     type: "council.persona.completed",
     timestamp: "2026-06-24T18:00:00.000Z",
     runId: "run-1",
@@ -18,7 +18,7 @@ describe("council logger", () => {
   };
 
   it("formats progress events with readable labels and colors", () => {
-    const formatted = formatCouncilEvent(event, { color: true });
+    const formatted = formatDecisionCouncilEvent(event, { color: true });
 
     expect(formatted).toContain("persona completed");
     expect(formatted).toContain("skeptic");
@@ -28,7 +28,7 @@ describe("council logger", () => {
 
   it("writes newline-delimited JSON events", () => {
     const write = vi.fn();
-    const logger = createJsonCouncilLogger({ write });
+    const logger = createJsonDecisionCouncilLogger({ write });
 
     logger.event(event);
 
@@ -37,7 +37,7 @@ describe("council logger", () => {
 
   it("can silence progress output", () => {
     const write = vi.fn();
-    const logger = createSilentCouncilLogger({ write });
+    const logger = createSilentDecisionCouncilLogger({ write });
 
     logger.event(event);
 
@@ -46,7 +46,7 @@ describe("council logger", () => {
 
   it("writes pretty events to stderr by default", () => {
     const write = vi.fn();
-    const logger = createConsoleCouncilLogger({ write, color: false });
+    const logger = createConsoleDecisionCouncilLogger({ write, color: false });
 
     logger.event(event);
 
@@ -54,7 +54,7 @@ describe("council logger", () => {
   });
 
   it("formats normalized critique summaries as indented child lines", () => {
-    const formatted = formatCouncilEvent(
+    const formatted = formatDecisionCouncilEvent(
       {
         type: "council.baml.completed",
         timestamp: "2026-06-24T18:00:00.000Z",
@@ -74,23 +74,42 @@ describe("council logger", () => {
     );
   });
 
-  it("formats shared Judge round context as an indented child line", () => {
-    const formatted = formatCouncilEvent(
+  it("decorates baml and persona events with the model in use", () => {
+    const bamlLine = formatDecisionCouncilEvent(
       {
-        type: "council.round.started",
+        type: "council.baml.completed",
         timestamp: "2026-06-24T18:00:00.000Z",
         runId: "run-1",
-        roundNumber: 2,
-        focus: "Focus on validation criteria.",
-        focusSource: "judge",
-        previousRoundNumber: 1,
+        roundNumber: 1,
+        personaId: "pragmatic",
+        operation: "normalize",
+        model: "claude-haiku-4-5",
+        durationMs: 5000,
       },
       { color: false },
     );
 
-    expect(formatted).toContain('round started round=2 focus="Focus on validation criteria."');
-    expect(formatted).toContain(
-      "\n    -> Shared Judge brief from round 1; all personas respond to this focus, then the Judge assesses the round 2 set together.",
+    expect(bamlLine).toContain(
+      "baml completed round=1 persona=pragmatic operation=normalize model=claude-haiku-4-5 duration=5.0s",
     );
+
+    const personaLine = formatDecisionCouncilEvent(
+      {
+        type: "council.persona.completed",
+        timestamp: "2026-06-24T18:00:00.000Z",
+        runId: "run-1",
+        roundNumber: 1,
+        personaId: "skeptic",
+        model: "claude-sonnet-4.5",
+        durationMs: 1234,
+      },
+      { color: false },
+    );
+
+    expect(personaLine).toContain("persona completed round=1 persona=skeptic model=claude-sonnet-4.5 duration=1.2s");
+  });
+
+  it("omits the model token when no model is present", () => {
+    expect(formatDecisionCouncilEvent(event, { color: false })).not.toContain("model=");
   });
 });

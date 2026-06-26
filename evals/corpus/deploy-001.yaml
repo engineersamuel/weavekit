@@ -1,0 +1,63 @@
+id: deploy-001
+domain: deploy
+difficulty: intermediate
+title: Deployment platform for a small team's web service
+prompt: >-
+  A two-person team is launching a web service. Should we deploy on Kubernetes, a
+  serverless platform (AWS Lambda / Cloud Run), or a PaaS (Fly.io / Render /
+  Heroku)?
+context:
+  - No dedicated platform/ops engineer.
+  - Traffic is unknown and likely spiky early on.
+constraints:
+  - Minimize operational overhead; keep a clear path to scale.
+referenceAnswer:
+  recommendation: >-
+    Deploy on a PaaS or a container-serverless platform (Cloud Run / Render /
+    Fly.io) so a two-person team avoids cluster operations while keeping
+    autoscaling and an easy path to grow.
+  rationale:
+    - PaaS/serverless removes cluster management, patching, and scaling toil from
+      a team with no ops engineer.
+    - Container-based PaaS keeps a portable path to Kubernetes later if needed.
+  strongestObjections:
+    - Kubernetes offers maximum flexibility and portability and avoids some PaaS
+      constraints/cost.
+    - Serverless can hit cold-start and runtime limits for some workloads.
+  conditions:
+    - Adopt Kubernetes when you have genuine platform requirements (many services,
+      complex networking) and the team to operate it.
+  viableAlternatives:
+    - AWS Lambda (event-driven, true serverless)
+    - Kubernetes (when platform needs and staffing justify it)
+  redFlags:
+    - Running a self-managed Kubernetes cluster for a two-person team's first CRUD
+      service.
+  sources:
+    - https://cloud.google.com/run/docs
+    - https://kubernetes.io/docs/concepts/overview/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

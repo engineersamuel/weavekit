@@ -16,6 +16,18 @@ When working with baml read ./docs/baml/instructions.md
 
 Prefer BAML-generated types over creating new hand-authored TypeScript types when the output shape is already defined in a BAML schema. Reuse generated types as the canonical contract and only add new local types when they represent workflow-specific state or input that is not produced by BAML.
 
+## Model proxy
+
+By default models are hosted through the copilot-proxy-rs available at http://127.0.0.1:8080 with endpoints  `/health`, `/version`, `/v1/models`, and `/v1/messages/count_tokens` routes.
+
+An example call
+
+```
+curl -fsS http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" -d '{"model":"gpt-5.5","messages":[{"role":"user","content":"Say Hello World!"}]}'
+```
+
+Add `"stream": true` to the payload if streaming
+
 ## Baton workspace spawning
 
 When asked to spawn a Copilot session in a new Baton workspace, use an existing initialized workspace directory as the `cwd` for `baton-spawn_agent_in_new_workspace`. Do not pass the Baton project name or repository path as `cwd`; the MCP resolver expects a workspace path such as `/Users/smendenhall/.baton/worktrees/weavekit/<workspace-name>`.

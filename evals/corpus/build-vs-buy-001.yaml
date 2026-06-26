@@ -1,0 +1,61 @@
+id: build-vs-buy-001
+domain: build-vs-buy
+difficulty: intermediate
+title: Build vs buy authentication
+prompt: >-
+  We need user authentication (signup, login, MFA, SSO) for our product. Should
+  we build it ourselves or adopt a managed provider like Auth0, Clerk, or
+  Cognito?
+context:
+  - We are a small team without dedicated security staff.
+  - Customers will eventually ask for SSO and MFA.
+constraints:
+  - Security and compliance posture must be strong.
+referenceAnswer:
+  recommendation: >-
+    Buy a managed authentication provider. Auth, MFA, and SSO are security-
+    critical, commoditized, and easy to get subtly wrong; a managed provider
+    gives a stronger posture for a small team without security staff.
+  rationale:
+    - Managed providers handle MFA, SSO, password hashing, and breach mitigations
+      maintained by specialists.
+    - It frees a small team to focus on product rather than security plumbing.
+  strongestObjections:
+    - Managed auth adds per-user cost and some vendor lock-in.
+    - Deep custom auth flows can be constrained by the provider.
+  conditions:
+    - Build in-house only with strong security expertise and a genuine need that
+      no provider meets.
+  viableAlternatives:
+    - Open-source self-hosted IdP (e.g. Keycloak) if you must self-host
+  redFlags:
+    - Rolling your own session/password/crypto stack as a small team without
+      security expertise.
+  sources:
+    - https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
+    - https://auth0.com/docs
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

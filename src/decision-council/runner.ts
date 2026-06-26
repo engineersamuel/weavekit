@@ -1,36 +1,42 @@
 import { GeneratedBamlAdapters } from "./bamlAdapters.js";
-import { writeCouncilArtifacts } from "./artifacts.js";
-import { runCouncilLoop, type CouncilWorkflowDeps } from "./workflow.js";
-import { CouncilRunFailedError } from "./errors.js";
-import { errorMessage, timestamp, type CouncilLogger } from "./logger.js";
-import { BamlPersonaWorker } from "./personaWorker.js";
-import { resolvePersonaSet } from "./personas.js";
+import { writeDecisionCouncilArtifacts } from "./artifacts.js";
+import { runDecisionCouncilLoop, type DecisionCouncilWorkflowDeps } from "./workflow.js";
+import { DecisionCouncilRunFailedError } from "./errors.js";
+import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
+import { CopilotPersonaWorker } from "./personaWorker.js";
+import { resolvePersonaSet, resolvePersonaSetByName } from "./personas.js";
 import {
-  CouncilInputSchema,
+  DecisionCouncilInputSchema,
   createInitialRunState,
-  type CouncilReport,
+  type DecisionCouncilReport,
   type PersonaSet,
 } from "./types.js";
 import type { z } from "zod";
+import { createDefaultModelRouter, defaultRouteModelCall, type ModelRouter } from "./modelRouter.js";
 
-export type RunCouncilOptions = {
+export type RunDecisionCouncilOptions = {
   personaSet?: PersonaSet;
+  personaSetName?: string;
   outputDir?: string;
   inputPath?: string;
-  logger?: CouncilLogger;
-  deps?: Partial<CouncilWorkflowDeps> & {
+  logger?: DecisionCouncilLogger;
+  router?: ModelRouter;
+  deps?: Partial<DecisionCouncilWorkflowDeps> & {
     writeArtifacts?: boolean;
   };
 };
 
-export async function runCouncil(input: z.input<typeof CouncilInputSchema>, options: RunCouncilOptions = {}): Promise<CouncilReport> {
+export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilInputSchema>, options: RunDecisionCouncilOptions = {}): Promise<DecisionCouncilReport> {
   const startedAt = performance.now();
   const runId = `council-${Date.now().toString(36)}`;
-  const parsedInput = CouncilInputSchema.parse(input);
-  const personaSet = resolvePersonaSet(options.personaSet);
-  const bamlAdapters = new GeneratedBamlAdapters();
-  const deps: CouncilWorkflowDeps = {
-    personaWorker: options.deps?.personaWorker ?? new BamlPersonaWorker(),
+  const parsedInput = DecisionCouncilInputSchema.parse(input);
+  const personaSet = options.personaSet
+    ? resolvePersonaSet(options.personaSet)
+    : resolvePersonaSetByName(options.personaSetName ?? parsedInput.personaSetName);
+  const router = options.router ?? createDefaultModelRouter(defaultRouteModelCall);
+  const bamlAdapters = new GeneratedBamlAdapters({ router });
+  const deps: DecisionCouncilWorkflowDeps = {
+    personaWorker: options.deps?.personaWorker ?? new CopilotPersonaWorker({ router }),
     normalizer: options.deps?.normalizer ?? bamlAdapters,
     judge: options.deps?.judge ?? bamlAdapters,
     logger: options.logger,
@@ -49,14 +55,14 @@ export async function runCouncil(input: z.input<typeof CouncilInputSchema>, opti
 
   try {
     const initialState = createInitialRunState(parsedInput, personaSet);
-    const finalState = await runCouncilLoop(initialState, deps);
+    const finalState = await runDecisionCouncilLoop(initialState, deps);
 
     if (!finalState.finalReport) {
-      throw new CouncilRunFailedError("Council workflow completed without a final report.");
+      throw new DecisionCouncilRunFailedError("Council workflow completed without a final report.");
     }
 
     if (options.deps?.writeArtifacts !== false) {
-      const artifacts = await writeCouncilArtifacts({
+      const artifacts = await writeDecisionCouncilArtifacts({
         outputDir: options.outputDir ?? "runs/latest",
         state: finalState,
       });
@@ -90,6 +96,3 @@ export async function runCouncil(input: z.input<typeof CouncilInputSchema>, opti
     throw error;
   }
 }
-
-export const runDecisionCouncil = runCouncil;
-export type RunDecisionCouncilOptions = RunCouncilOptions;

@@ -1,0 +1,61 @@
+id: architecture-style-001
+domain: architecture-style
+difficulty: intermediate
+title: Monolith vs microservices for an early-stage product
+prompt: >-
+  We are an early-stage startup (3 engineers) building a new product. Should we
+  start with a monolith, microservices, or a modular monolith?
+context:
+  - Requirements are still changing weekly.
+  - No proven scaling bottlenecks yet.
+constraints:
+  - Optimize for shipping speed and low operational overhead.
+referenceAnswer:
+  recommendation: >-
+    Start with a modular monolith: one deployable with clear internal module
+    boundaries. Extract services later at proven seams when scaling or team
+    boundaries demand it.
+  rationale:
+    - A single deployable minimizes operational overhead for a tiny team.
+    - Internal module boundaries preserve the option to extract services later
+      without distributed-systems cost now.
+  strongestObjections:
+    - Microservices give independent scaling and deployment and team autonomy.
+    - Refactoring a monolith into services later is real work.
+  conditions:
+    - Move toward microservices when you have independent scaling needs, multiple
+      teams needing deploy autonomy, or clear bounded contexts under load.
+  viableAlternatives:
+    - Microservices (independent scaling/teams)
+    - Plain monolith (even simpler, weaker internal boundaries)
+  redFlags:
+    - Adopting microservices on day one with a 3-person team and unstable
+      requirements.
+  sources:
+    - https://martinfowler.com/bliki/MonolithFirst.html
+    - https://martinfowler.com/articles/microservices.html
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

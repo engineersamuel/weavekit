@@ -7,6 +7,17 @@ export type {
   PersonaDefinition,
   PersonaSet,
 } from "./decision-council/types.js";
-export { defaultPersonaSet, resolvePersonaSet } from "./decision-council/personas.js";
-export { runCouncil as runDecisionCouncil, type RunCouncilOptions as RunDecisionCouncilOptions } from "./decision-council/runner.js";
-export { createCouncilWorkflow as createDecisionCouncilWorkflow, type CouncilWorkflowDeps as DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js";
+export { defaultPersonaSet, gameTheorist, personaSetRegistry, resolvePersonaSet, resolvePersonaSetByName, strategicPersonaSet, sunTzu } from "./decision-council/personas.js";
+export { runDecisionCouncil, type RunDecisionCouncilOptions } from "./decision-council/runner.js";
+export { createDecisionCouncilWorkflow, type DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js";
+
+// Reusable, workflow-agnostic persona subsystem.
+export {
+  composePersonaPrompt,
+  getPersona,
+  getPersonaSet,
+  listPersonaSets,
+  PersonaArchetypeSchema,
+  PersonaModeSchema,
+} from "./personas/index.js";
+export type { PersonaArchetype, PersonaMode } from "./personas/index.js";

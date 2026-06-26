@@ -11,14 +11,19 @@
     "typecheck": "tsc --noEmit",
     "baml-generate": "baml-cli generate",
     "build": "npm run baml-generate && tsc -p tsconfig.json",
-    "council": "tsx src/cli.ts"
+    "council": "tsx src/cli.ts",
+    "eval": "tsx src/eval-cli.ts",
+    "bench:router": "tsx scripts/router-benchmark.ts"
   },
   "dependencies": {
-    "@boundaryml/baml": "^0.220.0",
+    "@boundaryml/baml": "^0.223.0",
     "@flue/runtime": "^1.0.0-beta.5",
     "@github/copilot-sdk": "^0.1.0",
     "picocolors": "^1.1.1",
+    "promptfoo": "^0.121.17",
+    "smol-toml": "^1.7.0",
     "valibot": "^1.0.0",
+    "yaml": "^2.9.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {

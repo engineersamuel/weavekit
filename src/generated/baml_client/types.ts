@@ -71,10 +71,10 @@ export interface PersonaCritique {
   
 }
 
-export interface PersonaDefinition {
-  id: string
-  name: string
-  description: string
+export interface PersonaCritiqueSummary {
+  personaId: string
+  overallSummary: string
+  summary: string
   
 }
 
@@ -88,8 +88,6 @@ export interface PersonaFailure {
 export interface RawPersonaResult {
   personaId: string
   text: string
-  transcript: string[]
-  metadata: Record<string, string>
   
 }
 
@@ -105,9 +103,10 @@ export interface RoundAssessment {
   
 }
 
-export interface RoundBrief {
-  roundNumber: number
-  prompt: string
-  focus: string
+export interface RoutingDecision {
+  clientName?: string | null
+  model: string
+  reasoningEffort?: string | null
+  rationale: string
   
 }

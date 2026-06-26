@@ -1,0 +1,66 @@
+id: orchestration-framework-002
+domain: orchestration-framework
+difficulty: intermediate
+title: Durable long-running workflow engine
+prompt: >-
+  We need to run multi-step business workflows that can take hours to days, with
+  retries, timeouts, and occasional human approval steps. Should we use Temporal,
+  a cron + work-queue setup, or Airflow?
+context:
+  - Steps call external APIs that fail intermittently and must be retried.
+  - Some workflows pause for human approval before continuing.
+constraints:
+  - Must survive process restarts without losing in-flight work.
+  - Team is comfortable operating one new stateful system.
+referenceAnswer:
+  recommendation: >-
+    Use Temporal (or an equivalent durable-execution engine) for stateful,
+    long-running workflows that need retries, timers, and signals for
+    human-in-the-loop steps.
+  rationale:
+    - Durable execution persists workflow state, so in-flight work survives
+      restarts without bespoke checkpointing.
+    - Built-in retries, timeouts, and signals directly model the retry and
+      human-approval requirements.
+  strongestObjections:
+    - Temporal is a heavy stateful system to operate and learn.
+    - For simple periodic jobs it is over-engineered.
+  conditions:
+    - Use cron + a work queue when workflows are short, mostly stateless periodic
+      tasks.
+    - Use Airflow when the work is scheduled batch/data-pipeline DAGs rather than
+      per-request business workflows.
+  viableAlternatives:
+    - cron + durable work queue (SQS/RabbitMQ)
+    - Airflow (DAG-oriented batch scheduling)
+  redFlags:
+    - Hand-rolling durable retries and state machines on a bare cron job for
+      complex long-running workflows.
+  sources:
+    - https://docs.temporal.io/
+    - https://airflow.apache.org/docs/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

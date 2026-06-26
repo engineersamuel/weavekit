@@ -31,22 +31,22 @@ export default class TypeBuilder {
     
     PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "overallSummary" | "summary" | "claims" | "risks" | "questions" | "recommendations">;
     
-    PersonaDefinition: ClassViewer<'PersonaDefinition', "id" | "name" | "description">;
+    PersonaCritiqueSummary: ClassViewer<'PersonaCritiqueSummary', "personaId" | "overallSummary" | "summary">;
     
     PersonaFailure: ClassViewer<'PersonaFailure', "personaId" | "message" | "retryable">;
     
-    RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text" | "transcript" | "metadata">;
+    RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
     
     RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "nextRoundBrief">;
     
-    RoundBrief: ClassViewer<'RoundBrief', "roundNumber" | "prompt" | "focus">;
+    RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
     
     
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "CouncilReport","PersonaCritique","PersonaDefinition","PersonaFailure","RawPersonaResult","RoundAssessment","RoundBrief",
+            "CouncilReport","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","RawPersonaResult","RoundAssessment","RoutingDecision",
           ]),
           enums: new Set([
             
@@ -62,8 +62,8 @@ export default class TypeBuilder {
           "personaId","overallSummary","summary","claims","risks","questions","recommendations",
         ]);
         
-        this.PersonaDefinition = this.tb.classViewer("PersonaDefinition", [
-          "id","name","description",
+        this.PersonaCritiqueSummary = this.tb.classViewer("PersonaCritiqueSummary", [
+          "personaId","overallSummary","summary",
         ]);
         
         this.PersonaFailure = this.tb.classViewer("PersonaFailure", [
@@ -71,15 +71,15 @@ export default class TypeBuilder {
         ]);
         
         this.RawPersonaResult = this.tb.classViewer("RawPersonaResult", [
-          "personaId","text","transcript","metadata",
+          "personaId","text",
         ]);
         
         this.RoundAssessment = this.tb.classViewer("RoundAssessment", [
           "roundNumber","consensus","disagreements","confidence","convergence","shouldContinue","diminishingReturns","nextRoundBrief",
         ]);
         
-        this.RoundBrief = this.tb.classViewer("RoundBrief", [
-          "roundNumber","prompt","focus",
+        this.RoutingDecision = this.tb.classViewer("RoutingDecision", [
+          "clientName","model","reasoningEffort","rationale",
         ]);
         
         

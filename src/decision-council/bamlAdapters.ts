@@ -1,51 +1,163 @@
 import { b } from "../generated/baml_client/index.js";
-import type {
-  DecisionCouncilReport,
-  DecisionPersonaCritique,
-  DecisionPersonaFailure,
-  DecisionRoundAssessment,
-  RawPersonaResult,
+import {
+  resolveBamlEffortModel,
+  toBamlCallOptions,
+  type BamlEnv,
+  type BamlRouteOptions,
+} from "./bamlRouting.js";
+import type { ModelRouter, RouteTaskKind } from "./modelRouter.js";
+import {
+  DecisionCouncilReportSchema,
+  DecisionPersonaCritiqueSchema,
+  DecisionRoundAssessmentSchema,
+  type DecisionCouncilReport,
+  type DecisionPersonaCritique,
+  type DecisionPersonaCritiqueSummary,
+  type DecisionPersonaFailure,
+  type DecisionRoundAssessment,
+  type RawPersonaResult,
 } from "./types.js";
 
+// Observability hook: the adapter resolves the routed model internally, so it surfaces it via
+// this callback (invoked after routing, before the client call) for log decoration. Optional so
+// fakes and non-routed callers can ignore it.
+export type ModelObserver = (model: string | undefined) => void;
+
 export type CritiqueNormalizer = {
-  normalizeCritique(raw: RawPersonaResult): Promise<DecisionPersonaCritique>;
+  normalizeCritique(
+    raw: RawPersonaResult,
+    onModel?: ModelObserver,
+  ): Promise<DecisionPersonaCritique>;
 };
 
 export type JudgeReducer = {
-  assessRound(args: {
-    roundNumber: number;
-    critiques: DecisionPersonaCritique[];
-    failures: DecisionPersonaFailure[];
-  }): Promise<DecisionRoundAssessment>;
-  createFinalReport(args: {
-    critiques: DecisionPersonaCritique[];
-    assessments: DecisionRoundAssessment[];
-    failures: DecisionPersonaFailure[];
-  }): Promise<DecisionCouncilReport>;
+  assessRound(
+    args: {
+      roundNumber: number;
+      critiques: DecisionPersonaCritique[];
+      failures: DecisionPersonaFailure[];
+    },
+    onModel?: ModelObserver,
+  ): Promise<DecisionRoundAssessment>;
+  createFinalReport(
+    args: {
+      critiques: DecisionPersonaCritique[];
+      assessments: DecisionRoundAssessment[];
+      failures: DecisionPersonaFailure[];
+    },
+    onModel?: ModelObserver,
+  ): Promise<DecisionCouncilReport>;
+};
+
+// Structural seam over the generated client so adapters can be tested without a live proxy.
+export type RoutableBamlClient = {
+  NormalizePersonaCritique(
+    args: { personaId: string; text: string },
+    options?: BamlRouteOptions,
+  ): Promise<DecisionPersonaCritique>;
+  AssessCouncilRound(
+    roundNumber: number,
+    critiques: DecisionPersonaCritique[],
+    failures: DecisionPersonaFailure[],
+    options?: BamlRouteOptions,
+  ): Promise<DecisionRoundAssessment>;
+  CreateCouncilReport(
+    critiques: DecisionPersonaCritiqueSummary[],
+    assessments: DecisionRoundAssessment[],
+    failures: DecisionPersonaFailure[],
+    options?: BamlRouteOptions,
+  ): Promise<DecisionCouncilReport>;
 };
 
 export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
-  async normalizeCritique(raw: RawPersonaResult): Promise<DecisionPersonaCritique> {
-    return b.NormalizePersonaCritique(raw);
+  private readonly router?: ModelRouter;
+  private readonly bamlEnv: BamlEnv;
+  private readonly client: RoutableBamlClient;
+
+  constructor(args: { router?: ModelRouter; bamlEnv?: BamlEnv; bamlClient?: RoutableBamlClient } = {}) {
+    this.router = args.router;
+    this.bamlEnv = args.bamlEnv ?? {
+      baseUrl: process.env.COPILOT_PROXY_BASE_URL,
+      apiKey: process.env.COPILOT_PROXY_API_KEY,
+    };
+    this.client = args.bamlClient ?? (b as unknown as RoutableBamlClient);
   }
 
-  async assessRound(args: {
-    roundNumber: number;
-    critiques: DecisionPersonaCritique[];
-    failures: DecisionPersonaFailure[];
-  }): Promise<DecisionRoundAssessment> {
-    const result = await b.AssessCouncilRound(args.roundNumber, args.critiques, args.failures);
+  private async resolveRouting(
+    taskKind: RouteTaskKind,
+    summary?: string,
+  ): Promise<{ options: BamlRouteOptions | undefined; model: string | undefined }> {
+    if (!this.router) {
+      return { options: undefined, model: undefined };
+    }
+    const decision = await this.router.route({ taskKind, summary });
+    // Report only the validated client's canonical model, never the free-form decision.model.
+    // When no known client is chosen, toBamlCallOptions returns no override and the call runs
+    // against DefaultClient (BAML_MODEL), so report undefined (the log omits model=) rather
+    // than a model id the request did not actually use.
     return {
-      ...result,
-      nextRoundBrief: result.nextRoundBrief ?? undefined,
+      options: toBamlCallOptions(decision, this.bamlEnv),
+      model: resolveBamlEffortModel(decision),
     };
   }
 
-  async createFinalReport(args: {
-    critiques: DecisionPersonaCritique[];
-    assessments: DecisionRoundAssessment[];
-    failures: DecisionPersonaFailure[];
-  }): Promise<DecisionCouncilReport> {
-    return b.CreateCouncilReport(args.critiques, args.assessments, args.failures);
+  async normalizeCritique(
+    raw: RawPersonaResult,
+    onModel?: ModelObserver,
+  ): Promise<DecisionPersonaCritique> {
+    const { options, model } = await this.resolveRouting("normalize", raw.text);
+    onModel?.(model);
+    const result = await this.client.NormalizePersonaCritique(
+      { personaId: raw.personaId, text: raw.text },
+      options,
+    );
+    return DecisionPersonaCritiqueSchema.parse(result);
+  }
+
+  async assessRound(
+    args: {
+      roundNumber: number;
+      critiques: DecisionPersonaCritique[];
+      failures: DecisionPersonaFailure[];
+    },
+    onModel?: ModelObserver,
+  ): Promise<DecisionRoundAssessment> {
+    const { options, model } = await this.resolveRouting("assess");
+    onModel?.(model);
+    const result = await this.client.AssessCouncilRound(
+      args.roundNumber,
+      args.critiques,
+      args.failures,
+      options,
+    );
+    return DecisionRoundAssessmentSchema.parse(result);
+  }
+
+  async createFinalReport(
+    args: {
+      critiques: DecisionPersonaCritique[];
+      assessments: DecisionRoundAssessment[];
+      failures: DecisionPersonaFailure[];
+    },
+    onModel?: ModelObserver,
+  ): Promise<DecisionCouncilReport> {
+    const { options, model } = await this.resolveRouting("report");
+    onModel?.(model);
+    // Feed only per-persona summaries to the report call. The full critiques (with claims,
+    // risks, questions, recommendations) stay authoritative in the run state; sending them
+    // verbatim made the report generation large enough to intermittently exceed the proxy
+    // timeout. The Judge assessments already carry the cross-persona synthesis.
+    const critiqueSummaries: DecisionPersonaCritiqueSummary[] = args.critiques.map((critique) => ({
+      personaId: critique.personaId,
+      overallSummary: critique.overallSummary,
+      summary: critique.summary,
+    }));
+    const result = await this.client.CreateCouncilReport(
+      critiqueSummaries,
+      args.assessments,
+      args.failures,
+      options,
+    );
+    return DecisionCouncilReportSchema.parse(result);
   }
 }

@@ -1,0 +1,66 @@
+id: data-store-001
+domain: data-store
+difficulty: intermediate
+title: Primary datastore for a transactional SaaS app
+prompt: >-
+  We are building a multi-tenant transactional SaaS app with clearly relational
+  data (users, orgs, subscriptions, invoices) and moderate scale. Should our
+  primary datastore be PostgreSQL, MongoDB, or DynamoDB?
+context:
+  - Data is highly relational with many cross-entity queries and reports.
+  - Scale is moderate (thousands of tenants), not hyperscale.
+constraints:
+  - Strong consistency and transactions across related rows are required.
+  - The team knows SQL.
+referenceAnswer:
+  recommendation: >-
+    Use PostgreSQL as the primary datastore: it gives ACID transactions,
+    relational integrity, rich querying, and JSONB for the occasional flexible
+    field, which fits relational SaaS data at moderate scale.
+  rationale:
+    - Relational data with cross-entity queries and reporting is exactly the
+      relational model's strength.
+    - ACID transactions cover the consistency requirement out of the box.
+    - JSONB provides schema flexibility without leaving Postgres.
+  strongestObjections:
+    - DynamoDB offers near-infinite scale and predictable latency with low ops.
+    - MongoDB's flexible document model speeds early schema iteration.
+  conditions:
+    - Choose DynamoDB when access patterns are few and known up front and you
+      need hyperscale on AWS with single-digit-ms latency.
+    - Choose MongoDB when data is genuinely document-shaped with few cross-entity
+      joins.
+  viableAlternatives:
+    - DynamoDB (single-table, hyperscale, known access patterns)
+    - MongoDB (document model, flexible schema)
+  redFlags:
+    - Picking DynamoDB for ad-hoc relational/analytical queries it cannot serve
+      efficiently.
+  sources:
+    - https://www.postgresql.org/docs/
+    - https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

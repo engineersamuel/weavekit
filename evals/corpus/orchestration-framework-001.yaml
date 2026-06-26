@@ -1,0 +1,78 @@
+id: orchestration-framework-001
+domain: orchestration-framework
+difficulty: advanced
+title: Orchestration layer for a typed multi-persona Copilot-SDK council
+prompt: >-
+  We are building a v0 "design council" that fans out a decision prompt to
+  several GitHub Copilot SDK persona sessions, then fans their critiques back in
+  through BAML-typed contracts and a judge step. Which workflow/agent
+  orchestration layer should we build on: Flue, Mastra, or LangGraph?
+context:
+  - The workflow is finite fan-out/fan-in with at most three rounds.
+  - Outputs must be strongly typed via BAML for the fan-in/judge contracts.
+  - The team wants a small public interface and Markdown + JSON artifacts.
+constraints:
+  - Keep the public interface small.
+  - Stop in no more than three rounds.
+  - Must emit Markdown and JSON artifacts.
+  - Needs observability and the ability to manage multiple workflows.
+referenceAnswer:
+  recommendation: >-
+    Build on a thin, typed finite-workflow runtime (Flue, or a small hand-rolled
+    fan-out/fan-in loop) rather than a heavyweight agent framework, because the
+    requirements are a bounded, finite workflow with typed BAML fan-in and a
+    small surface. Reserve LangGraph/Mastra for when you actually need their
+    heavier capabilities.
+  rationale:
+    - The workflow is finite (<=3 rounds) and well-structured, so a small typed
+      runtime matches the problem without framework lock-in.
+    - BAML already owns the typed contracts, so the orchestrator only needs
+      reliable fan-out/fan-in, retries, and artifact emission.
+    - A small public interface and easy multi-workflow management argue for
+      minimal abstraction surface.
+  strongestObjections:
+    - LangGraph offers durable, cyclic graphs with checkpointing and a large
+      ecosystem you would have to reimplement if requirements grow.
+    - Mastra ships batteries-included agent primitives, memory, and hosting that
+      could speed up later workflows.
+    - A hand-rolled runtime risks reinventing retry/observability plumbing.
+  conditions:
+    - Choose LangGraph if you need durable execution, cyclic/branching graphs,
+      human-in-the-loop checkpoints, or replay across many long-running flows.
+    - Choose Mastra if you want an opinionated agent platform with built-in
+      memory, tools, and deployment rather than a minimal seam.
+  viableAlternatives:
+    - LangGraph (durable cyclic graphs + checkpointing)
+    - Mastra (batteries-included agent framework)
+  redFlags:
+    - Adopting LangGraph or Mastra purely for popularity when the workflow is a
+      simple bounded fan-out/fan-in that a thin runtime handles.
+  sources:
+    - https://github.com/langchain-ai/langgraph
+    - https://mastra.ai/
+    - https://docs.boundaryml.com/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

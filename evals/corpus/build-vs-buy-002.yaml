@@ -1,0 +1,60 @@
+id: build-vs-buy-002
+domain: build-vs-buy
+difficulty: intermediate
+title: Self-host vs managed observability
+prompt: >-
+  We need logging, metrics, and tracing. Should we self-host an open-source stack
+  (Prometheus/Grafana/Loki/OpenTelemetry) or buy a managed platform like Datadog?
+context:
+  - Small platform team, early in the product's life.
+  - Data volumes are currently modest but may grow.
+constraints:
+  - Minimize operational burden now; control cost as we scale.
+referenceAnswer:
+  recommendation: >-
+    Buy a managed observability platform early to minimize operational burden,
+    while instrumenting with vendor-neutral OpenTelemetry so you can migrate or
+    self-host later if cost demands it.
+  rationale:
+    - A small team avoids running and scaling a stateful observability stack.
+    - OpenTelemetry instrumentation keeps you portable and avoids lock-in at the
+      instrumentation layer.
+  strongestObjections:
+    - Managed observability bills can grow steeply with data volume.
+    - Self-hosting gives full control over retention and data residency.
+  conditions:
+    - Self-host when data volume makes managed cost prohibitive, or compliance
+      requires data residency, and you have the team to operate it.
+  viableAlternatives:
+    - Self-hosted Prometheus/Grafana/Loki + OpenTelemetry
+  redFlags:
+    - Standing up and operating a full self-hosted observability cluster with a
+      tiny team before it is justified.
+  sources:
+    - https://opentelemetry.io/docs/
+    - https://grafana.com/docs/
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer commits to a clear recommendation that matches
+      the reference recommendation or a well-reasoned equivalent; half credit for
+      a vague or weakly justified pick; no credit for no decision or an
+      indefensible one.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer surfaces the major tradeoffs and the strongest
+      objections in the reference; half credit for partial coverage; no credit
+      when tradeoffs are ignored.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer states the conditions under which a different
+      choice (the reference alternatives) would be better; half credit for naming
+      alternatives without conditions; no credit for none.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer avoids the reference red flags / known
+      anti-patterns; no credit when it recommends a flagged anti-pattern.

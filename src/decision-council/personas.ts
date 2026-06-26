@@ -1,31 +1,20 @@
-import { PersonaSetSchema, type PersonaSet } from "./types.js";
+import {
+  getPersona,
+  getPersonaSet,
+  resolvePersonaSet,
+  resolvePersonaSetByName,
+} from "../personas/index.js";
+import type { PersonaDefinition, PersonaSet } from "../personas/index.js";
 
-export const defaultPersonaSet: PersonaSet = PersonaSetSchema.parse({
-  name: "default",
-  personas: [
-    {
-      id: "socratic",
-      name: "Socratic Questioner",
-      description: "Surfaces hidden assumptions, missing definitions, and questions the design has not answered.",
-    },
-    {
-      id: "deep-module-dry",
-      name: "Deep Module/DRY Architect",
-      description: "Critiques seams, interfaces, duplication, module depth, leverage, and locality.",
-    },
-    {
-      id: "pragmatic",
-      name: "Pragmatic Builder",
-      description: "Finds the smallest executable next step and guards against overbuilding.",
-    },
-    {
-      id: "skeptic",
-      name: "Skeptic",
-      description: "Looks for failure modes, weak evidence, overconfidence, and hidden costs.",
-    },
-  ],
-});
+export { resolvePersonaSet, resolvePersonaSetByName };
 
-export function resolvePersonaSet(personaSet: PersonaSet = defaultPersonaSet): PersonaSet {
-  return PersonaSetSchema.parse(structuredClone(personaSet));
-}
+export const defaultPersonaSet: PersonaSet = getPersonaSet("default");
+export const strategicPersonaSet: PersonaSet = getPersonaSet("strategic");
+export const gameTheorist: PersonaDefinition = getPersona("strategic-game-theorist");
+export const sunTzu: PersonaDefinition = getPersona("sun-tzu");
+
+export const personaSetRegistry: Record<string, PersonaSet> = {
+  default: defaultPersonaSet,
+  strategic: strategicPersonaSet,
+  dialectic: getPersonaSet("dialectic"),
+};
