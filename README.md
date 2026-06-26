@@ -41,6 +41,12 @@ GitHub Copilot SDK authentication for persona workers follows the SDK's local au
 
 Weavekit uses Flue as the production workflow/agent harness. The main workflow path should call models through Flue/Pi providers, not through `@github/copilot-sdk`. The Copilot SDK may be used later for an explicit final handoff/autopilot experiment, but it is not the primary Decision Council model-call path.
 
+Set `WEAVEKIT_FLUE_MODEL` to override the default Flue model for Decision Council agents. Defaults to `anthropic/claude-haiku-4-5`. The model must be a registered Flue/Pi provider.
+
+```bash
+export WEAVEKIT_FLUE_MODEL="anthropic/claude-sonnet-4-6"
+```
+
 ### Flue MCP tools
 
 The Flue workflow can expose selected MCP tools from the same systems used in local Copilot CLI config:
