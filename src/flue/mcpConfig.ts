@@ -29,6 +29,8 @@ export function buildFlueMcpSpecs(
       name: "exa",
       kind: "remote",
       enabled: Boolean(env.EXA_API_KEY),
+      // Note: Exa MCP server requires the API key in the URL at runtime.
+      // Runtime secrets like env.EXA_API_KEY are passed as connection parameters, not hardcoded from config files.
       url: env.EXA_API_KEY ? `https://mcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(env.EXA_API_KEY)}` : "https://mcp.exa.ai/mcp",
       transport: "streamable-http",
       tools: ["*"],

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildFlueMcpSpecs, getEnabledRemoteMcpSpecs } from "../../src/flue/mcpConfig.js";
 
 describe("Flue MCP config", () => {
-  it("builds remote MCP specs from environment without embedding secrets", () => {
+  it("builds remote MCP specs from environment without hardcoding local secrets", () => {
     const specs = buildFlueMcpSpecs({
       EXA_API_KEY: "exa-secret",
       CONTEXT7_API_KEY: "ctx-key",
