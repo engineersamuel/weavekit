@@ -15,7 +15,7 @@ npm install
 npm run baml-generate
 ```
 
-Run the local Copilot proxy on port 8080 before running the real workflow. The BAML clients use the proxy's OpenAI-compatible `/v1/chat/completions` endpoint. Set `BAML_MODEL` to your preferred model (e.g., `gpt-5-mini`).
+Run the local Copilot proxy on port 8080 before running the real workflow. The BAML clients use the proxy's OpenAI-compatible `/v1/chat/completions` endpoint. Set `BAML_MODEL` for the fallback `DefaultClient` (e.g., `gpt-5-mini`); note the decision council routes its BAML calls to fixed policy clients by default, so `BAML_MODEL` does not drive them (see [Model + effort routing](#model--effort-routing)).
 
 ```bash
 curl -fsS http://127.0.0.1:8080/health
@@ -25,11 +25,11 @@ export COPILOT_PROXY_API_KEY="anything"
 export BAML_MODEL="gpt-5-mini"
 ```
 
-`COPILOT_PROXY_BASE_URL` is the base URL for the `DefaultClient` (the BAML client used by the normalize and judge functions). Set it to your proxy's OpenAI-compatible endpoint. The hardcoded `CopilotProxy*` model clients always use `http://127.0.0.1:8080/v1`.
+`COPILOT_PROXY_BASE_URL` is the base URL for the `DefaultClient` (the BAML fallback client, used only when no model router is injected). Set it to your proxy's OpenAI-compatible endpoint. The hardcoded `CopilotProxy*` model clients — including the ones the decision council routes to by default — always use `http://127.0.0.1:8080/v1`.
 
 `COPILOT_PROXY_API_KEY` can be any non-empty value unless your proxy is configured to require a specific inbound API key. The proxy uses your local Copilot credentials; keep it bound to loopback.
 
-`BAML_MODEL` sets the model for `DefaultClient`. Defaults to `gpt-5-mini` in prior versions; must now be set explicitly.
+`BAML_MODEL` sets the model for `DefaultClient`, the fallback used when no model router is injected. By default the decision council routes `normalize`/`assess`/`report` to fixed policy clients (see [Model + effort routing](#model--effort-routing)), so `BAML_MODEL` does not affect those calls. Defaults to `gpt-5-mini` in prior versions; must now be set explicitly.
 
 > **Migration note (from ≤ aa829d9):** The BAML `DefaultClient` env variables were renamed when client definitions were extracted to `baml_src/clients.baml`. Rename your environment variables:
 > - `BAML_OPENAI_BASE_URL` → `COPILOT_PROXY_BASE_URL`

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ROUTING_POLICY,
   PolicyModelRouter,
@@ -104,9 +104,9 @@ describe("LlmModelRouter", () => {
   });
 
   it("enforces the timeout even when the call ignores the abort signal", async () => {
-    // This call never settles and never observes the signal — only the independent
-    // rejectAfter race can rescue it. Proves the sub-5s guarantee does not depend on
-    // the underlying call honoring AbortSignal.
+    // This call never settles and never observes the signal — only the independent timeout
+    // (which both aborts and rejects) can rescue it. Proves the sub-5s guarantee does not
+    // depend on the underlying call honoring AbortSignal.
     const call: RouteModelCallFn = () => new Promise<never>(() => {});
     const router = new LlmModelRouter({
       fallback: new PolicyModelRouter(),
@@ -118,6 +118,27 @@ describe("LlmModelRouter", () => {
     const decision = await router.route({ taskKind: "report" });
     expect(decision.clientName).toBe("CopilotProxyClaudeSonnet46");
     expect(Date.now() - start).toBeLessThan(500);
+  });
+
+  it("clears its timeout timer when the call resolves before the deadline (no leaked timer)", async () => {
+    vi.useFakeTimers();
+    try {
+      const call: RouteModelCallFn = async () => ({
+        clientName: "CopilotProxyGpt54",
+        model: "gpt-5.4",
+        rationale: "fast",
+      });
+      const router = new LlmModelRouter({
+        fallback: new PolicyModelRouter(),
+        callRouteModelCall: call,
+        timeoutMs: 3500,
+      });
+      const decision = await router.route({ taskKind: "assess", dynamic: true });
+      expect(decision.clientName).toBe("CopilotProxyGpt54");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

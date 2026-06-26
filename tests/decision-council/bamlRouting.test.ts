@@ -1,6 +1,6 @@
 import { ClientRegistry } from "@boundaryml/baml";
 import { describe, expect, it } from "vitest";
-import { toBamlCallOptions } from "../../src/decision-council/bamlRouting.js";
+import { resolveBamlEffortModel, toBamlCallOptions } from "../../src/decision-council/bamlRouting.js";
 
 describe("toBamlCallOptions", () => {
   it("returns an empty object when there is no decision", () => {
@@ -31,5 +31,30 @@ describe("toBamlCallOptions", () => {
       {},
     );
     expect(options).toEqual({ client: "CopilotProxyGpt55" });
+  });
+
+  it("derives the effort model from the validated client, ignoring a hallucinated decision.model", () => {
+    expect(
+      resolveBamlEffortModel({
+        clientName: "CopilotProxyClaudeHaiku45",
+        model: "HALLUCINATED-DOES-NOT-EXIST",
+        rationale: "",
+      }),
+    ).toBe("claude-haiku-4-5");
+  });
+
+  it("resolves no effort model for an unknown client so no untrusted model can reach the proxy", () => {
+    expect(
+      resolveBamlEffortModel({ clientName: "CopilotProxyHallucinated", model: "x", rationale: "" }),
+    ).toBeUndefined();
+  });
+
+  it("does not build an effort registry for an unknown client even when effort + base url are present", () => {
+    const options = toBamlCallOptions(
+      { clientName: "CopilotProxyHallucinated", model: "x", reasoningEffort: "high", rationale: "" },
+      { baseUrl: "http://127.0.0.1:8080/v1", apiKey: "k" },
+    );
+    expect(options.clientRegistry).toBeUndefined();
+    expect(options).toEqual({ client: "CopilotProxyHallucinated" });
   });
 });
