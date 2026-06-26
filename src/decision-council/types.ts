@@ -70,6 +70,13 @@ export const DecisionRoundAssessmentSchema = z.object({
 
 export type DecisionRoundAssessment = z.infer<typeof DecisionRoundAssessmentSchema>;
 
+export const DecisionPersonaSelectionSchema = z.object({
+  personaIds: z.array(z.string().min(1)).min(2),
+  rationale: z.string().min(1),
+});
+
+export type DecisionPersonaSelection = z.infer<typeof DecisionPersonaSelectionSchema>;
+
 export const DecisionCouncilReportSchema = z.object({
   recommendation: z.string().min(1),
   rationale: z.array(z.string().min(1)),
@@ -86,6 +93,7 @@ export type DecisionCouncilReport = z.infer<typeof DecisionCouncilReportSchema>;
 
 export const DecisionCouncilRoundSchema = z.object({
   brief: RoundBriefSchema,
+  personaSelection: DecisionPersonaSelectionSchema,
   rawResults: z.array(RawPersonaResultSchema),
   critiques: z.array(DecisionPersonaCritiqueSchema),
   failures: z.array(DecisionPersonaFailureSchema),

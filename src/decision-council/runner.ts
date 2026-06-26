@@ -5,6 +5,7 @@ import { DecisionCouncilRunFailedError } from "./errors.js";
 import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
 import { CopilotPersonaWorker } from "./personaWorker.js";
 import { resolvePersonaSet, resolvePersonaSetByName } from "./personas.js";
+import { createBamlPersonaSelector, createStaticPersonaSelector, listPersonas } from "../personas/index.js";
 import {
   DecisionCouncilInputSchema,
   createInitialRunState,
@@ -31,13 +32,27 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
   const startedAt = performance.now();
   const runId = `council-${Date.now().toString(36)}`;
   const parsedInput = DecisionCouncilInputSchema.parse(input);
-  const personaSet = options.personaSet
+  const explicitPersonaSetName = options.personaSetName ?? parsedInput.personaSetName;
+  const staticPersonaSet = options.personaSet
     ? resolvePersonaSet(options.personaSet)
-    : resolvePersonaSetByName(options.personaSetName ?? parsedInput.personaSetName);
+    : explicitPersonaSetName
+      ? resolvePersonaSetByName(explicitPersonaSetName)
+      : undefined;
+  const candidatePool = staticPersonaSet ? [] : listPersonas();
+  const personaSelector = staticPersonaSet
+    ? createStaticPersonaSelector(staticPersonaSet)
+    : (options.deps?.personaSelector ??
+      createBamlPersonaSelector({
+        candidatePersonas: candidatePool,
+        minPersonas: 2,
+        maxPersonas: 6,
+      }));
+  const runVisiblePersonaSet = staticPersonaSet ?? { name: "candidates", personas: candidatePool };
   const router = options.router ?? createDefaultModelRouter(defaultRouteModelCall);
   const bamlAdapters = new GeneratedBamlAdapters({ router });
   const maxRounds = options.maxRounds ?? 3;
   const deps: DecisionCouncilWorkflowDeps = {
+    personaSelector,
     personaWorker: options.deps?.personaWorker ?? new CopilotPersonaWorker({ router }),
     normalizer: options.deps?.normalizer ?? bamlAdapters,
     judge: options.deps?.judge ?? bamlAdapters,
@@ -45,18 +60,19 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
     runId,
   };
 
+  const initialState = createInitialRunState(parsedInput, runVisiblePersonaSet, maxRounds);
+
   options.logger?.event({
     type: "council.run.started",
     timestamp: timestamp(),
     runId,
     inputPath: options.inputPath,
     outputDir: options.outputDir,
-    personaCount: personaSet.personas.length,
+    personaCount: initialState.personas.length,
     maxRounds,
   });
 
   try {
-    const initialState = createInitialRunState(parsedInput, personaSet, maxRounds);
     const finalState = await runDecisionCouncilLoop(initialState, deps);
 
     if (!finalState.finalReport) {

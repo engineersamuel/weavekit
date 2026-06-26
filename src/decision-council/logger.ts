@@ -21,6 +21,30 @@ export type DecisionCouncilEvent =
       previousRoundNumber?: number;
     }
   | {
+      type: "council.personas.started";
+      timestamp: string;
+      runId: string;
+      roundNumber: number;
+      candidatePersonaCount: number;
+    }
+  | {
+      type: "council.personas.completed";
+      timestamp: string;
+      runId: string;
+      roundNumber: number;
+      personaIds: string[];
+      rationale: string;
+      durationMs: number;
+    }
+  | {
+      type: "council.personas.failed";
+      timestamp: string;
+      runId: string;
+      roundNumber: number;
+      durationMs: number;
+      error: string;
+    }
+  | {
       type: "council.persona.started" | "council.persona.completed" | "council.persona.failed";
       timestamp: string;
       runId: string;

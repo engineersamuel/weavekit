@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DecisionCouncilInputSchema,
+  DecisionCouncilRoundSchema,
   DecisionCouncilReportSchema,
   DecisionPersonaCritiqueSchema,
+  DecisionPersonaSelectionSchema,
   DecisionRoundAssessmentSchema,
   createInitialRunState,
 } from "../../src/decision-council/types.js";
@@ -88,5 +90,33 @@ describe("decision council domain types", () => {
     });
 
     expect(assessment.nextRoundBrief).toBeUndefined();
+  });
+
+  it("requires round persona selections to include at least two ids and rationale", () => {
+    const selection = DecisionPersonaSelectionSchema.parse({
+      personaIds: ["socratic", "pragmatic"],
+      rationale: "Need both pressure-testing and delivery focus.",
+    });
+    expect(selection.personaIds).toEqual(["socratic", "pragmatic"]);
+
+    expect(() =>
+      DecisionCouncilRoundSchema.parse({
+        brief: { roundNumber: 1, prompt: "Question", focus: "Initial critique" },
+        personaSelection: { personaIds: ["socratic"], rationale: "Too few." },
+        rawResults: [],
+        critiques: [],
+        failures: [],
+        assessment: {
+          roundNumber: 1,
+          consensus: "Continue",
+          disagreements: [],
+          confidence: 0.5,
+          convergence: 0.4,
+          shouldContinue: true,
+          diminishingReturns: false,
+          nextRoundBrief: "Focus on implementation risks.",
+        },
+      }),
+    ).toThrow();
   });
 });
