@@ -17,6 +17,11 @@ import {
 } from "./types.js";
 import type { z } from "zod";
 import { createDefaultModelRouter, defaultRouteModelCall, type ModelRouter } from "./modelRouter.js";
+import {
+  completeDecisionCouncilWorkItem,
+  startDecisionCouncilWorkItem,
+  type DecisionCouncilWorkQueueOptions,
+} from "../work-queue/decisionCouncil.js";
 
 export type RunDecisionCouncilOptions = {
   personaSet?: PersonaSet;
@@ -26,6 +31,7 @@ export type RunDecisionCouncilOptions = {
   inputPath?: string;
   logger?: DecisionCouncilLogger;
   router?: ModelRouter;
+  workQueue?: DecisionCouncilWorkQueueOptions;
   deps?: Partial<DecisionCouncilWorkflowDeps> & {
     writeArtifacts?: boolean;
   };
@@ -95,6 +101,8 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
         maxRounds,
       });
 
+      await startDecisionCouncilWorkItem(options.workQueue);
+
       const finalState = await runDecisionCouncilLoop(initialState, deps);
 
       if (!finalState.finalReport) {
@@ -131,6 +139,12 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
       setSerializedAttribute(span, "langfuse.trace.output", finalState.finalReport);
       setSerializedAttribute(span, "langfuse.observation.output", finalState.finalReport);
       span.setStatus({ code: SpanStatusCode.OK });
+
+      await completeDecisionCouncilWorkItem({
+        options: options.workQueue,
+        report: finalState.finalReport,
+        outputDir: options.deps?.writeArtifacts === false ? undefined : options.outputDir ?? "runs/latest",
+      });
 
       return finalState.finalReport;
     } catch (error) {

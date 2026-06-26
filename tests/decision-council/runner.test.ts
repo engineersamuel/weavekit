@@ -738,7 +738,6 @@ describe("runDecisionCouncil", () => {
 
     expect(report.recommendation).toBeDefined();
   });
-
   it("creates a root OTEL span and nests traced BAML spans beneath it", async () => {
     class TracedNormalizer implements CritiqueNormalizer {
       @TraceBamlOperation("normalize")
@@ -860,6 +859,56 @@ describe("runDecisionCouncil", () => {
       }),
     );
     expect(rootSpan?.ended).toBe(true);
+  });
+
+  it("claims and closes a work item only when work queue options are supplied", async () => {
+    const events: string[] = [];
+    const backend = {
+      async ready() {
+        return [];
+      },
+      async show() {
+        throw new Error("not used");
+      },
+      async claim(id: string) {
+        events.push(`claim:${id}`);
+        return { id, title: "x", status: "in_progress" as const, type: "task" as const, priority: 1, labels: [], dependencies: [] };
+      },
+      async create() {
+        throw new Error("not used");
+      },
+      async close(id: string, input: { reason: string }) {
+        events.push(`close:${id}:${input.reason}`);
+        return { id, title: "x", status: "closed" as const, type: "task" as const, priority: 1, labels: [], dependencies: [] };
+      },
+      async sync() {
+        events.push("sync");
+      },
+    };
+
+    await runDecisionCouncil(
+      { prompt: "Handle a work item." },
+      {
+        outputDir: "runs/work-item",
+        workQueue: {
+          backend,
+          workItemId: "bd-root",
+          claimOnStart: true,
+          closeOnSuccess: true,
+          syncOnComplete: true,
+        },
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    expect(events[0]).toBe("claim:bd-root");
+    expect(events[1]).toContain("close:bd-root:Decision Council completed.");
+    expect(events[2]).toBe("sync");
   });
 });
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -46,6 +47,11 @@ describe("CLI", () => {
       personaSetName: undefined,
       maxRounds: undefined,
       smoke: false,
+      workItemId: undefined,
+      claimWorkItem: false,
+      closeWorkItem: false,
+      createFollowUpWorkItem: false,
+      syncWorkQueue: false,
     });
   });
 
@@ -66,6 +72,11 @@ describe("CLI", () => {
       personaSetName: undefined,
       maxRounds: undefined,
       smoke: false,
+      workItemId: undefined,
+      claimWorkItem: false,
+      closeWorkItem: false,
+      createFollowUpWorkItem: false,
+      syncWorkQueue: false,
     });
   });
 
@@ -175,5 +186,32 @@ describe("CLI", () => {
 
   it("recognizes work queue command dispatch separately from decision-council", () => {
     expect(() => parseDecisionCouncilCliArgs(["work", "ready"])).toThrow("Usage: weavekit decision-council run");
+  });
+
+  it("parses explicit work item lifecycle flags", () => {
+    const parsed = parseDecisionCouncilCliArgs([
+      "decision-council",
+      "run",
+      "--input",
+      "x.md",
+      "--work-item",
+      "bd-root",
+      "--claim-work-item",
+      "--close-work-item",
+      "--create-follow-up-work-item",
+      "--sync-work-queue",
+    ]);
+
+    expect(parsed.workItemId).toBe("bd-root");
+    expect(parsed.claimWorkItem).toBe(true);
+    expect(parsed.closeWorkItem).toBe(true);
+    expect(parsed.createFollowUpWorkItem).toBe(true);
+    expect(parsed.syncWorkQueue).toBe(true);
+  });
+
+  it("rejects a missing work item id", () => {
+    expect(() =>
+      parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--work-item"]),
+    ).toThrow("Missing value for --work-item <id>.");
   });
 });

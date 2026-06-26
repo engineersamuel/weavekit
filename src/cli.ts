@@ -8,6 +8,7 @@ import { createConsoleDecisionCouncilLogger, createJsonDecisionCouncilLogger, cr
 import type { DecisionCouncilInput } from "./decision-council/types.js";
 import { startTelemetry, type TelemetryHandle } from "./telemetry/bootstrap.js";
 import { runWorkQueueCli } from "./work-queue/cli.js";
+import { BeadsCliWorkQueue } from "./work-queue/beads.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 
@@ -22,12 +23,17 @@ export type DecisionCouncilCliArgs = {
   personaSetName?: string;
   maxRounds?: number;
   smoke: boolean;
+  workItemId?: string;
+  claimWorkItem: boolean;
+  closeWorkItem: boolean;
+  createFollowUpWorkItem: boolean;
+  syncWorkQueue: boolean;
 };
 
 export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
   if (argv[0] !== "decision-council" || argv[1] !== "run") {
     throw new Error(
-      "Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>] (omit --persona-set for dynamic persona selection; provide --persona-set <name> for deterministic static selection.)",
+      "Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--max-rounds <n>] [--smoke] [--work-item <id>] [--claim-work-item] [--close-work-item] [--create-follow-up-work-item] [--sync-work-queue] [--log-format <pretty|json|silent>] (omit --persona-set for dynamic persona selection; provide --persona-set <name> for deterministic static selection.)",
     );
   }
 
@@ -66,6 +72,12 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     maxRounds = 1;
   }
 
+  const workItemIndex = argv.indexOf("--work-item");
+  if (workItemIndex !== -1 && !argv[workItemIndex + 1]) {
+    throw new Error("Missing value for --work-item <id>.");
+  }
+  const workItemId = workItemIndex === -1 ? undefined : argv[workItemIndex + 1];
+
   return {
     inputPath: argv[inputIndex + 1]!,
     outputDir: outputIndex === -1 ? "runs/latest" : argv[outputIndex + 1] ?? "runs/latest",
@@ -73,6 +85,11 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     personaSetName,
     maxRounds,
     smoke,
+    workItemId,
+    claimWorkItem: argv.includes("--claim-work-item"),
+    closeWorkItem: argv.includes("--close-work-item"),
+    createFollowUpWorkItem: argv.includes("--create-follow-up-work-item"),
+    syncWorkQueue: argv.includes("--sync-work-queue"),
   };
 }
 
@@ -114,6 +131,16 @@ export async function main(): Promise<void> {
 
     const args = parseDecisionCouncilCliArgs(argv);
     const input = await readDecisionCouncilInputFile(args.inputPath);
+    const workQueue = args.workItemId
+      ? {
+          backend: new BeadsCliWorkQueue({ cwd: process.cwd() }),
+          workItemId: args.workItemId,
+          claimOnStart: args.claimWorkItem,
+          closeOnSuccess: args.closeWorkItem,
+          createFollowUp: args.createFollowUpWorkItem,
+          syncOnComplete: args.syncWorkQueue,
+        }
+      : undefined;
     const report = await runDecisionCouncil(input, {
       outputDir: args.outputDir,
       inputPath: args.inputPath,
@@ -121,6 +148,7 @@ export async function main(): Promise<void> {
       maxRounds: args.maxRounds,
       router: args.smoke ? createSmokeModelRouter() : undefined,
       logger: createDecisionCouncilLogger(args.logFormat),
+      workQueue,
     });
 
     process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
