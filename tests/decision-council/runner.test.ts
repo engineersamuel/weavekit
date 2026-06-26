@@ -281,6 +281,24 @@ describe("runDecisionCouncil", () => {
     expect(defaultSeen.has("game-theorist")).toBe(false);
   });
 
+  it("selects dialectic personas from the personaSetName option", async () => {
+    const seen = new Set<string>();
+    await runDecisionCouncil(
+      { prompt: "Pick a set." },
+      {
+        personaSetName: "dialectic",
+        deps: {
+          personaWorker: recordingWorker(seen),
+          normalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    expect([...seen].sort()).toEqual(["dialectic-adversary", "dialectic-advocate", "hostile-auditor"]);
+  });
+
   it("stops at max three rounds even if Judge asks to continue", async () => {
     let assessmentCount = 0;
     const trackingJudge: JudgeReducer = {

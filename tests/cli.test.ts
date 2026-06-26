@@ -47,6 +47,12 @@ describe("CLI", () => {
     expect(parsed.personaSetName).toBe("strategic");
   });
 
+  it("parses the dialectic persona set name", () => {
+    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--persona-set", "dialectic"]);
+
+    expect(parsed.personaSetName).toBe("dialectic");
+  });
+
   it("leaves persona set name undefined when not supplied", () => {
     const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md"]);
 
