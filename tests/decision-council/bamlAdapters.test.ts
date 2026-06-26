@@ -168,6 +168,31 @@ describe("BAML adapter seams", () => {
       expect(observed).toBeUndefined();
     });
 
+    it("never reports the free-form decision.model when the router picks no known client", async () => {
+      const capture = { options: [] as unknown[] };
+      const adapters = new GeneratedBamlAdapters({
+        // Router declines to choose a client but still hallucinates a model id. The call falls
+        // back to DefaultClient (no override), so the log must not claim the unvalidated model.
+        router: {
+          async route() {
+            return { clientName: undefined, model: "hallucinated-model", rationale: "none fit" };
+          },
+        },
+        bamlClient: fakeBamlClient(capture),
+        bamlEnv: {},
+      });
+
+      let observed: string | undefined = "unset";
+      await adapters.normalizeCritique(
+        { personaId: "skeptic", text: "raw", transcript: [], metadata: {} },
+        (model) => {
+          observed = model;
+        },
+      );
+      expect(observed).toBeUndefined();
+      expect(capture.options[0]).toEqual({});
+    });
+
     it("trims critiques to per-persona summaries for the final report", async () => {
       const reportCritiques: unknown[] = [];
       const client: RoutableBamlClient = {

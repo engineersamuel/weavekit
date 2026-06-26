@@ -91,10 +91,13 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
       return { options: undefined, model: undefined };
     }
     const decision = await this.router.route({ taskKind, summary });
-    // Report the model the validated client will actually use, not the free-form decision.model.
+    // Report only the validated client's canonical model, never the free-form decision.model.
+    // When no known client is chosen, toBamlCallOptions returns no override and the call runs
+    // against DefaultClient (BAML_MODEL), so report undefined (the log omits model=) rather
+    // than a model id the request did not actually use.
     return {
       options: toBamlCallOptions(decision, this.bamlEnv),
-      model: resolveBamlEffortModel(decision) ?? decision.model,
+      model: resolveBamlEffortModel(decision),
     };
   }
 
