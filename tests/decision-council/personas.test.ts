@@ -26,6 +26,15 @@ describe("persona sets", () => {
 
     expect(defaultPersonaSet.personas[0]!.name).toBe("Socratic Questioner");
   });
+
+  it("resolves the 2-persona smoke set for fast integration tests", () => {
+    const resolved = resolvePersonaSetByName("smoke");
+    const parsed = PersonaSetSchema.parse(resolved);
+
+    expect(parsed.name).toBe("smoke");
+    expect(parsed.personas).toHaveLength(2);
+    expect(parsed.personas.map((persona) => persona.id)).toEqual(["pragmatic", "skeptic"]);
+  });
 });
 
 describe("strategic persona set", () => {

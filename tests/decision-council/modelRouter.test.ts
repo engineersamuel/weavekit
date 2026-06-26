@@ -2,12 +2,35 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ROUTING_POLICY,
   PolicyModelRouter,
+  SMOKE_ROUTING_POLICY,
+  createSmokeModelRouter,
 } from "../../src/decision-council/modelRouter.js";
 import {
   LlmModelRouter,
   normalizeRoutingDecision,
   type RouteModelCallFn,
 } from "../../src/decision-council/modelRouter.js";
+
+describe("smoke routing", () => {
+  it("pins every task kind to gpt-5-mini", async () => {
+    const router = createSmokeModelRouter();
+
+    for (const taskKind of ["normalize", "assess", "report"] as const) {
+      const decision = await router.route({ taskKind });
+      expect(decision.clientName).toBe("CopilotProxyGpt5Mini");
+      expect(decision.model).toBe("gpt-5-mini");
+    }
+
+    const persona = await router.route({ taskKind: "persona" });
+    expect(persona.model).toBe("gpt-5-mini");
+  });
+
+  it("exposes a smoke policy with gpt-5-mini for all task kinds", () => {
+    for (const decision of Object.values(SMOKE_ROUTING_POLICY)) {
+      expect(decision.model).toBe("gpt-5-mini");
+    }
+  });
+});
 
 describe("PolicyModelRouter", () => {
   it("returns the fast GPT-5.4 client for normalize with no effort override", async () => {

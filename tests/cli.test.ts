@@ -20,6 +20,8 @@ describe("CLI", () => {
       outputDir: "runs/question",
       logFormat: "pretty",
       personaSetName: undefined,
+      maxRounds: undefined,
+      smoke: false,
     });
   });
 
@@ -38,6 +40,8 @@ describe("CLI", () => {
       outputDir: "runs/latest",
       logFormat: "json",
       personaSetName: undefined,
+      maxRounds: undefined,
+      smoke: false,
     });
   });
 
@@ -61,6 +65,50 @@ describe("CLI", () => {
 
   it("rejects missing persona set value", () => {
     expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--persona-set"])).toThrow();
+  });
+
+  it("parses --max-rounds as a positive integer", () => {
+    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds", "1"]);
+
+    expect(parsed.maxRounds).toBe(1);
+  });
+
+  it("rejects non-positive --max-rounds", () => {
+    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds", "0"])).toThrow();
+  });
+
+  it("rejects non-integer --max-rounds", () => {
+    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds", "abc"])).toThrow();
+  });
+
+  it("rejects missing --max-rounds value", () => {
+    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds"])).toThrow();
+  });
+
+  it("--smoke defaults to the smoke persona set and a single round", () => {
+    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--smoke"]);
+
+    expect(parsed.smoke).toBe(true);
+    expect(parsed.personaSetName).toBe("smoke");
+    expect(parsed.maxRounds).toBe(1);
+  });
+
+  it("--smoke honors explicit --persona-set and --max-rounds overrides", () => {
+    const parsed = parseDecisionCouncilCliArgs([
+      "decision-council",
+      "run",
+      "--input",
+      "x.md",
+      "--smoke",
+      "--persona-set",
+      "default",
+      "--max-rounds",
+      "2",
+    ]);
+
+    expect(parsed.smoke).toBe(true);
+    expect(parsed.personaSetName).toBe("default");
+    expect(parsed.maxRounds).toBe(2);
   });
 
   it("reads Markdown input into DecisionCouncilInput", async () => {

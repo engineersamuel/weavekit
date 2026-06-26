@@ -56,7 +56,7 @@ describe("default persona registry", () => {
   });
 
   it("lists the registered sets", () => {
-    expect(listPersonaSets().sort()).toEqual(["default", "dialectic", "strategic"]);
+    expect(listPersonaSets().sort()).toEqual(["default", "dialectic", "smoke", "strategic"]);
   });
 
   it("resolvePersonaSetByName defaults to the default set", () => {

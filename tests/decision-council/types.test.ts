@@ -34,6 +34,16 @@ describe("decision council domain types", () => {
     ]);
   });
 
+  it("honors a custom maxRounds for single-round smoke runs", () => {
+    const state = createInitialRunState(
+      { prompt: "Evaluate this decision." },
+      defaultPersonaSet,
+      1,
+    );
+
+    expect(state.maxRounds).toBe(1);
+  });
+
   it("requires decision-ready report fields", () => {
     const report = DecisionCouncilReportSchema.parse({
       recommendation: "Use the smallest reversible option.",

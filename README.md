@@ -93,6 +93,26 @@ nub run council decision-council run --input examples/design-question.md --perso
 | `default` | Socratic Questioner, Deep Module/DRY Architect, Pragmatic Builder, Skeptic | General design critique |
 | `strategic` | the four defaults **+ Strategic Game Theorist + Sun Tzu Strategist** | Decisions with competition, incentives, timing, or positioning |
 | `dialectic` | Dialectic Advocate, Dialectic Adversary, Hostile Auditor | Thesis/antithesis stress test of a single proposal |
+| `smoke` | Pragmatic Builder, Skeptic | Fast integration smoke testing (see below) |
+
+## Smoke testing
+
+For fast end-to-end integration smoke tests, use `--smoke`. It is a preset that runs the
+lightweight 2-persona `smoke` set for a **single round** and pins every model call (personas and
+BAML normalize/assess/report) to `gpt-5-mini` for speed:
+
+```bash
+nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/smoke
+```
+
+`--smoke` defaults `--persona-set` to `smoke` and `--max-rounds` to `1`; both can still be
+overridden explicitly. `--max-rounds <n>` is also available independently to cap any run.
+
+A `mise` task wraps the smoke command (with `BAML_LOG=warn` and a placeholder proxy key):
+
+```bash
+mise run council:smoke
+```
 
 ### Sun Tzu Strategist
 

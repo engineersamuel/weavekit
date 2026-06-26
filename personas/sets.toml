@@ -6,3 +6,7 @@ personas = ["socratic", "deep-module-dry", "pragmatic", "skeptic", "strategic-ga
 
 [sets.dialectic]
 personas = ["dialectic-advocate", "dialectic-adversary", "hostile-auditor"]
+
+# Minimal 2-persona set for fast integration smoke testing (single round, gpt-5-mini).
+[sets.smoke]
+personas = ["pragmatic", "skeptic"]

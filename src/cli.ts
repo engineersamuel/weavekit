@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runDecisionCouncil } from "./decision-council/runner.js";
 import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
+import { createSmokeModelRouter } from "./decision-council/modelRouter.js";
 import { createConsoleDecisionCouncilLogger, createJsonDecisionCouncilLogger, createSilentDecisionCouncilLogger, type DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
 
@@ -13,11 +14,13 @@ export type DecisionCouncilCliArgs = {
   outputDir: string;
   logFormat: LogFormat;
   personaSetName?: string;
+  maxRounds?: number;
+  smoke: boolean;
 };
 
 export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
   if (argv[0] !== "decision-council" || argv[1] !== "run") {
-    throw new Error("Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--log-format <pretty|json|silent>]");
+    throw new Error("Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>]");
   }
 
   const inputIndex = argv.indexOf("--input");
@@ -37,13 +40,31 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
   if (personaSetIndex !== -1 && !argv[personaSetIndex + 1]) {
     throw new Error("Missing value for --persona-set <name>.");
   }
-  const personaSetName = personaSetIndex === -1 ? undefined : argv[personaSetIndex + 1];
+
+  const smoke = argv.includes("--smoke");
+
+  const maxRoundsIndex = argv.indexOf("--max-rounds");
+  if (maxRoundsIndex !== -1 && !argv[maxRoundsIndex + 1]) {
+    throw new Error("Missing value for --max-rounds <n>.");
+  }
+  let maxRounds = maxRoundsIndex === -1 ? undefined : Number(argv[maxRoundsIndex + 1]);
+  if (maxRounds !== undefined && (!Number.isInteger(maxRounds) || maxRounds < 1)) {
+    throw new Error("Invalid --max-rounds value. Expected a positive integer.");
+  }
+
+  // --smoke is a preset: default to the lightweight 2-persona smoke set and a single round.
+  const personaSetName = personaSetIndex !== -1 ? argv[personaSetIndex + 1] : smoke ? "smoke" : undefined;
+  if (smoke && maxRounds === undefined) {
+    maxRounds = 1;
+  }
 
   return {
     inputPath: argv[inputIndex + 1]!,
     outputDir: outputIndex === -1 ? "runs/latest" : argv[outputIndex + 1] ?? "runs/latest",
     logFormat,
     personaSetName,
+    maxRounds,
+    smoke,
   };
 }
 
@@ -74,6 +95,8 @@ async function main(): Promise<void> {
     outputDir: args.outputDir,
     inputPath: args.inputPath,
     personaSetName: args.personaSetName,
+    maxRounds: args.maxRounds,
+    router: args.smoke ? createSmokeModelRouter() : undefined,
     logger: createDecisionCouncilLogger(args.logFormat),
   });
 

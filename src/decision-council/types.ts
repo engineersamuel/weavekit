@@ -105,14 +105,14 @@ export const DecisionCouncilRunStateSchema = z.object({
 
 export type DecisionCouncilRunState = z.infer<typeof DecisionCouncilRunStateSchema>;
 
-export function createInitialRunState(input: z.input<typeof DecisionCouncilInputSchema>, personaSet: PersonaSet): DecisionCouncilRunState {
+export function createInitialRunState(input: z.input<typeof DecisionCouncilInputSchema>, personaSet: PersonaSet, maxRounds = 3): DecisionCouncilRunState {
   const parsedInput = DecisionCouncilInputSchema.parse(input);
   const parsedPersonaSet = PersonaSetSchema.parse(personaSet);
 
   return {
     input: parsedInput,
     personas: parsedPersonaSet.personas,
-    maxRounds: 3,
+    maxRounds,
     rounds: [],
   };
 }
