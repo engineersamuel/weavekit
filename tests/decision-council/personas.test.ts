@@ -5,6 +5,7 @@ import {
   resolvePersonaSet,
   resolvePersonaSetByName,
   strategicPersonaSet,
+  sunTzu,
 } from "../../src/decision-council/personas.js";
 import { PersonaDefinitionSchema, PersonaSetSchema } from "../../src/decision-council/types.js";
 
@@ -31,19 +32,31 @@ describe("strategic persona set", () => {
   it("defines a game theorist persona with council normalization lists", () => {
     const parsed = PersonaDefinitionSchema.parse(gameTheorist);
 
-    expect(parsed.id).toBe("game-theorist");
+    expect(parsed.id).toBe("strategic-game-theorist");
     expect(parsed.prompt).toContain("claims");
     expect(parsed.prompt).toContain("risks");
     expect(parsed.prompt).toContain("questions");
     expect(parsed.prompt).toContain("recommendations");
   });
 
-  it("extends the default council with the strategic game theorist", () => {
+  it("defines a Sun Tzu strategist persona with council normalization lists", () => {
+    const parsed = PersonaDefinitionSchema.parse(sunTzu);
+
+    expect(parsed.id).toBe("sun-tzu");
+    expect(parsed.archetype).toBe("analyst");
+    expect(parsed.prompt).toContain("claims");
+    expect(parsed.prompt).toContain("risks");
+    expect(parsed.prompt).toContain("questions");
+    expect(parsed.prompt).toContain("recommendations");
+  });
+
+  it("extends the default council with the strategic game theorist and Sun Tzu", () => {
     const parsed = PersonaSetSchema.parse(strategicPersonaSet);
 
     expect(parsed.name).toBe("strategic");
-    expect(parsed.personas).toHaveLength(5);
-    expect(parsed.personas.some((persona) => persona.id === "game-theorist")).toBe(true);
+    expect(parsed.personas).toHaveLength(6);
+    expect(parsed.personas.some((persona) => persona.id === "strategic-game-theorist")).toBe(true);
+    expect(parsed.personas.some((persona) => persona.id === "sun-tzu")).toBe(true);
     expect(parsed.personas.slice(0, 4).map((persona) => persona.id)).toEqual(defaultPersonaSet.personas.map((persona) => persona.id));
   });
 
@@ -51,7 +64,7 @@ describe("strategic persona set", () => {
     const resolved = resolvePersonaSetByName("strategic");
 
     expect(resolved.name).toBe("strategic");
-    expect(resolved.personas).toHaveLength(5);
+    expect(resolved.personas).toHaveLength(6);
   });
 
   it("resolves default persona sets by name or absence", () => {

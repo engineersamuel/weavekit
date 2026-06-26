@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,5 +56,77 @@ describe("runEval", () => {
     await expect(
       runEval({ corpusDir, resultsDir, filterIds: ["does-not-exist"] }, { providers: [], evaluateFn: (async () => ({ toEvaluateSummary: async () => ({}) })) as never }),
     ).rejects.toThrow(/No corpus items/);
+  });
+
+  it("forwards maxConcurrency to promptfoo and defaults to sequential", async () => {
+    const explicit = tempCorpus();
+    const omitted = tempCorpus();
+    const fakeProvider: ApiProvider = { id: () => "fake", callApi: async () => ({ output: "x" }) };
+    const capturedMaxConcurrency: unknown[] = [];
+    const evaluateFn = (async (_suite: unknown, options: { maxConcurrency?: number }) => {
+      capturedMaxConcurrency.push(options.maxConcurrency);
+      return { toEvaluateSummary: async () => ({ stats: { successes: 1, failures: 0 } }) };
+    }) as never;
+
+    await runEval({ ...explicit, maxConcurrency: 3 }, { providers: [fakeProvider], evaluateFn });
+    await runEval(omitted, { providers: [fakeProvider], evaluateFn });
+
+    expect(capturedMaxConcurrency).toEqual([3, 1]);
+  });
+
+  it("rejects invalid maxConcurrency before evaluating", async () => {
+    const { corpusDir, resultsDir } = tempCorpus();
+    const evaluateFn = vi.fn(async () => ({ toEvaluateSummary: async () => ({}) }));
+
+    await expect(runEval({ corpusDir, resultsDir, maxConcurrency: 0 }, { providers: [], evaluateFn: evaluateFn as never })).rejects.toThrow(
+      /maxConcurrency.*integer >= 1/,
+    );
+    expect(evaluateFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("parseEvalArgs", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  async function loadParser(): Promise<(argv: string[]) => { filterIds?: string[]; maxConcurrency?: number }> {
+    vi.doMock("../../src/eval/run.js", () => ({ runEval: vi.fn(async () => "mock-results") }));
+    const module = await import("../../src/eval-cli.js");
+    const parser = (module as { parseEvalArgs?: (argv: string[]) => { filterIds?: string[]; maxConcurrency?: number } }).parseEvalArgs;
+    expect(parser).toBeTypeOf("function");
+    return parser!;
+  }
+
+  it("parses concurrency flags without treating values as filter ids", async () => {
+    const parseEvalArgs = await loadParser();
+
+    expect(parseEvalArgs(["--max-concurrency", "4", "orchestration-framework-001"])).toEqual({
+      filterIds: ["orchestration-framework-001"],
+      maxConcurrency: 4,
+    });
+    expect(parseEvalArgs(["--concurrency=2", "data-store-001"])).toEqual({
+      filterIds: ["data-store-001"],
+      maxConcurrency: 2,
+    });
+  });
+
+  it("uses EVAL_MAX_CONCURRENCY when no flag is provided", async () => {
+    vi.stubEnv("EVAL_MAX_CONCURRENCY", "5");
+    const parseEvalArgs = await loadParser();
+
+    expect(parseEvalArgs(["data-store-001"])).toEqual({
+      filterIds: ["data-store-001"],
+      maxConcurrency: 5,
+    });
+  });
+
+  it("rejects invalid concurrency values", async () => {
+    const parseEvalArgs = await loadParser();
+
+    expect(() => parseEvalArgs(["--max-concurrency", "0"])).toThrow(/max-concurrency/i);
+    expect(() => parseEvalArgs(["--concurrency=1.5"])).toThrow(/concurrency/i);
   });
 });

@@ -33,19 +33,19 @@ export type RoutingPolicy = Record<RouteTaskKind, RoutingDecision>;
 // The persona default keeps today's SDK model so behavior is unchanged until tuned.
 export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
   normalize: {
-    clientName: "CopilotProxyClaudeHaiku45",
-    model: "claude-haiku-4-5",
-    rationale: "Fast, cheap structured extraction; non-reasoning Haiku.",
+    clientName: "CopilotProxyGpt54",
+    model: "gpt-5.4",
+    rationale: "Lowest-TTFT structured extraction default.",
   },
   assess: {
-    clientName: "CopilotProxyClaudeSonnet46",
-    model: "claude-sonnet-4-6",
-    rationale: "Mid-reasoning Judge decision.",
+    clientName: "CopilotProxyGpt54",
+    model: "gpt-5.4",
+    rationale: "Lowest-TTFT Judge decision default.",
   },
   report: {
-    clientName: "CopilotProxyClaudeSonnet46",
-    model: "claude-sonnet-4-6",
-    rationale: "Strong synthesis for the decision-ready report.",
+    clientName: "CopilotProxyGpt55",
+    model: "gpt-5.5",
+    rationale: "Fast, high-throughput synthesis for the decision-ready report.",
   },
   persona: {
     model: "claude-sonnet-4.5",
@@ -78,9 +78,9 @@ export type RouteModelCallFn = (
 
 // Candidate client names (BAML kinds) / SDK model ids (persona) offered to the LLM router.
 export const ROUTER_CANDIDATES: Record<RouteTaskKind, string[]> = {
-  normalize: ["CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
-  assess: ["CopilotProxyClaudeSonnet46", "CopilotProxyGpt54"],
-  report: ["CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48", "CopilotProxyGpt55"],
+  normalize: ["CopilotProxyGpt54", "CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
+  assess: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
+  report: ["CopilotProxyGpt55", "CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48"],
   persona: ["claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
 };
 

@@ -1,4 +1,4 @@
-id = "game-theorist"
+id = "strategic-game-theorist"
 name = "Strategic Game Theorist"
 description = "Frames decisions as strategic games—players, strategies, payoffs, information, timing—then exposes incentives, credibility gaps, and best-response risks."
 archetype = "analyst"

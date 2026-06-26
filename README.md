@@ -80,6 +80,39 @@ BAML can print large raw prompts/responses. Use `BAML_LOG=warn` when you want We
 BAML_LOG=warn COPILOT_PROXY_API_KEY="anything" nub run council decision-council run --input examples/design-question.md --output runs/example
 ```
 
+## Personas and persona sets
+
+The council debates a **persona set**. Select one with `--persona-set <name>`; omitting it uses `default`.
+
+```bash
+nub run council decision-council run --input examples/design-question.md --persona-set strategic
+```
+
+| Set | Personas | Use for |
+| --- | --- | --- |
+| `default` | Socratic Questioner, Deep Module/DRY Architect, Pragmatic Builder, Skeptic | General design critique |
+| `strategic` | the four defaults **+ Strategic Game Theorist + Sun Tzu Strategist** | Decisions with competition, incentives, timing, or positioning |
+| `dialectic` | Dialectic Advocate, Dialectic Adversary, Hostile Auditor | Thesis/antithesis stress test of a single proposal |
+
+### Sun Tzu Strategist
+
+`sun-tzu` reads a decision as terrain. It names the real battlefield and the actual opposing force (not the surface rival), finds the undefended gap, prescribes the exact next move, and names the trap to avoid — then closes on the one governing principle that makes the move win. It is cold and prescriptive ("give the move, not the wisdom"); in-council it ends every critique with the four claims/risks/questions/recommendations lists so BAML normalization stays lossless. The full standalone form lives in the canonical spec [`personas/sun-tzu.md`](personas/sun-tzu.md).
+
+### Reusing personas in other workflows
+
+Personas live in a workflow-agnostic registry under [`personas/`](personas/): one TOML file per persona (`personas/<id>.toml`) plus a portable canonical spec (`personas/<id>.md`), grouped into named sets in [`personas/sets.toml`](personas/sets.toml). Any workflow can load them directly from the package's persona subsystem (re-exported from `src/index.ts`):
+
+```ts
+import { getPersona, getPersonaSet, listPersonaSets, composePersonaPrompt } from "weavekit";
+
+const sunTzu = getPersona("sun-tzu");
+const message = composePersonaPrompt(sunTzu, {
+  brief: { roundNumber: 1, prompt: "Should we out-build a larger competitor?", focus: "Strategy" },
+});
+```
+
+`getPersona(id)`, `getPersonaSet(name)`, and `listPersonaSets()` read the registry; `composePersonaPrompt` deterministically renders a persona's stance, framing corrections, anti-hedging, and mode into the round message. Set `WEAVEKIT_PERSONAS_DIR` to point at a different directory to load a custom persona library.
+
 ## Model + effort routing
 
 Weavekit's decision council routes each task (normalize, assess, report, persona) to a model and optional reasoning effort using a hybrid router: a deterministic policy default always applies, and an optional fast LLM router is consulted only when a task is marked `dynamic`.
@@ -92,9 +125,9 @@ Weavekit's decision council routes each task (normalize, assess, report, persona
 
 | Task kind | BAML client | Model | Use case |
 |-----------|-------------|-------|----------|
-| `normalize` | `CopilotProxyClaudeHaiku45` | `claude-haiku-4-5` | Fast, non-reasoning structured extraction |
-| `assess` | `CopilotProxyClaudeSonnet46` | `claude-sonnet-4-6` | Mid-reasoning Judge decision |
-| `report` | `CopilotProxyClaudeSonnet46` | `claude-sonnet-4-6` | Strong synthesis |
+| `normalize` | `CopilotProxyGpt54` | `gpt-5.4` | Lowest-TTFT structured extraction default |
+| `assess` | `CopilotProxyGpt54` | `gpt-5.4` | Lowest-TTFT Judge decision default |
+| `report` | `CopilotProxyGpt55` | `gpt-5.5` | Fast, high-throughput synthesis |
 | `persona` | (Copilot SDK path) | `claude-sonnet-4.5` | Persona debate tier |
 
 **BAML effort passthrough:** By default, BAML routing swaps the *client* only and does NOT send `reasoning_effort` to the proxy. Effort passthrough is opt-in, left disabled pending proxy verification. Similarly, persona `reasoningEffort` is only forwarded when an operator wires an explicit capability predicate (it defaults to off). No model receives an effort field it might reject unless explicitly enabled.
@@ -183,9 +216,19 @@ npm run eval
 
 # Grade specific items by id:
 npm run eval -- orchestration-framework-001 data-store-001
+
+# Run up to 4 promptfoo eval cells concurrently:
+npm run eval -- --max-concurrency 4 orchestration-framework-001 data-store-001
 ```
 
 Judge configuration (OpenAI-compatible) via env: `EVAL_JUDGE_BASE_URL`
 (default `http://127.0.0.1:8080/v1`), `EVAL_JUDGE_API_KEY`, `EVAL_JUDGE_MODEL`.
 Baseline model via `EVAL_COPILOT_MODEL` (default `auto`). Results are written to
 `evals/results/<timestamp>/` (gitignored).
+
+Eval concurrency defaults to `1` (fully sequential). Set `--max-concurrency <n>` or
+`--concurrency <n>` (or `EVAL_MAX_CONCURRENCY`) to let promptfoo evaluate multiple
+corpus cells in parallel. Keep values small: each Council cell fans out roughly 4+
+Copilot SDK persona sessions, and each baseline cell starts a `copilot` CLI process,
+so concurrency `N` can mean up to `N × personas` concurrent Copilot SDK sessions plus
+`N` baseline processes against the local proxy.

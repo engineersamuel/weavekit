@@ -10,22 +10,25 @@ import {
 } from "../../src/decision-council/modelRouter.js";
 
 describe("PolicyModelRouter", () => {
-  it("returns the fast Haiku client for normalize with no effort override", async () => {
+  it("returns the fast GPT-5.4 client for normalize with no effort override", async () => {
     const router = new PolicyModelRouter();
     const decision = await router.route({ taskKind: "normalize" });
 
-    expect(decision.clientName).toBe("CopilotProxyClaudeHaiku45");
+    expect(decision.clientName).toBe("CopilotProxyGpt54");
+    expect(decision.model).toBe("gpt-5.4");
     expect(decision.reasoningEffort).toBeUndefined();
     expect(decision.rationale).toMatch(/\S/);
   });
 
-  it("routes assess and report to the Sonnet judge client", async () => {
+  it("routes assess to GPT-5.4 and report to GPT-5.5", async () => {
     const router = new PolicyModelRouter();
     await expect(router.route({ taskKind: "assess" })).resolves.toMatchObject({
-      clientName: "CopilotProxyClaudeSonnet46",
+      clientName: "CopilotProxyGpt54",
+      model: "gpt-5.4",
     });
     await expect(router.route({ taskKind: "report" })).resolves.toMatchObject({
-      clientName: "CopilotProxyClaudeSonnet46",
+      clientName: "CopilotProxyGpt55",
+      model: "gpt-5.5",
     });
   });
 
@@ -76,7 +79,7 @@ describe("LlmModelRouter", () => {
     });
 
     const decision = await router.route({ taskKind: "assess" });
-    expect(decision.clientName).toBe("CopilotProxyClaudeSonnet46");
+    expect(decision.clientName).toBe("CopilotProxyGpt54");
   });
 
   it("falls back to policy when the call throws", async () => {
@@ -86,7 +89,7 @@ describe("LlmModelRouter", () => {
     const router = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall: call });
 
     await expect(router.route({ taskKind: "normalize" })).resolves.toMatchObject({
-      clientName: "CopilotProxyClaudeHaiku45",
+      clientName: "CopilotProxyGpt54",
     });
   });
 
@@ -99,7 +102,7 @@ describe("LlmModelRouter", () => {
     const router = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall: call });
 
     await expect(router.route({ taskKind: "assess", dynamic: true })).resolves.toMatchObject({
-      clientName: "CopilotProxyClaudeSonnet46",
+      clientName: "CopilotProxyGpt54",
     });
   });
 
@@ -116,7 +119,7 @@ describe("LlmModelRouter", () => {
 
     const start = Date.now();
     const decision = await router.route({ taskKind: "report" });
-    expect(decision.clientName).toBe("CopilotProxyClaudeSonnet46");
+    expect(decision.clientName).toBe("CopilotProxyGpt55");
     expect(Date.now() - start).toBeLessThan(500);
   });
 
@@ -182,7 +185,7 @@ describe("HybridModelRouter", () => {
     const router = new HybridModelRouter({ policy: new PolicyModelRouter(), llm });
 
     const decision = await router.route({ taskKind: "normalize" });
-    expect(decision.clientName).toBe("CopilotProxyClaudeHaiku45");
+    expect(decision.clientName).toBe("CopilotProxyGpt54");
     expect(llmCalls).toBe(0);
   });
 
@@ -204,7 +207,7 @@ describe("HybridModelRouter", () => {
   it("falls back to policy for dynamic requests when no LLM router is configured", async () => {
     const router = new HybridModelRouter({ policy: new PolicyModelRouter() });
     await expect(router.route({ taskKind: "report", dynamic: true })).resolves.toMatchObject({
-      clientName: "CopilotProxyClaudeSonnet46",
+      clientName: "CopilotProxyGpt55",
     });
   });
 });
@@ -215,7 +218,7 @@ describe("createDefaultModelRouter", () => {
       throw new Error("LLM should not be called for static requests");
     });
     await expect(router.route({ taskKind: "normalize" })).resolves.toMatchObject({
-      clientName: "CopilotProxyClaudeHaiku45",
+      clientName: "CopilotProxyGpt54",
     });
   });
 });

@@ -66,116 +66,109 @@ export async function runDecisionCouncilRound(
   });
   const rawResults: RawPersonaResult[] = [];
   const failures: DecisionPersonaFailure[] = [];
+  const critiques: DecisionPersonaCritique[] = [];
 
-  const personaResults = await Promise.allSettled(
-    state.personas.map(async (persona) => {
-      const startedAt = performance.now();
+  type Outcome =
+    | { stage: "ok"; raw: RawPersonaResult; critique: DecisionPersonaCritique }
+    | { stage: "persona-failed"; failure: DecisionPersonaFailure }
+    | { stage: "normalize-failed"; raw: RawPersonaResult; failure: DecisionPersonaFailure };
+
+  async function processPersona(persona: (typeof state.personas)[number]): Promise<Outcome> {
+    const personaStartedAt = performance.now();
+    deps.logger?.event({
+      type: "council.persona.started",
+      timestamp: timestamp(),
+      runId,
+      roundNumber: brief.roundNumber,
+      personaId: persona.id,
+    });
+
+    let raw: RawPersonaResult;
+    try {
+      raw = await deps.personaWorker.runPersona({ persona, brief });
       deps.logger?.event({
-        type: "council.persona.started",
+        type: "council.persona.completed",
         timestamp: timestamp(),
         runId,
         roundNumber: brief.roundNumber,
         personaId: persona.id,
+        model: raw.metadata.model,
+        durationMs: performance.now() - personaStartedAt,
       });
-
-      try {
-        const result = await deps.personaWorker.runPersona({ persona, brief });
-        deps.logger?.event({
-          type: "council.persona.completed",
-          timestamp: timestamp(),
-          runId,
-          roundNumber: brief.roundNumber,
-          personaId: persona.id,
-          model: result.metadata.model,
-          durationMs: performance.now() - startedAt,
-        });
-        return result;
-      } catch (error) {
-        deps.logger?.event({
-          type: "council.persona.failed",
-          timestamp: timestamp(),
-          runId,
-          roundNumber: brief.roundNumber,
-          personaId: persona.id,
-          durationMs: performance.now() - startedAt,
-          error: errorMessage(error),
-        });
-        throw error;
-      }
-    }),
-  );
-
-  for (let index = 0; index < personaResults.length; index += 1) {
-    const persona = state.personas[index]!;
-    const result = personaResults[index]!;
-
-    if (result.status === "fulfilled") {
-      rawResults.push(result.value);
-    } else {
-      failures.push(toFailure(persona.id, result.reason));
-    }
-  }
-
-  if (rawResults.length < 2) {
-    throw new DecisionCouncilRunFailedError("Council requires at least two successful personas.");
-  }
-
-  const critiqueResults = await Promise.allSettled(
-    rawResults.map(async (raw) => {
-      const startedAt = performance.now();
-      let model: string | undefined;
+    } catch (error) {
       deps.logger?.event({
-        type: "council.baml.started",
+        type: "council.persona.failed",
+        timestamp: timestamp(),
+        runId,
+        roundNumber: brief.roundNumber,
+        personaId: persona.id,
+        durationMs: performance.now() - personaStartedAt,
+        error: errorMessage(error),
+      });
+      return { stage: "persona-failed", failure: toFailure(persona.id, error) };
+    }
+
+    const normalizeStartedAt = performance.now();
+    let model: string | undefined;
+    deps.logger?.event({
+      type: "council.baml.started",
+      timestamp: timestamp(),
+      runId,
+      roundNumber: brief.roundNumber,
+      operation: "normalize",
+      personaId: raw.personaId,
+    });
+
+    try {
+      const critique = await deps.normalizer.normalizeCritique(raw, (resolved) => {
+        model = resolved;
+      });
+      deps.logger?.event({
+        type: "council.baml.completed",
         timestamp: timestamp(),
         runId,
         roundNumber: brief.roundNumber,
         operation: "normalize",
         personaId: raw.personaId,
+        model,
+        durationMs: performance.now() - normalizeStartedAt,
+        summary: critique.overallSummary,
       });
-
-      try {
-        const critique = await deps.normalizer.normalizeCritique(raw, (resolved) => {
-          model = resolved;
-        });
-        deps.logger?.event({
-          type: "council.baml.completed",
-          timestamp: timestamp(),
-          runId,
-          roundNumber: brief.roundNumber,
-          operation: "normalize",
-          personaId: raw.personaId,
-          model,
-          durationMs: performance.now() - startedAt,
-          summary: critique.overallSummary,
-        });
-        return critique;
-      } catch (error) {
-        deps.logger?.event({
-          type: "council.baml.failed",
-          timestamp: timestamp(),
-          runId,
-          roundNumber: brief.roundNumber,
-          operation: "normalize",
-          personaId: raw.personaId,
-          model,
-          durationMs: performance.now() - startedAt,
-          error: errorMessage(error),
-        });
-        throw error;
-      }
-    }),
-  );
-
-  const critiques: DecisionPersonaCritique[] = [];
-  for (let index = 0; index < critiqueResults.length; index += 1) {
-    const raw = rawResults[index]!;
-    const result = critiqueResults[index]!;
-
-    if (result.status === "fulfilled") {
-      critiques.push(result.value);
-    } else {
-      failures.push(toFailure(raw.personaId, result.reason));
+      return { stage: "ok", raw, critique };
+    } catch (error) {
+      deps.logger?.event({
+        type: "council.baml.failed",
+        timestamp: timestamp(),
+        runId,
+        roundNumber: brief.roundNumber,
+        operation: "normalize",
+        personaId: raw.personaId,
+        model,
+        durationMs: performance.now() - normalizeStartedAt,
+        error: errorMessage(error),
+      });
+      return { stage: "normalize-failed", raw, failure: toFailure(raw.personaId, error) };
     }
+  }
+
+  const outcomes = await Promise.all(state.personas.map((persona) => processPersona(persona)));
+
+  for (const outcome of outcomes) {
+    if (outcome.stage === "ok") {
+      rawResults.push(outcome.raw);
+      critiques.push(outcome.critique);
+    } else if (outcome.stage === "normalize-failed") {
+      rawResults.push(outcome.raw);
+      failures.push(outcome.failure);
+    } else {
+      failures.push(outcome.failure);
+    }
+  }
+
+  // Fusing the stages means degraded runs may normalize successful personas even if
+  // the raw-success guard later throws; this is failure-path only, bounded by persona count.
+  if (rawResults.length < 2) {
+    throw new DecisionCouncilRunFailedError("Council requires at least two successful personas.");
   }
 
   if (critiques.length < 2) {

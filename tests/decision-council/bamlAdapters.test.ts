@@ -119,7 +119,7 @@ describe("BAML adapter seams", () => {
       });
 
       await adapters.normalizeCritique({ personaId: "skeptic", text: "raw", transcript: [], metadata: {} });
-      expect(capture.options[0]).toEqual({ client: "CopilotProxyClaudeHaiku45" });
+      expect(capture.options[0]).toEqual({ client: "CopilotProxyGpt54" });
     });
 
     it("passes no override when no router is configured (back-compat)", async () => {
@@ -145,13 +145,13 @@ describe("BAML adapter seams", () => {
           normalizeModel = model;
         },
       );
-      expect(normalizeModel).toBe("claude-haiku-4-5");
+      expect(normalizeModel).toBe("gpt-5.4");
 
       let assessModel: string | undefined;
       await adapters.assessRound({ roundNumber: 1, critiques: [], failures: [] }, (model) => {
         assessModel = model;
       });
-      expect(assessModel).toBe("claude-sonnet-4-6");
+      expect(assessModel).toBe("gpt-5.4");
     });
 
     it("reports an undefined model via onModel when no router is configured", async () => {

@@ -3,16 +3,18 @@
 // against the local Copilot proxy, per research §8.1. Pick the router client from results.
 
 export const ROUTER_BENCHMARK_CANDIDATES: string[] = [
-  "claude-haiku-4-5",
-  "claude-3-5-haiku",
+  "gpt-5.4",
+  "gpt-5.5",
+  "claude-haiku-4.5",
   "grok-code-fast-1",
   "gemini-3-flash-preview",
+  "gemini-3.5-flash",
   "raptor-mini",
   "gpt-5-mini",
 ];
 
 const ROUTING_PROMPT =
-  'Return JSON {"clientName":"CopilotProxyClaudeHaiku45","model":"claude-haiku-4-5","reasoningEffort":null,"rationale":"fast"} and nothing else.';
+  'Return JSON {"clientName":"CopilotProxyGpt54","model":"gpt-5.4","reasoningEffort":null,"rationale":"fast"} and nothing else.';
 
 export async function benchmarkCandidate(
   model: string,

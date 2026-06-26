@@ -2,7 +2,7 @@
 personas = ["socratic", "deep-module-dry", "pragmatic", "skeptic"]
 
 [sets.strategic]
-personas = ["socratic", "deep-module-dry", "pragmatic", "skeptic", "game-theorist"]
+personas = ["socratic", "deep-module-dry", "pragmatic", "skeptic", "strategic-game-theorist", "sun-tzu"]
 
 [sets.dialectic]
 personas = ["dialectic-advocate", "dialectic-adversary", "hostile-auditor"]

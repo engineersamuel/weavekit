@@ -195,6 +195,45 @@ describe("runDecisionCouncil", () => {
     );
   });
 
+  it("normalizes each persona as soon as it finishes, overlapping slower personas", async () => {
+    const events: string[] = [];
+    const personaWorker: PersonaWorker = {
+      async runPersona({ persona, brief }) {
+        if (persona.id === "skeptic") {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+
+        events.push(`worker-done:${persona.id}`);
+        return {
+          personaId: persona.id,
+          text: `${persona.name} critique for round ${brief.roundNumber}`,
+          transcript: [`assistant: ${persona.name}`],
+          metadata: { model: "fake" },
+        };
+      },
+    };
+    const trackingNormalizer: CritiqueNormalizer = {
+      async normalizeCritique(raw, onModel) {
+        events.push(`normalize:${raw.personaId}`);
+        return normalizer.normalizeCritique(raw, onModel);
+      },
+    };
+
+    await runDecisionCouncil(
+      { prompt: "Normalize without waiting for slow personas." },
+      {
+        deps: {
+          personaWorker,
+          normalizer: trackingNormalizer,
+          judge: judge(1),
+          writeArtifacts: false,
+        },
+      },
+    );
+
+    expect(events.indexOf("normalize:socratic")).toBeLessThan(events.indexOf("worker-done:skeptic"));
+  });
+
   it("overwrites hallucinated failedPersonas from judge with authoritative run-state failures", async () => {
     // The LLM can fabricate or drop failed personas; deterministic run-state must win.
     const hallucinatingJudge: JudgeReducer = {
@@ -277,7 +316,7 @@ describe("runDecisionCouncil", () => {
       },
     );
 
-    expect(strategicSeen.has("game-theorist")).toBe(true);
+    expect(strategicSeen.has("strategic-game-theorist")).toBe(true);
     expect(defaultSeen.has("game-theorist")).toBe(false);
   });
 

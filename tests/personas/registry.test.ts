@@ -21,10 +21,11 @@ describe("default persona registry", () => {
     ]);
   });
 
-  it("resolves the strategic set as the four defaults plus the game theorist", () => {
+  it("resolves the strategic set as the four defaults plus the two strategists", () => {
     const set = getPersonaSet("strategic");
-    expect(set.personas).toHaveLength(5);
-    expect(set.personas.some((p) => p.id === "game-theorist")).toBe(true);
+    expect(set.personas).toHaveLength(6);
+    expect(set.personas.some((p) => p.id === "strategic-game-theorist")).toBe(true);
+    expect(set.personas.some((p) => p.id === "sun-tzu")).toBe(true);
     expect(set.personas.slice(0, 4).map((p) => p.id)).toEqual([
       "socratic",
       "deep-module-dry",
@@ -33,13 +34,25 @@ describe("default persona registry", () => {
     ]);
   });
 
-  it("loads the game-theorist persona with its canonical spec reference", () => {
-    const gt = getPersona("game-theorist");
+  it("loads the strategic-game-theorist persona with a matching TOML source and spec reference", () => {
+    const gt = getPersona("strategic-game-theorist");
     expect(gt.specRef).toBe("strategic-game-theorist.md");
     expect(gt.prompt).toContain("claims");
     expect(gt.prompt).toContain("risks");
     expect(gt.prompt).toContain("questions");
     expect(gt.prompt).toContain("recommendations");
+  });
+
+  it("loads the sun-tzu persona with a matching TOML source and spec reference", () => {
+    const sunTzu = getPersona("sun-tzu");
+    expect(sunTzu.specRef).toBe("sun-tzu.md");
+    expect(sunTzu.archetype).toBe("analyst");
+    expect(sunTzu.framingCorrections.length).toBeGreaterThan(0);
+    expect(sunTzu.antiHedging).toBeTruthy();
+    expect(sunTzu.prompt).toContain("claims");
+    expect(sunTzu.prompt).toContain("risks");
+    expect(sunTzu.prompt).toContain("questions");
+    expect(sunTzu.prompt).toContain("recommendations");
   });
 
   it("lists the registered sets", () => {

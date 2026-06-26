@@ -40,6 +40,10 @@ function renderSummary(items: CorpusItem[], summary: SummaryLike): string {
 }
 
 export async function runEval(options: RunEvalOptions = {}, deps: RunEvalDeps = {}): Promise<string> {
+  if (options.maxConcurrency !== undefined && (!Number.isInteger(options.maxConcurrency) || options.maxConcurrency < 1)) {
+    throw new Error(`maxConcurrency must be an integer >= 1; received ${options.maxConcurrency}.`);
+  }
+
   const corpusDir = options.corpusDir ?? "evals/corpus";
   let items = loadCorpus(corpusDir);
   if (options.filterIds && options.filterIds.length > 0) {

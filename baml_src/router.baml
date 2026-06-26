@@ -6,7 +6,7 @@ class RoutingDecision {
 }
 
 function RouteModelCall(taskKind: string, summary: string, candidates: string[]) -> RoutingDecision {
-  client CopilotProxyClaudeHaiku45
+  client CopilotProxyGpt54
   prompt #"
     {{ _.role("system") }}
     You are a fast model router for a decision-council workflow. Pick the single best
