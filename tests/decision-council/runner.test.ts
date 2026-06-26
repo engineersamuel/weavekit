@@ -620,4 +620,19 @@ describe("createDecisionCouncilWorkflow", () => {
       }),
     ).not.toThrow();
   });
+
+  it("createDecisionCouncilWorkflow accepts Flue agent tools without requiring live MCP servers", () => {
+    const tool = { name: "mcp__EngHub__search" };
+
+    expect(() =>
+      createDecisionCouncilWorkflow(
+        {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+        },
+        { flueTools: [tool as never], flueModel: "github-copilot/gpt-4o" },
+      ),
+    ).not.toThrow();
+  });
 });
