@@ -1,5 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { trace, type Span, type Tracer } from "@opentelemetry/api";
+import { describe, expect, it, vi } from "vitest";
 import {
   completeDecisionCouncilWorkItem,
   startDecisionCouncilWorkItem,
@@ -96,7 +95,6 @@ describe("decision council work item lifecycle", () => {
   });
 
   it("wraps requested lifecycle calls in Beads telemetry spans", async () => {
-    const events: string[] = [];
     const spanOperations: string[] = [];
     
     // Spy on runWorkQueueSpan to capture operations
@@ -107,7 +105,7 @@ describe("decision council work item lifecycle", () => {
     });
 
     const options: DecisionCouncilWorkQueueOptions = {
-      backend: fakeBackend(events),
+      backend: fakeBackend([]),
       workItemId: "bd-root",
       claimOnStart: true,
       closeOnSuccess: true,
