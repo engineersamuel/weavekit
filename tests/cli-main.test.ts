@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -73,5 +74,21 @@ describe("CLI main", () => {
       stdoutSpy.mockRestore();
       await rm(cwd, { recursive: true, force: true });
     }
+  });
+
+  it("documents telemetry configuration and verification in the README", () => {
+    const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+
+    expect(readme).toContain("## Telemetry and Observability");
+    expect(readme).toContain("OTEL_SDK_DISABLED");
+    expect(readme).toContain("OTEL_EXPORTER_OTLP_ENDPOINT");
+    expect(readme).toContain("OTEL_EXPORTER_OTLP_HEADERS");
+    expect(readme).toContain("LANGFUSE_PUBLIC_KEY");
+    expect(readme).toContain("LANGFUSE_SECRET_KEY");
+    expect(readme).toContain("LANGFUSE_BASE_URL");
+    expect(readme).toContain("LANGFUSE_EXPORT_RAW");
+    expect(readme).toContain("nub run council decision-council run");
+    expect(readme).toContain("BAML_LOG=warn");
+    expect(readme).toContain("grep -i");
   });
 });

@@ -264,6 +264,72 @@ nub install @flue/opentelemetry @opentelemetry/api
 
 Keep `OTEL_GENAI_CAPTURE_CONTENT` unset or `false` unless you have reviewed prompt/content retention, because Flue events can include model-visible content.
 
+## Telemetry and Observability
+
+Decision Council telemetry is emitted through OpenTelemetry spans at three levels: the CLI run (`council-run`), per-round/per-persona workflow spans, and decorator-based BAML operation spans such as `run.council.baml.normalize`. If you leave all exporter credentials unset, the CLI still runs normally and no telemetry leaves the process. Set `OTEL_SDK_DISABLED=true` when you want to skip OpenTelemetry startup entirely.
+
+### Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `OTEL_SDK_DISABLED` | Set to `true` to disable OpenTelemetry startup entirely. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Enables OTLP trace export when set (for example `http://127.0.0.1:4318/v1/traces`). |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Optional OTLP auth/tenant headers consumed by the OTLP exporter environment configuration. |
+| `OTEL_SERVICE_NAME` | Optional OpenTelemetry service name override; defaults to `weavekit`. |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse public key. When paired with `LANGFUSE_SECRET_KEY`, enables Langfuse trace export. |
+| `LANGFUSE_SECRET_KEY` | Langfuse secret key. |
+| `LANGFUSE_BASE_URL` | Optional Langfuse base URL override. Defaults to `https://cloud.langfuse.com`. |
+| `LANGFUSE_EXPORT_RAW` | Set to `true` only when you intentionally want raw prompts/responses uploaded to Langfuse. By default Weavekit redacts exported content. |
+
+### Example: telemetry enabled (OTLP + Langfuse)
+
+```bash
+BAML_LOG=warn \
+OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318/v1/traces" \
+OTEL_EXPORTER_OTLP_HEADERS="authorization=Bearer <token>" \
+OTEL_SERVICE_NAME="weavekit" \
+LANGFUSE_PUBLIC_KEY="pk-lf-..." \
+LANGFUSE_SECRET_KEY="sk-lf-..." \
+LANGFUSE_BASE_URL="https://cloud.langfuse.com" \
+LANGFUSE_EXPORT_RAW="false" \
+nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/telemetry-enabled
+```
+
+### Example: telemetry disabled
+
+```bash
+OTEL_SDK_DISABLED=true \
+BAML_LOG=warn \
+nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/telemetry-disabled
+```
+
+### Verification
+
+Capture structured progress logs while you run a smoke test:
+
+```bash
+BAML_LOG=warn \
+OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318/v1/traces" \
+LANGFUSE_PUBLIC_KEY="pk-lf-..." \
+LANGFUSE_SECRET_KEY="sk-lf-..." \
+nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/telemetry-verify --log-format json \
+  2> runs/telemetry-verify.stderr.log
+```
+
+Check for startup/export/shutdown failures in stderr (no matches is the healthy case):
+
+```bash
+grep -iE "telemetry startup failed|telemetry shutdown failed|otlp|langfuse|export" runs/telemetry-verify.stderr.log
+```
+
+Inspect the run-level JSONL events written by Weavekit:
+
+```bash
+grep -E '"type":"council\\.(run|round|persona|baml)\\.' runs/telemetry-verify.stderr.log
+```
+
+If Langfuse export is enabled, confirm the trace in Langfuse by filtering for service `weavekit` and span names such as `council-run`, `run.council.round`, and `run.council.baml.normalize`.
+
 ## Verify
 
 ```bash
