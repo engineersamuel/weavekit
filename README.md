@@ -330,47 +330,6 @@ grep -E '"type":"council\\.(run|round|persona|baml)\\.' runs/telemetry-verify.st
 
 If Langfuse export is enabled, confirm the trace in Langfuse by filtering for service `weavekit` and span names such as `council-run`, `run.council.round`, and `run.council.baml.normalize`.
 
-## Optional Beads work queue
-
-Weavekit can use [Beads](https://github.com/gastownhall/beads) as an optional external work queue.
-Beads owns durable work items, dependencies, ready-work detection, and Dolt sync; weavekit still owns
-workflow execution state and artifacts.
-
-Initialize Beads only when you want a local project work queue:
-
-```bash
-bd init --stealth
-```
-
-Use the generic work queue commands:
-
-```bash
-nub run council work ready
-nub run council work claim bd-a1b2
-nub run council work create --title "Run a council on Beads" --description "Evaluate the adapter fit." --priority 1 --label weavekit
-nub run council work close bd-a1b2 --reason "Decision captured in docs/beads.md"
-nub run council work sync
-```
-
-To create a Beads workflow for a new council run, use `--create-beads-workflow`. To attach to an existing Beads item, use `--work-item <id>`.
-
-Attach a Decision Council run to an existing Beads item only with explicit lifecycle flags:
-
-```bash
-nub run council decision-council run \
-  --input examples/design-question.md \
-  --output runs/beads \
-  --work-item bd-a1b2 \
-  --claim-work-item \
-  --close-work-item \
-  --create-follow-up-work-item \
-  --sync-work-queue
-```
-
-See `docs/beads.md` for trade-offs, setup notes, and workflow formula examples.
-
-With Langfuse configured, Beads-backed runs also include Beads DAG metadata and lifecycle observations in the `council-run` trace. See `docs/beads.md`.
-
 ## Verify
 
 ```bash
