@@ -6,3 +6,6 @@ dist/
 runs/
 .superpowers/
 evals/results/
+sdd/*.md
+docs/superpowers/plans/
+docs/superpowers/specs/
