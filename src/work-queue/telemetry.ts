@@ -9,6 +9,12 @@ export type WorkQueueTelemetryContext = {
   item?: WorkItem;
 };
 
+export type WorkItemWorkflowDag = {
+  rootItemId: string;
+  activeItemId: string;
+  items: ReturnType<typeof serializeWorkItemDag>[];
+};
+
 const tracer = trace.getTracer("weavekit.work-queue");
 
 export function serializeWorkItemDag(item: WorkItem): Record<string, unknown> {
@@ -32,6 +38,28 @@ export function setWorkItemTraceAttributes(span: Pick<Span, "setAttribute">, ite
   span.setAttribute("langfuse.trace.metadata.beads.item_id", item.id);
   span.setAttribute("langfuse.trace.metadata.beads.item_title", item.title);
   setSerializedAttribute(span as Span, "langfuse.trace.metadata.beads.dag", serializeWorkItemDag(item));
+}
+
+export function serializeWorkItemWorkflowDag(args: {
+  rootItemId: string;
+  activeItemId: string;
+  items: WorkItem[];
+}): WorkItemWorkflowDag {
+  return {
+    rootItemId: args.rootItemId,
+    activeItemId: args.activeItemId,
+    items: args.items.map(serializeWorkItemDag),
+  };
+}
+
+export function setWorkItemWorkflowTraceAttributes(
+  span: Pick<Span, "setAttribute">,
+  dag: WorkItemWorkflowDag,
+): void {
+  span.setAttribute("weavekit.work_queue.workflow_root_item_id", dag.rootItemId);
+  span.setAttribute("weavekit.work_queue.workflow_active_item_id", dag.activeItemId);
+  span.setAttribute("weavekit.work_queue.workflow_item_count", dag.items.length);
+  setSerializedAttribute(span as Span, "langfuse.trace.metadata.beads.workflow_dag", dag);
 }
 
 export async function runWorkQueueSpan<T>(

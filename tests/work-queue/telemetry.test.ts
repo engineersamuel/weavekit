@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { serializeWorkItemDag, setWorkItemTraceAttributes, runWorkQueueSpan } from "../../src/work-queue/telemetry.js";
+import { serializeWorkItemDag, setWorkItemTraceAttributes, runWorkQueueSpan, serializeWorkItemWorkflowDag, setWorkItemWorkflowTraceAttributes } from "../../src/work-queue/telemetry.js";
 import type { WorkItem } from "../../src/work-queue/schema.js";
 
 const item: WorkItem = {
@@ -43,5 +43,61 @@ describe("work queue telemetry", () => {
   it("wraps lifecycle work in a named child span", async () => {
     const result = await runWorkQueueSpan("claim", { itemId: "bd-root" }, async () => "claimed");
     expect(result).toBe("claimed");
+  });
+
+  it("serializes a workflow DAG for Langfuse metadata", () => {
+    const second: WorkItem = {
+      ...item,
+      id: "bd-run",
+      title: "Run Decision Council",
+      dependencies: [{ type: "waits-for", id: "bd-root" }],
+    };
+
+    expect(serializeWorkItemWorkflowDag({
+      rootItemId: "bd-root",
+      activeItemId: "bd-run",
+      items: [item, second],
+    })).toEqual({
+      rootItemId: "bd-root",
+      activeItemId: "bd-run",
+      items: [
+        {
+          id: "bd-root",
+          title: "Run Decision Council",
+          status: "open",
+          type: "task",
+          priority: 1,
+          labels: ["weavekit"],
+          dependencies: [{ type: "waits-for", id: "bd-parent" }],
+        },
+        {
+          id: "bd-run",
+          title: "Run Decision Council",
+          status: "open",
+          type: "task",
+          priority: 1,
+          labels: ["weavekit"],
+          dependencies: [{ type: "waits-for", id: "bd-root" }],
+        },
+      ],
+    });
+  });
+
+  it("sets workflow DAG trace metadata", () => {
+    const attributes: Record<string, unknown> = {};
+    const span = { setAttribute: vi.fn((key: string, value: unknown) => { attributes[key] = value; }) };
+    const dag = serializeWorkItemWorkflowDag({
+      rootItemId: "bd-root",
+      activeItemId: "bd-root",
+      items: [item],
+    });
+
+    setWorkItemWorkflowTraceAttributes(span as never, dag);
+
+    expect(JSON.parse(attributes["langfuse.trace.metadata.beads.workflow_dag"] as string)).toMatchObject({
+      rootItemId: "bd-root",
+      activeItemId: "bd-root",
+      items: [{ id: "bd-root" }],
+    });
   });
 });
