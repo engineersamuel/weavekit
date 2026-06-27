@@ -23,6 +23,23 @@ export type TraceBamlOperationDecorator = <This, Args extends unknown[], Return>
 
 const tracer = trace.getTracer("weavekit.decision-council");
 const telemetryScope = new AsyncLocalStorage<BamlTelemetryScope>();
+const MAX_ATTRIBUTE_CHARS = 5 * 1024;
+
+function serializeTelemetryAttribute(value: unknown): string {
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) {
+      return "null";
+    }
+    return serialized.length > MAX_ATTRIBUTE_CHARS ? serialized.slice(0, MAX_ATTRIBUTE_CHARS) : serialized;
+  } catch {
+    return '"[unserializable]"';
+  }
+}
+
+function setSerializedAttribute(span: Span, key: string, value: unknown): void {
+  span.setAttribute(key, serializeTelemetryAttribute(value));
+}
 
 export function createCollectorTagMap(context: BamlTelemetryContext): Record<string, string> {
   const tags: Record<string, string> = {};
@@ -63,6 +80,40 @@ function setCollectorAttributes(span: Span, collector: Collector): void {
   }
 }
 
+export async function runTracedBamlOperation<Return>(
+  operation: BamlOperation | "route-model-call",
+  args: unknown,
+  target: () => Promise<Return>,
+): Promise<Return> {
+  return tracer.startActiveSpan(`run.council.baml.${operation}`, async (span) => {
+    span.setAttribute("gen_ai.system", "baml");
+    span.setAttribute("gen_ai.operation.name", operation);
+    span.setAttribute("weavekit.decision_council.operation", operation);
+    setSerializedAttribute(span, "weavekit.decision_council.args", args);
+    const collector = new Collector(`decision-council.${operation}`);
+
+    return telemetryScope.run({ collector, span }, async () => {
+      try {
+        const result = await target();
+        setSerializedAttribute(span, "weavekit.decision_council.result", result);
+        setCollectorAttributes(span, collector);
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (error) {
+        setCollectorAttributes(span, collector);
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
+  });
+}
+
 export function createBamlTelemetryOptions(
   context: BamlTelemetryContext = {},
 ): Pick<BamlRouteOptions, "collector" | "tags"> {
@@ -84,31 +135,7 @@ export function TraceBamlOperation(operation: BamlOperation): TraceBamlOperation
     _context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Promise<Return>>,
   ) {
     return async function tracedBamlOperation(this: This, ...args: Args): Promise<Return> {
-      return tracer.startActiveSpan(`run.council.baml.${operation}`, async (span) => {
-        span.setAttribute("gen_ai.system", "baml");
-        span.setAttribute("gen_ai.operation.name", operation);
-        span.setAttribute("weavekit.decision_council.operation", operation);
-        const collector = new Collector(`decision-council.${operation}`);
-
-        return telemetryScope.run({ collector, span }, async () => {
-          try {
-            const result = await target.apply(this, args);
-            setCollectorAttributes(span, collector);
-            span.setStatus({ code: SpanStatusCode.OK });
-            return result;
-          } catch (error) {
-            setCollectorAttributes(span, collector);
-            span.recordException(error as Error);
-            span.setStatus({
-              code: SpanStatusCode.ERROR,
-              message: error instanceof Error ? error.message : String(error),
-            });
-            throw error;
-          } finally {
-            span.end();
-          }
-        });
-      });
+      return runTracedBamlOperation(operation, args, () => target.apply(this, args));
     };
   };
 }

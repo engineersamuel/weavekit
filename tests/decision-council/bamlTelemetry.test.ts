@@ -132,4 +132,28 @@ describe("bamlTelemetry", () => {
     expect(spanState.spans[0]?.attributes["weavekit.decision_council.run_id"]).toBe("run-9");
     expect(spanState.spans[0]?.ended).toBe(true);
   });
+
+  it("serializes args and results into bounded span attributes", async () => {
+    const payload = {
+      text: "x".repeat(6000),
+    };
+
+    class Example {
+      @TraceBamlOperation("normalize")
+      async echo(input: typeof payload): Promise<typeof payload> {
+        return input;
+      }
+    }
+
+    const result = await new Example().echo(payload);
+
+    expect(result).toEqual(payload);
+    const span = spanState.spans[0];
+    const args = span?.attributes["weavekit.decision_council.args"] as string;
+    const output = span?.attributes["weavekit.decision_council.result"] as string;
+    expect(args.length).toBeLessThanOrEqual(5 * 1024);
+    expect(output.length).toBeLessThanOrEqual(5 * 1024);
+    expect(args).toContain('"text":"xxxxxxxxxx');
+    expect(output).toContain('"text":"xxxxxxxxxx');
+  });
 });
