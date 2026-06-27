@@ -22,6 +22,7 @@ import {
   startDecisionCouncilWorkItem,
   type DecisionCouncilWorkQueueOptions,
 } from "../work-queue/decisionCouncil.js";
+import { setWorkItemTraceAttributes } from "../work-queue/telemetry.js";
 
 export type RunDecisionCouncilOptions = {
   personaSet?: PersonaSet;
@@ -102,6 +103,13 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
       });
 
       await startDecisionCouncilWorkItem(options.workQueue);
+
+      const sourceWorkItem = options.workQueue
+        ? await options.workQueue.backend.show(options.workQueue.workItemId)
+        : undefined;
+      if (sourceWorkItem) {
+        setWorkItemTraceAttributes(span, sourceWorkItem);
+      }
 
       const finalState = await runDecisionCouncilLoop(initialState, deps);
 

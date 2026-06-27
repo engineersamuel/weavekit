@@ -913,8 +913,8 @@ describe("runDecisionCouncil", () => {
       async ready() {
         return [];
       },
-      async show() {
-        throw new Error("not used");
+      async show(id: string) {
+        return { id, title: "x", status: "open" as const, type: "task" as const, priority: 1, labels: [], dependencies: [] };
       },
       async claim(id: string) {
         events.push(`claim:${id}`);
@@ -955,6 +955,59 @@ describe("runDecisionCouncil", () => {
     expect(events[0]).toBe("claim:bd-root");
     expect(events[1]).toContain("close:bd-root:Decision Council completed.");
     expect(events[2]).toBe("sync");
+  });
+
+  it("attaches source Beads item metadata to the root Langfuse trace", async () => {
+    const backend = {
+      async ready() { return []; },
+      async show(id: string) {
+        return {
+          id,
+          title: "Trace Beads DAG",
+          status: "open" as const,
+          type: "task" as const,
+          priority: 1,
+          labels: ["weavekit"],
+          dependencies: [{ type: "waits-for" as const, id: "bd-parent" }],
+        };
+      },
+      async claim(id: string) {
+        return {
+          id,
+          title: "Trace Beads DAG",
+          status: "in_progress" as const,
+          type: "task" as const,
+          priority: 1,
+          labels: ["weavekit"],
+          dependencies: [{ type: "waits-for" as const, id: "bd-parent" }],
+        };
+      },
+      async create() { throw new Error("not used"); },
+      async close(id: string, input: { reason: string }) {
+        return { id, title: input.reason, status: "closed" as const, type: "task" as const, priority: 1, labels: [], dependencies: [] };
+      },
+      async sync() {},
+    };
+
+    await runCouncilForTest(
+      { prompt: "Trace this Beads item." },
+      {
+        workQueue: { backend, workItemId: "bd-root", claimOnStart: true },
+        deps: { personaWorker: fakeWorker(), normalizer, judge: judge(1), writeArtifacts: false },
+      },
+    );
+
+    const rootSpan = telemetry.spans.find((span) => span.name === "council-run");
+    expect(rootSpan?.attributes).toMatchObject({
+      "weavekit.work_queue.item_id": "bd-root",
+      "weavekit.work_queue.item_title": "Trace Beads DAG",
+      "langfuse.trace.metadata.beads.item_id": "bd-root",
+      "langfuse.trace.metadata.beads.item_title": "Trace Beads DAG",
+    });
+    expect(JSON.parse(rootSpan?.attributes["langfuse.trace.metadata.beads.dag"] as string)).toMatchObject({
+      id: "bd-root",
+      dependencies: [{ type: "waits-for", id: "bd-parent" }],
+    });
   });
 });
 
