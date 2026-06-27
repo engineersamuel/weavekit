@@ -125,15 +125,25 @@ describe("bamlTelemetry", () => {
   });
 
   it("falls back to the current normalize span name without persona context", async () => {
-    await runTracedBamlOperation("normalize", [{ text: "plain" }], async () => "ok");
+    await runTracedBamlOperation("normalize", [{ text: "plain" }], async () => {
+      const options = createBamlTelemetryOptions();
+      expect(options.tags).toEqual({});
+      return "ok";
+    });
 
     expect(spanState.startActiveSpanCalls).toEqual(["run.council.baml.normalize"]);
+    expect(spanState.spans[0]?.name).toBe("run.council.baml.normalize");
   });
 
-  it("keeps non-normalize span names unchanged", async () => {
-    await runTracedBamlOperation("report", [{ personaId: "skeptic" }], async () => "ok");
+  it.each(["report", "assess"] as const)("keeps non-normalize span names unchanged for %s", async (operation) => {
+    await runTracedBamlOperation(operation, [{ personaId: "skeptic" }], async () => {
+      const options = createBamlTelemetryOptions({ personaId: "skeptic" });
+      expect(options.tags).toEqual({ personaId: "skeptic" });
+      return "ok";
+    });
 
-    expect(spanState.startActiveSpanCalls).toEqual(["run.council.baml.report"]);
+    expect(spanState.startActiveSpanCalls).toEqual([`run.council.baml.${operation}`]);
+    expect(spanState.spans[0]?.name).toBe(`run.council.baml.${operation}`);
   });
 
   it("records exceptions on the span and rethrows", async () => {

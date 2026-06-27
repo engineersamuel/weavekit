@@ -1,62 +1,29 @@
-# Task 1 Report — Telemetry bootstrap (OTEL + Langfuse)
+# Task 1 Report — Persona-aware normalize span names
 
 Status: DONE
 
 Commits created:
-- 4dcaddd feat: add otel bootstrap and cli lifecycle wiring
+- 4afffd4 feat: name normalize spans by persona
 
 One-line test summary:
-- Ran focused tests: 2 tests passed (tests/telemetry/bootstrap.test.ts)
+- `nub run test -- tests/decision-council/bamlTelemetry.test.ts` ✅ and `nub run typecheck` ✅
 
-What I changed
-- Added src/telemetry/bootstrap.ts implementing startTelemetry, telemetryEnabled, and TelemetryHandle. It starts an OpenTelemetry NodeSDK with optional OTLP exporter and optional LangfuseSpanProcessor when LANGFUSE_* env vars are present. When OTEL_SDK_DISABLED=true the module returns a noop shutdown handle.
-- Wired telemetry startup/shutdown into src/cli.ts main() so the CLI lifecycle starts telemetry before running Decision Council and always shuts it down in a finally block.
-- Added tests/tests/telemetry/bootstrap.test.ts covering disabled and enabled flows.
+What changed:
+- Updated `src/decision-council/bamlTelemetry.ts` so normalize spans keep the `run.council...` prefix but are renamed to `run.council.baml.persona.<personaId>` when persona context is available.
+- Kept non-normalize span names unchanged.
+- Preserved all existing span attributes.
+- Added tests covering persona-aware renaming, fallback naming when persona context is missing, and unchanged non-normalize spans.
+- Tightened fallback/non-normalize test coverage so the conditional rename branch is exercised inside traced targets.
 
-Test & Typecheck
-- Ran: `nub run test -- tests/telemetry/bootstrap.test.ts` — both tests passed.
-- Ran: `nub run typecheck` (tsc --noEmit) — no TypeScript errors.
-
-Notes and verification steps
-- The tests intentionally avoid requiring external OTEL or Langfuse servers by exercising the enabled/disabled behavior and by setting OTEL_EXPORTER_OTLP_ENDPOINT to a local URL only to ensure exporter creation does not throw during startup. The tests call shutdown to ensure the returned handle resolves correctly.
-- The implementation uses conservative any casts around OpenTelemetry and Langfuse types to avoid strict type coupling with runtime shapes; these are safe because the project's package.json already includes the required dependencies.
-
-Concerns
-- Runtime: The Langfuse SDK import (LangfuseSpanProcessor, isDefaultExportSpan) assumes @langfuse/otel v5.9.0 exports those symbols; if upstream changes exports, runtime failures could occur. Tests did not exercise Langfuse paths because LANGFUSE_* env vars were not set.
-- Behavior: startTelemetry eagerly calls sdk.start(); if there are long start hooks this could slow CLI startup. This matches the brief but could be deferred in future.
-
-Next steps (optional)
-- Add integration tests that set LANGFUSE_* env vars in a controlled sandbox or mock the Langfuse module to assert processor behavior.
-- Consider graceful logging around telemetry startup failures so CLI still runs even if telemetry init throws.
+Concerns:
+- None.
 
 Report path:
-/Users/smendenhall/.baton/worktrees/weavekit/steady-elm/sdd/task-1-report.md
-
-## Fix follow-up
-
-- Fixed the Langfuse bootstrap against the v5.9.0 API by relying on the exported `LangfuseSpanProcessor` and `isDefaultExportSpan` symbols, and by passing `publicKey`, `secretKey`, and `baseUrl` explicitly into the processor.
-- Added `LANGFUSE_EXPORT_RAW` gating so raw prompt/response export is masked by default and only enabled when `LANGFUSE_EXPORT_RAW=true`.
-- Replaced `any`-typed NodeSDK/spanProcessor wiring with typed `SpanProcessor[]` and `ConstructorParameters<typeof NodeSDK>[0]`.
-- Tightened test cleanup by restoring env state after each test and covering both default-redaction and explicit raw-export paths.
-
-Verification:
-- `nub run test -- tests/telemetry/bootstrap.test.ts`
-- `nub run typecheck`
-
-## Important findings follow-up
-
-- Hardened Langfuse masking so structured payloads are redacted too when `LANGFUSE_EXPORT_RAW` is not `true`; this prevents object/array span attributes from leaking raw content.
-- Wrapped telemetry shutdown in `src/cli.ts` with a try/catch so shutdown failures are logged but do not override the CLI's original success/failure status.
-
-Verification:
-- `nub run test -- tests/telemetry/bootstrap.test.ts tests/cli-main.test.ts`
-- `nub run typecheck`
+- /Users/smendenhall/.baton/worktrees/weavekit/steady-elm/sdd/task-1-report.md
 
 ## Final fix follow-up
 
-- Guarded `startTelemetry("weavekit")` in `src/cli.ts` so telemetry startup failures are logged to stderr and the CLI falls back to a noop `TelemetryHandle`.
-- Added a CLI test that simulates telemetry startup failure and verifies Decision Council still runs and writes its success output.
-
-Verification:
-- `nub run test -- tests/telemetry/bootstrap.test.ts tests/cli-main.test.ts`
-- `nub run typecheck`
+- Moved `createBamlTelemetryOptions(...)` calls into traced targets so the span-renaming branch now runs inside the active trace scope.
+- Added a normalize fallback assertion with no persona context to prove the span name stays `run.council.baml.normalize`.
+- Added report/assess coverage with `personaId: "skeptic"` to prove non-normalize span names remain unchanged.
+- Verified with `nub run test -- tests/decision-council/bamlTelemetry.test.ts` and `nub run typecheck`.
