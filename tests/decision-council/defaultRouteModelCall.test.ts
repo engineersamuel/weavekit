@@ -95,9 +95,15 @@ describe("defaultRouteModelCall", () => {
       clientName: "CopilotProxyGpt54",
     });
 
-    expect(mocks.bamlCall).toHaveBeenCalledWith(input.taskKind, input.summary, input.candidates, {
-      signal: expect.any(AbortSignal),
-    });
+    expect(mocks.bamlCall).toHaveBeenCalledWith(
+      input.taskKind,
+      input.summary,
+      input.candidates,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        collector: expect.objectContaining({ name: "decision-council.route-model-call" }),
+      }),
+    );
     expect(mocks.spanState.startActiveSpanCalls).toEqual(["run.council.baml.route-model-call"]);
 
     const span = mocks.spanState.spans[0];
@@ -108,5 +114,50 @@ describe("defaultRouteModelCall", () => {
     expect(args).toContain('"taskKind":"assess"');
     expect(result).toContain('"clientName":"CopilotProxyGpt54"');
     expect(span?.ended).toBe(true);
+  });
+
+  it("threads the trace-scope collector into RouteModelCall options", async () => {
+    mocks.bamlCall.mockImplementation(async (_taskKind, _summary, _candidates, options) => {
+      const collector = options?.collector;
+      if (collector && !Array.isArray(collector)) {
+        collector.last = {
+          functionName: "RouteModelCall",
+          logType: "invoke",
+          timing: { durationMs: 17 },
+        };
+        collector.usage.inputTokens = 11;
+        collector.usage.outputTokens = 7;
+        collector.usage.cachedInputTokens = 3;
+      }
+      return {
+        clientName: "CopilotProxyGpt54",
+        model: "gpt-5.4",
+        reasoningEffort: "low",
+        rationale: "picked",
+      };
+    });
+
+    const input = {
+      taskKind: "assess",
+      summary: "route me",
+      candidates: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
+    };
+
+    await expect(defaultRouteModelCall(input, new AbortController().signal)).resolves.toMatchObject({
+      clientName: "CopilotProxyGpt54",
+    });
+
+    const callOptions = mocks.bamlCall.mock.calls[0]?.[3] as {
+      collector?: { name?: string; logs: unknown[]; last: unknown; usage: Record<string, unknown> };
+    } | undefined;
+    expect(callOptions?.collector).toBeDefined();
+    expect(callOptions?.collector?.name).toBe("decision-council.route-model-call");
+    expect(mocks.spanState.spans[0]?.attributes).toMatchObject({
+      "weavekit.decision_council.function_name": "RouteModelCall",
+      "weavekit.decision_council.baml_duration_ms": 17,
+      "gen_ai.usage.input_tokens": 11,
+      "gen_ai.usage.output_tokens": 7,
+      "gen_ai.usage.cached_input_tokens": 3,
+    });
   });
 });

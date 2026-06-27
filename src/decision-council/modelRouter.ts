@@ -1,5 +1,5 @@
 import { b } from "../generated/baml_client/index.js";
-import { runTracedBamlOperation } from "./bamlTelemetry.js";
+import { createBamlTelemetryOptions, runTracedBamlOperation } from "./bamlTelemetry.js";
 
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
@@ -264,7 +264,10 @@ export function createDefaultModelRouter(callRouteModelCall?: RouteModelCallFn):
 // a client name like "CopilotProxyClaudeHaiku45", not a model id.
 export const defaultRouteModelCall: RouteModelCallFn = async (input, signal) => {
   return runTracedBamlOperation("route-model-call", input, async () => {
-    const raw = await b.RouteModelCall(input.taskKind, input.summary, input.candidates, { signal });
+    const raw = await b.RouteModelCall(input.taskKind, input.summary, input.candidates, {
+      signal,
+      ...createBamlTelemetryOptions(),
+    });
     const policyModel = DEFAULT_ROUTING_POLICY[input.taskKind as RouteTaskKind]?.model ?? "claude-haiku-4-5";
     return normalizeRoutingDecision(
       {

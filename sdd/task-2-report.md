@@ -27,3 +27,9 @@ Follow-up fix report
 - Routed `defaultRouteModelCall` through the traced BAML wrapper so the generated `RouteModelCall` runs inside an active span.
 - Added coverage for bounded serialization plus RouteModelCall tracing.
 - Verification: `nub run typecheck && nub run test` — both passed; 183 tests passed total.
+
+Task 2 fix report
+- Threaded the active trace-scope collector into `b.RouteModelCall(...)` via `createBamlTelemetryOptions()`.
+- Verified `RouteModelCall` accepts collector options from the generated BAML client.
+- Updated tests to assert collector propagation and span enrichment with function name, duration, and usage metadata.
+- Verification: `nub run test && nub run typecheck` — both passed; 184 tests passed total.
