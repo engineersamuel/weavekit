@@ -29,6 +29,7 @@ export type DecisionCouncilCliArgs = {
   closeWorkItem: boolean;
   createFollowUpWorkItem: boolean;
   syncWorkQueue: boolean;
+  createBeadsWorkflow: boolean;
 };
 
 export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
@@ -88,6 +89,11 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     throw new Error("--claim-work-item, --close-work-item, --create-follow-up-work-item, and --sync-work-queue require --work-item <id>.");
   }
 
+  const createBeadsWorkflow = argv.includes("--create-beads-workflow");
+  if (createBeadsWorkflow && workItemId) {
+    throw new Error("--work-item <id> and --create-beads-workflow are mutually exclusive.");
+  }
+
   return {
     inputPath: argv[inputIndex + 1]!,
     outputDir: outputIndex === -1 ? "runs/latest" : argv[outputIndex + 1] ?? "runs/latest",
@@ -100,6 +106,7 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     closeWorkItem,
     createFollowUpWorkItem,
     syncWorkQueue,
+    createBeadsWorkflow,
   };
 }
 

@@ -53,6 +53,7 @@ describe("CLI", () => {
       closeWorkItem: false,
       createFollowUpWorkItem: false,
       syncWorkQueue: false,
+      createBeadsWorkflow: false,
     });
   });
 
@@ -78,6 +79,7 @@ describe("CLI", () => {
       closeWorkItem: false,
       createFollowUpWorkItem: false,
       syncWorkQueue: false,
+      createBeadsWorkflow: false,
     });
   });
 
@@ -249,6 +251,33 @@ describe("CLI", () => {
     expect(parsed.workItemId).toBe("bd-abc");
     expect(parsed.claimWorkItem).toBe(true);
     expect(parsed.syncWorkQueue).toBe(true);
+  });
+
+  it("parses --create-beads-workflow", () => {
+    const parsed = parseDecisionCouncilCliArgs([
+      "decision-council",
+      "run",
+      "--input",
+      "x.md",
+      "--create-beads-workflow",
+    ]);
+
+    expect(parsed.createBeadsWorkflow).toBe(true);
+    expect(parsed.workItemId).toBeUndefined();
+  });
+
+  it("rejects --create-beads-workflow with --work-item", () => {
+    expect(() =>
+      parseDecisionCouncilCliArgs([
+        "decision-council",
+        "run",
+        "--input",
+        "x.md",
+        "--work-item",
+        "bd-root",
+        "--create-beads-workflow",
+      ]),
+    ).toThrow("--work-item <id> and --create-beads-workflow are mutually exclusive.");
   });
 });
 
