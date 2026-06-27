@@ -4,6 +4,7 @@ const collectorInstances: { name?: string; logs: unknown[]; last: unknown }[] = 
 const spanState = {
   startActiveSpanCalls: [] as string[],
   spans: [] as {
+    name: string;
     attributes: Record<string, unknown>;
     status: unknown[];
     exceptions: unknown[];
@@ -36,11 +37,13 @@ vi.mock("@opentelemetry/api", () => ({
     getTracer: vi.fn(() => ({
       startActiveSpan: vi.fn(async (name: string, fn: (span: {
         setAttribute: (key: string, value: unknown) => void;
+        updateName: (value: string) => void;
         setStatus: (value: unknown) => void;
         recordException: (value: unknown) => void;
         end: () => void;
       }) => Promise<unknown>) => {
         const span = {
+          name,
           attributes: {} as Record<string, unknown>,
           status: [] as unknown[],
           exceptions: [] as unknown[],
@@ -51,6 +54,9 @@ vi.mock("@opentelemetry/api", () => ({
         return await fn({
           setAttribute(key, value) {
             span.attributes[key] = value;
+          },
+          updateName(value) {
+            span.name = value;
           },
           setStatus(value) {
             span.status.push(value);
@@ -68,6 +74,7 @@ vi.mock("@opentelemetry/api", () => ({
 }));
 
 import {
+  runTracedBamlOperation,
   TraceBamlOperation,
   createBamlTelemetryOptions,
   createCollectorTagMap,
@@ -107,6 +114,7 @@ describe("bamlTelemetry", () => {
     expect(result.collectorName).toBe("decision-council.normalize");
     expect(result.options.tags).toEqual({ personaId: "skeptic", roundNumber: "3" });
     expect(spanState.startActiveSpanCalls).toEqual(["run.council.baml.normalize"]);
+    expect(spanState.spans[0]?.name).toBe("run.council.baml.persona.skeptic");
     expect(spanState.spans[0]?.attributes).toMatchObject({
       "gen_ai.system": "baml",
       "gen_ai.operation.name": "normalize",
@@ -114,6 +122,18 @@ describe("bamlTelemetry", () => {
       "weavekit.decision_council.round_number": 3,
     });
     expect(spanState.spans[0]?.ended).toBe(true);
+  });
+
+  it("falls back to the current normalize span name without persona context", async () => {
+    await runTracedBamlOperation("normalize", [{ text: "plain" }], async () => "ok");
+
+    expect(spanState.startActiveSpanCalls).toEqual(["run.council.baml.normalize"]);
+  });
+
+  it("keeps non-normalize span names unchanged", async () => {
+    await runTracedBamlOperation("report", [{ personaId: "skeptic" }], async () => "ok");
+
+    expect(spanState.startActiveSpanCalls).toEqual(["run.council.baml.report"]);
   });
 
   it("records exceptions on the span and rethrows", async () => {

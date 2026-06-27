@@ -14,6 +14,7 @@ export type BamlTelemetryContext = {
 type BamlTelemetryScope = {
   collector: Collector;
   span: Span;
+  operation: BamlOperation | "route-model-call";
 };
 
 export type TraceBamlOperationDecorator = <This, Args extends unknown[], Return>(
@@ -92,7 +93,7 @@ export async function runTracedBamlOperation<Return>(
     setSerializedAttribute(span, "weavekit.decision_council.args", args);
     const collector = new Collector(`decision-council.${operation}`);
 
-    return telemetryScope.run({ collector, span }, async () => {
+    return telemetryScope.run({ collector, span, operation }, async () => {
       try {
         const result = await target();
         setSerializedAttribute(span, "weavekit.decision_council.result", result);
@@ -120,6 +121,9 @@ export function createBamlTelemetryOptions(
   const scope = telemetryScope.getStore();
   const tags = createCollectorTagMap(context);
   if (scope) {
+    if (scope.operation === "normalize" && context.personaId) {
+      scope.span.updateName(`run.council.baml.persona.${context.personaId}`);
+    }
     setContextAttributes(scope.span, context);
   }
 
