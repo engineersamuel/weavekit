@@ -274,3 +274,29 @@ describe("normalizeRunnerError", () => {
     }
   });
 });
+
+describe("BeadsCliWorkQueue — preserve DAG details", () => {
+  it("preserves dependency DAG fields from Beads show output", async () => {
+    const queue = new BeadsCliWorkQueue({
+      cwd: "/repo",
+      runCommand: runnerFor([], [{
+        allDetails: [{
+          id: "bd-root",
+          title: "Run traced work",
+          status: "open",
+          issue_type: "task",
+          priority: 1,
+          labels: ["weavekit"],
+          dependencies: [{ dependency_type: "waits-for", id: "bd-parent" }],
+        }],
+      }]),
+    });
+
+    const item = await queue.show("bd-root");
+
+    expect(item).toMatchObject({
+      id: "bd-root",
+      dependencies: [{ type: "waits-for", id: "bd-parent" }],
+    });
+  });
+});
