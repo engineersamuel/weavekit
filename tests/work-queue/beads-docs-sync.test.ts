@@ -16,3 +16,14 @@ describe("beads docs incident triage demo", () => {
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
 });
+
+describe("beads docs generated workflow mode", () => {
+  it("documents generated workflow mode with CLI flag and metadata", () => {
+    const readme = readFileSync(resolve(process.cwd(), "README.md"), "utf8");
+    const beadsDocs = readFileSync(resolve(process.cwd(), "docs/beads.md"), "utf8");
+
+    expect(readme).toContain("--create-beads-workflow");
+    expect(beadsDocs).toContain("--create-beads-workflow");
+    expect(beadsDocs).toContain("langfuse.trace.metadata.beads.workflow_dag");
+  });
+});

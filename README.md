@@ -352,6 +352,8 @@ nub run council work close bd-a1b2 --reason "Decision captured in docs/beads.md"
 nub run council work sync
 ```
 
+To create a Beads workflow for a new council run, use `--create-beads-workflow`. To attach to an existing Beads item, use `--work-item <id>`.
+
 Attach a Decision Council run to an existing Beads item only with explicit lifecycle flags:
 
 ```bash

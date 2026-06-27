@@ -52,6 +52,25 @@ Use Beads for queue selection and dependency-aware orchestration around weavekit
 Do not store every persona response, round brief, or BAML call as a Beads item. Those are workflow execution
 state and already live in `DecisionCouncilRunState.json` plus debug artifacts.
 
+### Generated workflow mode
+
+Use `--create-beads-workflow` when you want Weavekit to create the Beads DAG for a new Decision Council run:
+
+```bash
+nub run council decision-council run \
+  --input examples/design-question.md \
+  --create-beads-workflow
+```
+
+This creates four Beads items:
+
+1. `frame-question`
+2. `run-council`
+3. `review-report`
+4. `implement-next-experiment`
+
+The council runs under the generated `run-council` item. Langfuse receives `langfuse.trace.metadata.beads.workflow_dag` with all generated items. Use `--work-item <id>` instead when you already have a Beads item and only want to attach a run to it.
+
 ## Langfuse trace visualization
 
 When Langfuse export is configured and a run supplies `--work-item <id>`, Weavekit reads the source Beads item and annotates the root `council-run` trace with:
