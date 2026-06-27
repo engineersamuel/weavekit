@@ -1,8 +1,32 @@
+import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatDecisionCouncilSuccessMessage, parseDecisionCouncilCliArgs, readDecisionCouncilInputFile } from "../src/cli.js";
+
+function runCommand(command: string, args: string[]): Promise<{ code: number | null; stderr: string; stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: process.cwd(),
+      env: { ...process.env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    let stdout = "";
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => resolve({ code, stderr, stdout }));
+  });
+}
 
 describe("CLI", () => {
   it("parses decision-council run arguments", () => {
@@ -138,5 +162,14 @@ describe("CLI", () => {
 
     expect(message).toContain("Use Flue for v0.");
     expect(message).toContain("Markdown report: runs/example/DecisionCouncilReport.md");
+  });
+
+  it("starts the source CLI without loading Flue skill assets", async () => {
+    const result = await runCommand("nub", ["run", "council", "decision-council"]);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("Usage: weavekit decision-council run");
+    expect(result.stderr).not.toContain("Unknown file extension");
+    expect(result.stderr).not.toContain("SKILL.md");
   });
 });

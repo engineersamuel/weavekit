@@ -37,6 +37,47 @@ export BAML_MODEL="gpt-5-mini"
 
 GitHub Copilot SDK authentication for persona workers follows the SDK's local authentication behavior.
 
+## Native Flue agent harness
+
+Weavekit uses Flue as the production workflow/agent harness. The main workflow path should call models through Flue/Pi providers, not through `@github/copilot-sdk`. The Copilot SDK may be used later for an explicit final handoff/autopilot experiment, but it is not the primary Decision Council model-call path.
+
+Set `WEAVEKIT_FLUE_MODEL` to override the default Flue model for Decision Council agents. Defaults to `anthropic/claude-haiku-4-5`. The model must be a registered Flue/Pi provider.
+
+```bash
+export WEAVEKIT_FLUE_MODEL="anthropic/claude-sonnet-4-6"
+```
+
+### Flue MCP tools
+
+The Flue workflow can expose selected MCP tools from the same systems used in local Copilot CLI config:
+
+| MCP | Env/config | Notes |
+| --- | --- | --- |
+| Exa | `EXA_API_KEY` | Builds `https://mcp.exa.ai/mcp?exaApiKey=...` at runtime. |
+| EngHub | none | Uses `https://mcp.eng.ms`. |
+| Context7 | `CONTEXT7_API_KEY` | Sent as a trusted application header. |
+| Baton | `includeLocalBaton: true` | Local development only; requires Baton MCP server on `http://localhost:53724/mcp`. |
+| awesome-copilot | not wired | Current Flue MCP API expects remote MCP endpoints; bridge the Docker stdio server before exposing it. |
+
+Server or application registration code should use `createConfiguredDecisionCouncilWorkflow(...)` when it wants the environment-configured MCP tools attached to the Flue workflow:
+
+```ts
+const { workflow, close } = await createConfiguredDecisionCouncilWorkflow(deps, {
+  env: process.env,
+  includeLocalBaton: false,
+});
+
+try {
+  // Register or invoke `workflow` with the Flue runtime.
+} finally {
+  await close();
+}
+```
+
+### Superpowers skill
+
+The `using-superpowers` Agent Skill is vendored under `src/skills/using-superpowers/` and imported by the shared Flue Decision Council agent. Skills provide instructions and reusable process guidance; executable capabilities still come from Flue tools/MCP servers.
+
 ## Run the Design Council
 
 ```bash

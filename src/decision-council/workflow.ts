@@ -1,5 +1,3 @@
-import { defineAgent, defineWorkflow } from "@flue/runtime";
-import * as v from "valibot";
 import type { CritiqueNormalizer, JudgeReducer } from "./bamlAdapters.js";
 import { DecisionCouncilRunFailedError } from "./errors.js";
 import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
@@ -384,22 +382,4 @@ export async function runDecisionCouncilLoop(
   }
 
   return state;
-}
-
-// Exported for Flue server-registration seam: runDecisionCouncil (in runner.ts) uses the direct
-// runDecisionCouncilLoop for the CLI/library path (v0), while createDecisionCouncilWorkflow enables
-// running the council as a Flue workflow on remote services (future integration).
-export function createDecisionCouncilWorkflow(deps: DecisionCouncilWorkflowDeps) {
-  return defineWorkflow({
-    agent: defineAgent(() => ({
-      model: "anthropic/claude-haiku-4-5",
-      instructions:
-        "You host finite Design Council workflow runs. Application code controls the council loop and typed outputs.",
-    })),
-    input: v.looseObject({}),
-    output: v.looseObject({}),
-    async run({ input }) {
-      return await runDecisionCouncilLoop(DecisionCouncilRunStateSchema.parse(input), deps);
-    },
-  });
 }

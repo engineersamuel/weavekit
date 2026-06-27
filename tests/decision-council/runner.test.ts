@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { runDecisionCouncil, type RunDecisionCouncilOptions } from "../../src/decision-council/runner.js";
-import { createDecisionCouncilWorkflow, runDecisionCouncilLoop } from "../../src/decision-council/workflow.js";
+import { runDecisionCouncilLoop } from "../../src/decision-council/workflow.js";
+import { createDecisionCouncilWorkflow } from "../../src/flue/decisionCouncilWorkflowDefinition.js";
 import { defaultPersonaSet } from "../../src/decision-council/personas.js";
 import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
@@ -618,6 +619,22 @@ describe("createDecisionCouncilWorkflow", () => {
         normalizer,
         judge: judge(1),
       }),
+    ).not.toThrow();
+  });
+
+  it("createDecisionCouncilWorkflow accepts Flue agent tools without requiring live MCP servers", () => {
+    const tool = { name: "mcp__EngHub__search" };
+
+    expect(() =>
+      createDecisionCouncilWorkflow(
+        {
+          personaSelector: staticDefaultSelector,
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+        },
+        { flueTools: [tool as never], flueModel: "github-copilot/gpt-4o" },
+      ),
     ).not.toThrow();
   });
 });
