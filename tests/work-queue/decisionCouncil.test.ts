@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { trace, type Span, type Tracer } from "@opentelemetry/api";
 import {
   completeDecisionCouncilWorkItem,
   startDecisionCouncilWorkItem,
@@ -7,6 +8,7 @@ import {
 import type { WorkQueueBackend } from "../../src/work-queue/backend.js";
 import type { DecisionCouncilReport } from "../../src/decision-council/types.js";
 import type { CreateWorkItemInput, ReadyWorkFilter, WorkItem } from "../../src/work-queue/schema.js";
+import * as telemetry from "../../src/work-queue/telemetry.js";
 
 const baseItem: WorkItem = {
   id: "bd-root",
@@ -91,5 +93,38 @@ describe("decision council work item lifecycle", () => {
       "close:bd-root:Decision Council completed. Recommendation: Use an optional adapter. Report: runs/beads/DecisionCouncilReport.md",
       "sync",
     ]);
+  });
+
+  it("wraps requested lifecycle calls in Beads telemetry spans", async () => {
+    const events: string[] = [];
+    const spanOperations: string[] = [];
+    
+    // Spy on runWorkQueueSpan to capture operations
+    const spy = vi.spyOn(telemetry, "runWorkQueueSpan");
+    spy.mockImplementation(async (operation, context, fn) => {
+      spanOperations.push(operation);
+      return fn();
+    });
+
+    const options: DecisionCouncilWorkQueueOptions = {
+      backend: fakeBackend(events),
+      workItemId: "bd-root",
+      claimOnStart: true,
+      closeOnSuccess: true,
+      createFollowUp: true,
+      syncOnComplete: true,
+    };
+
+    await startDecisionCouncilWorkItem(options);
+    await completeDecisionCouncilWorkItem({ options, report, outputDir: "runs/beads" });
+
+    expect(spanOperations).toEqual([
+      "claim",
+      "create-follow-up",
+      "close",
+      "sync",
+    ]);
+
+    spy.mockRestore();
   });
 });
