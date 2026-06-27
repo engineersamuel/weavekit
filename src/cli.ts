@@ -6,8 +6,13 @@ import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
 import { createSmokeModelRouter } from "./decision-council/modelRouter.js";
 import { createConsoleDecisionCouncilLogger, createJsonDecisionCouncilLogger, createSilentDecisionCouncilLogger, type DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
+import { startTelemetry, type TelemetryHandle } from "./telemetry/bootstrap.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
+
+const noopTelemetryHandle: TelemetryHandle = {
+  async shutdown() {},
+};
 
 export type DecisionCouncilCliArgs = {
   inputPath: string;
@@ -90,19 +95,36 @@ export function createDecisionCouncilLogger(format: LogFormat): DecisionCouncilL
   return createConsoleDecisionCouncilLogger();
 }
 
-async function main(): Promise<void> {
-  const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
-  const input = await readDecisionCouncilInputFile(args.inputPath);
-  const report = await runDecisionCouncil(input, {
-    outputDir: args.outputDir,
-    inputPath: args.inputPath,
-    personaSetName: args.personaSetName,
-    maxRounds: args.maxRounds,
-    router: args.smoke ? createSmokeModelRouter() : undefined,
-    logger: createDecisionCouncilLogger(args.logFormat),
-  });
+export async function main(): Promise<void> {
+  let telemetry: TelemetryHandle = noopTelemetryHandle;
+  try {
+    telemetry = await startTelemetry("weavekit");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Telemetry startup failed: ${message}\n`);
+  }
 
-  process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
+  try {
+    const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
+    const input = await readDecisionCouncilInputFile(args.inputPath);
+    const report = await runDecisionCouncil(input, {
+      outputDir: args.outputDir,
+      inputPath: args.inputPath,
+      personaSetName: args.personaSetName,
+      maxRounds: args.maxRounds,
+      router: args.smoke ? createSmokeModelRouter() : undefined,
+      logger: createDecisionCouncilLogger(args.logFormat),
+    });
+
+    process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
+  } finally {
+    try {
+      await telemetry.shutdown();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Telemetry shutdown failed: ${message}\n`);
+    }
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

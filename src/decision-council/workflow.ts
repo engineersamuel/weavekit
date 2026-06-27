@@ -1,4 +1,6 @@
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import type { CritiqueNormalizer, JudgeReducer } from "./bamlAdapters.js";
+import { setSerializedAttribute } from "./bamlTelemetry.js";
 import { DecisionCouncilRunFailedError } from "./errors.js";
 import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
 import type { PersonaWorker } from "./personaWorker.js";
@@ -12,6 +14,8 @@ import {
   type RawPersonaResult,
   type RoundBrief,
 } from "./types.js";
+
+const tracer = trace.getTracer("weavekit.decision-council");
 
 export type DecisionCouncilWorkflowDeps = {
   personaSelector: PersonaSelector;
@@ -85,20 +89,64 @@ export async function runDecisionCouncilRound(
   });
 
   let selection: Awaited<ReturnType<PersonaSelector["choosePersonas"]>>;
+  const selectionInput = {
+    workflowName: "decision-council",
+    workflowPurpose: "Produce a balanced recommendation across multiple persona viewpoints.",
+    taskPrompt: state.input.prompt,
+    context: state.input.context,
+    constraints: state.input.constraints,
+    roundNumber: brief.roundNumber,
+    roundFocus: brief.focus,
+    previousSelectionIds: state.rounds.at(-1)?.personaSelection.personaIds ?? [],
+    previousRoundSignals: previousRoundSignals(state),
+    candidatePersonas: state.personas,
+    candidatePersonaIds: state.personas.map((persona) => persona.id),
+    minPersonas: 2,
+    maxPersonas: 6,
+  };
+  const selectionTelemetryInput = {
+    workflowName: selectionInput.workflowName,
+    workflowPurpose: selectionInput.workflowPurpose,
+    taskPrompt: selectionInput.taskPrompt,
+    context: selectionInput.context,
+    constraints: selectionInput.constraints,
+    roundNumber: selectionInput.roundNumber,
+    roundFocus: selectionInput.roundFocus,
+    previousSelectionIds: selectionInput.previousSelectionIds,
+    previousRoundSignals: selectionInput.previousRoundSignals,
+    candidatePersonaIds: selectionInput.candidatePersonaIds,
+    minPersonas: selectionInput.minPersonas,
+    maxPersonas: selectionInput.maxPersonas,
+  };
   try {
-    selection = await deps.personaSelector.choosePersonas({
-      workflowName: "decision-council",
-      workflowPurpose: "Produce a balanced recommendation across multiple persona viewpoints.",
-      taskPrompt: state.input.prompt,
-      context: state.input.context,
-      constraints: state.input.constraints,
-      roundNumber: brief.roundNumber,
-      roundFocus: brief.focus,
-      previousSelectionIds: state.rounds.at(-1)?.personaSelection.personaIds ?? [],
-      previousRoundSignals: previousRoundSignals(state),
-      candidatePersonas: state.personas,
-      minPersonas: 2,
-      maxPersonas: 6,
+    selection = await tracer.startActiveSpan("run.council.persona-selector", async (span) => {
+      span.setAttribute("weavekit.decision_council.operation", "select-personas");
+      span.setAttribute("weavekit.decision_council.run_id", runId);
+      span.setAttribute("weavekit.decision_council.round_number", brief.roundNumber);
+      setSerializedAttribute(span, "weavekit.decision_council.args", selectionTelemetryInput);
+      setSerializedAttribute(span, "langfuse.observation.input", selectionTelemetryInput);
+
+      try {
+        const result = await deps.personaSelector.choosePersonas(selectionInput);
+        const output = {
+          personaIds: result.personaSet.personas.map((persona) => persona.id),
+          rationale: result.rationale,
+        };
+        span.setAttribute("weavekit.decision_council.selected_persona_count", output.personaIds.length);
+        setSerializedAttribute(span, "weavekit.decision_council.result", output);
+        setSerializedAttribute(span, "langfuse.observation.output", output);
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (error) {
+        span.recordException(error instanceof Error ? error : new Error(String(error)));
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: errorMessage(error),
+        });
+        throw error;
+      } finally {
+        span.end();
+      }
     });
     deps.logger?.event({
       type: "council.personas.completed",

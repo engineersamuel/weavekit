@@ -5,6 +5,7 @@ import {
   type BamlEnv,
   type BamlRouteOptions,
 } from "./bamlRouting.js";
+import { TraceBamlOperation, createBamlTelemetryOptions, type BamlTelemetryContext } from "./bamlTelemetry.js";
 import type { ModelRouter, RouteTaskKind } from "./modelRouter.js";
 import {
   DecisionCouncilReportSchema,
@@ -101,6 +102,22 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
     };
   }
 
+  private withTelemetryOptions(
+    options: BamlRouteOptions | undefined,
+    telemetryContext: BamlTelemetryContext = {},
+  ): BamlRouteOptions {
+    const telemetryOptions = createBamlTelemetryOptions(telemetryContext);
+    return {
+      ...(options ?? {}),
+      ...telemetryOptions,
+      tags: {
+        ...(options?.tags ?? {}),
+        ...(telemetryOptions.tags ?? {}),
+      },
+    };
+  }
+
+  @TraceBamlOperation("normalize")
   async normalizeCritique(
     raw: RawPersonaResult,
     onModel?: ModelObserver,
@@ -109,11 +126,12 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
     onModel?.(model);
     const result = await this.client.NormalizePersonaCritique(
       { personaId: raw.personaId, text: raw.text },
-      options,
+      this.withTelemetryOptions(options, { personaId: raw.personaId }),
     );
     return DecisionPersonaCritiqueSchema.parse(result);
   }
 
+  @TraceBamlOperation("assess")
   async assessRound(
     args: {
       roundNumber: number;
@@ -128,11 +146,12 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
       args.roundNumber,
       args.critiques,
       args.failures,
-      options,
+      this.withTelemetryOptions(options, { roundNumber: args.roundNumber }),
     );
     return DecisionRoundAssessmentSchema.parse(result);
   }
 
+  @TraceBamlOperation("report")
   async createFinalReport(
     args: {
       critiques: DecisionPersonaCritique[];
@@ -156,7 +175,7 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
       critiqueSummaries,
       args.assessments,
       args.failures,
-      options,
+      this.withTelemetryOptions(options),
     );
     return DecisionCouncilReportSchema.parse(result);
   }

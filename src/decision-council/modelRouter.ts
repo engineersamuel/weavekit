@@ -1,4 +1,5 @@
 import { b } from "../generated/baml_client/index.js";
+import { createBamlTelemetryOptions, runTracedBamlOperation } from "./bamlTelemetry.js";
 
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
@@ -43,9 +44,9 @@ export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
     rationale: "Lowest-TTFT Judge decision default.",
   },
   report: {
-    clientName: "CopilotProxyGpt55",
-    model: "gpt-5.5",
-    rationale: "Fast, high-throughput synthesis for the decision-ready report.",
+    clientName: "CopilotProxyGpt54",
+    model: "gpt-5.4",
+    rationale: "Stable synthesis default compatible with BAML chat-completion parsing.",
   },
   persona: {
     model: "claude-sonnet-4.5",
@@ -108,7 +109,7 @@ export type RouteModelCallFn = (
 export const ROUTER_CANDIDATES: Record<RouteTaskKind, string[]> = {
   normalize: ["CopilotProxyGpt54", "CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
   assess: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
-  report: ["CopilotProxyGpt55", "CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48"],
+  report: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48"],
   persona: ["claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
 };
 
@@ -262,15 +263,20 @@ export function createDefaultModelRouter(callRouteModelCall?: RouteModelCallFn):
 // for this task kind (a real model id) — NOT input.candidates[0], which for BAML kinds is
 // a client name like "CopilotProxyClaudeHaiku45", not a model id.
 export const defaultRouteModelCall: RouteModelCallFn = async (input, signal) => {
-  const raw = await b.RouteModelCall(input.taskKind, input.summary, input.candidates, { signal });
-  const policyModel = DEFAULT_ROUTING_POLICY[input.taskKind as RouteTaskKind]?.model ?? "claude-haiku-4-5";
-  return normalizeRoutingDecision(
-    {
-      clientName: raw.clientName ?? undefined,
-      model: raw.model,
-      reasoningEffort: raw.reasoningEffort ?? undefined,
-      rationale: raw.rationale,
-    },
-    policyModel,
-  );
+  return runTracedBamlOperation("route-model-call", input, async () => {
+    const raw = await b.RouteModelCall(input.taskKind, input.summary, input.candidates, {
+      signal,
+      ...createBamlTelemetryOptions(),
+    });
+    const policyModel = DEFAULT_ROUTING_POLICY[input.taskKind as RouteTaskKind]?.model ?? "claude-haiku-4-5";
+    return normalizeRoutingDecision(
+      {
+        clientName: raw.clientName ?? undefined,
+        model: raw.model,
+        reasoningEffort: raw.reasoningEffort ?? undefined,
+        rationale: raw.rationale,
+      },
+      policyModel,
+    );
+  });
 };

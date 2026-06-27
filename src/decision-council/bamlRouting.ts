@@ -1,9 +1,14 @@
-import { ClientRegistry } from "@boundaryml/baml";
+import { ClientRegistry, type Collector } from "@boundaryml/baml";
 import { BAML_CANDIDATE_CLIENT_MODELS, type RoutingDecision } from "./modelRouter.js";
 
 export type BamlEnv = { baseUrl?: string; apiKey?: string };
 
-export type BamlRouteOptions = { client?: string; clientRegistry?: ClientRegistry };
+export type BamlRouteOptions = {
+  client?: string;
+  clientRegistry?: ClientRegistry;
+  collector?: Collector | Collector[];
+  tags?: Record<string, string>;
+};
 
 // The proxy model for a BAML effort decision is the canonical model of the chosen, already-
 // validated client — NEVER the LLM router's free-form decision.model. Unknown client -> undefined.
