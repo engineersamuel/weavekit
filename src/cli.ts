@@ -91,7 +91,7 @@ export function createDecisionCouncilLogger(format: LogFormat): DecisionCouncilL
   return createConsoleDecisionCouncilLogger();
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const telemetry = await startTelemetry("weavekit");
   try {
     const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
@@ -107,7 +107,12 @@ async function main(): Promise<void> {
 
     process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
   } finally {
-    await telemetry.shutdown();
+    try {
+      await telemetry.shutdown();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Telemetry shutdown failed: ${message}\n`);
+    }
   }
 }
 

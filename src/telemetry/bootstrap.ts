@@ -35,10 +35,20 @@ function isRawExportEnabled(): boolean {
   return process.env.LANGFUSE_EXPORT_RAW === "true";
 }
 
+function redactLangfuseValue(data: unknown): unknown {
+  if (isRawExportEnabled()) return data;
+
+  if (data === null || data === undefined) return data;
+  if (typeof data === "string") return rawContentRedactionMessage;
+  if (typeof data === "number" || typeof data === "boolean" || typeof data === "bigint") return data;
+  if (typeof data === "symbol" || typeof data === "function") return rawContentRedactionMessage;
+  return rawContentRedactionMessage;
+}
+
 function buildLangfuseMask(): ((params: { data: unknown }) => unknown) | undefined {
   if (isRawExportEnabled()) return undefined;
 
-  return ({ data }) => (typeof data === "string" ? rawContentRedactionMessage : data);
+  return ({ data }) => redactLangfuseValue(data);
 }
 
 function buildSpanProcessors(): SpanProcessor[] {

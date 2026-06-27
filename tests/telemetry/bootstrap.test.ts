@@ -119,6 +119,12 @@ describe("telemetry bootstrap", () => {
     expect(langfuseProcessorConstructors[0]).toHaveProperty("mask");
     expect(langfuseProcessorConstructors[0]).toHaveProperty("shouldExportSpan");
 
+    const mask = (langfuseProcessorConstructors[0] as { mask?: (params: { data: unknown }) => unknown })?.mask;
+    expect(mask?.({ data: "hello" })).toBe("<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>");
+    expect(mask?.({ data: { nested: ["secret", { keep: true }] } })).toBe(
+      "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>",
+    );
+
     await handle.shutdown();
     expect(nodeSdkConstructors[0]?.start).toHaveBeenCalledTimes(1);
     expect(nodeSdkConstructors[0]?.shutdown).toHaveBeenCalledTimes(1);

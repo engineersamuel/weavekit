@@ -42,3 +42,12 @@ Report path:
 Verification:
 - `nub run test -- tests/telemetry/bootstrap.test.ts`
 - `nub run typecheck`
+
+## Important findings follow-up
+
+- Hardened Langfuse masking so structured payloads are redacted too when `LANGFUSE_EXPORT_RAW` is not `true`; this prevents object/array span attributes from leaking raw content.
+- Wrapped telemetry shutdown in `src/cli.ts` with a try/catch so shutdown failures are logged but do not override the CLI's original success/failure status.
+
+Verification:
+- `nub run test -- tests/telemetry/bootstrap.test.ts tests/cli-main.test.ts`
+- `nub run typecheck`
