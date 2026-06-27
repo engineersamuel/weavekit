@@ -10,6 +10,8 @@ import { startTelemetry, type TelemetryHandle } from "./telemetry/bootstrap.js";
 import { runWorkQueueCli } from "./work-queue/cli.js";
 import { BeadsCliWorkQueue } from "./work-queue/beads.js";
 import { WorkQueueBackendError } from "./work-queue/backend.js";
+import { createDecisionCouncilBeadsWorkflow } from "./work-queue/decisionCouncilWorkflow.js";
+import { serializeWorkItemWorkflowDag } from "./work-queue/telemetry.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 
@@ -165,15 +167,34 @@ export async function main(): Promise<void> {
 
     const args = parseDecisionCouncilCliArgs(argv);
     const input = await readDecisionCouncilInputFile(args.inputPath);
-    const workQueue = args.workItemId
+    const backend = args.workItemId || args.createBeadsWorkflow
+      ? new BeadsCliWorkQueue({ cwd: process.cwd() })
+      : undefined;
+    const generatedWorkflow = args.createBeadsWorkflow && backend
+      ? await createDecisionCouncilBeadsWorkflow({
+          backend,
+          title: input.prompt.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").slice(0, 80) ?? "Decision Council run",
+          inputPath: args.inputPath,
+          outputDir: args.outputDir,
+        })
+      : undefined;
+    const activeWorkItemId = args.workItemId ?? generatedWorkflow?.runItem.id;
+    const workQueue = backend && activeWorkItemId
       ? {
-          backend: new BeadsCliWorkQueue({ cwd: process.cwd() }),
-          workItemId: args.workItemId,
-          claimOnStart: args.claimWorkItem,
-          closeOnSuccess: args.closeWorkItem,
-          createFollowUp: args.createFollowUpWorkItem,
+          backend,
+          workItemId: activeWorkItemId,
+          claimOnStart: args.claimWorkItem || args.createBeadsWorkflow,
+          closeOnSuccess: args.closeWorkItem || args.createBeadsWorkflow,
+          createFollowUp: args.workItemId ? args.createFollowUpWorkItem : false,
           syncOnComplete: args.syncWorkQueue,
         }
+      : undefined;
+    const workQueueWorkflowDag = generatedWorkflow
+      ? serializeWorkItemWorkflowDag({
+          rootItemId: generatedWorkflow.rootItem.id,
+          activeItemId: generatedWorkflow.runItem.id,
+          items: generatedWorkflow.items,
+        })
       : undefined;
     const report = await runDecisionCouncil(input, {
       outputDir: args.outputDir,
@@ -183,6 +204,7 @@ export async function main(): Promise<void> {
       router: args.smoke ? createSmokeModelRouter() : undefined,
       logger: createDecisionCouncilLogger(args.logFormat),
       workQueue,
+      workQueueWorkflowDag,
     });
 
     process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));

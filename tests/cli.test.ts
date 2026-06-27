@@ -279,6 +279,25 @@ describe("CLI", () => {
       ]),
     ).toThrow("--work-item <id> and --create-beads-workflow are mutually exclusive.");
   });
+
+  it("accepts --create-beads-workflow without lifecycle flags", () => {
+    const parsed = parseDecisionCouncilCliArgs([
+      "decision-council",
+      "run",
+      "--input",
+      "x.md",
+      "--create-beads-workflow",
+    ]);
+
+    expect(parsed).toMatchObject({
+      createBeadsWorkflow: true,
+      workItemId: undefined,
+      claimWorkItem: false,
+      closeWorkItem: false,
+      createFollowUpWorkItem: false,
+      syncWorkQueue: false,
+    });
+  });
 });
 
 describe("formatWorkQueueBackendError", () => {
