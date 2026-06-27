@@ -138,8 +138,9 @@ The dependency chain is linear: `find-root-cause` waits for `reproduce-incident`
 `add-regression-test` waits for `find-root-cause`.
 
 The integration test seeds the three items, repeatedly calls `ready`, then claims and closes the one
-ready item at each step. This proves Beads enforces queue order and only unlocks the next item after the
-previous item closes.
+ready item at each step. With the deterministic test runner, this verifies the expected
+ready -> claim -> close ordering and the adapter command sequence, without asserting anything about
+Beads enforcing the queue itself.
 
 This is a good Beads + Weavekit example because it uses the real `WorkQueueBackend` seam and Beads CLI
 adapter behavior without introducing a separate runtime or a new production command surface.

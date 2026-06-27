@@ -4,7 +4,7 @@ export type IncidentTriageStep = {
   id: string;
   title: string;
   closeReason: string;
-  dependencies: WorkDependency[];
+  dependencies: readonly WorkDependency[];
 };
 
 export const INCIDENT_TRIAGE_STEPS: readonly [
@@ -38,7 +38,7 @@ export function toCreateInput(step: IncidentTriageStep): CreateWorkItemInput {
     type: "task",
     priority: 2,
     labels: ["demo", "incident-triage"],
-    dependencies: step.dependencies,
+    dependencies: [...step.dependencies],
     description: `Demo scenario item: ${step.id}`,
   };
 }
