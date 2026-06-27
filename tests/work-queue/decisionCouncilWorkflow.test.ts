@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { vi } from "vitest";
 import { createDecisionCouncilBeadsWorkflow } from "../../src/work-queue/decisionCouncilWorkflow.js";
 import type { WorkQueueBackend } from "../../src/work-queue/backend.js";
 import type { CreateWorkItemInput, ReadyWorkFilter, WorkItem } from "../../src/work-queue/schema.js";
+import * as telemetry from "../../src/work-queue/telemetry.js";
 
 function itemFrom(input: CreateWorkItemInput, id: string): WorkItem {
   return {
@@ -52,5 +54,37 @@ describe("createDecisionCouncilBeadsWorkflow", () => {
     expect(created[1]?.dependencies).toEqual([{ type: "waits-for", id: "bd-1" }]);
     expect(created[2]?.dependencies).toEqual([{ type: "waits-for", id: "bd-2" }]);
     expect(created[3]?.dependencies).toEqual([{ type: "waits-for", id: "bd-3" }]);
+  });
+
+  it("wraps workflow and item creation in Beads telemetry spans", async () => {
+    const operations: string[] = [];
+    const spy = vi.spyOn(telemetry, "runWorkQueueSpan");
+    spy.mockImplementation(async (operation, _context, fn) => {
+      operations.push(operation);
+      return fn();
+    });
+    const created: CreateWorkItemInput[] = [];
+    const backend: WorkQueueBackend = {
+      async ready(_filter?: ReadyWorkFilter) { return []; },
+      async show() { throw new Error("not used"); },
+      async claim(id: string) { throw new Error(`not used ${id}`); },
+      async create(input: CreateWorkItemInput) {
+        created.push(input);
+        return itemFrom(input, `bd-${created.length}`);
+      },
+      async close() { throw new Error("not used"); },
+      async sync() {},
+    };
+
+    await createDecisionCouncilBeadsWorkflow({ backend, title: "Trace workflow" });
+
+    expect(operations).toEqual([
+      "create-workflow",
+      "create-workflow-item",
+      "create-workflow-item",
+      "create-workflow-item",
+      "create-workflow-item",
+    ]);
+    spy.mockRestore();
   });
 });

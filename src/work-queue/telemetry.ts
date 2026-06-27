@@ -2,7 +2,7 @@ import { SpanStatusCode, trace, type Span } from "@opentelemetry/api";
 import { setSerializedAttribute } from "../decision-council/bamlTelemetry.js";
 import type { WorkItem } from "./schema.js";
 
-export type WorkQueueOperation = "show" | "claim" | "create-follow-up" | "close" | "sync";
+export type WorkQueueOperation = "show" | "claim" | "create-follow-up" | "close" | "sync" | "create-workflow" | "create-workflow-item";
 
 export type WorkQueueTelemetryContext = {
   itemId: string;
