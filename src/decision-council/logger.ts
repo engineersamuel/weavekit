@@ -90,7 +90,6 @@ export type DecisionCouncilEvent =
       type: "council.run.completed" | "council.run.failed";
       timestamp: string;
       runId: string;
-      traceId?: string;
       stopReason?: string;
       durationMs: number;
       error?: string;
