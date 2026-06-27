@@ -52,6 +52,23 @@ Use Beads for queue selection and dependency-aware orchestration around weavekit
 Do not store every persona response, round brief, or BAML call as a Beads item. Those are workflow execution
 state and already live in `DecisionCouncilRunState.json` plus debug artifacts.
 
+## Langfuse trace visualization
+
+When Langfuse export is configured and a run supplies `--work-item <id>`, Weavekit reads the source Beads item and annotates the root `council-run` trace with:
+
+- `langfuse.trace.metadata.beads.item_id`
+- `langfuse.trace.metadata.beads.item_title`
+- `langfuse.trace.metadata.beads.dag`
+
+Lifecycle calls appear as child observations:
+
+- `work-queue.beads.claim`
+- `work-queue.beads.create-follow-up`
+- `work-queue.beads.close`
+- `work-queue.beads.sync`
+
+The existing Decision Council, persona selector, persona, and BAML spans remain nested beneath the same trace. In Langfuse, filter by service `weavekit`, trace name `council-run`, or metadata `beads.item_id`.
+
 ## Formula example
 
 Use a Beads formula when a repeatable weavekit workflow needs a dependency graph:

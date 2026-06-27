@@ -367,6 +367,8 @@ nub run council decision-council run \
 
 See `docs/beads.md` for trade-offs, setup notes, and workflow formula examples.
 
+With Langfuse configured, Beads-backed runs also include Beads DAG metadata and lifecycle observations in the `council-run` trace. See `docs/beads.md`.
+
 ## Verify
 
 ```bash
