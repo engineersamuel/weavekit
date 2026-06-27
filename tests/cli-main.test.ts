@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const shutdown = vi.fn(async () => {
   throw new Error("telemetry shutdown failed");
@@ -18,8 +18,17 @@ vi.mock("../src/decision-council/runner.js", () => ({
 }));
 
 import { main } from "../src/cli.js";
+import { runDecisionCouncil } from "../src/decision-council/runner.js";
+import { startTelemetry } from "../src/telemetry/bootstrap.js";
+
+const startTelemetryMock = vi.mocked(startTelemetry);
+const runDecisionCouncilMock = vi.mocked(runDecisionCouncil);
 
 describe("CLI main", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("ignores telemetry shutdown failures after a successful run", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-cli-main-"));
     const inputPath = join(dir, "question.md");
@@ -38,6 +47,31 @@ describe("CLI main", () => {
       process.argv = argvSnapshot;
       stderrSpy.mockRestore();
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("continues running when telemetry startup fails", async () => {
+    startTelemetryMock.mockRejectedValueOnce(new Error("invalid Langfuse URL"));
+
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const argvSnapshot = process.argv;
+    const cwd = await mkdtemp(join(tmpdir(), "weavekit-cli-main-"));
+    const inputPath = join(cwd, "question.md");
+    await writeFile(inputPath, "# Question\n\nShould we use Flue?", "utf8");
+    process.argv = ["node", "weavekit", "decision-council", "run", "--input", inputPath];
+
+    try {
+      await expect(main()).resolves.toBeUndefined();
+
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Telemetry startup failed: invalid Langfuse URL"));
+      expect(runDecisionCouncilMock).toHaveBeenCalledTimes(1);
+      expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining("Use Flue"));
+    } finally {
+      process.argv = argvSnapshot;
+      stderrSpy.mockRestore();
+      stdoutSpy.mockRestore();
+      await rm(cwd, { recursive: true, force: true });
     }
   });
 });

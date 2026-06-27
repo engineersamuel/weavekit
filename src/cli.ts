@@ -6,9 +6,13 @@ import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
 import { createSmokeModelRouter } from "./decision-council/modelRouter.js";
 import { createConsoleDecisionCouncilLogger, createJsonDecisionCouncilLogger, createSilentDecisionCouncilLogger, type DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
-import { startTelemetry } from "./telemetry/bootstrap.js";
+import { startTelemetry, type TelemetryHandle } from "./telemetry/bootstrap.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
+
+const noopTelemetryHandle: TelemetryHandle = {
+  async shutdown() {},
+};
 
 export type DecisionCouncilCliArgs = {
   inputPath: string;
@@ -92,7 +96,14 @@ export function createDecisionCouncilLogger(format: LogFormat): DecisionCouncilL
 }
 
 export async function main(): Promise<void> {
-  const telemetry = await startTelemetry("weavekit");
+  let telemetry: TelemetryHandle = noopTelemetryHandle;
+  try {
+    telemetry = await startTelemetry("weavekit");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Telemetry startup failed: ${message}\n`);
+  }
+
   try {
     const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
     const input = await readDecisionCouncilInputFile(args.inputPath);

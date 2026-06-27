@@ -51,3 +51,12 @@ Verification:
 Verification:
 - `nub run test -- tests/telemetry/bootstrap.test.ts tests/cli-main.test.ts`
 - `nub run typecheck`
+
+## Final fix follow-up
+
+- Guarded `startTelemetry("weavekit")` in `src/cli.ts` so telemetry startup failures are logged to stderr and the CLI falls back to a noop `TelemetryHandle`.
+- Added a CLI test that simulates telemetry startup failure and verifies Decision Council still runs and writes its success output.
+
+Verification:
+- `nub run test -- tests/telemetry/bootstrap.test.ts tests/cli-main.test.ts`
+- `nub run typecheck`
