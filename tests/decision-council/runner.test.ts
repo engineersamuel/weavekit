@@ -16,6 +16,7 @@ const telemetry = vi.hoisted(() => {
   const spans: {
     name: string;
     parentName?: string;
+    traceId: string;
     attributes: Record<string, unknown>;
     status: unknown[];
     exceptions: unknown[];
@@ -44,12 +45,14 @@ const telemetry = vi.hoisted(() => {
       setStatus: (value: unknown) => void;
       recordException: (value: unknown) => void;
       addEvent: (eventName: string, attributes?: Record<string, unknown>) => void;
+      spanContext: () => { traceId: string };
       end: () => void;
     }) => Promise<unknown>) => {
       const parent = activeSpan;
       const span = {
         name,
         parentName: parent?.name,
+        traceId: `trace-${spans.length + 1}`,
         attributes: {} as Record<string, unknown>,
         status: [] as unknown[],
         exceptions: [] as unknown[],
@@ -72,6 +75,9 @@ const telemetry = vi.hoisted(() => {
           },
           addEvent(eventName, attributes = {}) {
             span.events.push({ name: eventName, attributes });
+          },
+          spanContext() {
+            return { traceId: span.traceId };
           },
           end() {
             span.ended = true;
@@ -248,6 +254,34 @@ describe("runDecisionCouncil", () => {
     expect(events).toContain("council.baml.completed");
     expect(events).toContain("council.round.completed");
     expect(events).toContain("council.run.completed");
+  });
+
+  it("includes the OpenTelemetry trace id on root run log events", async () => {
+    const events: Array<{ type: string; traceId?: string }> = [];
+
+    await runCouncilForTest(
+      { prompt: "Log the trace id." },
+      {
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+        },
+        logger: {
+          event(event) {
+            if (event.type === "council.run.started" || event.type === "council.run.completed") {
+              events.push({ type: event.type, traceId: event.traceId });
+            }
+          },
+        },
+      },
+    );
+
+    const rootTraceId = telemetry.spans.find((span) => span.name === "council-run")?.traceId;
+    expect(events).toEqual([
+      { type: "council.run.started", traceId: rootTraceId },
+      { type: "council.run.completed", traceId: rootTraceId },
+    ]);
   });
 
   it("uses the selector result in default runs and fans out only selected personas", async () => {
@@ -1007,6 +1041,54 @@ describe("runDecisionCouncil", () => {
     expect(JSON.parse(rootSpan?.attributes["langfuse.trace.metadata.beads.dag"] as string)).toMatchObject({
       id: "bd-root",
       dependencies: [{ type: "waits-for", id: "bd-parent" }],
+    });
+  });
+
+  it("attaches generated Beads workflow DAG metadata to the root Langfuse trace", async () => {
+    const backend = {
+      async ready() { return []; },
+      async show(id: string) {
+        return {
+          id,
+          title: "Run Council",
+          status: "open" as const,
+          type: "task" as const,
+          priority: 1,
+          labels: ["weavekit"],
+          dependencies: [],
+        };
+      },
+      async claim(id: string) {
+        return { id, title: "Run Council", status: "in_progress" as const, type: "task" as const, priority: 1, labels: [], dependencies: [] };
+      },
+      async create() { throw new Error("not used"); },
+      async close(id: string, input: { reason: string }) {
+        return { id, title: input.reason, status: "closed" as const, type: "task" as const, priority: 1, labels: [], dependencies: [] };
+      },
+      async sync() {},
+    };
+
+    await runCouncilForTest(
+      { prompt: "Trace workflow DAG." },
+      {
+        workQueue: { backend, workItemId: "bd-run", claimOnStart: true },
+        workQueueWorkflowDag: {
+          rootItemId: "bd-frame",
+          activeItemId: "bd-run",
+          items: [
+            { id: "bd-frame", title: "Frame", status: "open", type: "decision", priority: 2, labels: [], dependencies: [] },
+            { id: "bd-run", title: "Run", status: "open", type: "task", priority: 2, labels: [], dependencies: [{ type: "waits-for", id: "bd-frame" }] },
+          ],
+        },
+        deps: { personaWorker: fakeWorker(), normalizer, judge: judge(1), writeArtifacts: false },
+      },
+    );
+
+    const rootSpan = telemetry.spans.find((span) => span.name === "council-run");
+    expect(JSON.parse(rootSpan?.attributes["langfuse.trace.metadata.beads.workflow_dag"] as string)).toMatchObject({
+      rootItemId: "bd-frame",
+      activeItemId: "bd-run",
+      items: [{ id: "bd-frame" }, { id: "bd-run" }],
     });
   });
 });
