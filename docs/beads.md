@@ -123,3 +123,23 @@ needs = ["approval"]
 - No automatic network sync unless `--sync-work-queue` is supplied.
 - No replacement of Flue durability.
 - No replacement of `DecisionCouncilRunState.json`.
+
+## Incident-triage demo
+
+This repo includes a small triage drill that demonstrates Beads queue ordering while Weavekit executes work.
+
+The scenario always uses exactly three contrived items:
+
+1. `reproduce-incident`
+2. `find-root-cause`
+3. `add-regression-test`
+
+The dependency chain is linear: `find-root-cause` waits for `reproduce-incident`, and
+`add-regression-test` waits for `find-root-cause`.
+
+The integration test seeds the three items, repeatedly calls `ready`, then claims and closes the one
+ready item at each step. This proves Beads enforces queue order and only unlocks the next item after the
+previous item closes.
+
+This is a good Beads + Weavekit example because it uses the real `WorkQueueBackend` seam and Beads CLI
+adapter behavior without introducing a separate runtime or a new production command surface.
