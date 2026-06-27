@@ -6,6 +6,7 @@ import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
 import { createSmokeModelRouter } from "./decision-council/modelRouter.js";
 import { createConsoleDecisionCouncilLogger, createJsonDecisionCouncilLogger, createSilentDecisionCouncilLogger, type DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
+import { startTelemetry } from "./telemetry/bootstrap.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 
@@ -91,18 +92,23 @@ export function createDecisionCouncilLogger(format: LogFormat): DecisionCouncilL
 }
 
 async function main(): Promise<void> {
-  const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
-  const input = await readDecisionCouncilInputFile(args.inputPath);
-  const report = await runDecisionCouncil(input, {
-    outputDir: args.outputDir,
-    inputPath: args.inputPath,
-    personaSetName: args.personaSetName,
-    maxRounds: args.maxRounds,
-    router: args.smoke ? createSmokeModelRouter() : undefined,
-    logger: createDecisionCouncilLogger(args.logFormat),
-  });
+  const telemetry = await startTelemetry("weavekit");
+  try {
+    const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
+    const input = await readDecisionCouncilInputFile(args.inputPath);
+    const report = await runDecisionCouncil(input, {
+      outputDir: args.outputDir,
+      inputPath: args.inputPath,
+      personaSetName: args.personaSetName,
+      maxRounds: args.maxRounds,
+      router: args.smoke ? createSmokeModelRouter() : undefined,
+      logger: createDecisionCouncilLogger(args.logFormat),
+    });
 
-  process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
+    process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
+  } finally {
+    await telemetry.shutdown();
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
