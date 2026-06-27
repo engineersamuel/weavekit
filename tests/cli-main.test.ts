@@ -80,6 +80,7 @@ describe("CLI main", () => {
     const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 
     expect(readme).toContain("## Telemetry and Observability");
+    expect(readme).toContain("### Example: telemetry enabled (OTLP + Langfuse)");
     expect(readme).toContain("OTEL_SDK_DISABLED");
     expect(readme).toContain("OTEL_EXPORTER_OTLP_ENDPOINT");
     expect(readme).toContain("OTEL_EXPORTER_OTLP_HEADERS");
@@ -87,6 +88,17 @@ describe("CLI main", () => {
     expect(readme).toContain("LANGFUSE_SECRET_KEY");
     expect(readme).toContain("LANGFUSE_BASE_URL");
     expect(readme).toContain("LANGFUSE_EXPORT_RAW");
+    expect(readme).toContain('LANGFUSE_PUBLIC_KEY="pk-lf-..."');
+    expect(readme).toContain('LANGFUSE_SECRET_KEY="sk-lf-..."');
+    expect(readme).toContain('OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318/v1/traces"');
+    expect(readme).toContain("### Example: telemetry disabled");
+    expect(readme).toContain("OTEL_SDK_DISABLED=true");
+    expect(readme).toContain("### Verification");
+    expect(readme).toContain("Check for startup/export/shutdown failures in stderr");
+    expect(readme).toContain("OTLP");
+    expect(readme).toContain("export");
+    expect(readme).toContain("Langfuse");
+    expect(readme).toContain("trace in Langfuse");
     expect(readme).toContain("nub run council decision-council run");
     expect(readme).toContain("BAML_LOG=warn");
     expect(readme).toContain("grep -i");

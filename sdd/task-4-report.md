@@ -26,3 +26,9 @@ Status: DONE
 - `BAML_LOG=warn COPILOT_PROXY_BASE_URL=http://127.0.0.1:8080/v1 COPILOT_PROXY_API_KEY=anything nub run test` ✅ — 30 test files passed, 190 tests passed.
 - `BAML_LOG=warn COPILOT_PROXY_BASE_URL=http://127.0.0.1:8080/v1 COPILOT_PROXY_API_KEY=anything nub run typecheck` ✅
 - `BAML_LOG=warn COPILOT_PROXY_BASE_URL=http://127.0.0.1:8080/v1 COPILOT_PROXY_API_KEY=anything nub run build` ✅
+
+## README test follow-up
+- Tightened `tests/cli-main.test.ts` to assert the telemetry README covers the enabled Langfuse example, disabled example, OTLP/exporter guidance, and Langfuse verification steps explicitly.
+- Validation: `nub run test -- tests/cli-main.test.ts` ✅
+- Validation: `nub run test` ✅
+- Validation: `nub run typecheck` ✅
