@@ -129,13 +129,32 @@ export function createBamlTelemetryOptions(
   };
 }
 
-export function TraceBamlOperation(operation: BamlOperation): TraceBamlOperationDecorator {
-  return function <This, Args extends unknown[], Return>(
-    target: (this: This, ...args: Args) => Promise<Return>,
-    _context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Promise<Return>>,
+export function TraceBamlOperation(operation: BamlOperation): any {
+  return function traceBamlOperation(
+    targetOrValue: unknown,
+    contextOrKey: unknown,
+    descriptor?: PropertyDescriptor,
   ) {
-    return async function tracedBamlOperation(this: This, ...args: Args): Promise<Return> {
+    if (descriptor) {
+      const original = descriptor.value;
+      if (typeof original !== "function") {
+        return descriptor;
+      }
+
+      descriptor.value = function tracedBamlOperation(this: unknown, ...args: unknown[]) {
+        return runTracedBamlOperation(operation, args, () => original.apply(this, args));
+      };
+      return descriptor;
+    }
+
+    const target = targetOrValue as (this: unknown, ...args: unknown[]) => Promise<unknown>;
+    const _context = contextOrKey as ClassMethodDecoratorContext<
+      unknown,
+      (this: unknown, ...args: unknown[]) => Promise<unknown>
+    >;
+
+    return async function tracedBamlOperation(this: unknown, ...args: unknown[]): Promise<unknown> {
       return runTracedBamlOperation(operation, args, () => target.apply(this, args));
     };
-  };
+  } as any;
 }
