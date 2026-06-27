@@ -1,42 +1,80 @@
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { BatchSpanProcessor, type SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { LangfuseSpanProcessor, isDefaultExportSpan } from "@langfuse/otel";
 
 export type TelemetryHandle = { shutdown(): Promise<void> };
 
 const noopHandle: TelemetryHandle = { async shutdown() {} };
+const defaultLangfuseBaseUrl = "https://cloud.langfuse.com";
+const rawContentRedactionMessage = "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>";
 
 export function telemetryEnabled(): boolean {
   return process.env.OTEL_SDK_DISABLED !== "true";
 }
 
-function hasLangfuseConfig(): boolean {
-  return Boolean(process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY);
+type LangfuseConfig = {
+  publicKey: string;
+  secretKey: string;
+  baseUrl: string;
+};
+
+function readLangfuseConfig(): LangfuseConfig | null {
+  const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
+  const secretKey = process.env.LANGFUSE_SECRET_KEY;
+  if (!publicKey || !secretKey) return null;
+
+  return {
+    publicKey,
+    secretKey,
+    baseUrl: process.env.LANGFUSE_BASE_URL ?? defaultLangfuseBaseUrl,
+  };
+}
+
+function isRawExportEnabled(): boolean {
+  return process.env.LANGFUSE_EXPORT_RAW === "true";
+}
+
+function buildLangfuseMask(): ((params: { data: unknown }) => unknown) | undefined {
+  if (isRawExportEnabled()) return undefined;
+
+  return ({ data }) => (typeof data === "string" ? rawContentRedactionMessage : data);
+}
+
+function buildSpanProcessors(): SpanProcessor[] {
+  const spanProcessors: SpanProcessor[] = [];
+  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    spanProcessors.push(new BatchSpanProcessor(new OTLPTraceExporter()));
+  }
+
+  const langfuseConfig = readLangfuseConfig();
+  if (langfuseConfig) {
+    spanProcessors.push(
+      new LangfuseSpanProcessor({
+        ...langfuseConfig,
+        shouldExportSpan: ({ otelSpan }) => isDefaultExportSpan(otelSpan),
+        ...(isRawExportEnabled() ? {} : { mask: buildLangfuseMask() }),
+        mediaUploadEnabled: isRawExportEnabled(),
+      }),
+    );
+  }
+
+  return spanProcessors;
+}
+
+function createSdkConfig(serviceName: string): NonNullable<ConstructorParameters<typeof NodeSDK>[0]> {
+  const spanProcessors = buildSpanProcessors();
+  return {
+    serviceName: process.env.OTEL_SERVICE_NAME ?? serviceName,
+    ...(spanProcessors.length > 0 ? { spanProcessors } : {}),
+  };
 }
 
 export async function startTelemetry(serviceName: string): Promise<TelemetryHandle> {
   if (!telemetryEnabled()) return noopHandle;
 
-  const spanProcessors: any[] = [];
-  if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
-    spanProcessors.push(new BatchSpanProcessor(new OTLPTraceExporter()));
-  }
-  if (hasLangfuseConfig()) {
-    spanProcessors.push(
-      new LangfuseSpanProcessor({
-        shouldExportSpan: ({ otelSpan }: any) =>
-          isDefaultExportSpan(otelSpan) || otelSpan.instrumentationScope?.name === "weavekit",
-      }),
-    );
-  }
-
-  const sdk = new NodeSDK({
-    serviceName,
-    spanProcessors,
-  } as any);
-
-  await sdk.start();
+  const sdk = new NodeSDK(createSdkConfig(serviceName));
+  sdk.start();
   return {
     async shutdown() {
       await sdk.shutdown();
