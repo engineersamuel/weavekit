@@ -276,6 +276,45 @@ describe("runDecisionCouncil", () => {
     expect([...seen].sort()).toEqual(["pragmatic", "socratic"]);
   });
 
+  it("creates a selector observation with persona chooser input and output", async () => {
+    const choosePersonas = vi.fn(async (input: PersonaSelectionInput) => ({
+      personaSet: {
+        name: "selected",
+        personas: selectFromCandidates(input, ["socratic", "pragmatic"]),
+      },
+      rationale: "Need one critic and one delivery-focused voice.",
+    }));
+
+    await runCouncilForTest(
+      { prompt: "Choose the right personas." },
+      {
+        deps: {
+          personaSelector: { choosePersonas },
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+        },
+      },
+    );
+
+    const selectorSpan = telemetry.spans.find((span) => span.name === "run.council.persona-selector");
+    const selectorInput = JSON.parse(selectorSpan?.attributes["langfuse.observation.input"] as string);
+    const selectorOutput = JSON.parse(selectorSpan?.attributes["langfuse.observation.output"] as string);
+
+    expect(selectorSpan?.parentName).toBe("council-run");
+    expect(selectorInput).toMatchObject({
+      workflowName: "decision-council",
+      taskPrompt: "Choose the right personas.",
+      candidatePersonaIds: expect.arrayContaining(["socratic", "pragmatic"]),
+      minPersonas: 2,
+      maxPersonas: 6,
+    });
+    expect(selectorOutput).toEqual({
+      personaIds: ["socratic", "pragmatic"],
+      rationale: "Need one critic and one delivery-focused voice.",
+    });
+  });
+
   it("emits normalized summary and shared round source metadata", async () => {
     const events: unknown[] = [];
 
@@ -743,6 +782,50 @@ describe("runDecisionCouncil", () => {
     );
     expect(normalizeSpan?.parentName).toBe("council-run");
     expect(rootSpan?.ended).toBe(true);
+  });
+
+  it("sets Langfuse trace and root observation input and output on the root council span", async () => {
+    class TracedNormalizer implements CritiqueNormalizer {
+      @TraceBamlOperation("normalize")
+      async normalizeCritique(raw: Parameters<CritiqueNormalizer["normalizeCritique"]>[0]) {
+        return {
+          personaId: raw.personaId,
+          overallSummary: `${raw.personaId} summary`,
+          summary: raw.text,
+          claims: [],
+          risks: [],
+          questions: [],
+          recommendations: [],
+        };
+      }
+    }
+
+    await runCouncilForTest(
+      { prompt: "Trace this run." },
+      {
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer: new TracedNormalizer(),
+          judge: judge(1),
+        },
+      },
+    );
+
+    const rootSpan = telemetry.spans.find((span) => span.name === "council-run");
+    const normalizeSpan = telemetry.spans.find((span) => span.name === "run.council.baml.normalize");
+    const traceInput = rootSpan?.attributes["langfuse.trace.input"] as string;
+    const traceOutput = rootSpan?.attributes["langfuse.trace.output"] as string;
+    const observationInput = rootSpan?.attributes["langfuse.observation.input"] as string;
+    const observationOutput = rootSpan?.attributes["langfuse.observation.output"] as string;
+
+    expect(rootSpan?.attributes["langfuse.trace.name"]).toBe("council-run");
+    expect(JSON.parse(traceInput)).toMatchObject({ prompt: "Trace this run." });
+    expect(JSON.parse(traceOutput)).toMatchObject({ recommendation: "Use Flue for v0." });
+    expect(JSON.parse(observationInput)).toMatchObject({ prompt: "Trace this run." });
+    expect(JSON.parse(observationOutput)).toMatchObject({ recommendation: "Use Flue for v0." });
+    expect(normalizeSpan?.attributes).not.toHaveProperty("langfuse.trace.name");
+    expect(normalizeSpan?.attributes).not.toHaveProperty("langfuse.trace.input");
+    expect(normalizeSpan?.attributes).not.toHaveProperty("langfuse.trace.output");
   });
 
   it("records run failures on the root OTEL span", async () => {

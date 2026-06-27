@@ -197,7 +197,7 @@ Weavekit's decision council routes each task (normalize, assess, report, persona
 |-----------|-------------|-------|----------|
 | `normalize` | `CopilotProxyGpt54` | `gpt-5.4` | Lowest-TTFT structured extraction default |
 | `assess` | `CopilotProxyGpt54` | `gpt-5.4` | Lowest-TTFT Judge decision default |
-| `report` | `CopilotProxyGpt55` | `gpt-5.5` | Fast, high-throughput synthesis |
+| `report` | `CopilotProxyGpt54` | `gpt-5.4` | Stable synthesis default |
 | `persona` | (Copilot SDK path) | `claude-sonnet-4.5` | Persona debate tier |
 
 **BAML effort passthrough:** By default, BAML routing swaps the *client* only and does NOT send `reasoning_effort` to the proxy. Effort passthrough is opt-in, left disabled pending proxy verification. Similarly, persona `reasoningEffort` is only forwarded when an operator wires an explicit capability predicate (it defaults to off). No model receives an effort field it might reject unless explicitly enabled.

@@ -44,9 +44,9 @@ export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
     rationale: "Lowest-TTFT Judge decision default.",
   },
   report: {
-    clientName: "CopilotProxyGpt55",
-    model: "gpt-5.5",
-    rationale: "Fast, high-throughput synthesis for the decision-ready report.",
+    clientName: "CopilotProxyGpt54",
+    model: "gpt-5.4",
+    rationale: "Stable synthesis default compatible with BAML chat-completion parsing.",
   },
   persona: {
     model: "claude-sonnet-4.5",
@@ -109,7 +109,7 @@ export type RouteModelCallFn = (
 export const ROUTER_CANDIDATES: Record<RouteTaskKind, string[]> = {
   normalize: ["CopilotProxyGpt54", "CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
   assess: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
-  report: ["CopilotProxyGpt55", "CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48"],
+  report: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48"],
   persona: ["claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
 };
 

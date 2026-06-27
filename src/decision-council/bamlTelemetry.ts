@@ -25,20 +25,45 @@ export type TraceBamlOperationDecorator = <This, Args extends unknown[], Return>
 const tracer = trace.getTracer("weavekit.decision-council");
 const telemetryScope = new AsyncLocalStorage<BamlTelemetryScope>();
 const MAX_ATTRIBUTE_CHARS = 5 * 1024;
+const MAX_STRING_CHARS = 256;
 
-function serializeTelemetryAttribute(value: unknown): string {
+function truncateTelemetryValue(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") {
+    if (value.length <= MAX_STRING_CHARS) return value;
+    return `${value.slice(0, MAX_STRING_CHARS)}...<truncated ${value.length - MAX_STRING_CHARS} chars>`;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => truncateTelemetryValue(item, seen));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  if (seen.has(value)) {
+    return "[circular]";
+  }
+  seen.add(value);
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, truncateTelemetryValue(item, seen)]));
+}
+
+export function serializeTelemetryAttribute(value: unknown): string {
   try {
-    const serialized = JSON.stringify(value);
+    const serialized = JSON.stringify(truncateTelemetryValue(value));
     if (serialized === undefined) {
       return "null";
     }
-    return serialized.length > MAX_ATTRIBUTE_CHARS ? serialized.slice(0, MAX_ATTRIBUTE_CHARS) : serialized;
+    if (serialized.length <= MAX_ATTRIBUTE_CHARS) {
+      return serialized;
+    }
+    return JSON.stringify({
+      truncated: true,
+      preview: serialized.slice(0, MAX_ATTRIBUTE_CHARS - 256),
+    });
   } catch {
     return '"[unserializable]"';
   }
 }
 
-function setSerializedAttribute(span: Span, key: string, value: unknown): void {
+export function setSerializedAttribute(span: Span, key: string, value: unknown): void {
   span.setAttribute(key, serializeTelemetryAttribute(value));
 }
 
@@ -79,6 +104,22 @@ function setCollectorAttributes(span: Span, collector: Collector): void {
   if (usage?.cachedInputTokens !== null && usage?.cachedInputTokens !== undefined) {
     span.setAttribute("gen_ai.usage.cached_input_tokens", usage.cachedInputTokens);
   }
+  const usageDetails: Record<string, number> = {};
+  if (usage?.inputTokens !== null && usage?.inputTokens !== undefined) {
+    usageDetails.input = usage.inputTokens;
+  }
+  if (usage?.outputTokens !== null && usage?.outputTokens !== undefined) {
+    usageDetails.output = usage.outputTokens;
+  }
+  if (usageDetails.input !== undefined || usageDetails.output !== undefined) {
+    usageDetails.total = (usageDetails.input ?? 0) + (usageDetails.output ?? 0);
+  }
+  if (usage?.cachedInputTokens !== null && usage?.cachedInputTokens !== undefined) {
+    usageDetails.cached_input = usage.cachedInputTokens;
+  }
+  if (Object.keys(usageDetails).length > 0) {
+    setSerializedAttribute(span, "langfuse.observation.usage_details", usageDetails);
+  }
 }
 
 export async function runTracedBamlOperation<Return>(
@@ -91,12 +132,14 @@ export async function runTracedBamlOperation<Return>(
     span.setAttribute("gen_ai.operation.name", operation);
     span.setAttribute("weavekit.decision_council.operation", operation);
     setSerializedAttribute(span, "weavekit.decision_council.args", args);
+    setSerializedAttribute(span, "langfuse.observation.input", args);
     const collector = new Collector(`decision-council.${operation}`);
 
     return telemetryScope.run({ collector, span, operation }, async () => {
       try {
         const result = await target();
         setSerializedAttribute(span, "weavekit.decision_council.result", result);
+        setSerializedAttribute(span, "langfuse.observation.output", result);
         setCollectorAttributes(span, collector);
         span.setStatus({ code: SpanStatusCode.OK });
         return result;
@@ -122,7 +165,8 @@ export function createBamlTelemetryOptions(
   const tags = createCollectorTagMap(context);
   if (scope) {
     if (scope.operation === "normalize" && context.personaId) {
-      scope.span.updateName(`run.council.baml.persona.${context.personaId}`);
+      const spanName = `run.council.baml.persona.${context.personaId}`;
+      scope.span.updateName(spanName);
     }
     setContextAttributes(scope.span, context);
   }

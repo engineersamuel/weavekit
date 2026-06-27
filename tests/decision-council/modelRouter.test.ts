@@ -43,15 +43,15 @@ describe("PolicyModelRouter", () => {
     expect(decision.rationale).toMatch(/\S/);
   });
 
-  it("routes assess to GPT-5.4 and report to GPT-5.5", async () => {
+  it("routes assess and report to GPT-5.4", async () => {
     const router = new PolicyModelRouter();
     await expect(router.route({ taskKind: "assess" })).resolves.toMatchObject({
       clientName: "CopilotProxyGpt54",
       model: "gpt-5.4",
     });
     await expect(router.route({ taskKind: "report" })).resolves.toMatchObject({
-      clientName: "CopilotProxyGpt55",
-      model: "gpt-5.5",
+      clientName: "CopilotProxyGpt54",
+      model: "gpt-5.4",
     });
   });
 
@@ -142,7 +142,7 @@ describe("LlmModelRouter", () => {
 
     const start = Date.now();
     const decision = await router.route({ taskKind: "report" });
-    expect(decision.clientName).toBe("CopilotProxyGpt55");
+    expect(decision.clientName).toBe("CopilotProxyGpt54");
     expect(Date.now() - start).toBeLessThan(500);
   });
 
@@ -230,7 +230,7 @@ describe("HybridModelRouter", () => {
   it("falls back to policy for dynamic requests when no LLM router is configured", async () => {
     const router = new HybridModelRouter({ policy: new PolicyModelRouter() });
     await expect(router.route({ taskKind: "report", dynamic: true })).resolves.toMatchObject({
-      clientName: "CopilotProxyGpt55",
+      clientName: "CopilotProxyGpt54",
     });
   });
 });

@@ -97,6 +97,7 @@ describe("telemetry bootstrap", () => {
     process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
     process.env.LANGFUSE_SECRET_KEY = "sk-test";
     process.env.LANGFUSE_BASE_URL = "https://example.langfuse.test";
+    process.env.LANGFUSE_EXPORT_RAW = "false";
     expect(process.env.LANGFUSE_PUBLIC_KEY).toBe("pk-test");
 
     const handle = await startTelemetry("weavekit-test");
@@ -141,8 +142,41 @@ describe("telemetry bootstrap", () => {
     expect(langfuseProcessorConstructors[0]).toMatchObject({
       publicKey: "pk-test",
       secretKey: "sk-test",
-      mediaUploadEnabled: true,
+      mediaUploadEnabled: false,
     });
     expect(langfuseProcessorConstructors[0]).not.toHaveProperty("mask");
+  });
+
+  it("guards shouldExportSpan against missing span objects", async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+
+    await startTelemetry("weavekit-test");
+
+    const shouldExportSpan = (langfuseProcessorConstructors[0] as { shouldExportSpan?: (args: { otelSpan?: unknown }) => boolean })
+      ?.shouldExportSpan;
+    expect(shouldExportSpan).toBeTypeOf("function");
+    expect(() => shouldExportSpan?.({})).not.toThrow();
+    expect(shouldExportSpan?.({})).toBe(false);
+  });
+
+  it("backfills instrumentationScope from instrumentationLibrary", async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+
+    await startTelemetry("weavekit-test");
+
+    const shouldExportSpan = (langfuseProcessorConstructors[0] as { shouldExportSpan?: (args: { otelSpan?: Record<string, unknown> }) => boolean })
+      ?.shouldExportSpan;
+    const legacySpan: Record<string, unknown> = {
+      name: "run.council.baml.assess",
+      attributes: {},
+      instrumentationLibrary: { name: "weavekit", version: "1.0.0" },
+    };
+
+    expect(shouldExportSpan?.({ otelSpan: legacySpan })).toBe(true);
+    expect(legacySpan).toMatchObject({
+      instrumentationScope: { name: "weavekit", version: "1.0.0" },
+    });
   });
 });

@@ -109,10 +109,19 @@ describe("defaultRouteModelCall", () => {
     const span = mocks.spanState.spans[0];
     const args = span?.attributes["weavekit.decision_council.args"] as string;
     const result = span?.attributes["weavekit.decision_council.result"] as string;
+    const langfuseInput = span?.attributes["langfuse.observation.input"] as string;
+    const langfuseOutput = span?.attributes["langfuse.observation.output"] as string;
     expect(args.length).toBeLessThanOrEqual(5 * 1024);
     expect(result.length).toBeLessThanOrEqual(5 * 1024);
+    expect(langfuseInput.length).toBeLessThanOrEqual(5 * 1024);
+    expect(langfuseOutput.length).toBeLessThanOrEqual(5 * 1024);
     expect(args).toContain('"taskKind":"assess"');
     expect(result).toContain('"clientName":"CopilotProxyGpt54"');
+    expect(langfuseInput).toContain('"taskKind":"assess"');
+    expect(langfuseOutput).toContain('"clientName":"CopilotProxyGpt54"');
+    expect(span?.attributes).not.toHaveProperty("langfuse.trace.name");
+    expect(span?.attributes).not.toHaveProperty("langfuse.trace.input");
+    expect(span?.attributes).not.toHaveProperty("langfuse.trace.output");
     expect(span?.ended).toBe(true);
   });
 
@@ -158,6 +167,12 @@ describe("defaultRouteModelCall", () => {
       "gen_ai.usage.input_tokens": 11,
       "gen_ai.usage.output_tokens": 7,
       "gen_ai.usage.cached_input_tokens": 3,
+    });
+    expect(JSON.parse(mocks.spanState.spans[0]?.attributes["langfuse.observation.usage_details"] as string)).toEqual({
+      input: 11,
+      output: 7,
+      total: 18,
+      cached_input: 3,
     });
   });
 });

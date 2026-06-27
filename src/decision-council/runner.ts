@@ -8,6 +8,7 @@ import { CopilotPersonaWorker } from "./personaWorker.js";
 import { resolvePersonaSet, resolvePersonaSetByName } from "./personas.js";
 import { createBamlPersonaSelector, createStaticPersonaSelector, listPersonas } from "../personas/index.js";
 import { SpanStatusCode, trace } from "@opentelemetry/api";
+import { setSerializedAttribute } from "./bamlTelemetry.js";
 import {
   DecisionCouncilInputSchema,
   createInitialRunState,
@@ -40,6 +41,9 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
 
     try {
       const parsedInput = DecisionCouncilInputSchema.parse(input);
+      span.setAttribute("langfuse.trace.name", "council-run");
+      setSerializedAttribute(span, "langfuse.trace.input", parsedInput);
+      setSerializedAttribute(span, "langfuse.observation.input", parsedInput);
       const explicitPersonaSet = options.personaSet ? resolvePersonaSet(options.personaSet) : undefined;
       let staticPersonaSet = explicitPersonaSet;
       if (!staticPersonaSet) {
@@ -124,6 +128,8 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
         span.setAttribute("weavekit.decision_council.stop_reason", finalState.stopReason);
       }
       span.setAttribute("weavekit.decision_council.duration_ms", durationMs);
+      setSerializedAttribute(span, "langfuse.trace.output", finalState.finalReport);
+      setSerializedAttribute(span, "langfuse.observation.output", finalState.finalReport);
       span.setStatus({ code: SpanStatusCode.OK });
 
       return finalState.finalReport;

@@ -2,6 +2,7 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor, type SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { LangfuseSpanProcessor, isDefaultExportSpan } from "@langfuse/otel";
+import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 
 export type TelemetryHandle = { shutdown(): Promise<void> };
 
@@ -51,6 +52,50 @@ function buildLangfuseMask(): ((params: { data: unknown }) => unknown) | undefin
   return ({ data }) => redactLangfuseValue(data);
 }
 
+function hasGenAiAttributes(span: ReadableSpan | null | undefined): boolean {
+  if (!span?.attributes) return false;
+  return Object.keys(span.attributes).some((key) => key.startsWith("gen_ai."));
+}
+
+function ensureInstrumentationScope(span: ReadableSpan | null | undefined): void {
+  if (!span || typeof span !== "object") return;
+
+  const currentScope = (span as ReadableSpan & { instrumentationScope?: { name?: string; version?: string } }).instrumentationScope;
+  if (currentScope?.name) return;
+
+  const library = (span as ReadableSpan & { instrumentationLibrary?: { name?: string; version?: string } })
+    .instrumentationLibrary;
+  const name = library?.name || "unknown";
+  const version = library?.version;
+  (span as ReadableSpan & { instrumentationScope?: { name: string; version?: string } }).instrumentationScope = {
+    name,
+    ...(version ? { version } : {}),
+  };
+}
+
+function isWeavekitSpan(span: ReadableSpan | null | undefined): boolean {
+  if (!span) return false;
+  const scope = (span as ReadableSpan & { instrumentationScope?: { name?: string } }).instrumentationScope;
+  return span.instrumentationLibrary?.name === "weavekit" || scope?.name === "weavekit";
+}
+
+function isCouncilSpan(span: ReadableSpan | null | undefined): boolean {
+  if (!span?.name) return false;
+  return span.name === "council-run" || span.name.startsWith("run.council.");
+}
+
+function shouldExportToLangfuse(otelSpan: ReadableSpan | null | undefined): boolean {
+  if (!otelSpan) return false;
+  ensureInstrumentationScope(otelSpan);
+  if (isWeavekitSpan(otelSpan) || isCouncilSpan(otelSpan)) return true;
+  if (hasGenAiAttributes(otelSpan)) return true;
+  try {
+    return isDefaultExportSpan(otelSpan);
+  } catch {
+    return false;
+  }
+}
+
 function buildSpanProcessors(): SpanProcessor[] {
   const spanProcessors: SpanProcessor[] = [];
   if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
@@ -62,9 +107,9 @@ function buildSpanProcessors(): SpanProcessor[] {
     spanProcessors.push(
       new LangfuseSpanProcessor({
         ...langfuseConfig,
-        shouldExportSpan: ({ otelSpan }) => isDefaultExportSpan(otelSpan),
+        shouldExportSpan: ({ otelSpan }) => shouldExportToLangfuse(otelSpan as ReadableSpan | null | undefined),
         ...(isRawExportEnabled() ? {} : { mask: buildLangfuseMask() }),
-        mediaUploadEnabled: isRawExportEnabled(),
+        mediaUploadEnabled: false,
       }),
     );
   }

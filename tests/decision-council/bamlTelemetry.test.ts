@@ -121,6 +121,7 @@ describe("bamlTelemetry", () => {
       "weavekit.decision_council.persona_id": "skeptic",
       "weavekit.decision_council.round_number": 3,
     });
+    expect(spanState.spans[0]?.attributes).not.toHaveProperty("langfuse.trace.name");
     expect(spanState.spans[0]?.ended).toBe(true);
   });
 
@@ -181,9 +182,57 @@ describe("bamlTelemetry", () => {
     const span = spanState.spans[0];
     const args = span?.attributes["weavekit.decision_council.args"] as string;
     const output = span?.attributes["weavekit.decision_council.result"] as string;
+    const langfuseInput = span?.attributes["langfuse.observation.input"] as string;
+    const langfuseOutput = span?.attributes["langfuse.observation.output"] as string;
     expect(args.length).toBeLessThanOrEqual(5 * 1024);
     expect(output.length).toBeLessThanOrEqual(5 * 1024);
+    expect(langfuseInput.length).toBeLessThanOrEqual(5 * 1024);
+    expect(langfuseOutput.length).toBeLessThanOrEqual(5 * 1024);
+    expect(() => JSON.parse(args)).not.toThrow();
+    expect(() => JSON.parse(output)).not.toThrow();
+    expect(() => JSON.parse(langfuseInput)).not.toThrow();
+    expect(() => JSON.parse(langfuseOutput)).not.toThrow();
     expect(args).toContain('"text":"xxxxxxxxxx');
     expect(output).toContain('"text":"xxxxxxxxxx');
+    expect(langfuseInput).toContain('"text":"xxxxxxxxxx');
+    expect(langfuseOutput).toContain('"text":"xxxxxxxxxx');
+    expect(span?.attributes).not.toHaveProperty("langfuse.trace.input");
+    expect(span?.attributes).not.toHaveProperty("langfuse.trace.output");
+  });
+
+  it("preserves native object shape when bounding large report payloads", async () => {
+    const report = {
+      recommendation: "Use TOML with environment variable overrides.",
+      rationale: Array.from({ length: 10 }, (_, index) => `Rationale ${index}: ${"x".repeat(800)}`),
+      strongestObjections: Array.from({ length: 5 }, (_, index) => `Objection ${index}: ${"y".repeat(800)}`),
+      unresolvedQuestions: [],
+      confidence: 0.8,
+      convergence: 0.9,
+      nextExperiment: "Run a CLI smoke test.",
+      finalReportMarkdown: `# Design Council Report\n\n${"z".repeat(6000)}`,
+      failedPersonas: [],
+    };
+
+    class Example {
+      @TraceBamlOperation("report")
+      async report(): Promise<typeof report> {
+        return report;
+      }
+    }
+
+    await new Example().report();
+
+    const output = spanState.spans[0]?.attributes["langfuse.observation.output"] as string;
+    expect(output.length).toBeLessThanOrEqual(5 * 1024);
+    const parsed = JSON.parse(output);
+    expect(parsed).toMatchObject({
+      recommendation: "Use TOML with environment variable overrides.",
+      confidence: 0.8,
+      convergence: 0.9,
+      failedPersonas: [],
+    });
+    expect(parsed).not.toHaveProperty("truncated");
+    expect(parsed.rationale.at(-1)).toContain("<truncated");
+    expect(parsed.finalReportMarkdown).toContain("<truncated");
   });
 });
