@@ -36,4 +36,3 @@ export type {
   PersonaSelectionResult,
   PersonaSelector,
 } from "./personas/index.js";
-export * from "./work-queue/index.js";

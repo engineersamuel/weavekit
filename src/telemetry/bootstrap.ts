@@ -84,15 +84,10 @@ function isCouncilSpan(span: ReadableSpan | null | undefined): boolean {
   return span.name === "council-run" || span.name.startsWith("run.council.");
 }
 
-function isWorkQueueSpan(span: ReadableSpan | null | undefined): boolean {
-  if (!span?.name) return false;
-  return span.name.startsWith("work-queue.beads.");
-}
-
 function shouldExportToLangfuse(otelSpan: ReadableSpan | null | undefined): boolean {
   if (!otelSpan) return false;
   ensureInstrumentationScope(otelSpan);
-  if (isWeavekitSpan(otelSpan) || isCouncilSpan(otelSpan) || isWorkQueueSpan(otelSpan)) return true;
+  if (isWeavekitSpan(otelSpan) || isCouncilSpan(otelSpan)) return true;
   if (hasGenAiAttributes(otelSpan)) return true;
   try {
     return isDefaultExportSpan(otelSpan);
