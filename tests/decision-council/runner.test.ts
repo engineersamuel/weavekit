@@ -932,7 +932,7 @@ describe("runDecisionCouncil", () => {
       },
     };
 
-    await runDecisionCouncil(
+    await runCouncilForTest(
       { prompt: "Handle a work item." },
       {
         outputDir: "runs/work-item",
