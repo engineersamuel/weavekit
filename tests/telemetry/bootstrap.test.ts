@@ -179,4 +179,23 @@ describe("telemetry bootstrap", () => {
       instrumentationScope: { name: "weavekit", version: "1.0.0" },
     });
   });
+
+  it("exports Beads work-queue spans to Langfuse", async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+
+    await startTelemetry("weavekit-test");
+
+    const shouldExportSpan = (langfuseProcessorConstructors[0] as { shouldExportSpan?: (args: { otelSpan?: Record<string, unknown> }) => boolean })
+      ?.shouldExportSpan;
+    expect(shouldExportSpan?.({
+      otelSpan: {
+        name: "work-queue.beads.claim",
+        attributes: {
+          "weavekit.work_queue.backend": "beads",
+        },
+        instrumentationScope: { name: "skip" },
+      },
+    })).toBe(true);
+  });
 });

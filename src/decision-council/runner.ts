@@ -41,10 +41,16 @@ export type RunDecisionCouncilOptions = {
 
 const tracer = trace.getTracer("weavekit.decision-council");
 
+function traceIdFor(span: { spanContext(): { traceId?: string } }): string | undefined {
+  const traceId = span.spanContext().traceId;
+  return traceId && traceId !== "00000000000000000000000000000000" ? traceId : undefined;
+}
+
 export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilInputSchema>, options: RunDecisionCouncilOptions = {}): Promise<DecisionCouncilReport> {
   const startedAt = performance.now();
   const runId = `council-${Date.now().toString(36)}`;
   return tracer.startActiveSpan("council-run", async (span) => {
+    const traceId = traceIdFor(span);
     const logger = composeDecisionCouncilLoggers(options.logger, createOtelDecisionCouncilLogger({ span }));
 
     try {
@@ -97,6 +103,7 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
         type: "council.run.started",
         timestamp: timestamp(),
         runId,
+        traceId,
         inputPath: options.inputPath,
         outputDir: options.outputDir,
         personaCount: initialState.personas.length,
@@ -142,6 +149,7 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
         type: "council.run.completed",
         timestamp: timestamp(),
         runId,
+        traceId,
         stopReason: finalState.stopReason,
         durationMs,
       });
@@ -166,6 +174,7 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
         type: "council.run.failed",
         timestamp: timestamp(),
         runId,
+        traceId,
         durationMs,
         error: errorMessage(error),
       });

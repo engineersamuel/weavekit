@@ -145,7 +145,21 @@ function extractSingletonArrayItem(command: string, obj: Record<string, unknown>
 function parseWorkItem(command: string, stdout: string): WorkItem {
   const raw = parseJson(command, stdout);
   let candidate: unknown;
-  if (typeof raw === "object" && raw !== null) {
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) {
+      throw new WorkQueueBackendError(
+        `bd ${command} returned empty array; expected exactly 1 item`,
+        { command, length: 0 },
+      );
+    }
+    if (raw.length > 1) {
+      throw new WorkQueueBackendError(
+        `bd ${command} returned array with ${raw.length} items; expected exactly 1`,
+        { command, length: raw.length },
+      );
+    }
+    candidate = raw[0];
+  } else if (typeof raw === "object" && raw !== null) {
     const obj = raw as Record<string, unknown>;
     const fromWrapper = extractSingletonArrayItem(command, obj);
     if (fromWrapper !== undefined) {

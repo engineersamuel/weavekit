@@ -183,6 +183,20 @@ describe("BeadsCliWorkQueue — Beads native JSON shape", () => {
 });
 
 describe("BeadsCliWorkQueue — real Beads singleton array wrappers", () => {
+  it("accepts raw singleton arrays from bd show/update/close --json", async () => {
+    const showIssue = { id: "bd-s1", title: "Show me", status: "open", issue_type: "task", priority: 1 };
+    const claimIssue = { id: "bd-s1", title: "Show me", status: "in_progress", issue_type: "task", priority: 1 };
+    const closeIssue = { id: "bd-s1", title: "Show me", status: "closed", issue_type: "task", priority: 1 };
+    const queue = new BeadsCliWorkQueue({
+      cwd: "/repo",
+      runCommand: runnerFor([], [[showIssue], [claimIssue], [closeIssue]]),
+    });
+
+    await expect(queue.show("bd-s1")).resolves.toMatchObject({ id: "bd-s1", status: "open" });
+    await expect(queue.claim("bd-s1")).resolves.toMatchObject({ id: "bd-s1", status: "in_progress" });
+    await expect(queue.close("bd-s1", { reason: "Done" })).resolves.toMatchObject({ id: "bd-s1", status: "closed" });
+  });
+
   it("accepts allDetails array from bd show --json", async () => {
     const issue = { id: "bd-s1", title: "Show me", status: "open", issue_type: "task", priority: 1 };
     const queue = new BeadsCliWorkQueue({
