@@ -4,16 +4,3 @@
 description = "Fast single-round, 2-persona decision-council smoke test (gpt-5-mini)."
 run = "nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/smoke"
 env = { BAML_LOG = "warn", COPILOT_PROXY_API_KEY = "anything" }
-
-[tasks."council:telemetry-local-dynamic"]
-description = "Run the real dynamic decision council with local .env.fish and Langfuse telemetry."
-run = '''
-#!/usr/bin/env fish
-source .env.fish
-set -e OTEL_SDK_DISABLED
-set -gx BAML_LOG warn
-nub run council decision-council run \
-  --input examples/design-question.md \
-  --output runs/telemetry-local-dynamic \
-  --max-rounds 3
-'''

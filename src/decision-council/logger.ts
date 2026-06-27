@@ -6,7 +6,6 @@ export type DecisionCouncilEvent =
       type: "council.run.started";
       timestamp: string;
       runId: string;
-      traceId?: string;
       inputPath?: string;
       outputDir?: string;
       personaCount: number;
