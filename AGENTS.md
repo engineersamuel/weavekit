@@ -16,6 +16,11 @@ When working with baml read ./docs/baml/instructions.md
 
 Prefer BAML-generated types over creating new hand-authored TypeScript types when the output shape is already defined in a BAML schema. Reuse generated types as the canonical contract and only add new local types when they represent workflow-specific state or input that is not produced by BAML.
 
+## Workflow instrumentation
+
+- When writing new workflows, consider Langfuse/OpenTelemetry observability from the start: spans, trace metadata, and useful workflow inputs/outputs should be part of the design.
+- Do not add a durable work queue (e.g. Beads) for workflow orchestration. Workflows are isolated single-machine runs that complete all work in-process; orchestrate dynamic action graphs in-process, record the execution DAG in Langfuse, and snapshot run state to disk for resume. See `CONTEXT.md` and `docs/adr/0001-no-durable-work-queue.md`.
+
 ## Model proxy
 
 By default models are hosted through the copilot-proxy-rs available at http://127.0.0.1:8080 with endpoints  `/health`, `/version`, `/v1/models`, and `/v1/messages/count_tokens` routes.
