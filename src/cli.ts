@@ -37,7 +37,7 @@ export type DecisionCouncilCliArgs = {
 export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
   if (argv[0] !== "decision-council" || argv[1] !== "run") {
     throw new Error(
-      "Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--max-rounds <n>] [--smoke] [--work-item <id>] [--claim-work-item] [--close-work-item] [--create-follow-up-work-item] [--sync-work-queue] [--log-format <pretty|json|silent>] (omit --persona-set for dynamic persona selection; provide --persona-set <name> for deterministic static selection.)",
+      "Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--max-rounds <n>] [--smoke] [--work-item <id>] [--claim-work-item] [--close-work-item] [--create-follow-up-work-item] [--sync-work-queue] [--create-beads-workflow] [--log-format <pretty|json|silent>] (omit --persona-set for dynamic persona selection; provide --persona-set <name> for deterministic static selection.)",
     );
   }
 
@@ -86,12 +86,16 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
   const closeWorkItem = argv.includes("--close-work-item");
   const createFollowUpWorkItem = argv.includes("--create-follow-up-work-item");
   const syncWorkQueue = argv.includes("--sync-work-queue");
+  const createBeadsWorkflow = argv.includes("--create-beads-workflow");
 
-  if ((claimWorkItem || closeWorkItem || createFollowUpWorkItem || syncWorkQueue) && !workItemId) {
-    throw new Error("--claim-work-item, --close-work-item, --create-follow-up-work-item, and --sync-work-queue require --work-item <id>.");
+  if ((claimWorkItem || closeWorkItem || createFollowUpWorkItem) && !workItemId) {
+    throw new Error("--claim-work-item, --close-work-item, and --create-follow-up-work-item require --work-item <id>.");
   }
 
-  const createBeadsWorkflow = argv.includes("--create-beads-workflow");
+  if (syncWorkQueue && !workItemId && !createBeadsWorkflow) {
+    throw new Error("--sync-work-queue requires --work-item <id> or --create-beads-workflow.");
+  }
+
   if (createBeadsWorkflow && workItemId) {
     throw new Error("--work-item <id> and --create-beads-workflow are mutually exclusive.");
   }

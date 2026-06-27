@@ -236,10 +236,25 @@ describe("CLI", () => {
     ).toThrow("require --work-item <id>");
   });
 
-  it("rejects --sync-work-queue without --work-item", () => {
+  it("rejects --sync-work-queue without --work-item or --create-beads-workflow", () => {
     expect(() =>
       parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--sync-work-queue"]),
-    ).toThrow("require --work-item <id>");
+    ).toThrow("--sync-work-queue requires --work-item <id> or --create-beads-workflow");
+  });
+
+  it("accepts --sync-work-queue with --create-beads-workflow", () => {
+    const parsed = parseDecisionCouncilCliArgs([
+      "decision-council",
+      "run",
+      "--input",
+      "x.md",
+      "--create-beads-workflow",
+      "--sync-work-queue",
+    ]);
+
+    expect(parsed.createBeadsWorkflow).toBe(true);
+    expect(parsed.syncWorkQueue).toBe(true);
+    expect(parsed.workItemId).toBeUndefined();
   });
 
   it("accepts lifecycle flags when --work-item is provided", () => {

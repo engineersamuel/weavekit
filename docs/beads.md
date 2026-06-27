@@ -71,6 +71,14 @@ This creates four Beads items:
 
 The council runs under the generated `run-council` item. Langfuse receives `langfuse.trace.metadata.beads.workflow_dag` with all generated items. Use `--work-item <id>` instead when you already have a Beads item and only want to attach a run to it.
 
+#### Trace topology for generated workflows
+
+Generated workflow creation spans (`work-queue.beads.create-workflow`, `work-queue.beads.create-workflow-item`) emit as a separate workflow-creation trace before the council run. The subsequent `council-run` trace carries `langfuse.trace.metadata.beads.workflow_dag`, and claim/close lifecycle spans are nested under the council-run trace.
+
+#### Workflow item lifecycle
+
+Create-mode records four workflow items, runs and closes only the active generated `run-council` item, and leaves `frame-question`, `review-report`, and `implement-next-experiment` as durable DAG context/follow-up work for humans/agents. If a generated workflow run fails after creation, Beads items persist and the active run item may remain claimed/in progress for retry/inspection.
+
 ## Langfuse trace visualization
 
 When Langfuse export is configured and a run supplies `--work-item <id>`, Weavekit reads the source Beads item and annotates the root `council-run` trace with:
