@@ -119,15 +119,28 @@ describe("BAML adapter seams", () => {
       });
 
       await adapters.normalizeCritique({ personaId: "skeptic", text: "raw", transcript: [], metadata: {} });
-      expect(capture.options[0]).toEqual({ client: "CopilotProxyGpt54" });
+      expect(capture.options[0]).toMatchObject({
+        client: "CopilotProxyGpt54",
+        collector: expect.anything(),
+        tags: {
+          personaId: "skeptic",
+        },
+      });
     });
 
-    it("passes no override when no router is configured (back-compat)", async () => {
+    it("passes no routing override when no router is configured (back-compat)", async () => {
       const capture = { options: [] as unknown[] };
       const adapters = new GeneratedBamlAdapters({ bamlClient: fakeBamlClient(capture) });
 
       await adapters.assessRound({ roundNumber: 1, critiques: [], failures: [] });
-      expect(capture.options[0]).toBeUndefined();
+      expect(capture.options[0]).toMatchObject({
+        collector: expect.anything(),
+        tags: {
+          roundNumber: "1",
+        },
+      });
+      expect(capture.options[0]).not.toHaveProperty("client");
+      expect(capture.options[0]).not.toHaveProperty("clientRegistry");
     });
 
     it("reports the routed model via the onModel callback", async () => {
@@ -168,6 +181,46 @@ describe("BAML adapter seams", () => {
       expect(observed).toBeUndefined();
     });
 
+    it("passes collector-backed tags into normalize calls", async () => {
+      const capture = { options: [] as unknown[] };
+      const adapters = new GeneratedBamlAdapters({ bamlClient: fakeBamlClient(capture), bamlEnv: {} });
+
+      await adapters.normalizeCritique({ personaId: "skeptic", text: "raw", transcript: [], metadata: {} });
+
+      expect(capture.options[0]).toMatchObject({
+        collector: expect.anything(),
+        tags: {
+          personaId: "skeptic",
+        },
+      });
+    });
+
+    it("passes collector-backed tags into assess calls", async () => {
+      const capture = { options: [] as unknown[] };
+      const adapters = new GeneratedBamlAdapters({ bamlClient: fakeBamlClient(capture), bamlEnv: {} });
+
+      await adapters.assessRound({ roundNumber: 2, critiques: [], failures: [] });
+
+      expect(capture.options[0]).toMatchObject({
+        collector: expect.anything(),
+        tags: {
+          roundNumber: "2",
+        },
+      });
+    });
+
+    it("passes collector-backed options into report calls", async () => {
+      const capture = { options: [] as unknown[] };
+      const adapters = new GeneratedBamlAdapters({ bamlClient: fakeBamlClient(capture), bamlEnv: {} });
+
+      await adapters.createFinalReport({ critiques: [], assessments: [], failures: [] });
+
+      expect(capture.options[0]).toMatchObject({
+        collector: expect.anything(),
+      });
+      expect((capture.options[0] as { tags?: unknown }).tags ?? {}).toEqual({});
+    });
+
     it("never reports the free-form decision.model when the router picks no known client", async () => {
       const capture = { options: [] as unknown[] };
       const adapters = new GeneratedBamlAdapters({
@@ -190,7 +243,14 @@ describe("BAML adapter seams", () => {
         },
       );
       expect(observed).toBeUndefined();
-      expect(capture.options[0]).toEqual({});
+      expect(capture.options[0]).toMatchObject({
+        collector: expect.anything(),
+        tags: {
+          personaId: "skeptic",
+        },
+      });
+      expect(capture.options[0]).not.toHaveProperty("client");
+      expect(capture.options[0]).not.toHaveProperty("clientRegistry");
     });
 
     it("trims critiques to per-persona summaries for the final report", async () => {

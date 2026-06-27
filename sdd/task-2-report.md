@@ -1,0 +1,23 @@
+# Task 2 Report — Decorator-based BAML tracing module
+
+Status: DONE
+
+Commits created:
+- feat: add decorator-based baml tracing
+
+One-line test summary:
+- Ran `nub run typecheck && nub run test` — typecheck passed and 181 tests passed.
+
+What I changed
+- Added `src/decision-council/bamlTelemetry.ts` with `@TraceBamlOperation`, collector/tag helpers, and span enrichment for BAML usage metadata.
+- Extended `BamlRouteOptions` in `src/decision-council/bamlRouting.ts` to allow `collector` and `tags`.
+- Decorated BAML adapter methods in `src/decision-council/bamlAdapters.ts` and merged telemetry-backed collector/tag options into each BAML call.
+- Added `tests/decision-council/bamlTelemetry.test.ts` plus adapter assertions in `tests/decision-council/bamlAdapters.test.ts`.
+
+Verification
+- RED: `nub run test -- tests/decision-council/bamlTelemetry.test.ts tests/decision-council/bamlAdapters.test.ts` failed before implementation because `bamlTelemetry.ts` did not exist and adapter calls passed no collector/tags.
+- GREEN: the focused suite passed after implementation.
+- Final: `nub run typecheck && nub run test` passed.
+
+Concerns
+- The brief references an `executeOperation` adapter seam, but the current tree has only public adapter methods; I applied the decorator at those method boundaries instead.
