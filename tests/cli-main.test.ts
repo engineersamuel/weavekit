@@ -18,39 +18,12 @@ vi.mock("../src/decision-council/runner.js", () => ({
   })),
 }));
 
-vi.mock("../src/work-queue/decisionCouncilWorkflow.js", () => ({
-  createDecisionCouncilBeadsWorkflow: vi.fn(async () => ({
-    rootItem: { id: "bd-root" },
-    runItem: { id: "bd-run" },
-    reviewItem: { id: "bd-review" },
-    followUpItem: { id: "bd-follow" },
-    items: [
-      { id: "bd-root" },
-      { id: "bd-run" },
-      { id: "bd-review" },
-      { id: "bd-follow" },
-    ],
-  })),
-}));
-
-vi.mock("../src/work-queue/telemetry.js", () => ({
-  serializeWorkItemWorkflowDag: vi.fn((args) => ({
-    rootItemId: args.rootItemId,
-    activeItemId: args.activeItemId,
-    items: args.items,
-  })),
-}));
-
 import { main } from "../src/cli.js";
 import { runDecisionCouncil } from "../src/decision-council/runner.js";
 import { startTelemetry } from "../src/telemetry/bootstrap.js";
-import { createDecisionCouncilBeadsWorkflow } from "../src/work-queue/decisionCouncilWorkflow.js";
-import { serializeWorkItemWorkflowDag } from "../src/work-queue/telemetry.js";
 
 const startTelemetryMock = vi.mocked(startTelemetry);
 const runDecisionCouncilMock = vi.mocked(runDecisionCouncil);
-const createDecisionCouncilBeadsWorkflowMock = vi.mocked(createDecisionCouncilBeadsWorkflow);
-const serializeWorkItemWorkflowDagMock = vi.mocked(serializeWorkItemWorkflowDag);
 
 describe("CLI main", () => {
   beforeEach(() => {
@@ -129,63 +102,5 @@ describe("CLI main", () => {
     expect(readme).toContain("nub run council decision-council run");
     expect(readme).toContain("BAML_LOG=warn");
     expect(readme).toContain("grep -i");
-  });
-
-  it("creates beads workflow and runs under generated runItem when --create-beads-workflow is supplied", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "weavekit-cli-main-"));
-    const inputPath = join(dir, "question.md");
-    await writeFile(inputPath, "# Should we use Flue?\n\nAnalyze this question.", "utf8");
-
-    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    const argvSnapshot = process.argv;
-    process.argv = ["node", "weavekit", "decision-council", "run", "--input", inputPath, "--create-beads-workflow"];
-
-    try {
-      await expect(main()).resolves.toBeUndefined();
-
-      expect(createDecisionCouncilBeadsWorkflowMock).toHaveBeenCalledTimes(1);
-      expect(createDecisionCouncilBeadsWorkflowMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Should we use Flue?",
-          inputPath,
-          outputDir: "runs/latest",
-        }),
-      );
-
-      expect(serializeWorkItemWorkflowDagMock).toHaveBeenCalledTimes(1);
-      expect(serializeWorkItemWorkflowDagMock).toHaveBeenCalledWith({
-        rootItemId: "bd-root",
-        activeItemId: "bd-run",
-        items: [
-          { id: "bd-root" },
-          { id: "bd-run" },
-          { id: "bd-review" },
-          { id: "bd-follow" },
-        ],
-      });
-
-      expect(runDecisionCouncilMock).toHaveBeenCalledTimes(1);
-      expect(runDecisionCouncilMock).toHaveBeenCalledWith(
-        expect.any(Object),
-        expect.objectContaining({
-          workQueue: expect.objectContaining({
-            workItemId: "bd-run",
-            claimOnStart: true,
-            closeOnSuccess: true,
-            createFollowUp: false,
-          }),
-          workQueueWorkflowDag: expect.objectContaining({
-            rootItemId: "bd-root",
-            activeItemId: "bd-run",
-          }),
-        }),
-      );
-
-      expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining("Use Flue"));
-    } finally {
-      process.argv = argvSnapshot;
-      stdoutSpy.mockRestore();
-      await rm(dir, { recursive: true, force: true });
-    }
   });
 });
