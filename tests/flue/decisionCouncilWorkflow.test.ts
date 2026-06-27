@@ -1,8 +1,12 @@
 import type { McpServerConnection, ToolDefinition } from "@flue/runtime";
 import { describe, expect, it, vi } from "vitest";
 import type { CritiqueNormalizer, JudgeReducer } from "../../src/decision-council/bamlAdapters.js";
+import { defaultPersonaSet } from "../../src/decision-council/personas.js";
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
 import { createConfiguredDecisionCouncilWorkflow } from "../../src/flue/decisionCouncilWorkflow.js";
+import { createStaticPersonaSelector } from "../../src/personas/selector.js";
+
+const personaSelector = createStaticPersonaSelector(defaultPersonaSet);
 
 const personaWorker: PersonaWorker = {
   async runPersona({ persona, brief }) {
@@ -67,7 +71,7 @@ describe("createConfiguredDecisionCouncilWorkflow", () => {
     }) satisfies McpServerConnection);
 
     const result = await createConfiguredDecisionCouncilWorkflow(
-      { personaWorker, normalizer, judge },
+      { personaSelector, personaWorker, normalizer, judge },
       {
         env: { EXA_API_KEY: "exa-secret", CONTEXT7_API_KEY: "ctx-key" },
         connectMcpServer: connect,
@@ -97,7 +101,7 @@ describe("createConfiguredDecisionCouncilWorkflow", () => {
     }) satisfies McpServerConnection);
 
     await createConfiguredDecisionCouncilWorkflow(
-      { personaWorker, normalizer, judge },
+      { personaSelector, personaWorker, normalizer, judge },
       { env: {}, includeLocalBaton: true, connectMcpServer: connect },
     );
 

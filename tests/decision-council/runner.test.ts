@@ -628,6 +628,7 @@ describe("createDecisionCouncilWorkflow", () => {
     expect(() =>
       createDecisionCouncilWorkflow(
         {
+          personaSelector: staticDefaultSelector,
           personaWorker: fakeWorker(),
           normalizer,
           judge: judge(1),
