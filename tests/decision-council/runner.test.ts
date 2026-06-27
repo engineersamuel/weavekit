@@ -1,14 +1,100 @@
 import { trace } from "@opentelemetry/api";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runDecisionCouncil, type RunDecisionCouncilOptions } from "../../src/decision-council/runner.js";
 import { runDecisionCouncilLoop } from "../../src/decision-council/workflow.js";
 import { createDecisionCouncilWorkflow } from "../../src/flue/decisionCouncilWorkflowDefinition.js";
 import { defaultPersonaSet } from "../../src/decision-council/personas.js";
 import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
+import { TraceBamlOperation } from "../../src/decision-council/bamlTelemetry.js";
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
 import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
 import { createInitialRunState } from "../../src/decision-council/types.js";
 import { createStaticPersonaSelector, type PersonaSelectionInput, type PersonaSelector } from "../../src/personas/selector.js";
+
+const telemetry = vi.hoisted(() => {
+  const startActiveSpanCalls: string[] = [];
+  const spans: {
+    name: string;
+    parentName?: string;
+    attributes: Record<string, unknown>;
+    status: unknown[];
+    exceptions: unknown[];
+    events: { name: string; attributes: Record<string, unknown> }[];
+    ended: boolean;
+  }[] = [];
+  let activeSpan:
+    | {
+        name: string;
+      }
+    | undefined;
+
+  return {
+    startActiveSpanCalls,
+    spans,
+    reset() {
+      startActiveSpanCalls.length = 0;
+      spans.length = 0;
+      activeSpan = undefined;
+    },
+    getActiveSpan() {
+      return activeSpan;
+    },
+    startActiveSpan: vi.fn(async (name: string, fn: (span: {
+      setAttribute: (key: string, value: unknown) => void;
+      setStatus: (value: unknown) => void;
+      recordException: (value: unknown) => void;
+      addEvent: (eventName: string, attributes?: Record<string, unknown>) => void;
+      end: () => void;
+    }) => Promise<unknown>) => {
+      const parent = activeSpan;
+      const span = {
+        name,
+        parentName: parent?.name,
+        attributes: {} as Record<string, unknown>,
+        status: [] as unknown[],
+        exceptions: [] as unknown[],
+        events: [] as { name: string; attributes: Record<string, unknown> }[],
+        ended: false,
+      };
+      startActiveSpanCalls.push(name);
+      spans.push(span);
+      activeSpan = span;
+      try {
+        return await fn({
+          setAttribute(key, value) {
+            span.attributes[key] = value;
+          },
+          setStatus(value) {
+            span.status.push(value);
+          },
+          recordException(value) {
+            span.exceptions.push(value);
+          },
+          addEvent(eventName, attributes = {}) {
+            span.events.push({ name: eventName, attributes });
+          },
+          end() {
+            span.ended = true;
+          },
+        });
+      } finally {
+        activeSpan = parent;
+      }
+    }),
+  };
+});
+
+vi.mock("@opentelemetry/api", () => ({
+  SpanStatusCode: {
+    OK: 1,
+    ERROR: 2,
+  },
+  trace: {
+    getTracer: vi.fn(() => ({
+      startActiveSpan: telemetry.startActiveSpan,
+    })),
+  },
+}));
 
 function fakeWorker(failPersonaIds: string[] = []): PersonaWorker {
   return {
@@ -129,6 +215,10 @@ function judge(roundsBeforeStop: number): JudgeReducer {
 }
 
 describe("runDecisionCouncil", () => {
+  beforeEach(() => {
+    telemetry.reset();
+  });
+
   it("emits progress events for the council run", async () => {
     const events: string[] = [];
 
@@ -608,6 +698,85 @@ describe("runDecisionCouncil", () => {
     );
 
     expect(report.recommendation).toBeDefined();
+  });
+
+  it("creates a root OTEL span and nests traced BAML spans beneath it", async () => {
+    class TracedNormalizer implements CritiqueNormalizer {
+      @TraceBamlOperation("normalize")
+      async normalizeCritique(raw: Parameters<CritiqueNormalizer["normalizeCritique"]>[0]) {
+        return {
+          personaId: raw.personaId,
+          overallSummary: `${raw.personaId} summary`,
+          summary: raw.text,
+          claims: [],
+          risks: [],
+          questions: [],
+          recommendations: [],
+        };
+      }
+    }
+
+    await runCouncilForTest(
+      { prompt: "Trace this run." },
+      {
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer: new TracedNormalizer(),
+          judge: judge(1),
+        },
+      },
+    );
+
+    const rootSpan = telemetry.spans.find((span) => span.name === "council-run");
+    const normalizeSpan = telemetry.spans.find((span) => span.name === "run.council.baml.normalize");
+
+    expect(telemetry.startActiveSpanCalls).toContain("council-run");
+    expect(rootSpan?.attributes).toMatchObject({
+      "weavekit.decision_council.run_id": expect.any(String),
+      "weavekit.decision_council.persona_count": 10,
+      "weavekit.decision_council.max_rounds": 3,
+    });
+    expect(rootSpan?.events).toContainEqual(
+      expect.objectContaining({
+        name: "council.run.started",
+      }),
+    );
+    expect(normalizeSpan?.parentName).toBe("council-run");
+    expect(rootSpan?.ended).toBe(true);
+  });
+
+  it("records run failures on the root OTEL span", async () => {
+    await expect(
+      runCouncilForTest(
+        { prompt: "Fail the run." },
+        {
+          deps: {
+            personaSelector: {
+              async choosePersonas() {
+                throw new Error("chooser unavailable");
+              },
+            },
+            personaWorker: fakeWorker(),
+            normalizer,
+            judge: judge(1),
+          },
+        },
+      ),
+    ).rejects.toThrow("chooser unavailable");
+
+    const rootSpan = telemetry.spans.find((span) => span.name === "council-run");
+
+    expect(rootSpan?.exceptions).toHaveLength(1);
+    expect(rootSpan?.status).toContainEqual({
+      code: 2,
+      message: "chooser unavailable",
+    });
+    expect(rootSpan?.events).toContainEqual(
+      expect.objectContaining({
+        name: "council.run.failed",
+      }),
+    );
+    expect(rootSpan?.ended).toBe(true);
   });
 });
 
