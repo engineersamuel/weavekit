@@ -51,6 +51,7 @@ export type DecisionCouncilEvent =
       runId: string;
       roundNumber: number;
       personaId: string;
+      skill?: string;
       model?: string;
       durationMs?: number;
       error?: string;

@@ -185,6 +185,7 @@ export async function runDecisionCouncilRound(
       runId,
       roundNumber: brief.roundNumber,
       personaId: persona.id,
+      skill: persona.skill?.name,
     });
 
     let raw: RawPersonaResult;
@@ -196,6 +197,7 @@ export async function runDecisionCouncilRound(
         runId,
         roundNumber: brief.roundNumber,
         personaId: persona.id,
+        skill: raw.metadata.skill ?? persona.skill?.name,
         model: raw.metadata.model,
         durationMs: performance.now() - personaStartedAt,
       });
@@ -206,6 +208,7 @@ export async function runDecisionCouncilRound(
         runId,
         roundNumber: brief.roundNumber,
         personaId: persona.id,
+        skill: persona.skill?.name,
         durationMs: performance.now() - personaStartedAt,
         error: errorMessage(error),
       });
