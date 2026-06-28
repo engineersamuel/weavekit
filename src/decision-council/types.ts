@@ -57,6 +57,15 @@ export const RawPersonaResultSchema = z.object({
 
 export type RawPersonaResult = z.infer<typeof RawPersonaResultSchema>;
 
+export const ClarifyingQuestionSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+  choices: z.array(z.string().min(1)).optional(),
+  importance: z.enum(["blocking", "optional"]).optional(),
+});
+
+export type ClarifyingQuestion = z.infer<typeof ClarifyingQuestionSchema>;
+
 export const DecisionRoundAssessmentSchema = z.object({
   roundNumber: z.number().int().positive(),
   consensus: z.string().min(1),
@@ -65,6 +74,8 @@ export const DecisionRoundAssessmentSchema = z.object({
   convergence: z.number().min(0).max(1),
   shouldContinue: z.boolean(),
   diminishingReturns: z.boolean(),
+  needsHumanInput: z.boolean().optional(),
+  clarifyingQuestions: z.array(ClarifyingQuestionSchema).optional(),
   nextRoundBrief: z.preprocess((value) => (value === null ? undefined : value), z.string().min(1).optional()),
 });
 

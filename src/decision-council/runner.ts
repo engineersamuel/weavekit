@@ -5,6 +5,7 @@ import { DecisionCouncilRunFailedError } from "./errors.js";
 import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
 import { composeDecisionCouncilLoggers, createOtelDecisionCouncilLogger } from "./otelLogger.js";
 import { CopilotPersonaWorker } from "./personaWorker.js";
+import { SkipSource } from "./elicitation.js";
 import { resolvePersonaSet, resolvePersonaSetByName } from "./personas.js";
 import { createBamlPersonaSelector, createStaticPersonaSelector, listPersonas } from "../personas/index.js";
 import { SpanStatusCode, trace } from "@opentelemetry/api";
@@ -78,6 +79,7 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
         judge: options.deps?.judge ?? bamlAdapters,
         logger,
         runId,
+        elicitation: options.deps?.elicitation ?? new SkipSource(),
       };
 
       const initialState = createInitialRunState(parsedInput, runVisiblePersonaSet, maxRounds);

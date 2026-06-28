@@ -27,6 +27,8 @@ export { FieldType, EnumBuilder, ClassBuilder }
 export default class TypeBuilder {
     private tb: _TypeBuilder;
     
+    ClarifyingQuestion: ClassViewer<'ClarifyingQuestion', "id" | "text" | "choices">;
+    
     CouncilReport: ClassViewer<'CouncilReport', "recommendation" | "rationale" | "strongestObjections" | "unresolvedQuestions" | "confidence" | "convergence" | "nextExperiment" | "finalReportMarkdown" | "failedPersonas">;
     
     PersonaChoiceCandidate: ClassViewer<'PersonaChoiceCandidate', "id" | "name" | "description" | "archetype" | "tags" | "modes" | "selectionHints" | "selectionAntiHints">;
@@ -43,7 +45,7 @@ export default class TypeBuilder {
     
     RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
     
-    RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "nextRoundBrief">;
+    RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "needsHumanInput" | "clarifyingQuestions" | "nextRoundBrief">;
     
     RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
     
@@ -52,13 +54,17 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "CouncilReport","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","RawPersonaResult","RoundAssessment","RoutingDecision",
+            "ClarifyingQuestion","CouncilReport","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","RawPersonaResult","RoundAssessment","RoutingDecision",
           ]),
           enums: new Set([
             
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
+        
+        this.ClarifyingQuestion = this.tb.classViewer("ClarifyingQuestion", [
+          "id","text","choices",
+        ]);
         
         this.CouncilReport = this.tb.classViewer("CouncilReport", [
           "recommendation","rationale","strongestObjections","unresolvedQuestions","confidence","convergence","nextExperiment","finalReportMarkdown","failedPersonas",
@@ -93,7 +99,7 @@ export default class TypeBuilder {
         ]);
         
         this.RoundAssessment = this.tb.classViewer("RoundAssessment", [
-          "roundNumber","consensus","disagreements","confidence","convergence","shouldContinue","diminishingReturns","nextRoundBrief",
+          "roundNumber","consensus","disagreements","confidence","convergence","shouldContinue","diminishingReturns","needsHumanInput","clarifyingQuestions","nextRoundBrief",
         ]);
         
         this.RoutingDecision = this.tb.classViewer("RoutingDecision", [

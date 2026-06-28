@@ -29,6 +29,12 @@ class PersonaFailure {
   retryable bool
 }
 
+class ClarifyingQuestion {
+  id string
+  text string
+  choices string[]?
+}
+
 class RoundAssessment {
   roundNumber int
   consensus string
@@ -37,6 +43,8 @@ class RoundAssessment {
   convergence float
   shouldContinue bool
   diminishingReturns bool
+  needsHumanInput bool
+  clarifyingQuestions ClarifyingQuestion[]
   nextRoundBrief string?
 }
 
@@ -81,6 +89,12 @@ function AssessCouncilRound(
     You are the Judge reducer for a design council. You are not a debating persona.
     Assess whether the council should continue or stop.
     Continue only when another round is likely to produce materially better guidance.
+
+    If, and only if, a human must supply input the council cannot infer (missing requirements,
+    constraints, or a decision), set needsHumanInput true and list specific clarifyingQuestions
+    the human should answer. Otherwise set needsHumanInput false and return an empty
+    clarifyingQuestions list. Never use these to ask a human to approve or verify the council's
+    own output.
 
     {{ _.role("user") }}
     Round number: {{ roundNumber }}
