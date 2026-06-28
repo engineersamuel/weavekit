@@ -5,6 +5,8 @@ import { DecisionCouncilRunFailedError } from "./errors.js";
 import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js";
 import type { PersonaWorker } from "./personaWorker.js";
 import type { PersonaSelector } from "../personas/selector.js";
+import type { ElicitationSource } from "./elicitation.js";
+import { applyElicitation } from "./elicitationGate.js";
 import {
   DecisionCouncilRunStateSchema,
   type DecisionCouncilRound,
@@ -24,6 +26,7 @@ export type DecisionCouncilWorkflowDeps = {
   judge: JudgeReducer;
   logger?: DecisionCouncilLogger;
   runId?: string;
+  elicitation?: ElicitationSource;
 };
 
 function createRoundBrief(state: DecisionCouncilRunState): RoundBrief {
@@ -356,7 +359,13 @@ export async function runDecisionCouncilRound(
   });
 
   if (!shouldStop) {
-    return { ...state, rounds };
+    const elicited = deps.elicitation
+      ? await applyElicitation(state, assessment, deps.elicitation, {
+          runId,
+          roundNumber: brief.roundNumber,
+        })
+      : { state };
+    return { ...state, input: elicited.state.input, rounds };
   }
 
   const reportStartedAt = performance.now();

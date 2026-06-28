@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -172,4 +173,5 @@ describe("CLI", () => {
     expect(result.stderr).not.toContain("Unknown file extension");
     expect(result.stderr).not.toContain("SKILL.md");
   });
+
 });

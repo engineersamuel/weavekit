@@ -119,4 +119,44 @@ describe("decision council domain types", () => {
       }),
     ).toThrow();
   });
+
+  it("omits needsHumanInput and clarifyingQuestions when the assessment does not include them", () => {
+    const assessment = DecisionRoundAssessmentSchema.parse({
+      roundNumber: 1,
+      consensus: "Lean yes.",
+      disagreements: [],
+      confidence: 0.6,
+      convergence: 0.5,
+      shouldContinue: true,
+      diminishingReturns: false,
+    });
+
+    expect(assessment.needsHumanInput).toBeUndefined();
+    expect(assessment.clarifyingQuestions).toBeUndefined();
+  });
+
+  it("preserves emitted clarifying questions", () => {
+    const assessment = DecisionRoundAssessmentSchema.parse({
+      roundNumber: 2,
+      consensus: "Need user input on scope.",
+      disagreements: ["scope"],
+      confidence: 0.5,
+      convergence: 0.4,
+      shouldContinue: true,
+      diminishingReturns: false,
+      needsHumanInput: true,
+      clarifyingQuestions: [
+        { id: "q1", text: "What is the budget ceiling?", importance: "blocking" },
+        { id: "q2", text: "On-prem or cloud?", choices: ["on-prem", "cloud"] },
+      ],
+    });
+
+    expect(assessment.needsHumanInput).toBe(true);
+    expect(assessment.clarifyingQuestions).toHaveLength(2);
+    expect(assessment.clarifyingQuestions?.[0]).toEqual({
+      id: "q1",
+      text: "What is the budget ceiling?",
+      importance: "blocking",
+    });
+  });
 });

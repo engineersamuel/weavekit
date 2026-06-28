@@ -16,6 +16,7 @@ const telemetry = vi.hoisted(() => {
   const spans: {
     name: string;
     parentName?: string;
+    traceId: string;
     attributes: Record<string, unknown>;
     status: unknown[];
     exceptions: unknown[];
@@ -44,12 +45,14 @@ const telemetry = vi.hoisted(() => {
       setStatus: (value: unknown) => void;
       recordException: (value: unknown) => void;
       addEvent: (eventName: string, attributes?: Record<string, unknown>) => void;
+      spanContext: () => { traceId: string };
       end: () => void;
     }) => Promise<unknown>) => {
       const parent = activeSpan;
       const span = {
         name,
         parentName: parent?.name,
+        traceId: `trace-${spans.length + 1}`,
         attributes: {} as Record<string, unknown>,
         status: [] as unknown[],
         exceptions: [] as unknown[],
@@ -72,6 +75,9 @@ const telemetry = vi.hoisted(() => {
           },
           addEvent(eventName, attributes = {}) {
             span.events.push({ name: eventName, attributes });
+          },
+          spanContext() {
+            return { traceId: span.traceId };
           },
           end() {
             span.ended = true;
@@ -248,6 +254,34 @@ describe("runDecisionCouncil", () => {
     expect(events).toContain("council.baml.completed");
     expect(events).toContain("council.round.completed");
     expect(events).toContain("council.run.completed");
+  });
+
+  it("includes the OpenTelemetry trace id on root run log events", async () => {
+    const events: Array<{ type: string; traceId?: string }> = [];
+
+    await runCouncilForTest(
+      { prompt: "Log the trace id." },
+      {
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+        },
+        logger: {
+          event(event) {
+            if (event.type === "council.run.started" || event.type === "council.run.completed") {
+              events.push({ type: event.type, traceId: event.traceId });
+            }
+          },
+        },
+      },
+    );
+
+    const rootTraceId = telemetry.spans.find((span) => span.name === "council-run")?.traceId;
+    expect(events).toEqual([
+      { type: "council.run.started", traceId: rootTraceId },
+      { type: "council.run.completed", traceId: rootTraceId },
+    ]);
   });
 
   it("uses the selector result in default runs and fans out only selected personas", async () => {
@@ -738,7 +772,6 @@ describe("runDecisionCouncil", () => {
 
     expect(report.recommendation).toBeDefined();
   });
-
   it("creates a root OTEL span and nests traced BAML spans beneath it", async () => {
     class TracedNormalizer implements CritiqueNormalizer {
       @TraceBamlOperation("normalize")
@@ -861,6 +894,7 @@ describe("runDecisionCouncil", () => {
     );
     expect(rootSpan?.ended).toBe(true);
   });
+
 });
 
 describe("createDecisionCouncilWorkflow", () => {

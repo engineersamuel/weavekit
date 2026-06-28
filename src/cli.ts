@@ -105,7 +105,8 @@ export async function main(): Promise<void> {
   }
 
   try {
-    const args = parseDecisionCouncilCliArgs(process.argv.slice(2));
+    const argv = process.argv.slice(2);
+    const args = parseDecisionCouncilCliArgs(argv);
     const input = await readDecisionCouncilInputFile(args.inputPath);
     const report = await runDecisionCouncil(input, {
       outputDir: args.outputDir,

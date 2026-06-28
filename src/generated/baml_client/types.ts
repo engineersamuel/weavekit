@@ -47,6 +47,13 @@ export function all_succeeded<CheckName extends string>(checks: Record<CheckName
 export function get_checks<CheckName extends string>(checks: Record<CheckName, Check>): Check[] {
     return Object.values(checks)
 }
+export interface ClarifyingQuestion {
+  id: string
+  text: string
+  choices?: string[] | null
+  
+}
+
 export interface CouncilReport {
   recommendation: string
   rationale: string[]
@@ -133,6 +140,8 @@ export interface RoundAssessment {
   convergence: number
   shouldContinue: boolean
   diminishingReturns: boolean
+  needsHumanInput: boolean
+  clarifyingQuestions: ClarifyingQuestion[]
   nextRoundBrief?: string | null
   
 }
