@@ -822,7 +822,7 @@ describe("runDecisionCouncil", () => {
     expect(telemetry.startActiveSpanCalls).toContain("council-run");
     expect(rootSpan?.attributes).toMatchObject({
       "weavekit.decision_council.run_id": expect.any(String),
-      "weavekit.decision_council.persona_count": 10,
+      "weavekit.decision_council.persona_count": 11,
       "weavekit.decision_council.max_rounds": 3,
     });
     expect(rootSpan?.events).toContainEqual(
