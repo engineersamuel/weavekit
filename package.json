@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@boundaryml/baml": "^0.223.0",
+    "claude-superskills": "2.0.8",
     "@flue/runtime": "^1.0.0-beta.5",
     "@github/copilot-sdk": "^0.1.0",
     "@langfuse/otel": "^5.9.0",
