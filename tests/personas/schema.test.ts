@@ -1,3 +1,7 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parse as parseToml } from "smol-toml";
 import { describe, expect, it } from "vitest";
 import {
   PersonaArchetypeSchema,
@@ -121,4 +125,23 @@ describe("PersonaDefinitionSchema with skill", () => {
 
     expect(persona.skill).toBeUndefined();
   });
+});
+
+describe("persona TOML files regression", () => {
+  const personasDir = join(
+    fileURLToPath(new URL(".", import.meta.url)),
+    "..",
+    "..",
+    "personas",
+  );
+  const tomlFiles = readdirSync(personasDir)
+    .filter((f) => f.endsWith(".toml") && f !== "sets.toml")
+    .sort();
+
+  for (const file of tomlFiles) {
+    it(`parses ${file} through PersonaDefinitionSchema`, () => {
+      const raw = parseToml(readFileSync(join(personasDir, file), "utf8"));
+      expect(() => PersonaDefinitionSchema.parse(raw)).not.toThrow();
+    });
+  }
 });

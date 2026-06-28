@@ -22,17 +22,27 @@ describe("default persona registry", () => {
     ]);
   });
 
-  it("resolves the strategic set as the four defaults plus the two strategists", () => {
+  it("resolves the strategic set as the four defaults plus the three strategists", () => {
     const set = getPersonaSet("strategic");
-    expect(set.personas).toHaveLength(6);
+    expect(set.personas).toHaveLength(7);
     expect(set.personas.some((p) => p.id === "strategic-game-theorist")).toBe(true);
     expect(set.personas.some((p) => p.id === "sun-tzu")).toBe(true);
+    expect(set.personas.some((p) => p.id === "mckinsey-strategist")).toBe(true);
     expect(set.personas.slice(0, 4).map((p) => p.id)).toEqual([
       "socratic",
       "deep-module-dry",
       "pragmatic",
       "skeptic",
     ]);
+  });
+
+  it("loads the mckinsey-strategist persona with a skill block", () => {
+    const persona = getPersona("mckinsey-strategist");
+    expect(persona.specRef).toBe("mckinsey-strategist.md");
+    expect(persona.skill).toBeDefined();
+    expect(persona.skill?.name).toBe("mckinsey-strategist");
+    expect(persona.skill?.bundle).toBe("mckinsey");
+    expect(persona.skill?.installer).toBe("claude-superskills");
   });
 
   it("loads the strategic-game-theorist persona with a matching TOML source and spec reference", () => {
@@ -58,6 +68,22 @@ describe("default persona registry", () => {
 
   it("lists the registered sets", () => {
     expect(listPersonaSets().sort()).toEqual(["default", "dialectic", "smoke", "strategic"]);
+  });
+
+  it("has no duplicate persona ids in the registry", () => {
+    const personas = listPersonas();
+    const ids = personas.map((p) => p.id);
+    expect(ids).toHaveLength(new Set(ids).size);
+  });
+
+  it("default set is the four core personas and smoke is unchanged", () => {
+    expect(getPersonaSet("default").personas.map((p) => p.id)).toEqual([
+      "socratic",
+      "deep-module-dry",
+      "pragmatic",
+      "skeptic",
+    ]);
+    expect(getPersonaSet("smoke").personas.map((p) => p.id)).toEqual(["pragmatic", "skeptic"]);
   });
 
   it("lists personas as clones so callers cannot mutate the registry", () => {
