@@ -15,8 +15,8 @@ importers:
         specifier: ^1.0.0-beta.5
         version: 1.0.0-beta.6(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(typescript@5.9.3)(zod@3.25.76)
       '@github/copilot-sdk':
-        specifier: ^0.1.0
-        version: 0.1.32
+        specifier: ^1.0.4
+        version: 1.0.4
       '@langfuse/otel':
         specifier: ^5.9.0
         version: 5.9.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.8.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.57.2(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))
@@ -698,9 +698,9 @@ packages:
     libc: [musl]
     hasBin: true
 
-  '@github/copilot-sdk@0.1.32':
-    resolution: {integrity: sha512-mPWM0fw1Gqc/SW8nl45K8abrFH+92fO7y6tRtRl5imjS5hGapLf/dkX5WDrgPtlsflD0c41lFXVUri5NVJwtoA==}
-    engines: {node: '>=20.0.0'}
+  '@github/copilot-sdk@1.0.4':
+    resolution: {integrity: sha512-c6/gpatP7LAuP9stlc2uXXOrB+TJMFSs3Jrzu9FG8lJJYFGmdzbBvGz2UdL1jww84fp6D7cohEZa4UGq1+iuyA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
 
   '@github/copilot-win32-arm64@1.0.65':
     resolution: {integrity: sha512-/vSE/t9Wm3eFSWpxlKyn/oL8OAVOB0yFO7ECxhgbtiqNrBd1tgpYh1k7IXBIWa/saxlV1+de6DEmPuQfx3Z0bg==}
@@ -5692,7 +5692,7 @@ snapshots:
   '@github/copilot-linuxmusl-x64@1.0.65':
     optional: true
 
-  '@github/copilot-sdk@0.1.32':
+  '@github/copilot-sdk@1.0.4':
     dependencies:
       '@github/copilot': 1.0.65
       vscode-jsonrpc: 8.2.1
