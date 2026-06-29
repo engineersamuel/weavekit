@@ -86,6 +86,10 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
       span.setAttribute("weavekit.decision_council.run_id", runId);
       span.setAttribute("weavekit.decision_council.persona_count", initialState.personas.length);
       span.setAttribute("weavekit.decision_council.max_rounds", maxRounds);
+      const skillPersonas = initialState.personas.filter((p) => p.skill?.name).map((p) => p.skill!.name);
+      if (skillPersonas.length > 0) {
+        span.setAttribute("weavekit.decision_council.skill_personas", skillPersonas.join(","));
+      }
       if (options.inputPath) {
         span.setAttribute("weavekit.decision_council.input_path", options.inputPath);
       }

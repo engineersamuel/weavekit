@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultPersonaSet,
   gameTheorist,
+  mckinseyStrategist,
   resolvePersonaSet,
   resolvePersonaSetByName,
   strategicPersonaSet,
@@ -59,13 +60,24 @@ describe("strategic persona set", () => {
     expect(parsed.prompt).toContain("recommendations");
   });
 
+  it("defines a McKinsey strategist persona with council normalization lists and a skill block", () => {
+    const parsed = PersonaDefinitionSchema.parse(mckinseyStrategist);
+
+    expect(parsed.id).toBe("mckinsey-strategist");
+    expect(parsed.archetype).toBe("analyst");
+    expect(parsed.skill?.name).toBe("mckinsey-strategist");
+    expect(parsed.skill?.bundle).toBe("mckinsey");
+    expect(parsed.prompt).toContain("McKinsey");
+  });
+
   it("extends the default council with the strategic game theorist and Sun Tzu", () => {
     const parsed = PersonaSetSchema.parse(strategicPersonaSet);
 
     expect(parsed.name).toBe("strategic");
-    expect(parsed.personas).toHaveLength(6);
+    expect(parsed.personas).toHaveLength(7);
     expect(parsed.personas.some((persona) => persona.id === "strategic-game-theorist")).toBe(true);
     expect(parsed.personas.some((persona) => persona.id === "sun-tzu")).toBe(true);
+    expect(parsed.personas.some((persona) => persona.id === "mckinsey-strategist")).toBe(true);
     expect(parsed.personas.slice(0, 4).map((persona) => persona.id)).toEqual(defaultPersonaSet.personas.map((persona) => persona.id));
   });
 
@@ -73,7 +85,7 @@ describe("strategic persona set", () => {
     const resolved = resolvePersonaSetByName("strategic");
 
     expect(resolved.name).toBe("strategic");
-    expect(resolved.personas).toHaveLength(6);
+    expect(resolved.personas).toHaveLength(7);
   });
 
   it("resolves default persona sets by name or absence", () => {

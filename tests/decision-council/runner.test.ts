@@ -9,6 +9,7 @@ import { TraceBamlOperation } from "../../src/decision-council/bamlTelemetry.js"
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
 import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
 import { createInitialRunState } from "../../src/decision-council/types.js";
+import type { PersonaDefinition, PersonaSet } from "../../src/decision-council/types.js";
 import { createStaticPersonaSelector, type PersonaSelectionInput, type PersonaSelector } from "../../src/personas/selector.js";
 
 const telemetry = vi.hoisted(() => {
@@ -134,6 +135,22 @@ function recordingWorker(seen: Set<string>): PersonaWorker {
 }
 
 const staticDefaultSelector: PersonaSelector = createStaticPersonaSelector(defaultPersonaSet);
+
+function makeSkillPersona(id: string, skillName: string): PersonaDefinition {
+  return {
+    id,
+    name: "McKinsey Strategist",
+    description: "Applies McKinsey strategic frameworks to surface second-order effects.",
+    prompt: "You are a McKinsey strategist. Apply strategic frameworks.",
+    skill: { name: skillName, installer: "claude-superskills" },
+    tags: [],
+    framingCorrections: [],
+    ignores: [],
+    modes: [],
+    selectionHints: [],
+    selectionAntiHints: [],
+  };
+}
 
 function selectFromCandidates(input: PersonaSelectionInput, personaIds: string[]) {
   const byId = new Map((input.candidatePersonas ?? []).map((persona) => [persona.id, persona]));
@@ -805,7 +822,7 @@ describe("runDecisionCouncil", () => {
     expect(telemetry.startActiveSpanCalls).toContain("council-run");
     expect(rootSpan?.attributes).toMatchObject({
       "weavekit.decision_council.run_id": expect.any(String),
-      "weavekit.decision_council.persona_count": 10,
+      "weavekit.decision_council.persona_count": 11,
       "weavekit.decision_council.max_rounds": 3,
     });
     expect(rootSpan?.events).toContainEqual(
@@ -893,6 +910,87 @@ describe("runDecisionCouncil", () => {
       }),
     );
     expect(rootSpan?.ended).toBe(true);
+  });
+
+  it("includes skill name in persona events for skill-backed personas", async () => {
+    const events: unknown[] = [];
+    const skillPersona = makeSkillPersona("mckinsey", "mckinsey-strategist");
+    const skillSet: PersonaSet = { name: "skill-test", personas: [skillPersona, defaultPersonaSet.personas[0]!] };
+    const skillWorker: PersonaWorker = {
+      async runPersona({ persona }) {
+        return {
+          personaId: persona.id,
+          text: "Strategic analysis.",
+          transcript: [],
+          metadata: { model: "fake", ...(persona.skill ? { skill: persona.skill.name } : {}) },
+        };
+      },
+    };
+
+    await runCouncilForTest(
+      { prompt: "Test skill provenance." },
+      {
+        personaSet: skillSet,
+        deps: {
+          personaWorker: skillWorker,
+          normalizer,
+          judge: judge(1),
+        },
+        logger: { event(event) { events.push(event); } },
+      },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "council.persona.started", personaId: "mckinsey", skill: "mckinsey-strategist" }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "council.persona.completed", personaId: "mckinsey", skill: "mckinsey-strategist" }),
+    );
+  });
+
+  it("sets weavekit.decision_council.skill_personas span attribute for skill-backed personas", async () => {
+    const skillPersona = makeSkillPersona("mckinsey", "mckinsey-strategist");
+    const mixedSet: PersonaSet = { name: "mixed-skill-test", personas: [skillPersona, defaultPersonaSet.personas[0]!] };
+
+    await runCouncilForTest(
+      { prompt: "Test skill span attribute." },
+      {
+        personaSet: mixedSet,
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+        },
+      },
+    );
+
+    const councilSpan = telemetry.spans.find((span) => span.name === "council-run");
+    expect(councilSpan?.attributes["weavekit.decision_council.skill_personas"]).toBe("mckinsey-strategist");
+  });
+
+  it("includes skill name in council.persona.failed event for skill-backed personas", async () => {
+    const events: unknown[] = [];
+    const skillPersona = makeSkillPersona("mckinsey", "mckinsey-strategist");
+    const skillSet: PersonaSet = { name: "skill-fail-test", personas: [skillPersona, defaultPersonaSet.personas[0]!, defaultPersonaSet.personas[1]!] };
+
+    await expect(
+      runCouncilForTest(
+        { prompt: "Test skill provenance on failure." },
+        {
+          personaSet: skillSet,
+          deps: {
+            personaWorker: fakeWorker(["mckinsey"]),
+            normalizer,
+            judge: judge(1),
+          },
+          logger: { event(event) { events.push(event); } },
+        },
+      ),
+    ).resolves.toBeDefined();
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "council.persona.failed", personaId: "mckinsey", skill: "mckinsey-strategist" }),
+    );
   });
 
 });

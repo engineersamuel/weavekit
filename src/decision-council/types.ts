@@ -3,13 +3,15 @@ import {
   PersonaDefinitionSchema,
   PersonaSetSchema,
   RoundBriefSchema,
+  PersonaSkillSchema,
   type PersonaDefinition,
   type PersonaSet,
   type RoundBrief,
+  type PersonaSkill,
 } from "../personas/schema.js";
 
-export { PersonaDefinitionSchema, PersonaSetSchema, RoundBriefSchema };
-export type { PersonaDefinition, PersonaSet, RoundBrief };
+export { PersonaDefinitionSchema, PersonaSetSchema, RoundBriefSchema, PersonaSkillSchema };
+export type { PersonaDefinition, PersonaSet, RoundBrief, PersonaSkill };
 
 export const DecisionCouncilInputSchema = z.object({
   prompt: z.string().min(1),

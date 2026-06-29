@@ -21,6 +21,14 @@ export const PersonaModeSchema = z.enum([
 
 export type PersonaMode = z.infer<typeof PersonaModeSchema>;
 
+export const PersonaSkillSchema = z.object({
+  name: z.string().min(1),
+  bundle: z.string().min(1).optional(),
+  installer: z.string().min(1).default("claude-superskills"),
+});
+
+export type PersonaSkill = z.infer<typeof PersonaSkillSchema>;
+
 export const PersonaDefinitionSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -36,6 +44,7 @@ export const PersonaDefinitionSchema = z.object({
   selectionHints: z.array(z.string().min(1)).default([]),
   selectionAntiHints: z.array(z.string().min(1)).default([]),
   specRef: z.string().min(1).optional(),
+  skill: PersonaSkillSchema.optional(),
 });
 
 export type PersonaDefinition = z.infer<typeof PersonaDefinitionSchema>;

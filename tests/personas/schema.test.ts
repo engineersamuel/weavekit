@@ -1,9 +1,14 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parse as parseToml } from "smol-toml";
 import { describe, expect, it } from "vitest";
 import {
   PersonaArchetypeSchema,
   PersonaDefinitionSchema,
   PersonaModeSchema,
   PersonaSetSchema,
+  PersonaSkillSchema,
 } from "../../src/personas/schema.js";
 
 describe("PersonaDefinitionSchema", () => {
@@ -72,4 +77,71 @@ describe("PersonaSetSchema", () => {
       }),
     ).toThrow();
   });
+});
+
+describe("PersonaSkillSchema", () => {
+  it("parses a skill with name and bundle, and defaults installer to claude-superskills", () => {
+    const skill = PersonaSkillSchema.parse({
+      name: "mckinsey-strategist",
+      bundle: "mckinsey",
+    });
+
+    expect(skill.name).toBe("mckinsey-strategist");
+    expect(skill.bundle).toBe("mckinsey");
+    expect(skill.installer).toBe("claude-superskills");
+  });
+
+  it("rejects a skill with empty name", () => {
+    expect(() => PersonaSkillSchema.parse({ name: "" })).toThrow();
+  });
+});
+
+describe("PersonaDefinitionSchema with skill", () => {
+  it("parses a persona with a skill", () => {
+    const persona = PersonaDefinitionSchema.parse({
+      id: "strategist",
+      name: "McKinsey Strategist",
+      description: "Strategic advisor",
+      prompt: "Provide strategic advice.",
+      skill: {
+        name: "mckinsey-strategist",
+        bundle: "mckinsey",
+      },
+    });
+
+    expect(persona.skill).toBeDefined();
+    expect(persona.skill?.name).toBe("mckinsey-strategist");
+    expect(persona.skill?.bundle).toBe("mckinsey");
+    expect(persona.skill?.installer).toBe("claude-superskills");
+  });
+
+  it("parses a persona without a skill as undefined", () => {
+    const persona = PersonaDefinitionSchema.parse({
+      id: "skeptic",
+      name: "Skeptic",
+      description: "Challenges weak evidence.",
+      prompt: "Challenge weak evidence.",
+    });
+
+    expect(persona.skill).toBeUndefined();
+  });
+});
+
+describe("persona TOML files regression", () => {
+  const personasDir = join(
+    fileURLToPath(new URL(".", import.meta.url)),
+    "..",
+    "..",
+    "personas",
+  );
+  const tomlFiles = readdirSync(personasDir)
+    .filter((f) => f.endsWith(".toml") && f !== "sets.toml")
+    .sort();
+
+  for (const file of tomlFiles) {
+    it(`parses ${file} through PersonaDefinitionSchema`, () => {
+      const raw = parseToml(readFileSync(join(personasDir, file), "utf8"));
+      expect(() => PersonaDefinitionSchema.parse(raw)).not.toThrow();
+    });
+  }
 });

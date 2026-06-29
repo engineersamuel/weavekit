@@ -1,5 +1,7 @@
 import { createRequire } from "node:module";
+import { readdirSync } from "node:fs";
 import type { PersonaDefinition, RawPersonaResult, RoundBrief } from "./types.js";
+import type { PersonaSkill } from "../personas/schema.js";
 import type { ModelRouter } from "./modelRouter.js";
 import { composePersonaPrompt } from "../personas/composer.js";
 
@@ -92,6 +94,17 @@ export function buildPersonaPrompt(persona: PersonaDefinition, brief: RoundBrief
   return composePersonaPrompt(persona, { brief });
 }
 
+export function buildSkillPersonaMessage(persona: PersonaDefinition, brief: RoundBrief): string {
+  const skill = persona.skill!;
+  return (
+    `/${skill.name} ${brief.prompt}\n\n` +
+    `Round ${brief.roundNumber} — ${brief.focus}\n\n` +
+    `Produce the complete strategic analysis inline as your direct written response. ` +
+    `Do not run shell commands, do not explore the filesystem, and do not spawn sub-agents.\n\n` +
+    `End with four lists: claims, risks, questions, recommendations.`
+  );
+}
+
 export function resolveCopilotCliPath(): string {
   return require.resolve("@github/copilot/npm-loader.js");
 }
@@ -103,6 +116,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
   private readonly onPermissionRequest: () => { kind: "approved" | "denied" };
   private readonly router?: ModelRouter;
   private readonly supportsReasoningEffort: (model: string) => boolean;
+  private readonly ensureSkill: (skill: PersonaSkill) => Promise<string>;
 
   constructor(args: {
     clientFactory?: () => CopilotLikeClient | Promise<CopilotLikeClient>;
@@ -112,6 +126,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
     onPermissionRequest?: () => { kind: "approved" | "denied" };
     router?: ModelRouter;
     supportsReasoningEffort?: (model: string) => boolean;
+    ensureSkill?: (skill: PersonaSkill) => Promise<string>;
   } = {}) {
     this.clientFactory = args.clientFactory ?? (async () => {
       const { CopilotClient } = await import("@github/copilot-sdk");
@@ -122,6 +137,10 @@ export class CopilotPersonaWorker implements PersonaWorker {
     this.onPermissionRequest = args.onPermissionRequest ?? (() => ({ kind: "denied" as const }));
     this.router = args.router;
     this.supportsReasoningEffort = args.supportsReasoningEffort ?? (() => false);
+    this.ensureSkill = args.ensureSkill ?? (async (skill) => {
+      const { ensureSkillInstalled } = await import("../personas/skillInstaller.js");
+      return ensureSkillInstalled({ skill });
+    });
   }
 
   async runPersona(args: { persona: PersonaDefinition; brief: RoundBrief }): Promise<RawPersonaResult> {
@@ -143,34 +162,61 @@ export class CopilotPersonaWorker implements PersonaWorker {
         : undefined;
       const model = decision?.model ?? this.model;
 
-      const sessionConfig: {
+      // Covers both the inline-agent shape and the skill-backed shape.
+      type SessionConfig = {
         model: string;
         reasoningEffort?: string;
-        agent: string;
-        customAgents: Array<{ name: string; displayName: string; description: string; prompt: string }>;
+        agent?: string;
+        customAgents?: Array<{ name: string; displayName: string; description: string; prompt: string }>;
+        skillDirectories?: string[];
+        disabledSkills?: string[];
         onPermissionRequest: () => { kind: "approved" | "denied" };
-      } = {
-        model,
-        agent: persona.id,
-        customAgents: [
-          {
-            name: persona.id,
-            displayName: persona.name,
-            description: persona.description,
-            prompt: persona.prompt,
-          },
-        ],
-        onPermissionRequest: this.onPermissionRequest,
       };
-      if (decision?.reasoningEffort && this.supportsReasoningEffort(model)) {
-        sessionConfig.reasoningEffort = decision.reasoningEffort;
+
+      let sessionConfig: SessionConfig;
+      let message: string;
+
+      if (persona.skill) {
+        const skillsDir = await this.ensureSkill(persona.skill);
+        const allDirs = readdirSync(skillsDir, { withFileTypes: true })
+          .filter(d => d.isDirectory())
+          .map(d => d.name);
+        const disabledSkills = allDirs.filter(name => name !== persona.skill!.name);
+        sessionConfig = {
+          model,
+          skillDirectories: [skillsDir],
+          disabledSkills,
+          onPermissionRequest: this.onPermissionRequest,
+        };
+        if (decision?.reasoningEffort && this.supportsReasoningEffort(model)) {
+          sessionConfig.reasoningEffort = decision.reasoningEffort;
+        }
+        message = buildSkillPersonaMessage(persona, brief);
+      } else {
+        sessionConfig = {
+          model,
+          agent: persona.id,
+          customAgents: [
+            {
+              name: persona.id,
+              displayName: persona.name,
+              description: persona.description,
+              prompt: persona.prompt,
+            },
+          ],
+          onPermissionRequest: this.onPermissionRequest,
+        };
+        if (decision?.reasoningEffort && this.supportsReasoningEffort(model)) {
+          sessionConfig.reasoningEffort = decision.reasoningEffort;
+        }
+        message = buildPersonaPrompt(persona, brief);
       }
 
       const session = await client.createSession(sessionConfig);
 
       let sendError: unknown = undefined;
       try {
-        const response = await session.sendAndWait({ prompt: buildPersonaPrompt(persona, brief) }, this.timeoutMs);
+        const response = await session.sendAndWait({ prompt: message }, this.timeoutMs);
         const text = response?.data?.content ?? "";
 
         if (text.trim().length === 0) {
@@ -181,7 +227,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
           personaId: persona.id,
           text,
           transcript: [`assistant: ${text}`],
-          metadata: { model },
+          metadata: persona.skill ? { model, skill: persona.skill.name } : { model },
         };
       } catch (err) {
         sendError = err;

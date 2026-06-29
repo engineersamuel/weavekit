@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildPersonaPrompt,
+  buildSkillPersonaMessage,
   CopilotPersonaWorker,
   getDisconnectError,
   getResultDisconnectError,
@@ -332,5 +335,140 @@ describe("persona worker routing", () => {
     const config = client.createSession.mock.calls[0]![0] as { model: string; reasoningEffort?: string };
     expect(config.model).toBe("claude-sonnet-4.5");
     expect(config.reasoningEffort).toBeUndefined();
+  });
+});
+
+describe("persona worker — skill-backed branch", () => {
+  const skillPersona = PersonaDefinitionSchema.parse({
+    id: "mckinsey-strategist",
+    name: "McKinsey",
+    description: "d",
+    prompt: "p",
+    skill: { name: "mckinsey-strategist", bundle: "mckinsey" },
+  });
+
+  const skillBrief: RoundBrief = {
+    roundNumber: 2,
+    prompt: "Should we enter the Asian market?",
+    focus: "Strategic analysis",
+  };
+
+  it("uses skillDirectories+disabledSkills config and no customAgents for skill-backed persona", async () => {
+    const tmpBase = mkdtempSync(join(tmpdir(), "weavekit-test-"));
+    mkdirSync(join(tmpBase, "mckinsey-strategist"));
+    mkdirSync(join(tmpBase, "other-skill"));
+    try {
+      const session = {
+        sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Strategic analysis" } }),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      };
+      const client = {
+        start: vi.fn().mockResolvedValue(undefined),
+        createSession: vi.fn().mockResolvedValue(session),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const worker = new CopilotPersonaWorker({
+        clientFactory: () => client,
+        model: "gpt-5",
+        ensureSkill: async () => tmpBase,
+      });
+
+      const result = await worker.runPersona({ persona: skillPersona, brief: skillBrief });
+
+      const config = client.createSession.mock.calls[0]![0] as Record<string, unknown>;
+      expect(config.skillDirectories).toEqual([tmpBase]);
+      expect(config.disabledSkills).toEqual(["other-skill"]);
+      expect(config).not.toHaveProperty("customAgents");
+      expect(config).not.toHaveProperty("agent");
+      expect(result.metadata.skill).toBe("mckinsey-strategist");
+      expect(result.metadata.model).toBe("gpt-5");
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  it("sends a message starting with /mckinsey-strategist for skill-backed persona", async () => {
+    const tmpBase = mkdtempSync(join(tmpdir(), "weavekit-test-"));
+    mkdirSync(join(tmpBase, "mckinsey-strategist"));
+    try {
+      const session = {
+        sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Analysis" } }),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      };
+      const client = {
+        start: vi.fn().mockResolvedValue(undefined),
+        createSession: vi.fn().mockResolvedValue(session),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const worker = new CopilotPersonaWorker({
+        clientFactory: () => client,
+        model: "gpt-5",
+        ensureSkill: async () => tmpBase,
+      });
+
+      await worker.runPersona({ persona: skillPersona, brief: skillBrief });
+
+      const [msg] = session.sendAndWait.mock.calls[0]!;
+      expect((msg as { prompt: string }).prompt).toMatch(/^\/mckinsey-strategist /);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  it("records skill name in result metadata for skill-backed persona", async () => {
+    const tmpBase = mkdtempSync(join(tmpdir(), "weavekit-test-"));
+    mkdirSync(join(tmpBase, "mckinsey-strategist"));
+    try {
+      const session = {
+        sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Analysis" } }),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+      };
+      const client = {
+        start: vi.fn().mockResolvedValue(undefined),
+        createSession: vi.fn().mockResolvedValue(session),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const worker = new CopilotPersonaWorker({
+        clientFactory: () => client,
+        model: "gpt-5",
+        ensureSkill: async () => tmpBase,
+      });
+
+      const result = await worker.runPersona({ persona: skillPersona, brief: skillBrief });
+      expect(result.metadata.skill).toBe("mckinsey-strategist");
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects and never calls createSession when ensureSkill rejects", async () => {
+    const client = {
+      start: vi.fn().mockResolvedValue(undefined),
+      createSession: vi.fn(),
+      stop: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      model: "gpt-5",
+      ensureSkill: async () => {
+        throw new Error("install failed");
+      },
+    });
+
+    await expect(worker.runPersona({ persona: skillPersona, brief: skillBrief })).rejects.toThrow("install failed");
+    expect(client.createSession).not.toHaveBeenCalled();
+  });
+
+  it("buildSkillPersonaMessage starts with the slash-command and includes round/focus/guard", () => {
+    const msg = buildSkillPersonaMessage(skillPersona, skillBrief);
+    expect(msg).toMatch(/^\/mckinsey-strategist /);
+    expect(msg).toContain("Round 2");
+    expect(msg).toContain("Strategic analysis");
+    expect(msg).toContain("inline");
+    expect(msg).toContain("claims");
   });
 });

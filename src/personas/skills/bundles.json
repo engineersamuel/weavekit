@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0-spike",
+  "generated": "2026-06-28T00:00:00Z",
+  "_note": "claude-superskills@2.0.8 does NOT ship bundles.json in its npm tarball (it lives only in the GitHub repo root), so the documented `--bundle` flow exits with 'bundles.json not found'. This file restores that capability. We also add a minimal `mckinsey` bundle so we can isolation-install ONLY the mckinsey-strategist skill. NOTE: the upstream `planning` bundle does NOT contain mckinsey-strategist; only `all` does.",
+  "bundles": {
+    "mckinsey": {
+      "name": "McKinsey (isolated)",
+      "description": "Just the mckinsey-strategist skill, for an isolated single-skill install.",
+      "skills": ["mckinsey-strategist"],
+      "target": "Strategy spike"
+    },
+    "planning": {
+      "name": "Planning",
+      "description": "Full planning and execution workflow (upstream definition; lacks mckinsey-strategist).",
+      "skills": ["brainstorming", "writing-plans", "executing-plans", "grill-me", "agent-skill-orchestrator"],
+      "target": "Developers, architects"
+    },
+    "all": {
+      "name": "All Skills",
+      "description": "Complete claude-superskills toolkit (the only upstream bundle that includes mckinsey-strategist).",
+      "skills": [
+        "skill-creator", "agent-skill-discovery", "agent-skill-orchestrator",
+        "brainstorming", "writing-plans", "executing-plans", "prompt-engineer", "grill-me",
+        "deep-research", "us-program-research", "senior-solution-architect", "webpage-reader",
+        "youtube-summarizer", "audio-transcriber", "pptx-translator", "document-converter", "storytelling-expert",
+        "mckinsey-strategist"
+      ],
+      "target": "All users"
+    }
+  }
+}
