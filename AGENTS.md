@@ -16,6 +16,8 @@ When working with baml read ./docs/baml/instructions.md
 
 Prefer BAML-generated types over creating new hand-authored TypeScript types when the output shape is already defined in a BAML schema. Reuse generated types as the canonical contract and only add new local types when they represent workflow-specific state or input that is not produced by BAML.
 
+If calling the Copilot SDK directly and you want the response to conform to a BAML output schema, append the `ctx.output_format` block to the end of the prompt. This is required because the SDK path does not automatically render BAML's `ctx.output_format` for you.
+
 ## Modern TypeScript
 
 Write canonical, erasable TypeScript and avoid arcane runtime hacks. Node 22.18+/24 strips types and runs `.ts` files directly, so source stays build-free; `tsc` is for type-checking only (it does not run the code).
