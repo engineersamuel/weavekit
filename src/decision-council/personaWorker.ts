@@ -3,6 +3,7 @@ import type { PersonaDefinition, RawPersonaResult, RoundBrief } from "./types.js
 import type { PersonaSkill } from "../personas/schema.js";
 import type { ModelRouter } from "./modelRouter.js";
 import { composePersonaPrompt } from "../personas/composer.js";
+import { buildCopilotClientOptions } from "../telemetry/copilotSdk.js";
 
 type CopilotLikeClient = {
   start(): Promise<void>;
@@ -123,7 +124,9 @@ export class CopilotPersonaWorker implements PersonaWorker {
   } = {}) {
     this.clientFactory = args.clientFactory ?? (async () => {
       const { CopilotClient } = await import("@github/copilot-sdk");
-      return new CopilotClient() as unknown as CopilotLikeClient;
+      const CopilotClientCtor = CopilotClient as unknown as new (options?: unknown) => CopilotLikeClient;
+      const telemetryOptions = buildCopilotClientOptions();
+      return telemetryOptions ? new CopilotClientCtor(telemetryOptions) : new CopilotClientCtor();
     });
     this.model = args.model ?? "claude-sonnet-4.5";
     this.timeoutMs = args.timeoutMs ?? 120_000;
