@@ -7,7 +7,13 @@ import {
   type WorkflowVerificationResult,
 } from "./types.js";
 
-function detectCycle(plan: RuntimeWorkflowPlan): boolean {
+/**
+ * Local placeholder type for workflow plan inputs to verifier functions.
+ * Task 2 will replace this with generated imports from BAML schema.
+ */
+type GeneratedWorkflowPlanLike = RuntimeWorkflowPlan;
+
+function detectCycle(plan: GeneratedWorkflowPlanLike): boolean {
   const nodes = new Map(plan.nodes.map((node) => [node.id, node]));
   const visiting = new Set<string>();
   const visited = new Set<string>();
@@ -30,7 +36,7 @@ function detectCycle(plan: RuntimeWorkflowPlan): boolean {
   return plan.nodes.some((node) => visit(node.id));
 }
 
-function buildChildrenMap(plan: RuntimeWorkflowPlan): Map<string, string[]> {
+function buildChildrenMap(plan: GeneratedWorkflowPlanLike): Map<string, string[]> {
   const children = new Map<string, string[]>();
   for (const node of plan.nodes) {
     for (const dep of node.dependsOn) {
@@ -40,7 +46,7 @@ function buildChildrenMap(plan: RuntimeWorkflowPlan): Map<string, string[]> {
   return children;
 }
 
-function hasDownstreamVerification(plan: RuntimeWorkflowPlan, startId: string): boolean {
+function hasDownstreamVerification(plan: GeneratedWorkflowPlanLike, startId: string): boolean {
   const children = buildChildrenMap(plan);
   const byId = new Map(plan.nodes.map((node) => [node.id, node]));
   const queue = [...(children.get(startId) ?? [])];
@@ -61,7 +67,7 @@ function hasDownstreamVerification(plan: RuntimeWorkflowPlan, startId: string): 
   return false;
 }
 
-function hasPathBetween(plan: RuntimeWorkflowPlan, fromId: string, toId: string): boolean {
+function hasPathBetween(plan: GeneratedWorkflowPlanLike, fromId: string, toId: string): boolean {
   const children = buildChildrenMap(plan);
   const queue = [...(children.get(fromId) ?? [])];
   const seen = new Set<string>();
@@ -76,7 +82,7 @@ function hasPathBetween(plan: RuntimeWorkflowPlan, fromId: string, toId: string)
 }
 
 export function verifyWorkflowPlan(
-  plan: RuntimeWorkflowPlan,
+  plan: GeneratedWorkflowPlanLike,
   grammar: WorkflowGrammar = defaultWorkflowGrammar,
 ): WorkflowVerificationResult {
   const issues: WorkflowVerificationIssue[] = [];
@@ -156,7 +162,7 @@ export function verifyWorkflowPlan(
 }
 
 export function assertValidWorkflowPlan(
-  plan: RuntimeWorkflowPlan,
+  plan: GeneratedWorkflowPlanLike,
   grammar: WorkflowGrammar = defaultWorkflowGrammar,
 ): void {
   const result = verifyWorkflowPlan(plan, grammar);
