@@ -16,6 +16,52 @@ When working with baml read ./docs/baml/instructions.md
 
 Prefer BAML-generated types over creating new hand-authored TypeScript types when the output shape is already defined in a BAML schema. Reuse generated types as the canonical contract and only add new local types when they represent workflow-specific state or input that is not produced by BAML.
 
+## Modern TypeScript
+
+Write canonical, erasable TypeScript and avoid arcane runtime hacks. Node 22.18+/24 strips types and runs `.ts` files directly, so source stays build-free; `tsc` is for type-checking only (it does not run the code).
+
+- **Run TS directly, type-check separately.** Execute with `nub <file>.ts` (or `nub run <script>`); never add a transpile step for plain scripts. Keep type errors honest with a `typecheck` script (`tsc --noEmit`) in dev/CI — stripping does **not** type-check.
+- **Keep syntax erasable.** No `enum`, `namespace` with runtime code, parameter properties, or `import =`/`export =`. Use `const` objects/unions instead of `enum`, and explicit fields instead of parameter properties, so files run unchanged under native type-stripping. (`erasableSyntaxOnly` in `tsconfig.json` enforces this.)
+- **`import type` for types** (`verbatimModuleSyntax`). Type-only imports must use `import type`/`type`; otherwise the runtime treats them as value imports and crashes.
+- **Prefer library auto-resolution over hand-rolled paths.** If an SDK/tool resolves something for you, let it. Don't reach for `require.resolve(...)` path tricks unless auto-resolution genuinely fails — and gate that behind an env override.
+- **Derive types from public exports.** When a type isn't re-exported, derive it (`Parameters<>`, `ReturnType<>`, `NonNullable<T[k]>`) instead of importing from deep `dist/` paths.
+
+```ts
+// ❌ arcane: hand-resolve the runtime path
+connection: RuntimeConnection.forStdio({ path: require.resolve("@github/copilot/npm-loader.js") })
+
+// ✅ canonical: let the SDK auto-resolve its bundled runtime; override only via env
+const cliPath = process.env.COPILOT_CLI_PATH;
+const client = new CopilotClient({
+  ...(cliPath ? { connection: RuntimeConnection.forStdio({ path: cliPath }) } : {}),
+});
+```
+
+```ts
+// ✅ derive non-exported types from what the package does export
+import type { SessionConfig } from "@github/copilot-sdk";
+type SessionHooks = NonNullable<SessionConfig["hooks"]>;
+type PreToolUseHandler = NonNullable<SessionHooks["onPreToolUse"]>;
+type PreToolUseInput = Parameters<PreToolUseHandler>[0];
+```
+
+```jsonc
+// tsconfig.json — settings for native-TS execution (type-check only)
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "esnext",
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "noEmit": true,
+    "strict": true
+  }
+}
+```
+
 ## Workflow instrumentation
 
 - When writing new workflows, consider Langfuse/OpenTelemetry observability from the start: spans, trace metadata, and useful workflow inputs/outputs should be part of the design.
