@@ -1,11 +1,8 @@
-import { createRequire } from "node:module";
 import { readdirSync } from "node:fs";
 import type { PersonaDefinition, RawPersonaResult, RoundBrief } from "./types.js";
 import type { PersonaSkill } from "../personas/schema.js";
 import type { ModelRouter } from "./modelRouter.js";
 import { composePersonaPrompt } from "../personas/composer.js";
-
-const require = createRequire(import.meta.url);
 
 type CopilotLikeClient = {
   start(): Promise<void>;
@@ -105,10 +102,6 @@ export function buildSkillPersonaMessage(persona: PersonaDefinition, brief: Roun
   );
 }
 
-export function resolveCopilotCliPath(): string {
-  return require.resolve("@github/copilot/npm-loader.js");
-}
-
 export class CopilotPersonaWorker implements PersonaWorker {
   private readonly clientFactory: () => CopilotLikeClient | Promise<CopilotLikeClient>;
   private readonly model: string;
@@ -130,7 +123,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
   } = {}) {
     this.clientFactory = args.clientFactory ?? (async () => {
       const { CopilotClient } = await import("@github/copilot-sdk");
-      return new CopilotClient({ cliPath: resolveCopilotCliPath() }) as unknown as CopilotLikeClient;
+      return new CopilotClient() as unknown as CopilotLikeClient;
     });
     this.model = args.model ?? "claude-sonnet-4.5";
     this.timeoutMs = args.timeoutMs ?? 120_000;

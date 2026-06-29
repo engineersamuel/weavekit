@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,7 +10,6 @@ import {
   getResultDisconnectError,
   getResultStopErrors,
   getStopErrors,
-  resolveCopilotCliPath,
 } from "../../src/decision-council/personaWorker.js";
 import { PersonaDefinitionSchema, type PersonaDefinition, type RoundBrief } from "../../src/decision-council/types.js";
 import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
@@ -35,14 +34,6 @@ describe("persona worker", () => {
     expect(prompt).toContain("Challenge weak evidence.");
     expect(prompt).toContain("Round 1");
     expect(prompt).toContain("Should we use Flue?");
-  });
-
-  it("resolves the installed Copilot CLI npm loader used by the SDK", () => {
-    const cliPath = resolveCopilotCliPath();
-
-    expect(cliPath).toContain("@github/copilot");
-    expect(cliPath).toMatch(/npm-loader\.js$/);
-    expect(existsSync(cliPath)).toBe(true);
   });
 
   it("returns raw persona text and transcript from Copilot sendAndWait", async () => {
