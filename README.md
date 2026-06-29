@@ -268,6 +268,8 @@ Keep `OTEL_GENAI_CAPTURE_CONTENT` unset or `false` unless you have reviewed prom
 
 Decision Council telemetry is emitted through OpenTelemetry spans at three levels: the CLI run (`council-run`), per-round/per-persona workflow spans, and decorator-based BAML operation spans such as `run.council.baml.normalize`. If you leave all exporter credentials unset, the CLI still runs normally and no telemetry leaves the process. Set `OTEL_SDK_DISABLED=true` when you want to skip OpenTelemetry startup entirely.
 
+The Copilot persona worker also uses the built-in Copilot SDK telemetry path when an OTLP endpoint is configured. It reuses the same OTEL endpoint/service name as the rest of Weavekit, injects the active trace context into the SDK's outbound RPCs, and joins the same trace tree as the council spans. This is enabled automatically whenever `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) is set and `OTEL_SDK_DISABLED` is not `true`.
+
 ### Environment variables
 
 | Variable | Purpose |
@@ -276,6 +278,7 @@ Decision Council telemetry is emitted through OpenTelemetry spans at three level
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Enables OTLP trace export when set (for example `http://127.0.0.1:4318/v1/traces`). |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Optional OTLP auth/tenant headers consumed by the OTLP exporter environment configuration. |
 | `OTEL_SERVICE_NAME` | Optional OpenTelemetry service name override; defaults to `weavekit`. |
+| `OTEL_GENAI_CAPTURE_CONTENT` | Set to `true` to enable Copilot SDK content capture for persona sessions; defaults to redacted/off. |
 | `LANGFUSE_PUBLIC_KEY` | Langfuse public key. When paired with `LANGFUSE_SECRET_KEY`, enables Langfuse trace export. |
 | `LANGFUSE_SECRET_KEY` | Langfuse secret key. |
 | `LANGFUSE_BASE_URL` | Optional Langfuse base URL override. Defaults to `https://cloud.langfuse.com`. |
