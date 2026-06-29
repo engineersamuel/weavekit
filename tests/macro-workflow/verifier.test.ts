@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  verifyWorkflowPlan as rootVerifyWorkflowPlan,
+} from "../../src/index.js";
+import {
   WorkflowGateKind,
   WorkflowHarnessKind,
   WorkflowNodeKind,
@@ -74,6 +77,10 @@ function validPlan() {
 }
 
 describe("macro workflow verifier", () => {
+  it("exports the verifier from the package root", () => {
+    expect(rootVerifyWorkflowPlan).toBe(verifyWorkflowPlan);
+  });
+
   it("accepts a valid implementation-review macro workflow", () => {
     const result = verifyWorkflowPlan(validPlan());
 

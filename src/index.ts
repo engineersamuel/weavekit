@@ -10,6 +10,7 @@ export type {
 export { defaultPersonaSet, gameTheorist, personaSetRegistry, resolvePersonaSet, resolvePersonaSetByName, strategicPersonaSet, sunTzu } from "./decision-council/personas.js";
 export { runDecisionCouncil, type RunDecisionCouncilOptions } from "./decision-council/runner.js";
 export { type DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js";
+export * from "./macro-workflow/index.js";
 export { createDecisionCouncilWorkflow, type DecisionCouncilFlueOptions } from "./flue/decisionCouncilWorkflowDefinition.js";
 export {
   createConfiguredDecisionCouncilWorkflow,
