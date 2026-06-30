@@ -1,0 +1,6 @@
+# Newline-separated glob patterns. Paths with `/` are matched relative to the
+# repo root; bare names are matched at any depth. Files and directories are
+# copied while preserving their relative path.
+copy = ".env*"
+# copy = ".env*\n.dev.vars\n.dev.vars.production\nlogo-wide.png\n.wrangler\npublic"
+
