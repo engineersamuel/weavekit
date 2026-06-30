@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ClarifyingQuestion,  CouncilReport,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  RawPersonaResult,  RoundAssessment,  RoutingDecision,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  EvidenceReference,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -41,6 +41,13 @@ export namespace partial_types {
       text?: string | null
       choices?: string[] | null
     }
+    export interface CorroborationReport {
+      sourceId?: string | null
+      corroboratedClaims: string[]
+      disputedClaims: string[]
+      competingViews: string[]
+      citations: EvidenceReference[]
+    }
     export interface CouncilReport {
       recommendation?: string | null
       rationale: string[]
@@ -51,6 +58,48 @@ export namespace partial_types {
       nextExperiment?: string | null
       finalReportMarkdown?: string | null
       failedPersonas: PersonaFailure[]
+    }
+    export interface EvidenceReference {
+      id?: string | null
+      source?: string | null
+      quote?: string | null
+    }
+    export interface NonApplicableLesson {
+      lesson?: string | null
+      reason?: string | null
+      evidence: EvidenceReference[]
+    }
+    export interface Opportunity {
+      id?: string | null
+      title?: string | null
+      lesson?: string | null
+      projectChange?: string | null
+      changeSurface?: string | null
+      score?: OpportunityScore | null
+      evidence: EvidenceReference[]
+      speculative?: boolean | null
+    }
+    export interface OpportunityBundle {
+      id?: string | null
+      opportunityIds: string[]
+      rationale?: string | null
+      sharedChangeSurface?: string | null
+      combinedUserValue?: string | null
+      separationRisk?: string | null
+      maxPrScope?: string | null
+    }
+    export interface OpportunityCouncilReview {
+      opportunities: Opportunity[]
+      nonApplicableLessons: NonApplicableLesson[]
+      bundles: OpportunityBundle[]
+      rankingRationale?: string | null
+    }
+    export interface OpportunityScore {
+      applicability?: number | null
+      impact?: number | null
+      confidence?: number | null
+      implementationCost?: number | null
+      risk?: number | null
     }
     export interface PersonaChoiceCandidate {
       id?: string | null
@@ -99,6 +148,26 @@ export namespace partial_types {
       maxPersonas?: number | null
       candidates: PersonaChoiceCandidate[]
     }
+    export interface PlanArtifactSummary {
+      opportunityIds: string[]
+      title?: string | null
+      scope?: string | null
+      filesLikelyTouched: string[]
+      validationCommands: string[]
+      risks: string[]
+      rawPlanArtifactPath?: string | null
+    }
+    export interface ProjectBrief {
+      projectId?: string | null
+      displayName?: string | null
+      architecture?: string | null
+      constraints: string[]
+      goals: string[]
+      changeSurfaces: string[]
+      validationCommands: string[]
+      risks: string[]
+      evidence: EvidenceReference[]
+    }
     export interface RawPersonaResult {
       personaId?: string | null
       text?: string | null
@@ -120,6 +189,15 @@ export namespace partial_types {
       model?: string | null
       reasoningEffort?: string | null
       rationale?: string | null
+    }
+    export interface SourceAnalysis {
+      sourceId?: string | null
+      title?: string | null
+      accessLevel?: string | null
+      summary?: string | null
+      claims: string[]
+      transferableLessons: string[]
+      evidence: EvidenceReference[]
     }
     export interface WorkflowNode {
       id?: string | null

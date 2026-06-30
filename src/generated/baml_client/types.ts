@@ -54,6 +54,15 @@ export interface ClarifyingQuestion {
   
 }
 
+export interface CorroborationReport {
+  sourceId: string
+  corroboratedClaims: string[]
+  disputedClaims: string[]
+  competingViews: string[]
+  citations: EvidenceReference[]
+  
+}
+
 export interface CouncilReport {
   recommendation: string
   rationale: string[]
@@ -64,6 +73,60 @@ export interface CouncilReport {
   nextExperiment: string
   finalReportMarkdown: string
   failedPersonas: PersonaFailure[]
+  
+}
+
+export interface EvidenceReference {
+  id: string
+  source: string
+  quote?: string | null
+  
+}
+
+export interface NonApplicableLesson {
+  lesson: string
+  reason: string
+  evidence: EvidenceReference[]
+  
+}
+
+export interface Opportunity {
+  id: string
+  title: string
+  lesson: string
+  projectChange: string
+  changeSurface: string
+  score: OpportunityScore
+  evidence: EvidenceReference[]
+  speculative: boolean
+  
+}
+
+export interface OpportunityBundle {
+  id: string
+  opportunityIds: string[]
+  rationale: string
+  sharedChangeSurface: string
+  combinedUserValue: string
+  separationRisk: string
+  maxPrScope: string
+  
+}
+
+export interface OpportunityCouncilReview {
+  opportunities: Opportunity[]
+  nonApplicableLessons: NonApplicableLesson[]
+  bundles: OpportunityBundle[]
+  rankingRationale: string
+  
+}
+
+export interface OpportunityScore {
+  applicability: number
+  impact: number
+  confidence: number
+  implementationCost: number
+  risk: number
   
 }
 
@@ -126,6 +189,30 @@ export interface PersonaSelectionRequest {
   
 }
 
+export interface PlanArtifactSummary {
+  opportunityIds: string[]
+  title: string
+  scope: string
+  filesLikelyTouched: string[]
+  validationCommands: string[]
+  risks: string[]
+  rawPlanArtifactPath: string
+  
+}
+
+export interface ProjectBrief {
+  projectId: string
+  displayName: string
+  architecture: string
+  constraints: string[]
+  goals: string[]
+  changeSurfaces: string[]
+  validationCommands: string[]
+  risks: string[]
+  evidence: EvidenceReference[]
+  
+}
+
 export interface RawPersonaResult {
   personaId: string
   text: string
@@ -151,6 +238,17 @@ export interface RoutingDecision {
   model: string
   reasoningEffort?: string | null
   rationale: string
+  
+}
+
+export interface SourceAnalysis {
+  sourceId: string
+  title: string
+  accessLevel: string
+  summary: string
+  claims: string[]
+  transferableLessons: string[]
+  evidence: EvidenceReference[]
   
 }
 
