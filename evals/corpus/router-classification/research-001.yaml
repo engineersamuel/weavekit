@@ -1,0 +1,15 @@
+id: route-research-001
+domain: routing
+difficulty: intermediate
+title: Research request
+prompt: Investigate the current state of vector databases and compare the leading options for retrieval over large knowledge bases.
+referenceAnswer:
+  recommendation: research
+  rationale:
+    - The request depends on evidence gathering, comparison, and current findings.
+  strongestObjections:
+    - It could be misrouted if the answer were expected to be a recommendation rather than a research summary.
+rubric:
+  - criterion: correct-route
+    weight: 1.0
+    levels: Pick the research route when the request needs investigation, evidence gathering, comparisons, or current-source exploration.

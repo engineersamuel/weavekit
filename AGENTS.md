@@ -73,6 +73,10 @@ type PreToolUseInput = Parameters<PreToolUseHandler>[0];
 
 By default models are hosted through the copilot-proxy-rs available at http://127.0.0.1:8080 with endpoints  `/health`, `/version`, `/v1/models`, and `/v1/messages/count_tokens` routes.
 
+## TypeScript conventions
+
+- In TypeScript, prefer string enums over raw string literals for fixed key sets such as route names, task kinds, or persona-set identifiers.
+
 An example call
 
 ```

@@ -153,3 +153,32 @@ export interface RoutingDecision {
   rationale: string
   
 }
+
+export interface WorkflowNode {
+  id: string
+  kind: string
+  harness: string
+  title: string
+  prompt: string
+  dependsOn: string[]
+  gates: string[]
+  writeMode: string
+  replanPolicy: string
+  
+}
+
+export interface WorkflowPlan {
+  id: string
+  objective: string
+  templateId: string
+  maxReplans: number
+  nodes: WorkflowNode[]
+  
+}
+
+export interface WorkflowReplanPatch {
+  reason: string
+  replaceRemainingNodeIds: string[]
+  newNodes: WorkflowNode[]
+  
+}

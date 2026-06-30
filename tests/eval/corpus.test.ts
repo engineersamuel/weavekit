@@ -21,8 +21,8 @@ describe("evals/corpus", () => {
     }
   });
 
-  it("has exactly 15 items", () => {
-    expect(items.length).toBe(15);
+  it("has exactly 16 items", () => {
+    expect(items.length).toBe(16);
   });
 
   it("has exact per-domain distribution", () => {
@@ -38,6 +38,7 @@ describe("evals/corpus", () => {
       "data-store": 2,
       "deploy": 1,
       "language-runtime": 2,
+      "macro-workflow": 1,
       "messaging-async": 2,
       "orchestration-framework": 2,
     });

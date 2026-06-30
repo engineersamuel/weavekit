@@ -4,8 +4,6 @@ import { evaluate } from "promptfoo";
 import type { ApiProvider } from "promptfoo";
 import { type CorpusItem, loadCorpus } from "./schema.js";
 import { buildSuite } from "./buildSuite.js";
-import { CouncilProvider } from "./providers/council.js";
-import { CopilotCliProvider } from "./providers/copilot.js";
 
 export interface RunEvalOptions {
   corpusDir?: string;
@@ -21,6 +19,11 @@ export interface RunEvalDeps {
 
 interface SummaryLike {
   stats?: { successes?: number; failures?: number };
+}
+
+async function defaultProviders(): Promise<ApiProvider[]> {
+  const [{ CouncilProvider }, { CopilotCliProvider }] = await Promise.all([import("./providers/council.js"), import("./providers/copilot.js")]);
+  return [new CouncilProvider(), new CopilotCliProvider()];
 }
 
 function renderSummary(items: CorpusItem[], summary: SummaryLike): string {
@@ -54,7 +57,7 @@ export async function runEval(options: RunEvalOptions = {}, deps: RunEvalDeps = 
     throw new Error("No corpus items selected.");
   }
 
-  const providers = deps.providers ?? [new CouncilProvider(), new CopilotCliProvider()];
+  const providers = deps.providers ?? (await defaultProviders());
   const evaluateFn = deps.evaluateFn ?? evaluate;
   const suite = buildSuite(items, { providers });
 

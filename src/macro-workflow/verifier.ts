@@ -3,6 +3,7 @@ import {
   WorkflowGateKind,
   WorkflowNodeKind,
   type RuntimeWorkflowPlan,
+  type WorkflowReplanPatch,
   type WorkflowVerificationIssue,
   type WorkflowVerificationResult,
 } from "./types.js";
@@ -159,6 +160,47 @@ export function verifyWorkflowPlan(
   }
 
   return { valid: issues.length === 0, issues };
+}
+
+export function verifyWorkflowReplanPatch(
+  plan: GeneratedWorkflowPlanLike,
+  patch: WorkflowReplanPatch,
+  completedNodeIds: string[],
+  grammar: WorkflowGrammar = defaultWorkflowGrammar,
+): WorkflowVerificationResult {
+  const issues: WorkflowVerificationIssue[] = [];
+  const completed = new Set(completedNodeIds);
+
+  for (const nodeId of patch.replaceRemainingNodeIds) {
+    if (completed.has(nodeId)) {
+      issues.push({ code: "unknown-dependency", message: `Cannot replace completed node ${nodeId}.`, nodeId });
+    }
+    if (!plan.nodes.some((node) => node.id === nodeId)) {
+      issues.push({ code: "unknown-dependency", message: `Patch targets unknown node ${nodeId}.`, nodeId });
+    }
+  }
+
+  const ids = new Set(plan.nodes.map((node) => node.id));
+  for (const node of patch.newNodes) {
+    if (ids.has(node.id)) {
+      issues.push({ code: "duplicate-node-id", message: `Patch introduces duplicate node id ${node.id}.`, nodeId: node.id });
+    }
+    ids.add(node.id);
+  }
+
+  if (patch.replaceRemainingNodeIds.length === 0 && patch.newNodes.length === 0) {
+    issues.push({ code: "empty-plan", message: "Replan patch must replace at least one remaining node or add a new node." });
+  }
+
+  if (issues.length === 0) {
+    const patchedPlan = {
+      ...plan,
+      nodes: plan.nodes.filter((node) => !patch.replaceRemainingNodeIds.includes(node.id)).concat(patch.newNodes),
+    };
+    return verifyWorkflowPlan(patchedPlan, grammar);
+  }
+
+  return { valid: false, issues };
 }
 
 export function assertValidWorkflowPlan(

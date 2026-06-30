@@ -1,0 +1,63 @@
+id: macro-workflow-001
+domain: macro-workflow
+difficulty: intro
+title: Implementation review workflow baseline
+prompt: >-
+  We need to implement a focused logging improvement and validate it with the
+  existing test suite. Recommend a workflow plan that keeps the work bounded,
+  deterministic, and isolated from the existing decision-council flow.
+context:
+  - The workflow should remain in-process and single-writer.
+  - The implementation should be validated through focused tests and typecheck.
+constraints:
+  - Keep the workflow separate from the decision-council system.
+  - Avoid human approval gates.
+  - Ensure the plan has a clear verification step.
+referenceAnswer:
+  recommendation: >-
+    Use a small implementation-review workflow with a single planner step, a
+    bounded execution graph, a verification node, and artifact/logging output,
+    with no approval gates and no shared write ownership.
+  rationale:
+    - The task is bounded and deterministic, so a compact workflow is preferable.
+    - A single-writer execution model makes the runtime easier to reason about.
+    - Verification should be explicit so the plan can be checked before completion.
+  strongestObjections:
+    - A larger general-purpose workflow would add unnecessary complexity.
+    - Reusing the decision-council path would couple the new workflow to unrelated logic.
+  conditions:
+    - Use a richer workflow only if the task grows beyond a single implementation pass.
+    - Add replanning only if execution reveals a missing or invalid step.
+  viableAlternatives:
+    - A general-purpose DAG workflow with many nodes
+    - Reusing the existing decision-council flow directly
+  redFlags:
+    - Introducing human approval gates for an implementation-only workflow
+    - Mixing the new workflow with the decision-council runtime
+  sources:
+    - https://github.com/microsoft/weavekit
+rubric:
+  - criterion: defensible-recommendation
+    weight: 0.35
+    levels: >-
+      Full credit when the answer proposes a compact, deterministic workflow with
+      explicit verification and bounded scope; half credit for a partially scoped
+      plan; no credit for an overly broad or unstructured design.
+  - criterion: tradeoffs-and-objections
+    weight: 0.3
+    levels: >-
+      Full credit when the answer keeps the workflow separate from the existing
+      decision-council flow and avoids approval gates; half credit for partial
+      compliance; no credit for violating the isolation constraints.
+  - criterion: conditions-and-alternatives
+    weight: 0.2
+    levels: >-
+      Full credit when the answer includes a concrete verification step and basic
+      artifact/logging support; half credit for partial support; no credit for no
+      verification path.
+  - criterion: red-flags-avoided
+    weight: 0.15
+    levels: >-
+      Full credit when the answer fits the implementation-review use case and
+      remains bounded; half credit for a generic but still workable answer; no
+      credit for an unrelated plan.

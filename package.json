@@ -13,6 +13,7 @@
     "build": "nub run baml-generate && tsc -p tsconfig.json",
     "council": "tsx src/cli.ts",
     "eval": "tsx src/eval-cli.ts",
+    "eval:router": "tsx src/eval-router-cli.ts",
     "bench:router": "tsx scripts/router-benchmark.ts"
   },
   "dependencies": {

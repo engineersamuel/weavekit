@@ -24,6 +24,14 @@ _Avoid_: action, task
 A coarse invocation of an external agent or harness (e.g. `copilot -p <prompt>`) inside a Run. May fan out into many internal tool calls and produce an artifact, but is still one Reasoning step — not a unit of queued work.
 _Avoid_: action
 
+**Initial router**:
+A lightweight front-door classifier that inspects an incoming prompt and chooses the next workflow (for example plan, research, decision council, elicitation, or direct handling) before the main harness starts.
+_Avoid_: orchestrator, dispatcher (those are implementation choices, not the concept)
+
+**Route decision**:
+The typed output of the Initial router: the selected route plus the scores and rationale that explain why it was chosen.
+_Avoid_: routing policy (that is the implementation strategy, not the domain object)
+
 **Verification gate**:
 An automated check (types, lint, unit, eval, schema) interleaved with generation that must pass before a Run proceeds. Its control flow lives in code. The human as a *checkpoint on the council's output* (approval / sign-off) is eliminated and replaced by these automated checks.
 _Avoid_: human approval gate, sign-off — and do not confuse with Elicitation, which is a distinct, sanctioned concept.

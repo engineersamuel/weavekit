@@ -20,7 +20,7 @@ function defaultJudge(): JudgeConfig {
   };
 }
 
-export function buildAssertions(item: CorpusItem): Assertion[] {
+export function buildAssertions(item: CorpusItem, providerCount = 2): Assertion[] {
   const rubric: Assertion[] = item.rubric.map((criterion) => ({
     type: "g-eval",
     value: `${criterion.criterion}: ${criterion.levels}\n\nReference answer for grading:\n{{reference}}`,
@@ -28,6 +28,9 @@ export function buildAssertions(item: CorpusItem): Assertion[] {
     metric: criterion.criterion,
     threshold: 0.7,
   }));
+  if (providerCount <= 1) {
+    return rubric;
+  }
   const pairwise: Assertion = {
     type: "select-best",
     value:
@@ -47,7 +50,7 @@ export function buildSuite(items: CorpusItem[], options: BuildSuiteOptions): Eva
       question: formatQuestion(item),
       reference: formatReference(item.referenceAnswer),
     },
-    assert: buildAssertions(item),
+    assert: buildAssertions(item, options.providers.length),
   }));
 
   return {

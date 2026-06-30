@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ClarifyingQuestion,  CouncilReport,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  RawPersonaResult,  RoundAssessment,  RoutingDecision } from "./types.js"
+import type {  ClarifyingQuestion,  CouncilReport,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  RawPersonaResult,  RoundAssessment,  RoutingDecision,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -120,5 +120,28 @@ export namespace partial_types {
       model?: string | null
       reasoningEffort?: string | null
       rationale?: string | null
+    }
+    export interface WorkflowNode {
+      id?: string | null
+      kind?: string | null
+      harness?: string | null
+      title?: string | null
+      prompt?: string | null
+      dependsOn: string[]
+      gates: string[]
+      writeMode?: string | null
+      replanPolicy?: string | null
+    }
+    export interface WorkflowPlan {
+      id?: string | null
+      objective?: string | null
+      templateId?: string | null
+      maxReplans?: number | null
+      nodes: WorkflowNode[]
+    }
+    export interface WorkflowReplanPatch {
+      reason?: string | null
+      replaceRemainingNodeIds: string[]
+      newNodes: WorkflowNode[]
     }
 }

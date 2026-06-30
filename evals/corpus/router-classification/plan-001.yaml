@@ -1,0 +1,15 @@
+id: route-plan-001
+domain: routing
+difficulty: intro
+title: Planning request
+prompt: Break the rollout for a new MCP bridge into milestones, implementation phases, and concrete next steps.
+referenceAnswer:
+  recommendation: plan
+  rationale:
+    - The request asks for decomposition into milestones and implementation steps.
+  strongestObjections:
+    - It could be misrouted if the wording were more research-oriented or decision-centric.
+rubric:
+  - criterion: correct-route
+    weight: 1.0
+    levels: Pick the plan route when the request is mainly about breaking work into milestones, phases, or implementation steps.

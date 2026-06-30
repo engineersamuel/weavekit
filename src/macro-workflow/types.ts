@@ -48,6 +48,8 @@ export type WorkflowReplanPolicy =
   | "on-review-rejection"
   | "on-verification-failure";
 
+export type WorkflowPlanTemplateId = "implementation-review";
+
 export type RuntimeWorkflowNode = {
   id: string;
   kind: WorkflowNodeKind;
@@ -66,6 +68,44 @@ export type RuntimeWorkflowPlan = {
   templateId: string;
   maxReplans: number;
   nodes: RuntimeWorkflowNode[];
+};
+
+export type WorkflowReplanPatch = {
+  reason: WorkflowReplanReason | string;
+  replaceRemainingNodeIds: string[];
+  newNodes: RuntimeWorkflowNode[];
+};
+
+export type WorkflowNodeExecutionResult = {
+  nodeId: string;
+  status: WorkflowNodeStatus;
+  output: string;
+  error?: string;
+};
+
+export type WorkflowReplanEvent = {
+  failedNodeId: string;
+  reason: WorkflowReplanReason | string;
+  rationale: string;
+  patch: WorkflowReplanPatch;
+  timestamp: Date;
+};
+
+export type MacroWorkflowRunState = {
+  planId: string;
+  objective: string;
+  templateId: string;
+  status: WorkflowNodeStatus | "running";
+  startedAt: Date;
+  completedAt?: Date;
+  plan: RuntimeWorkflowPlan;
+  currentPlan: RuntimeWorkflowPlan;
+  nodeResults: WorkflowNodeExecutionResult[];
+  replans: WorkflowReplanEvent[];
+};
+
+export type MacroWorkflowRunStateLike = Omit<MacroWorkflowRunState, "plan"> & {
+  plan?: RuntimeWorkflowPlan;
 };
 
 export type WorkflowVerificationIssue = {
