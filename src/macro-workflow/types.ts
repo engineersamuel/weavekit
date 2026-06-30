@@ -102,6 +102,7 @@ export type MacroWorkflowRunState = {
   currentPlan: RuntimeWorkflowPlan;
   nodeResults: WorkflowNodeExecutionResult[];
   replans: WorkflowReplanEvent[];
+  activeNodeId?: string;
 };
 
 export type MacroWorkflowRunStateLike = Omit<MacroWorkflowRunState, "plan"> & {
@@ -127,4 +128,44 @@ export type WorkflowVerificationIssue = {
 export type WorkflowVerificationResult = {
   valid: boolean;
   issues: WorkflowVerificationIssue[];
+};
+
+export const WorkflowReplayEventKind = {
+  PLANNING_STARTED: "planning-started",
+  PLANNING_COMPLETE: "planning-complete",
+  NODE_ADDED: "node-added",
+  NODE_STATUS_CHANGED: "node-status-changed",
+  NODE_REMOVED: "node-removed",
+  EDGE_ADDED: "edge-added",
+  EDGE_REMOVED: "edge-removed",
+  REPLAN_APPLIED: "replan-applied",
+  RUN_COMPLETED: "run-completed",
+} as const;
+export type WorkflowReplayEventKind = (typeof WorkflowReplayEventKind)[keyof typeof WorkflowReplayEventKind];
+
+export type WorkflowReplayEvent = {
+  seq: number;
+  ts: string;
+  kind: WorkflowReplayEventKind;
+  phase?: "planning" | "running" | "completed";
+  nodeId?: string;
+  node?: RuntimeWorkflowNode;
+  status?: WorkflowNodeStatus | "running";
+  reason?: string;
+  patch?: WorkflowReplanPatch;
+};
+
+export type WorkflowReplayNodeView = {
+  id: string;
+  kind: string;
+  title: string;
+  status: WorkflowNodeStatus | "running";
+  harness: string;
+  exists: boolean;
+};
+
+export type WorkflowReplayViewState = {
+  activePhase: "planning" | "running" | "completed";
+  nodes: WorkflowReplayNodeView[];
+  edges: Array<{ id: string; source: string; target: string }>;
 };
