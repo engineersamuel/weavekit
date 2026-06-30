@@ -7,9 +7,23 @@ export type {
   PersonaDefinition,
   PersonaSet,
 } from "./decision-council/types.js";
-export { defaultPersonaSet, gameTheorist, personaSetRegistry, resolvePersonaSet, resolvePersonaSetByName, strategicPersonaSet, sunTzu } from "./decision-council/personas.js";
+export { PersonaSetName, defaultPersonaSet, gameTheorist, personaSetRegistry, resolvePersonaSet, resolvePersonaSetByName, strategicPersonaSet, sunTzu } from "./decision-council/personas.js";
 export { runDecisionCouncil, type RunDecisionCouncilOptions } from "./decision-council/runner.js";
 export { type DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js";
+export * from "./macro-workflow/index.js";
+export {
+  Classifier,
+  createInitialWorkflowRouter,
+  createInitialWorkflowRouter as createInitialRouter,
+  InitialWorkflowRouter,
+  HeuristicRouteScorer,
+  type InitialRouter,
+  type InitialRouterInput,
+  type RouteDecision,
+  type RouteScorer,
+  type RouteScore,
+  type WorkflowRouteKind,
+} from "./initialRouter.js";
 export { createDecisionCouncilWorkflow, type DecisionCouncilFlueOptions } from "./flue/decisionCouncilWorkflowDefinition.js";
 export {
   createConfiguredDecisionCouncilWorkflow,

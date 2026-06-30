@@ -6,7 +6,7 @@ import {
   type BamlRouteOptions,
 } from "./bamlRouting.js";
 import { TraceBamlOperation, createBamlTelemetryOptions, type BamlTelemetryContext } from "./bamlTelemetry.js";
-import type { ModelRouter, RouteTaskKind } from "./modelRouter.js";
+import { RouteTaskKind, type ModelRouter } from "./modelRouter.js";
 import {
   DecisionCouncilReportSchema,
   DecisionPersonaCritiqueSchema,
@@ -122,7 +122,7 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
     raw: RawPersonaResult,
     onModel?: ModelObserver,
   ): Promise<DecisionPersonaCritique> {
-    const { options, model } = await this.resolveRouting("normalize", raw.text);
+    const { options, model } = await this.resolveRouting(RouteTaskKind.NORMALIZE, raw.text);
     onModel?.(model);
     const result = await this.client.NormalizePersonaCritique(
       { personaId: raw.personaId, text: raw.text },
@@ -140,7 +140,7 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
     },
     onModel?: ModelObserver,
   ): Promise<DecisionRoundAssessment> {
-    const { options, model } = await this.resolveRouting("assess");
+    const { options, model } = await this.resolveRouting(RouteTaskKind.ASSESS);
     onModel?.(model);
     const result = await this.client.AssessCouncilRound(
       args.roundNumber,
@@ -160,7 +160,7 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
     },
     onModel?: ModelObserver,
   ): Promise<DecisionCouncilReport> {
-    const { options, model } = await this.resolveRouting("report");
+    const { options, model } = await this.resolveRouting(RouteTaskKind.REPORT);
     onModel?.(model);
     // Feed only per-persona summaries to the report call. The full critiques (with claims,
     // risks, questions, recommendations) stay authoritative in the run state; sending them

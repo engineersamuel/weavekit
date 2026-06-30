@@ -8,6 +8,23 @@ The v0 workflow is a Design Council. It selects a compact, task-appropriate pers
 - `DecisionCouncilRunState.json`
 - raw transcript debug files
 
+## Initial prompt router
+
+Weavekit now includes a lightweight front-door router that classifies an incoming prompt before the main harness runs. The default scorer is heuristic and intentionally cheap: it scores planning, research, decision-council, elicitation, and direct routes so a prompt can be routed to the most suitable next step without replacing the underlying agent harness.
+
+```ts
+import { createInitialWorkflowRouter } from "weavekit";
+
+const router = createInitialWorkflowRouter();
+const decision = await router.route({
+  prompt: "Create a rollout plan for the new router and break it into milestones.",
+});
+
+console.log(decision.route);
+```
+
+This layer is designed to be extended with additional routes or a faster LLM/BAML scorer later, while keeping the initial classification cheap and deterministic.
+
 ## Setup
 
 ```bash
@@ -372,3 +389,17 @@ corpus cells in parallel. Keep values small: each Council cell fans out roughly 
 Copilot SDK persona sessions, and each baseline cell starts a `copilot` CLI process,
 so concurrency `N` can mean up to `N × personas` concurrent Copilot SDK sessions plus
 `N` baseline processes against the local proxy.
+
+### Router classification evals
+
+A focused Promptfoo suite for the initial route classifier lives under
+`evals/corpus/router-classification/`. It exercises the direct, plan, research,
+decision-council, and elicitation routes and writes a lightweight HTML dashboard
+alongside the Promptfoo report.
+
+```bash
+nub run eval:router
+```
+
+The run writes `dashboard.html`, `report.json`, `summary.md`, and `route-results.json`
+into `evals/results/router-classification/<timestamp>/`.

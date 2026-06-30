@@ -3,7 +3,12 @@ import { createBamlTelemetryOptions, runTracedBamlOperation } from "./bamlTeleme
 
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
-export type RouteTaskKind = "normalize" | "assess" | "report" | "persona";
+export enum RouteTaskKind {
+  NORMALIZE = "normalize",
+  ASSESS = "assess",
+  REPORT = "report",
+  PERSONA = "persona",
+}
 
 export type RouteRequest = {
   taskKind: RouteTaskKind;
@@ -33,22 +38,22 @@ export type RoutingPolicy = Record<RouteTaskKind, RoutingDecision>;
 // default; effort passthrough is opt-in pending proxy verification (research §8.2).
 // The persona default keeps today's SDK model so behavior is unchanged until tuned.
 export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
-  normalize: {
+  [RouteTaskKind.NORMALIZE]: {
     clientName: "CopilotProxyGpt54",
     model: "gpt-5.4",
     rationale: "Lowest-TTFT structured extraction default.",
   },
-  assess: {
+  [RouteTaskKind.ASSESS]: {
     clientName: "CopilotProxyGpt54",
     model: "gpt-5.4",
     rationale: "Lowest-TTFT Judge decision default.",
   },
-  report: {
+  [RouteTaskKind.REPORT]: {
     clientName: "CopilotProxyGpt54",
     model: "gpt-5.4",
     rationale: "Stable synthesis default compatible with BAML chat-completion parsing.",
   },
-  persona: {
+  [RouteTaskKind.PERSONA]: {
     model: "claude-sonnet-4.5",
     rationale: "Persona debate tier (Copilot SDK model id).",
   },
@@ -57,22 +62,22 @@ export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
 // Smoke policy: pin every task kind to gpt-5-mini for fast integration smoke tests. BAML kinds
 // use the CopilotProxyGpt5Mini client (model gpt-5-mini); persona uses the gpt-5-mini SDK model id.
 export const SMOKE_ROUTING_POLICY: RoutingPolicy = {
-  normalize: {
+  [RouteTaskKind.NORMALIZE]: {
     clientName: "CopilotProxyGpt5Mini",
     model: "gpt-5-mini",
     rationale: "Smoke: fast structured extraction on gpt-5-mini.",
   },
-  assess: {
+  [RouteTaskKind.ASSESS]: {
     clientName: "CopilotProxyGpt5Mini",
     model: "gpt-5-mini",
     rationale: "Smoke: fast Judge decision on gpt-5-mini.",
   },
-  report: {
+  [RouteTaskKind.REPORT]: {
     clientName: "CopilotProxyGpt5Mini",
     model: "gpt-5-mini",
     rationale: "Smoke: fast report synthesis on gpt-5-mini.",
   },
-  persona: {
+  [RouteTaskKind.PERSONA]: {
     model: "gpt-5-mini",
     rationale: "Smoke: fast persona debate on gpt-5-mini.",
   },
@@ -95,7 +100,7 @@ export function createSmokeModelRouter(): ModelRouter {
   return new PolicyModelRouter(SMOKE_ROUTING_POLICY);
 }
 export type RouteModelCallInput = {
-  taskKind: string;
+  taskKind: RouteTaskKind;
   summary: string;
   candidates: string[];
 };
@@ -107,10 +112,10 @@ export type RouteModelCallFn = (
 
 // Candidate client names (BAML kinds) / SDK model ids (persona) offered to the LLM router.
 export const ROUTER_CANDIDATES: Record<RouteTaskKind, string[]> = {
-  normalize: ["CopilotProxyGpt54", "CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
-  assess: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
-  report: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48"],
-  persona: ["claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
+  [RouteTaskKind.NORMALIZE]: ["CopilotProxyGpt54", "CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
+  [RouteTaskKind.ASSESS]: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
+  [RouteTaskKind.REPORT]: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48"],
+  [RouteTaskKind.PERSONA]: ["claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
 };
 
 // Canonical proxy model id for each BAML candidate client (mirrors baml_src/clients.baml).
@@ -158,7 +163,7 @@ export function isValidDecision(
   if (!decision.model) {
     return false;
   }
-  if (taskKind === "persona") {
+  if (taskKind === RouteTaskKind.PERSONA) {
     return candidates.includes(decision.model);
   }
   // BAML kinds: only clientName is trusted here. The model that actually reaches the proxy is
@@ -268,7 +273,7 @@ export const defaultRouteModelCall: RouteModelCallFn = async (input, signal) => 
       signal,
       ...createBamlTelemetryOptions(),
     });
-    const policyModel = DEFAULT_ROUTING_POLICY[input.taskKind as RouteTaskKind]?.model ?? "claude-haiku-4-5";
+    const policyModel = DEFAULT_ROUTING_POLICY[input.taskKind]?.model ?? "claude-haiku-4-5";
     return normalizeRoutingDecision(
       {
         clientName: raw.clientName ?? undefined,

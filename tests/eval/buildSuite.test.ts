@@ -31,8 +31,8 @@ rubric:
 const fakeProvider: ApiProvider = { id: () => "fake", callApi: async () => ({ output: "x" }) };
 
 describe("buildAssertions", () => {
-  it("creates one weighted g-eval per criterion plus a select-best", () => {
-    const asserts = buildAssertions(ITEM);
+  it("creates one weighted g-eval per criterion plus a select-best when there are multiple providers", () => {
+    const asserts = buildAssertions(ITEM, 2);
     expect(asserts).toHaveLength(3);
     const gevals = asserts.filter((a) => a.type === "g-eval");
     expect(gevals.map((a) => a.weight)).toEqual([0.6, 0.4]);
@@ -42,6 +42,11 @@ describe("buildAssertions", () => {
     ]);
     expect(gevals[0].value).toContain("{{reference}}");
     expect(asserts.some((a) => a.type === "select-best")).toBe(true);
+  });
+
+  it("skips select-best when there is only one provider", () => {
+    const asserts = buildAssertions(ITEM, 1);
+    expect(asserts.every((assert) => assert.type !== "select-best")).toBe(true);
   });
 });
 

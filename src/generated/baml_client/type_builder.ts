@@ -49,12 +49,18 @@ export default class TypeBuilder {
     
     RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
     
+    WorkflowNode: ClassViewer<'WorkflowNode', "id" | "kind" | "harness" | "title" | "prompt" | "dependsOn" | "gates" | "writeMode" | "replanPolicy">;
+    
+    WorkflowPlan: ClassViewer<'WorkflowPlan', "id" | "objective" | "templateId" | "maxReplans" | "nodes">;
+    
+    WorkflowReplanPatch: ClassViewer<'WorkflowReplanPatch', "reason" | "replaceRemainingNodeIds" | "newNodes">;
+    
     
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ClarifyingQuestion","CouncilReport","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","RawPersonaResult","RoundAssessment","RoutingDecision",
+            "ClarifyingQuestion","CouncilReport","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","RawPersonaResult","RoundAssessment","RoutingDecision","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             
@@ -104,6 +110,18 @@ export default class TypeBuilder {
         
         this.RoutingDecision = this.tb.classViewer("RoutingDecision", [
           "clientName","model","reasoningEffort","rationale",
+        ]);
+        
+        this.WorkflowNode = this.tb.classViewer("WorkflowNode", [
+          "id","kind","harness","title","prompt","dependsOn","gates","writeMode","replanPolicy",
+        ]);
+        
+        this.WorkflowPlan = this.tb.classViewer("WorkflowPlan", [
+          "id","objective","templateId","maxReplans","nodes",
+        ]);
+        
+        this.WorkflowReplanPatch = this.tb.classViewer("WorkflowReplanPatch", [
+          "reason","replaceRemainingNodeIds","newNodes",
         ]);
         
         

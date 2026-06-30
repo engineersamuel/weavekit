@@ -68,7 +68,7 @@ vi.mock("../../src/generated/baml_client/index.js", () => ({
   },
 }));
 
-import { defaultRouteModelCall } from "../../src/decision-council/modelRouter.js";
+import { defaultRouteModelCall, RouteTaskKind } from "../../src/decision-council/modelRouter.js";
 
 describe("defaultRouteModelCall", () => {
   beforeEach(() => {
@@ -86,7 +86,7 @@ describe("defaultRouteModelCall", () => {
     });
 
     const input = {
-      taskKind: "assess",
+      taskKind: RouteTaskKind.ASSESS,
       summary: "x".repeat(6000),
       candidates: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
     };
@@ -147,7 +147,7 @@ describe("defaultRouteModelCall", () => {
     });
 
     const input = {
-      taskKind: "assess",
+      taskKind: RouteTaskKind.ASSESS,
       summary: "route me",
       candidates: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
     };

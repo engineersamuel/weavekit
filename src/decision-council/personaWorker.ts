@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import type { PersonaDefinition, RawPersonaResult, RoundBrief } from "./types.js";
 import type { PersonaSkill } from "../personas/schema.js";
-import type { ModelRouter } from "./modelRouter.js";
+import { RouteTaskKind, type ModelRouter } from "./modelRouter.js";
 import { composePersonaPrompt } from "../personas/composer.js";
 import { buildCopilotClientOptions } from "../telemetry/copilotSdk.js";
 
@@ -150,7 +150,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
     try {
       const decision = this.router
         ? await this.router.route({
-            taskKind: "persona",
+            taskKind: RouteTaskKind.PERSONA,
             personaId: persona.id,
             roundNumber: brief.roundNumber,
             summary: brief.prompt,
