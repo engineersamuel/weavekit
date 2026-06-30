@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@boundaryml/baml": "^0.223.0",
-    "claude-superskills": "2.0.8",
     "@flue/runtime": "^1.0.0-beta.5",
     "@github/copilot-sdk": "^1.0.4",
     "@langfuse/otel": "^5.9.0",
@@ -26,9 +25,13 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
     "@opentelemetry/sdk-node": "^0.57.0",
     "@opentelemetry/sdk-trace-base": "^1.30.0",
+    "@xyflow/react": "^12.11.1",
+    "claude-superskills": "2.0.8",
     "picocolors": "^1.1.1",
     "prettyjson": "^1.2.5",
     "promptfoo": "^0.121.17",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "smol-toml": "^1.7.0",
     "valibot": "^1.0.0",
     "yaml": "^2.9.0",
@@ -37,6 +40,7 @@
   "devDependencies": {
     "@types/node": "^22.15.0",
     "@types/prettyjson": "^0.0.33",
+    "esbuild": "^0.28.1",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0"

@@ -18,12 +18,23 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
       }
 
       if (event.kind === "planning-complete") {
+        const planningNode = view.nodes.find((node) => node.id === (event.nodeId ?? "workflow-planning"));
+        if (planningNode) {
+          planningNode.status = "passed";
+        }
         view.activePhase = "running";
         return view;
       }
 
       if (event.kind === "node-added" && event.node) {
         upsertNode(view, event.node, event.status ?? "pending");
+        if (event.node.dependsOn.length > 0) {
+          for (const dependencyId of event.node.dependsOn) {
+            upsertEdge(view, dependencyId, event.node.id);
+          }
+        } else if (view.nodes.some((node) => node.id === "workflow-planning")) {
+          upsertEdge(view, "workflow-planning", event.node.id);
+        }
       }
 
       if (event.kind === "node-status-changed" && event.nodeId) {
@@ -38,6 +49,15 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
         if (node) {
           node.exists = false;
         }
+        view.edges = view.edges.filter((edge) => edge.source !== event.nodeId && edge.target !== event.nodeId);
+      }
+
+      if (event.kind === "edge-added" && event.sourceNodeId && event.targetNodeId) {
+        upsertEdge(view, event.sourceNodeId, event.targetNodeId);
+      }
+
+      if (event.kind === "edge-removed" && event.sourceNodeId && event.targetNodeId) {
+        view.edges = view.edges.filter((edge) => edge.source !== event.sourceNodeId || edge.target !== event.targetNodeId);
       }
 
       if (event.kind === "replan-applied" && event.patch) {
@@ -47,8 +67,13 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
             node.exists = false;
           }
         }
+        const removedIds = new Set(event.patch.replaceRemainingNodeIds);
+        view.edges = view.edges.filter((edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target));
         for (const node of event.patch.newNodes) {
           upsertNode(view, node, "pending");
+          for (const dependencyId of node.dependsOn) {
+            upsertEdge(view, dependencyId, node.id);
+          }
         }
       }
 
@@ -60,6 +85,14 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
     },
     { activePhase: "planning", nodes: [], edges: [] },
   );
+}
+
+function upsertEdge(view: WorkflowReplayViewState, source: string, target: string) {
+  const id = `${source}-${target}`;
+  if (view.edges.some((edge) => edge.id === id)) {
+    return;
+  }
+  view.edges.push({ id, source, target });
 }
 
 function ensurePlanningNode(view: WorkflowReplayViewState, id: string) {

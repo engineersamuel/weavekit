@@ -92,6 +92,8 @@ export type WorkflowReplanEvent = {
 };
 
 export type MacroWorkflowRunState = {
+  runId?: string;
+  runName?: string;
   planId: string;
   objective: string;
   templateId: string;
@@ -149,6 +151,8 @@ export type WorkflowReplayEvent = {
   kind: WorkflowReplayEventKind;
   phase?: "planning" | "running" | "completed";
   nodeId?: string;
+  sourceNodeId?: string;
+  targetNodeId?: string;
   node?: RuntimeWorkflowNode;
   status?: WorkflowNodeStatus | "running";
   reason?: string;

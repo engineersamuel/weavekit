@@ -1,0 +1,2 @@
+{"seq":1,"ts":"2026-06-30T00:00:00.000Z","kind":"planning-started","phase":"planning","nodeId":"workflow-planning"}
+{"seq":2,"ts":"2026-06-30T00:00:01.000Z","kind":"node-added","nodeId":"research-1","node":{"id":"research-1","kind":"research","harness":"research","title":"Research","prompt":"Research the request","dependsOn":[],"gates":[],"writeMode":"read-only","replanPolicy":"never"}}

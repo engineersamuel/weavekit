@@ -1,15 +1,17 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { MacroWorkflowRunStateLike } from "./types.js";
+import type { MacroWorkflowRunStateLike, WorkflowReplayEvent } from "./types.js";
 
 export type MacroWorkflowArtifactPaths = {
   reportPath: string;
   statePath: string;
+  eventLogPath: string;
 };
 
 export type MacroWorkflowArtifactsInput = {
   outputDir: string;
   state: MacroWorkflowRunStateLike;
+  replayEvents?: WorkflowReplayEvent[];
 };
 
 export async function writeMacroWorkflowArtifacts(
@@ -19,6 +21,7 @@ export async function writeMacroWorkflowArtifacts(
 
   const reportPath = join(input.outputDir, "workflow-report.md");
   const statePath = join(input.outputDir, "workflow-state.json");
+  const eventLogPath = join(input.outputDir, "workflow-events.jsonl");
 
   const report = [
     "# Macro Workflow Run Report",
@@ -38,7 +41,31 @@ export async function writeMacroWorkflowArtifacts(
   ].join("\n");
 
   await writeFile(reportPath, report, "utf8");
-  await writeFile(statePath, JSON.stringify(input.state, null, 2), "utf8");
+  await writeMacroWorkflowStateArtifact(input.outputDir, input.state);
+  if (input.replayEvents) {
+    await writeFile(eventLogPath, formatWorkflowReplayEvents(input.replayEvents), "utf8");
+  }
 
-  return { reportPath, statePath };
+  return { reportPath, statePath, eventLogPath };
+}
+
+export async function writeMacroWorkflowStateArtifact(outputDir: string, state: MacroWorkflowRunStateLike): Promise<string> {
+  await mkdir(outputDir, { recursive: true });
+  const statePath = join(outputDir, "workflow-state.json");
+  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
+  return statePath;
+}
+
+export async function appendWorkflowReplayEvent(outputDir: string, event: WorkflowReplayEvent): Promise<string> {
+  await mkdir(outputDir, { recursive: true });
+  const eventLogPath = join(outputDir, "workflow-events.jsonl");
+  await appendFile(eventLogPath, `${JSON.stringify(event)}\n`, "utf8");
+  return eventLogPath;
+}
+
+function formatWorkflowReplayEvents(events: WorkflowReplayEvent[]): string {
+  if (events.length === 0) {
+    return "";
+  }
+  return `${events.map((event) => JSON.stringify(event)).join("\n")}\n`;
 }

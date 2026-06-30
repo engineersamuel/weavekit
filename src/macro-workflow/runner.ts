@@ -1,9 +1,9 @@
 import type { HarnessRegistry } from "./harness.js";
 import { resolveHarnessAdapter } from "./harness.js";
-import type { MacroWorkflowLogger } from "./logger.js";
+import type { MacroWorkflowEvent, MacroWorkflowLogger } from "./logger.js";
 import { MacroWorkflowEventKind } from "./logger.js";
-import type { MacroWorkflowRunState, RuntimeWorkflowPlan, WorkflowNodeExecutionResult, WorkflowReplanPatch } from "./types.js";
-import { WorkflowNodeStatus as WorkflowNodeState, WorkflowReplanReason } from "./types.js";
+import type { MacroWorkflowRunState, RuntimeWorkflowPlan, WorkflowNodeExecutionResult, WorkflowReplanPatch, WorkflowReplayEvent } from "./types.js";
+import { WorkflowNodeStatus as WorkflowNodeState, WorkflowReplanReason, WorkflowReplayEventKind } from "./types.js";
 import { verifyWorkflowReplanPatch } from "./verifier.js";
 
 export type WorkflowReplanner = {
@@ -19,6 +19,8 @@ export type MacroWorkflowRunnerDependencies = {
   harnesses?: HarnessRegistry;
   replanner?: WorkflowReplanner;
   logger?: MacroWorkflowLogger;
+  onStateChange?: (state: MacroWorkflowRunState, event: MacroWorkflowEvent) => void;
+  onReplayEvent?: (event: WorkflowReplayEvent) => void;
 };
 
 export async function runMacroWorkflow(
@@ -35,10 +37,42 @@ export async function runMacroWorkflow(
     currentPlan: plan,
     nodeResults: [],
     replans: [],
+    activeNodeId: undefined,
   };
 
   const logger = dependencies.logger;
-  logger?.emit({ type: MacroWorkflowEventKind.RUN_STARTED, planId: plan.id, timestamp: new Date() });
+  const emitStateChange = (event: MacroWorkflowEvent) => {
+    logger?.emit(event);
+    dependencies.onStateChange?.(state, event);
+  };
+  let replaySeq = 0;
+  const emitReplayEvent = (event: Omit<WorkflowReplayEvent, "seq" | "ts">) => {
+    dependencies.onReplayEvent?.({
+      seq: ++replaySeq,
+      ts: new Date().toISOString(),
+      ...event,
+    });
+  };
+  emitReplayEvent({
+    kind: WorkflowReplayEventKind.PLANNING_STARTED,
+    phase: "planning",
+    nodeId: "workflow-planning",
+  });
+  for (const node of plan.nodes) {
+    emitReplayEvent({
+      kind: WorkflowReplayEventKind.NODE_ADDED,
+      phase: "planning",
+      nodeId: node.id,
+      node,
+    });
+  }
+  emitReplayEvent({
+    kind: WorkflowReplayEventKind.PLANNING_COMPLETE,
+    phase: "running",
+    nodeId: "workflow-planning",
+    status: WorkflowNodeState.PASSED,
+  });
+  emitStateChange({ type: MacroWorkflowEventKind.RUN_STARTED, planId: plan.id, timestamp: new Date() });
 
   let remainingPlan = plan;
   const completedNodeIds = new Set<string>();
@@ -50,9 +84,25 @@ export async function runMacroWorkflow(
       break;
     }
 
+    state.activeNodeId = nextNode.id;
+    emitReplayEvent({
+      kind: WorkflowReplayEventKind.NODE_STATUS_CHANGED,
+      phase: "running",
+      nodeId: nextNode.id,
+      status: WorkflowNodeState.RUNNING,
+    });
+    emitStateChange({ type: MacroWorkflowEventKind.NODE_STARTED, planId: plan.id, nodeId: nextNode.id, timestamp: new Date() });
+
     const result = await executeNode(nextNode, dependencies.harnesses);
+    state.activeNodeId = undefined;
     state.nodeResults.push(result);
-    logger?.emit({
+    emitReplayEvent({
+      kind: WorkflowReplayEventKind.NODE_STATUS_CHANGED,
+      phase: "running",
+      nodeId: nextNode.id,
+      status: result.status,
+    });
+    emitStateChange({
       type: result.status === "passed" ? MacroWorkflowEventKind.NODE_COMPLETED : MacroWorkflowEventKind.NODE_FAILED,
       planId: plan.id,
       nodeId: nextNode.id,
@@ -68,7 +118,12 @@ export async function runMacroWorkflow(
     if (remainingReplans <= 0 || nextNode.replanPolicy === "never") {
       state.status = "failed";
       state.completedAt = new Date();
-      logger?.emit({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
+      emitReplayEvent({
+        kind: WorkflowReplayEventKind.RUN_COMPLETED,
+        phase: "completed",
+        status: WorkflowNodeState.FAILED,
+      });
+      emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
       return state;
     }
 
@@ -76,7 +131,12 @@ export async function runMacroWorkflow(
     if (!patch) {
       state.status = "failed";
       state.completedAt = new Date();
-      logger?.emit({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
+      emitReplayEvent({
+        kind: WorkflowReplayEventKind.RUN_COMPLETED,
+        phase: "completed",
+        status: WorkflowNodeState.FAILED,
+      });
+      emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
       return state;
     }
 
@@ -84,7 +144,12 @@ export async function runMacroWorkflow(
     if (!verification.valid) {
       state.status = "failed";
       state.completedAt = new Date();
-      logger?.emit({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
+      emitReplayEvent({
+        kind: WorkflowReplayEventKind.RUN_COMPLETED,
+        phase: "completed",
+        status: WorkflowNodeState.FAILED,
+      });
+      emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
       return state;
     }
 
@@ -99,12 +164,24 @@ export async function runMacroWorkflow(
       patch,
       timestamp: new Date(),
     });
-    logger?.emit({ type: MacroWorkflowEventKind.REPLAN_APPLIED, planId: plan.id, nodeId: nextNode.id, reason: patch.reason, timestamp: new Date() });
+    emitReplayEvent({
+      kind: WorkflowReplayEventKind.REPLAN_APPLIED,
+      phase: "running",
+      nodeId: nextNode.id,
+      reason: patch.reason,
+      patch,
+    });
+    emitStateChange({ type: MacroWorkflowEventKind.REPLAN_APPLIED, planId: plan.id, nodeId: nextNode.id, reason: patch.reason, timestamp: new Date() });
   }
 
   state.status = "passed";
   state.completedAt = new Date();
-  logger?.emit({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "passed", timestamp: new Date() });
+  emitReplayEvent({
+    kind: WorkflowReplayEventKind.RUN_COMPLETED,
+    phase: "completed",
+    status: WorkflowNodeState.PASSED,
+  });
+  emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "passed", timestamp: new Date() });
   return state;
 }
 
