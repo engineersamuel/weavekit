@@ -33,6 +33,10 @@ describe("replayViewStateFromEvents", () => {
     ]);
 
     expect(view.nodes.map((node) => node.id)).toEqual(["workflow-planning", "research-1"]);
+    expect(view.nodes[0]).toMatchObject({
+      model: "claude-opus-4.8",
+      description: expect.stringContaining("Plan the workflow DAG"),
+    });
     expect(view.activePhase).toBe("planning");
   });
 
@@ -65,6 +69,11 @@ describe("replayViewStateFromEvents", () => {
     });
 
     expect(events[0]?.kind).toBe("planning-started");
+    expect(events[0]?.node).toMatchObject({
+      id: "workflow-planning",
+      model: "claude-opus-4.8",
+      description: expect.stringContaining("Plan the workflow DAG"),
+    });
     expect(events.map((event) => event.kind)).toEqual([
       "planning-started",
       "node-added",

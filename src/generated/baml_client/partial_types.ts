@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  EvidenceReference,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  EvidenceReference,  FinalRecommendationReview,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -63,6 +63,17 @@ export namespace partial_types {
       id?: string | null
       source?: string | null
       quote?: string | null
+    }
+    export interface FinalRecommendationReview {
+      status?: "accepted" | "rejected" | null
+      actionable?: boolean | null
+      improvesProject?: boolean | null
+      unnecessaryComplexity?: boolean | null
+      benefitOutweighsCost?: boolean | null
+      complexityAssessment?: string | null
+      rationale?: string | null
+      rejectionReason?: string | null
+      telegramSummary?: string | null
     }
     export interface NonApplicableLesson {
       lesson?: string | null
@@ -151,6 +162,12 @@ export namespace partial_types {
     export interface PlanArtifactSummary {
       opportunityIds: string[]
       title?: string | null
+      recommendation?: string | null
+      problemSolved?: string | null
+      sourceLessonApplied?: string | null
+      targetChange?: string | null
+      expectedUserValue?: string | null
+      implementationOutline: string[]
       scope?: string | null
       filesLikelyTouched: string[]
       validationCommands: string[]
@@ -204,6 +221,9 @@ export namespace partial_types {
       kind?: string | null
       harness?: string | null
       title?: string | null
+      description?: string | null
+      model?: string | null
+      modelRationale?: string | null
       prompt?: string | null
       dependsOn: string[]
       gates: string[]

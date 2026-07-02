@@ -55,6 +55,9 @@ describe("workflow dashboard replay bootstrap", () => {
 
       expect(response.status).toBe(200);
       expect(payload.state.planId).toBe("plan-1");
+      expect(payload.state.currentPlan.nodes[0]).toMatchObject({
+        model: "gpt-5.4",
+      });
       expect(payload.runs).toHaveLength(1);
       expect(payload.activeRunId).toBe("run-1");
       expect(payload.history).toHaveLength(2);
@@ -116,6 +119,44 @@ describe("workflow dashboard replay bootstrap", () => {
     }
   });
 
+  it("serves selected run artifacts without allowing path traversal", async () => {
+    const outputDir = await writeWorkflowRunFixture();
+    const watchDir = join(outputDir, "..");
+    try {
+      const server = await createWorkflowDashboardServer(undefined, { watchDir });
+      servers.push(server);
+
+      const reportResponse = await fetch(new URL("/api/artifact?runId=run-1&file=workflow-report.md", server.url));
+      const reportText = await reportResponse.text();
+      const traversalResponse = await fetch(new URL("/api/artifact?runId=run-1&file=../workflow-state.json", server.url));
+
+      expect(reportResponse.status).toBe(200);
+      expect(reportResponse.headers.get("content-type")).toContain("text/markdown");
+      expect(reportText).toContain("# Macro Workflow Run Report");
+      expect(traversalResponse.status).toBe(404);
+    } finally {
+      await rm(watchDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves typed payload artifacts from workflow state when payload files are not written yet", async () => {
+    const outputDir = await writeWorkflowRunFixture();
+    const watchDir = join(outputDir, "..");
+    try {
+      const server = await createWorkflowDashboardServer(undefined, { watchDir });
+      servers.push(server);
+
+      const response = await fetch(new URL("/api/artifact?runId=run-1&file=source-corroboration.payload.json", server.url));
+      const payload = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/json");
+      expect(payload).toEqual({ corroboration: { sourceId: "source-1" } });
+    } finally {
+      await rm(watchDir, { recursive: true, force: true });
+    }
+  });
+
   it("includes history in SSE state payloads", async () => {
     const server = await createWorkflowDashboardServer(undefined);
     servers.push(server);
@@ -155,6 +196,7 @@ async function writeWorkflowRunFixture(rootDir = "", runId = "run-1", runName = 
   await mkdir(outputDir);
   await writeFile(join(outputDir, "workflow-state.json"), JSON.stringify(createWorkflowState(runId, runName, status), null, 2));
   await writeFile(join(outputDir, "workflow-events.jsonl"), await readFile(fixtureEventsPath, "utf8"));
+  await writeFile(join(outputDir, "workflow-report.md"), "# Macro Workflow Run Report\n\nFixture report.\n", "utf8");
   return outputDir;
 }
 
@@ -178,6 +220,9 @@ function createWorkflowState(runId = "run-1", runName = "Replay Dashboard Run", 
           kind: "research",
           harness: "research",
           title: "Research",
+          description: "Research the request before execution.",
+          model: "gpt-5.4",
+          modelRationale: "Fixture model metadata.",
           prompt: "Research the request",
           dependsOn: [],
           gates: [],
@@ -186,7 +231,14 @@ function createWorkflowState(runId = "run-1", runName = "Replay Dashboard Run", 
         },
       ],
     },
-    nodeResults: [],
+    nodeResults: [
+      {
+        nodeId: "source-corroboration",
+        status: "passed",
+        output: "Corroboration complete.",
+        payload: { corroboration: { sourceId: "source-1" } },
+      },
+    ],
     replans: [],
   };
 }

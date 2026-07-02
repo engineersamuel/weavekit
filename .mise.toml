@@ -1,6 +1,21 @@
 # mise tasks for weavekit. Run with `mise run <task>` (e.g. `mise run council:smoke`).
 
+[tools]
+node = "24"
+
 [tasks."council:smoke"]
 description = "Fast single-round, 2-persona decision-council smoke test (gpt-5-mini)."
 run = "nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/smoke"
 env = { BAML_LOG = "warn", COPILOT_PROXY_API_KEY = "anything" }
+
+[tasks."source-to-project"]
+description = "Run source-to-project advisory mode against weavekit using the prompt argument as the objective/source."
+env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
+run = ".mise/tasks/source-to-project"
+
+[tasks."source-to-project:loop-engineering"]
+description = "Run the loop-engineering source-to-project advisory workflow against weavekit."
+run = '''
+#!/usr/bin/env bash
+mise run source-to-project "Adapt these loops to weavekit: https://github.com/cobusgreyling/loop-engineering and also review their code to see how they are doing loops and what might apply to the weavekit static DAG templates or dynamic workflows"
+'''

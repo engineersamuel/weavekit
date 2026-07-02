@@ -83,6 +83,19 @@ export interface EvidenceReference {
   
 }
 
+export interface FinalRecommendationReview {
+  status: "accepted" | "rejected"
+  actionable: boolean
+  improvesProject: boolean
+  unnecessaryComplexity: boolean
+  benefitOutweighsCost: boolean
+  complexityAssessment: string
+  rationale: string
+  rejectionReason?: string | null
+  telegramSummary?: string | null
+  
+}
+
 export interface NonApplicableLesson {
   lesson: string
   reason: string
@@ -192,6 +205,12 @@ export interface PersonaSelectionRequest {
 export interface PlanArtifactSummary {
   opportunityIds: string[]
   title: string
+  recommendation: string
+  problemSolved: string
+  sourceLessonApplied: string
+  targetChange: string
+  expectedUserValue: string
+  implementationOutline: string[]
   scope: string
   filesLikelyTouched: string[]
   validationCommands: string[]
@@ -257,6 +276,9 @@ export interface WorkflowNode {
   kind: string
   harness: string
   title: string
+  description?: string | null
+  model?: string | null
+  modelRationale?: string | null
   prompt: string
   dependsOn: string[]
   gates: string[]

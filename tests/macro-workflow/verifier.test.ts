@@ -63,7 +63,7 @@ function validPlan() {
       },
       {
         id: "report",
-        kind: WorkflowNodeKind.VISUALIZATION,
+        kind: WorkflowNodeKind.REPORT,
         harness: WorkflowHarnessKind.REPORTER,
         title: "Write final report",
         prompt: "Summarize plan, execution, verification, and next steps.",

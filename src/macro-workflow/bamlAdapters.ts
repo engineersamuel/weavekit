@@ -5,6 +5,7 @@ import type {
 } from "../generated/baml_client/index.js";
 import type { RuntimeWorkflowPlan, WorkflowReplanPatch, WorkflowReplanPolicy } from "./types.js";
 import { WorkflowHarnessKind, WorkflowNodeKind } from "./types.js";
+import type { WorkflowUsageCollector } from "./usage.js";
 
 export type WorkflowPlannerInput = {
   prompt: string;
@@ -29,17 +30,37 @@ export type PlannerClientLike = {
   GenerateReplanPatch: (...args: unknown[]) => Promise<BamlWorkflowReplanPatch>;
 };
 
+type BamlClientOverride = {
+  client: string;
+};
+
+const PLAN_WORKFLOW_BAML_OPTIONS: BamlClientOverride = {
+  client: "CopilotProxyGpt55",
+};
+
+const GENERATE_REPLAN_PATCH_BAML_OPTIONS: BamlClientOverride = {
+  client: "CopilotProxyClaudeOpus48",
+};
+
+const PLANNER_METHOD_MODELS: Record<"PlanWorkflow" | "GenerateReplanPatch", string> = {
+  PlanWorkflow: "gpt-5.5",
+  GenerateReplanPatch: "claude-opus-4.8",
+};
+
 export type GeneratedWorkflowPlannerAdapterOptions = {
   plannerClient?: PlannerClientLike;
+  usageCollector?: WorkflowUsageCollector;
 };
 
 export class GeneratedWorkflowPlannerAdapter implements WorkflowPlannerAdapter {
   private readonly client: PlannerClientLike;
+  private readonly usageCollector?: WorkflowUsageCollector;
 
   constructor(clientOrOptions: PlannerClientLike | GeneratedWorkflowPlannerAdapterOptions = b as unknown as PlannerClientLike) {
     const maybeOptions = clientOrOptions as GeneratedWorkflowPlannerAdapterOptions;
-    if (maybeOptions && typeof maybeOptions === "object" && "plannerClient" in maybeOptions) {
-      this.client = maybeOptions.plannerClient!;
+    if (maybeOptions && typeof maybeOptions === "object" && ("plannerClient" in maybeOptions || "usageCollector" in maybeOptions)) {
+      this.client = maybeOptions.plannerClient ?? (b as unknown as PlannerClientLike);
+      this.usageCollector = maybeOptions.usageCollector;
     } else {
       this.client = clientOrOptions as PlannerClientLike;
     }
@@ -50,7 +71,7 @@ export class GeneratedWorkflowPlannerAdapter implements WorkflowPlannerAdapter {
       objective: input.objective,
       templateId: input.templateId,
       prompt: input.prompt,
-    });
+    }, PLAN_WORKFLOW_BAML_OPTIONS, this.usageCollector);
     return normalizeWorkflowPlan(plan);
   }
 
@@ -60,7 +81,7 @@ export class GeneratedWorkflowPlannerAdapter implements WorkflowPlannerAdapter {
       maxRemainingReplans: input.maxRemainingReplans,
       completedNodeIds: input.completedNodeIds,
       currentPlan: input.currentPlan,
-    });
+    }, GENERATE_REPLAN_PATCH_BAML_OPTIONS, this.usageCollector);
     return normalizeWorkflowReplanPatch(patch);
   }
 }
@@ -69,14 +90,31 @@ async function invokePlannerMethod<TArgs extends Record<string, unknown>, TResul
   client: PlannerClientLike,
   method: "PlanWorkflow" | "GenerateReplanPatch",
   args: TArgs,
+  options: BamlClientOverride,
+  usageCollector?: WorkflowUsageCollector,
 ): Promise<TResult> {
   const methodImpl = client[method] as unknown as (...args: unknown[]) => Promise<TResult>;
   const boundMethod = methodImpl.bind(client);
-  if (method === "PlanWorkflow") {
-    return await boundMethod(args.objective, args.prompt, args.templateId);
-  }
+  const collector = usageCollector?.createBamlCollector(`macro-workflow.${method}`);
+  const callOptions = {
+    ...options,
+    ...(collector ? { collector } : {}),
+  };
+  try {
+    if (method === "PlanWorkflow") {
+      return await boundMethod(args.objective, args.prompt, args.templateId, callOptions);
+    }
 
-  return await boundMethod(args.reason, args.maxRemainingReplans, args.completedNodeIds, args.currentPlan);
+    return await boundMethod(args.reason, args.maxRemainingReplans, args.completedNodeIds, args.currentPlan, callOptions);
+  } finally {
+    if (collector) {
+      usageCollector?.recordBamlCollector({
+        operation: method,
+        model: PLANNER_METHOD_MODELS[method],
+        collector,
+      });
+    }
+  }
 }
 
 function normalizeWorkflowPlan(plan: BamlWorkflowPlan): RuntimeWorkflowPlan {
@@ -90,6 +128,9 @@ function normalizeWorkflowPlan(plan: BamlWorkflowPlan): RuntimeWorkflowPlan {
       kind: normalizeWorkflowNodeKind(node.kind),
       harness: normalizeWorkflowHarnessKind(node.harness),
       title: node.title,
+      description: node.description ?? node.prompt,
+      model: node.model ?? inferNormalizedNodeModel(node.kind, node.harness),
+      modelRationale: node.modelRationale ?? "Default model inferred from normalized workflow node kind and harness.",
       prompt: node.prompt,
       dependsOn: node.dependsOn,
       gates: node.gates as Array<"output-contract" | "review-accepted" | "verification">,
@@ -108,6 +149,9 @@ function normalizeWorkflowReplanPatch(patch: BamlWorkflowReplanPatch): WorkflowR
       kind: normalizeWorkflowNodeKind(node.kind),
       harness: normalizeWorkflowHarnessKind(node.harness),
       title: node.title,
+      description: node.description ?? node.prompt,
+      model: node.model ?? inferNormalizedNodeModel(node.kind, node.harness),
+      modelRationale: node.modelRationale ?? "Default model inferred from normalized workflow node kind and harness.",
       prompt: node.prompt,
       dependsOn: node.dependsOn,
       gates: node.gates as Array<"output-contract" | "review-accepted" | "verification">,
@@ -123,6 +167,7 @@ function normalizeWorkflowNodeKind(kind: string): RuntimeWorkflowPlan["nodes"][n
   if (kind === WorkflowNodeKind.PLANNING) return WorkflowNodeKind.PLANNING;
   if (kind === WorkflowNodeKind.IMPLEMENTATION) return WorkflowNodeKind.IMPLEMENTATION;
   if (kind === WorkflowNodeKind.VERIFICATION) return WorkflowNodeKind.VERIFICATION;
+  if (kind === WorkflowNodeKind.REPORT) return WorkflowNodeKind.REPORT;
   return WorkflowNodeKind.VISUALIZATION;
 }
 
@@ -143,4 +188,17 @@ function normalizeReplanPolicy(policy: string): WorkflowReplanPolicy {
   if (policy === "on-review-rejection") return "on-review-rejection";
   if (policy === "on-verification-failure") return "on-verification-failure";
   return "never";
+}
+
+function inferNormalizedNodeModel(kind: string, harness: string): string {
+  if (harness === WorkflowHarnessKind.VERIFIER || harness === WorkflowHarnessKind.REPORTER) {
+    return "deterministic";
+  }
+  if (harness === WorkflowHarnessKind.COPILOT_SDK && kind === WorkflowNodeKind.IMPLEMENTATION) {
+    return "gpt-5.3-codex";
+  }
+  if (kind === WorkflowNodeKind.PLANNING) {
+    return "claude-opus-4.8";
+  }
+  return "gpt-5.5";
 }

@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { loadWeavekitConfig } from "./config.js";
+import { expandHomePath, loadLocalEnvFiles, loadTypedWeavekitConfig, loadWeavekitConfig, resolveProjectCatalogEntry, type ProjectCatalogEntry } from "./config.js";
 import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
 import type { DecisionCouncilLogger } from "./decision-council/logger.js";
@@ -27,6 +27,7 @@ export type DecisionCouncilCliArgs = {
 export type WorkflowCliArgs = {
   command: "plan" | "run" | "dashboard";
   inputPath?: string;
+  prompt?: string;
   outputDir: string;
   staticTemplate: boolean;
   dryRun: boolean;
@@ -35,6 +36,11 @@ export type WorkflowCliArgs = {
   dashboardUrl?: string;
   watchDir?: string;
   template?: string;
+  source?: string;
+  project?: string;
+  projectPath?: string;
+  mode?: "advisory" | "autonomous-pr";
+  configPath?: string;
 };
 
 export type WorkflowRunDescriptor = {
@@ -97,12 +103,12 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
 
 export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (argv[0] !== "workflow") {
-    throw new Error("Usage: weavekit workflow <plan|run|dashboard> [--input <path>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]");
+    throw new Error("Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]");
   }
 
   const command = argv[1];
   if (command !== "plan" && command !== "run" && command !== "dashboard") {
-    throw new Error("Usage: weavekit workflow <plan|run|dashboard> [--input <path>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]");
+    throw new Error("Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]");
   }
 
   const outputIndex = argv.indexOf("--output");
@@ -112,6 +118,12 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   const watchDirIndex = argv.indexOf("--watch-dir");
   const portIndex = argv.indexOf("--port");
   const inputIndex = argv.indexOf("--input");
+  const promptIndex = argv.indexOf("--prompt");
+  const sourceIndex = argv.indexOf("--source");
+  const projectIndex = argv.indexOf("--project");
+  const projectPathIndex = argv.indexOf("--project-path");
+  const modeIndex = argv.indexOf("--mode");
+  const configIndex = argv.indexOf("--config");
 
   if (templateIndex !== -1 && !argv[templateIndex + 1]) {
     throw new Error("Missing value for --template <id>.");
@@ -128,23 +140,53 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (portIndex !== -1 && !argv[portIndex + 1]) {
     throw new Error("Missing value for --port <port>.");
   }
-  if (command !== "dashboard" && inputIndex === -1) {
-    throw new Error("Missing required --input <path> argument.");
+  if (sourceIndex !== -1 && !argv[sourceIndex + 1]) {
+    throw new Error("Missing value for --source <url-or-path>.");
+  }
+  if (projectIndex !== -1 && !argv[projectIndex + 1]) {
+    throw new Error("Missing value for --project <id>.");
+  }
+  if (projectPathIndex !== -1 && !argv[projectPathIndex + 1]) {
+    throw new Error("Missing value for --project-path <path>.");
+  }
+  if (modeIndex !== -1 && !argv[modeIndex + 1]) {
+    throw new Error("Missing value for --mode <advisory|autonomous-pr>.");
+  }
+  if (configIndex !== -1 && !argv[configIndex + 1]) {
+    throw new Error("Missing value for --config <path>.");
+  }
+  if (promptIndex !== -1 && !argv[promptIndex + 1]) {
+    throw new Error("Missing value for --prompt <text>.");
+  }
+
+  const template = templateIndex === -1 ? undefined : argv[templateIndex + 1];
+  const isSourceToProject = template === "source-to-project";
+  if (command !== "dashboard" && inputIndex === -1 && promptIndex === -1 && !isSourceToProject) {
+    throw new Error("Missing required --input <path> or --prompt <text> argument.");
   }
   if (command !== "dashboard" && inputIndex !== -1 && !argv[inputIndex + 1]) {
     throw new Error("Missing value for --input <path>.");
   }
+  if (command !== "dashboard" && inputIndex !== -1 && promptIndex !== -1) {
+    throw new Error("Use either --input <path> or --prompt <text>, not both.");
+  }
+  if (command !== "dashboard" && isSourceToProject && projectIndex === -1 && projectPathIndex === -1) {
+    throw new Error("Missing required --project <id> or --project-path <path> argument.");
+  }
 
-  const template = templateIndex === -1 ? undefined : argv[templateIndex + 1];
   const dryRun = command === "plan" || argv.includes("--dry-run");
   const portValue = portIndex === -1 ? undefined : Number(argv[portIndex + 1]);
   const dashboardPortValue = dashboardPortIndex === -1 ? portValue : Number(argv[dashboardPortIndex + 1]);
   const dashboard = command !== "dashboard" && (argv.includes("--dashboard") || dashboardPortValue !== undefined);
   const dashboardUrl = dashboardUrlIndex === -1 ? undefined : argv[dashboardUrlIndex + 1];
   const watchDir = watchDirIndex === -1 ? undefined : argv[watchDirIndex + 1];
+  const mode = modeIndex === -1 ? undefined : argv[modeIndex + 1];
 
   if (dashboardPortValue !== undefined && (!Number.isInteger(dashboardPortValue) || dashboardPortValue < 1 || dashboardPortValue > 65535)) {
     throw new Error("Invalid --dashboard-port value. Expected an integer between 1 and 65535.");
+  }
+  if (mode !== undefined && mode !== "advisory" && mode !== "autonomous-pr") {
+    throw new Error("Invalid --mode value. Expected advisory or autonomous-pr.");
   }
 
   const parsed: WorkflowCliArgs = {
@@ -154,8 +196,11 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
     dryRun,
   };
 
-  if (command !== "dashboard") {
+  if (command !== "dashboard" && inputIndex !== -1) {
     parsed.inputPath = argv[inputIndex + 1]!;
+  }
+  if (command !== "dashboard" && promptIndex !== -1) {
+    parsed.prompt = argv[promptIndex + 1]!;
   }
   if (dashboard) {
     parsed.dashboard = true;
@@ -171,6 +216,21 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   }
   if (template !== undefined) {
     parsed.template = template;
+  }
+  if (sourceIndex !== -1) {
+    parsed.source = argv[sourceIndex + 1]!;
+  }
+  if (projectIndex !== -1) {
+    parsed.project = argv[projectIndex + 1]!;
+  }
+  if (projectPathIndex !== -1) {
+    parsed.projectPath = argv[projectPathIndex + 1]!;
+  }
+  if (mode !== undefined) {
+    parsed.mode = mode;
+  }
+  if (configIndex !== -1) {
+    parsed.configPath = argv[configIndex + 1];
   }
   return parsed;
 }
@@ -200,6 +260,13 @@ export function formatWorkflowCliSuccessMessage(args: { outputDir: string }): st
   return [`Macro workflow plan: ${args.outputDir}`, ""].join("\n");
 }
 
+export function formatWorkflowRunStartedMessage(args: { runId: string; outputDir: string }): string {
+  return [
+    `[weavekit] Workflow run id: ${args.runId}`,
+    `[weavekit] Workflow output: ${args.outputDir}`,
+  ].join("\n") + "\n";
+}
+
 export function createWorkflowRunDescriptor(outputRoot: string, objective: string): WorkflowRunDescriptor {
   const runId = randomUUID();
   const normalizedRoot = basename(outputRoot) === "latest" ? dirname(outputRoot) : outputRoot;
@@ -208,6 +275,19 @@ export function createWorkflowRunDescriptor(outputRoot: string, objective: strin
     runName: generateWorkflowRunName(objective),
     outputDir: join(normalizedRoot, runId),
   };
+}
+
+export function inferSourceReferenceFromPrompt(prompt: string): string | undefined {
+  const urlMatch = prompt.match(/https?:\/\/[^\s)>\]}"]+/);
+  if (urlMatch) {
+    return urlMatch[0]!.replace(/[.,;:!?]+$/, "");
+  }
+
+  const explicitLine = prompt.match(/^\s*(?:source|blog)\s*:\s*(.+?)\s*$/im);
+  if (!explicitLine?.[1]) {
+    return undefined;
+  }
+  return explicitLine[1].trim().replace(/[.,;:!?]+$/, "") || undefined;
 }
 
 function generateWorkflowRunName(objective: string): string {
@@ -227,10 +307,25 @@ function resolveWorkflowTemplateId(template: string | undefined): WorkflowPlanTe
   if (template === undefined) {
     return undefined;
   }
-  if (template !== "implementation-review") {
+  if (template !== "implementation-review" && template !== "source-to-project") {
     throw new Error(`Unknown workflow template: ${template}`);
   }
   return template;
+}
+
+function createProjectCatalogEntryFromPath(projectPath: string): ProjectCatalogEntry {
+  return {
+    id: "path-override",
+    displayName: "Path override",
+    workingTree: expandHomePath(projectPath),
+    mainline: "origin main",
+    remote: "origin",
+    contextDocs: [],
+    validationCommands: [],
+    autonomousPrAllowed: false,
+    notification: "cli",
+    knowledgeExport: "off",
+  };
 }
 
 export function createWorkflowProgressReporter(stream: Pick<NodeJS.WritableStream, "write"> = process.stderr) {
@@ -258,8 +353,43 @@ export function createWorkflowProgressReporter(stream: Pick<NodeJS.WritableStrea
   };
 }
 
+type WorkflowCopilotLogEvent = {
+  phase: string;
+  mode?: string;
+  model?: string;
+  cwd?: string;
+  timeoutMs?: number;
+  elapsedMs?: number;
+  promptLength?: number;
+  eventType?: string;
+  contentLength?: number;
+  message?: string;
+  toolName?: string;
+  toolCallCount?: number;
+  maxToolCalls?: number;
+};
+
+export function formatWorkflowCopilotLog(event: WorkflowCopilotLogEvent): string {
+  const details = [
+    event.mode ? `mode=${event.mode}` : undefined,
+    event.model ? `model=${event.model}` : undefined,
+    event.cwd ? `cwd=${event.cwd}` : undefined,
+    event.eventType ? `event=${event.eventType}` : undefined,
+    event.toolName ? `tool=${event.toolName}` : undefined,
+    event.toolCallCount !== undefined ? `toolCalls=${event.toolCallCount}` : undefined,
+    event.maxToolCalls !== undefined ? `maxToolCalls=${event.maxToolCalls}` : undefined,
+    event.timeoutMs !== undefined ? `timeoutMs=${event.timeoutMs}` : undefined,
+    event.elapsedMs !== undefined ? `elapsedMs=${event.elapsedMs}` : undefined,
+    event.promptLength !== undefined ? `promptChars=${event.promptLength}` : undefined,
+    event.contentLength !== undefined ? `contentChars=${event.contentLength}` : undefined,
+    event.message ? `message=${event.message.replace(/\s+/g, " ").slice(0, 160)}` : undefined,
+  ].filter((part): part is string => Boolean(part));
+  return `[weavekit][copilot-sdk] ${event.phase}${details.length ? ` ${details.join(" ")}` : ""}\n`;
+}
+
 export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
-  loadWeavekitConfig();
+  loadLocalEnvFiles();
+  const typedConfig = loadTypedWeavekitConfig(args.configPath);
 
   if (args.command === "dashboard") {
     const workflowDashboardModule = await import("./macro-workflow/dashboardServer.js");
@@ -281,14 +411,52 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     return "Workflow dashboard stopped.\n";
   }
 
-  if (!args.inputPath) {
-    throw new Error("Missing required --input <path> argument.");
+  if (!args.inputPath && !args.prompt && args.template !== "source-to-project") {
+    throw new Error("Missing required --input <path> or --prompt <text> argument.");
+  }
+  if (args.inputPath && args.prompt) {
+    throw new Error("Use either --input <path> or --prompt <text>, not both.");
   }
 
-  const prompt = await readFile(args.inputPath, "utf8");
+  const promptWasUserProvided = Boolean(args.prompt || args.inputPath);
+  const prompt = args.prompt ?? (args.inputPath ? await readFile(args.inputPath, "utf8") : `Source: ${args.source ?? ""}\nProject: ${args.project ?? args.projectPath ?? ""}`);
   const objective = prompt.trim() || "Macro workflow";
   const runDescriptor = createWorkflowRunDescriptor(args.outputDir, objective);
-  const [workflowArtifactsModule, workflowBamlAdapterModule, workflowHarnessModule, workflowLoggerModule, workflowRunnerModule, workflowTemplatesModule, workflowDashboardModule] = await Promise.all([
+  const isSourceToProject = args.template === "source-to-project";
+  const resolvedSource = isSourceToProject
+    ? args.source ?? inferSourceReferenceFromPrompt(prompt) ?? (promptWasUserProvided ? prompt.trim() : undefined)
+    : args.source;
+  let sourceToProjectProject: ProjectCatalogEntry | undefined;
+  let sourceToProjectMode: "advisory" | "autonomous-pr" | undefined;
+  if (isSourceToProject) {
+    if (!resolvedSource) {
+      throw new Error("Missing source-to-project source. Provide --source <url-or-path>, include a URL/source:/blog: line in the prompt/input, or pass the source text directly as --prompt/--input.");
+    }
+    if (!args.project && !args.projectPath) {
+      throw new Error("Missing required --project <id> or --project-path <path> argument.");
+    }
+    sourceToProjectProject = args.project
+      ? resolveProjectCatalogEntry(typedConfig, args.project)
+      : createProjectCatalogEntryFromPath(args.projectPath!);
+    sourceToProjectMode = args.mode ?? typedConfig.sourceToProject.mode;
+    if (sourceToProjectMode === "autonomous-pr" && !sourceToProjectProject.autonomousPrAllowed) {
+      throw new Error(`Autonomous PR mode is disabled for project ${sourceToProjectProject.id}.`);
+    }
+  }
+
+  process.stderr.write(formatWorkflowRunStartedMessage(runDescriptor));
+
+  const [
+    workflowArtifactsModule,
+    workflowBamlAdapterModule,
+    workflowHarnessModule,
+    workflowLoggerModule,
+    workflowRunnerModule,
+    workflowTemplatesModule,
+    workflowDashboardModule,
+    workflowSourceToProjectModule,
+    workflowUsageModule,
+  ] = await Promise.all([
     import("./macro-workflow/artifacts.js"),
     import("./macro-workflow/bamlAdapters.js"),
     import("./macro-workflow/harness.js"),
@@ -296,8 +464,11 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     import("./macro-workflow/runner.js"),
     import("./macro-workflow/templates.js"),
     import("./macro-workflow/dashboardServer.js"),
+    import("./macro-workflow/sourceToProject/harnesses.js"),
+    import("./macro-workflow/usage.js"),
   ]);
-  const planner = new workflowBamlAdapterModule.GeneratedWorkflowPlannerAdapter();
+  const usageCollector = new workflowUsageModule.WorkflowUsageCollector();
+  const planner = new workflowBamlAdapterModule.GeneratedWorkflowPlannerAdapter({ usageCollector });
   const templateId = resolveWorkflowTemplateId(args.template);
   const progress = createWorkflowProgressReporter();
   let plan;
@@ -305,7 +476,13 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   progress.start("Planning workflow DAG with the BAML planner...");
   try {
     plan = templateId
-      ? workflowTemplatesModule.materializeWorkflowPlan(templateId, { objective })
+      ? workflowTemplatesModule.materializeWorkflowPlan(templateId, {
+        objective,
+        source: resolvedSource,
+        project: args.project,
+        projectPath: args.projectPath,
+        mode: sourceToProjectMode ?? args.mode,
+      })
       : await planner.planWorkflow({ objective, prompt, templateId: "implementation-review" });
     progress.stop("Workflow plan generated.");
   } catch (error) {
@@ -328,6 +505,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       nodeResults: [],
       replans: [],
       activeNodeId: undefined,
+      usage: usageCollector.summarize(),
     }});
     return formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir });
   }
@@ -355,13 +533,74 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     await workflowArtifactsModule.writeMacroWorkflowStateArtifact(runDescriptor.outputDir, initialRunState);
   });
   if (args.dashboard) {
-    dashboardServer = await workflowDashboardModule.createWorkflowDashboardServer(initialRunState, { port: args.dashboardPort });
+    dashboardServer = await workflowDashboardModule.createWorkflowDashboardServer(initialRunState, { port: args.dashboardPort, watchDir: args.outputDir });
   } else if (args.dashboardUrl) {
     dashboardPublisher = await workflowDashboardModule.createWorkflowDashboardPublisher(args.dashboardUrl);
   }
 
+  const sourceToProjectNotifier = isSourceToProject
+    ? workflowSourceToProjectModule.createDefaultSourceToProjectNotifier()
+    : undefined;
+
+  const harnesses = isSourceToProject
+    ? workflowSourceToProjectModule.createSourceToProjectHarnessRegistry({
+      source: resolvedSource!,
+      originalPrompt: prompt,
+      project: sourceToProjectProject!,
+      mode: sourceToProjectMode!,
+      maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
+      thresholds: {
+        ...typedConfig.sourceToProject.thresholds,
+        ...sourceToProjectProject!.thresholds,
+      },
+      notifier: sourceToProjectNotifier,
+      copilot: process.env.WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE === "true"
+        ? workflowSourceToProjectModule.createOfflineSourceToProjectHarnessClient()
+        : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+          verboseEvents: typedConfig.copilot.verboseEvents,
+          onUserInputRequest: workflowSourceToProjectModule.createSourceToProjectUserInputRequestHandler({
+            project: sourceToProjectProject!,
+            source: resolvedSource!,
+            notifier: sourceToProjectNotifier!,
+          }),
+          onLog: (event) => {
+            process.stderr.write(formatWorkflowCopilotLog(event));
+          },
+          onUsage: (event) => {
+            usageCollector.record({
+              executor: "copilot-sdk",
+              operation: event.operation,
+              mode: event.mode,
+              model: event.model,
+              cwd: event.cwd,
+              nodeId: event.nodeId,
+              label: event.label,
+              ...event.usage,
+            });
+          },
+        }),
+      baml: process.env.WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE === "true"
+        ? undefined
+        : workflowSourceToProjectModule.createLiveSourceToProjectBamlClient({ usageCollector }),
+    })
+    : workflowHarnessModule.createStaticHarnessRegistry();
+
   const state = await workflowRunnerModule.runMacroWorkflow(plan, {
-    harnesses: workflowHarnessModule.createStaticHarnessRegistry(),
+    harnesses,
+    replanner: planner,
+    expandAfterNode: isSourceToProject
+      ? workflowSourceToProjectModule.createSourceToProjectDynamicExpander({
+        source: resolvedSource!,
+        originalPrompt: prompt,
+        project: sourceToProjectProject!,
+        mode: sourceToProjectMode!,
+        maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
+        thresholds: {
+          ...typedConfig.sourceToProject.thresholds,
+          ...sourceToProjectProject!.thresholds,
+        },
+      })
+      : undefined,
     logger: workflowLoggerModule.createInMemoryMacroWorkflowLogger(),
     onStateChange: (nextState, event) => {
       const stateWithRun = {
@@ -393,7 +632,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   await replayEventWrite;
   state.runId = runDescriptor.runId;
   state.runName = runDescriptor.runName;
+  state.usage = usageCollector.summarize();
   await workflowArtifactsModule.writeMacroWorkflowArtifacts({ outputDir: runDescriptor.outputDir, state, replayEvents });
+  process.stderr.write(workflowUsageModule.renderWorkflowUsageSummary(state.usage));
   if (dashboardServer) {
     await dashboardServer.stop();
   }
@@ -401,6 +642,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
 }
 
 export async function main(): Promise<void> {
+  loadLocalEnvFiles();
   loadWeavekitConfig();
 
   let telemetry: TelemetryHandle = noopTelemetryHandle;

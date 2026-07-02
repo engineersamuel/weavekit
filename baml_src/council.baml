@@ -61,7 +61,7 @@ class CouncilReport {
 }
 
 function NormalizePersonaCritique(raw: RawPersonaResult) -> PersonaCritique {
-  client DefaultClient
+  client CopilotProxyGpt5Mini
   prompt #"
     {{ _.role("system") }}
     Normalize this persona response into the requested critique schema.
@@ -83,7 +83,7 @@ function AssessCouncilRound(
   critiques: PersonaCritique[],
   failures: PersonaFailure[]
 ) -> RoundAssessment {
-  client DefaultClient
+  client CopilotProxyGpt54
   prompt #"
     {{ _.role("system") }}
     You are the Judge reducer for a design council. You are not a debating persona.
@@ -110,7 +110,7 @@ function CreateCouncilReport(
   assessments: RoundAssessment[],
   failures: PersonaFailure[]
 ) -> CouncilReport {
-  client DefaultClient
+  client CopilotProxyClaudeOpus48
   prompt #"
     {{ _.role("system") }}
     Create a decision-ready Design Council report.
