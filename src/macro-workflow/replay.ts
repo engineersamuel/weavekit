@@ -1,5 +1,5 @@
 import type {
-  RuntimeWorkflowNode,
+  WorkflowReplayNode,
   WorkflowReplayEvent,
   WorkflowReplayNodeView,
   WorkflowReplayViewState,
@@ -12,13 +12,14 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
   return events.reduce<WorkflowReplayViewState>(
     (view, event) => {
       if (event.kind === "planning-started") {
-        ensurePlanningNode(view, event.nodeId ?? "workflow-planning");
+        ensurePlanningNode(view, event.node);
         view.activePhase = "planning";
         return view;
       }
 
       if (event.kind === "planning-complete") {
-        const planningNode = view.nodes.find((node) => node.id === (event.nodeId ?? "workflow-planning"));
+        ensurePlanningNode(view, event.node);
+        const planningNode = view.nodes.find((node) => node.id === (event.node?.id ?? event.nodeId ?? "workflow-planning"));
         if (planningNode) {
           planningNode.status = "passed";
         }
@@ -95,29 +96,48 @@ function upsertEdge(view: WorkflowReplayViewState, source: string, target: strin
   view.edges.push({ id, source, target });
 }
 
-function ensurePlanningNode(view: WorkflowReplayViewState, id: string) {
-  if (view.nodes.some((node) => node.id === id)) {
+function ensurePlanningNode(view: WorkflowReplayViewState, node?: WorkflowReplayNode) {
+  const planningNode = node ?? {
+    id: "workflow-planning",
+    kind: "planning",
+    title: "DAG Planning",
+    description: "Plan the workflow DAG from the objective and template.",
+    model: "claude-opus-4.8",
+    modelRationale: "Workflow DAG planning uses the strongest available planning synthesis model.",
+    harness: "planning",
+    dependsOn: [],
+  };
+  if (view.nodes.some((node) => node.id === planningNode.id)) {
+    upsertNode(view, planningNode, "running");
     return;
   }
 
   view.nodes.unshift({
-    id,
-    kind: "planning",
-    title: "DAG Planning",
+    id: planningNode.id,
+    kind: planningNode.kind,
+    title: planningNode.title,
+    description: planningNode.description,
+    model: planningNode.model,
+    modelRationale: planningNode.modelRationale,
     status: "running",
-    harness: "planning",
+    harness: planningNode.harness,
     exists: true,
+    sourceNode: planningNode,
   });
 }
 
-function upsertNode(view: WorkflowReplayViewState, node: RuntimeWorkflowNode, status: WorkflowReplayNodeView["status"]) {
+function upsertNode(view: WorkflowReplayViewState, node: WorkflowReplayNode, status: WorkflowReplayNodeView["status"]) {
   const existing = view.nodes.find((candidate) => candidate.id === node.id);
   if (existing) {
     existing.kind = node.kind;
     existing.title = node.title;
+    existing.description = node.description;
+    existing.model = node.model;
+    existing.modelRationale = node.modelRationale;
     existing.status = status;
     existing.harness = node.harness;
     existing.exists = true;
+    existing.sourceNode = node;
     return;
   }
 
@@ -125,8 +145,12 @@ function upsertNode(view: WorkflowReplayViewState, node: RuntimeWorkflowNode, st
     id: node.id,
     kind: node.kind,
     title: node.title,
+    description: node.description,
+    model: node.model,
+    modelRationale: node.modelRationale,
     status,
     harness: node.harness,
     exists: true,
+    sourceNode: node,
   });
 }

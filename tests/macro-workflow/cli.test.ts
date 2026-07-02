@@ -2,13 +2,27 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
+import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("macro workflow CLI", () => {
+  it("formats live Copilot SDK harness diagnostics for stderr", () => {
+    expect(formatWorkflowCopilotLog({
+      phase: "session-event",
+      mode: "research",
+      model: "gpt-5.4",
+      eventType: "tool.execution_start",
+      toolName: "read_file",
+      toolCallCount: 7,
+      maxToolCalls: 40,
+      elapsedMs: 1234,
+    })).toBe("[weavekit][copilot-sdk] session-event mode=research model=gpt-5.4 event=tool.execution_start tool=read_file toolCalls=7 maxToolCalls=40 elapsedMs=1234\n");
+  });
+
   it("parses workflow plan arguments", () => {
     const parsed = parseWorkflowCliArgs(["workflow", "plan", "--input", "question.md", "--output", "runs/workflow"]);
 
@@ -19,6 +33,25 @@ describe("macro workflow CLI", () => {
       staticTemplate: false,
       dryRun: true,
     });
+  });
+
+  it("parses an inline workflow prompt", () => {
+    const parsed = parseWorkflowCliArgs(["workflow", "run", "--prompt", "Ship prompt input", "--template", "implementation-review"]);
+
+    expect(parsed).toEqual({
+      command: "run",
+      prompt: "Ship prompt input",
+      outputDir: "runs",
+      staticTemplate: true,
+      dryRun: false,
+      template: "implementation-review",
+    });
+  });
+
+  it("rejects ambiguous workflow prompt sources", () => {
+    expect(() => parseWorkflowCliArgs(["workflow", "run", "--input", "question.md", "--prompt", "Question"])).toThrow(
+      "Use either --input <path> or --prompt <text>, not both.",
+    );
   });
 
   it("parses a workflow template override", () => {
@@ -32,6 +65,53 @@ describe("macro workflow CLI", () => {
       dryRun: false,
       template: "implementation-review",
     });
+  });
+
+  it("parses source-to-project workflow selectors", () => {
+    const parsed = parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "source-to-project",
+      "--prompt",
+      "Read source for secondbrain",
+      "--source",
+      "https://example.com/post",
+      "--project",
+      "weavekit",
+      "--mode",
+      "autonomous-pr",
+      "--config",
+      "config.toml",
+    ]);
+
+    expect(parsed).toMatchObject({
+      command: "run",
+      template: "source-to-project",
+      staticTemplate: true,
+      prompt: "Read source for secondbrain",
+      source: "https://example.com/post",
+      project: "weavekit",
+      mode: "autonomous-pr",
+      configPath: "config.toml",
+      dryRun: false,
+    });
+  });
+
+  it("requires source-to-project project selectors", () => {
+    expect(() => parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "source-to-project",
+      "--source",
+      "https://example.com/post",
+    ])).toThrow("Missing required --project <id> or --project-path <path> argument.");
+  });
+
+  it("infers source-to-project sources from prompt URLs or source lines", () => {
+    expect(inferSourceReferenceFromPrompt("Read https://example.com/post, then apply it.")).toBe("https://example.com/post");
+    expect(inferSourceReferenceFromPrompt("Blog: ./docs/source-post.md\nProject: weavekit")).toBe("./docs/source-post.md");
   });
 
   it("parses dashboard subcommand args for a standalone viewer", () => {
@@ -78,6 +158,13 @@ describe("macro workflow CLI", () => {
     const message = formatWorkflowCliSuccessMessage({ outputDir: "runs/workflow" });
     expect(message).toContain("Macro workflow plan:");
     expect(message).toContain("runs/workflow");
+  });
+
+  it("formats an initial run id message", () => {
+    const message = formatWorkflowRunStartedMessage({ runId: "run-123", outputDir: "runs/run-123" });
+
+    expect(message).toContain("Workflow run id: run-123");
+    expect(message).toContain("Workflow output: runs/run-123");
   });
 
   it("creates a friendly run descriptor under the output root", () => {
@@ -131,6 +218,37 @@ describe("macro workflow CLI", () => {
       expect(state).toContain("\"runName\": \"Ship Replay Dashboard Follow Mode\"");
       expect(events).toContain("\"kind\":\"planning-started\"");
       expect(events).toContain("\"kind\":\"run-completed\"");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("prints the workflow run id before planning progress", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-"));
+    const inputPath = join(rootDir, "question.md");
+    const outputRoot = join(rootDir, "runs");
+    const stderrWrites: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    });
+    await writeFile(inputPath, "Ship visible run id", "utf8");
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        inputPath,
+        outputDir: outputRoot,
+        staticTemplate: true,
+        dryRun: false,
+        template: "implementation-review",
+      });
+
+      expect(stderrWrites[0]).toContain("[weavekit] Workflow run id:");
+      expect(stderrWrites[0]).toContain("[weavekit] Workflow output:");
+      expect(stderrWrites.findIndex((message) => message.includes("Workflow run id:"))).toBeLessThan(
+        stderrWrites.findIndex((message) => message.includes("Planning workflow DAG")),
+      );
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }

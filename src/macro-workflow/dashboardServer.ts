@@ -47,6 +47,7 @@ const CONTENT_TYPES = new Map<string, string>([
   [".html", "text/html; charset=utf-8"],
   [".js", "application/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
+  [".md", "text/markdown; charset=utf-8"],
   [".svg", "image/svg+xml"],
 ]);
 
@@ -139,6 +140,44 @@ export async function createWorkflowDashboardServer(
       return;
     }
 
+    if (requestUrl.pathname === "/api/artifact") {
+      if (!watchDir) {
+        response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Artifact serving requires a dashboard watch directory.");
+        return;
+      }
+
+      const filePath = await resolveRunArtifactRequest(requestUrl, watchDir, latestRun, latestRuns).catch(() => undefined);
+      if (!filePath) {
+        const payloadArtifact = await resolveRunPayloadArtifactRequest(requestUrl, watchDir, latestState, latestRun, latestRuns).catch(() => undefined);
+        if (payloadArtifact) {
+          response.writeHead(200, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Content-Disposition": `inline; filename="${payloadArtifact.filename.replace(/"/g, "")}"`,
+          });
+          response.end(payloadArtifact.contents);
+          return;
+        }
+        response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Artifact not found.");
+        return;
+      }
+
+      const contentType = CONTENT_TYPES.get(extname(filePath)) ?? "application/octet-stream";
+      try {
+        const contents = await readFile(filePath);
+        response.writeHead(200, {
+          "Content-Type": contentType,
+          "Content-Disposition": `inline; filename="${basename(filePath).replace(/"/g, "")}"`,
+        });
+        response.end(contents);
+      } catch {
+        response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Artifact not found.");
+      }
+      return;
+    }
+
     if (requestUrl.pathname === "/api/health") {
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ ok: true }));
@@ -183,7 +222,10 @@ export async function createWorkflowDashboardServer(
       latestHistory = history;
     }
     if (nextState.runId) {
-      latestRun = summarizeWorkflowRun(nextState, "", new Date());
+      const existingRun = latestRun?.runId === nextState.runId
+        ? latestRun
+        : latestRuns?.find((run) => run.runId === nextState.runId);
+      latestRun = summarizeWorkflowRun(nextState, existingRun?.statePath ?? "", new Date());
     }
     const snapshot = toSerializablePayload(nextState, event, latestHistory, latestRun, latestRuns);
     for (const client of clients) {
@@ -277,6 +319,90 @@ function toSerializablePayload(
   runs?: WorkflowDashboardRunSummary[],
 ): WorkflowDashboardSnapshot {
   return JSON.parse(JSON.stringify({ state, history, event, run, runs, activeRunId: run?.runId ?? state?.runId })) as WorkflowDashboardSnapshot;
+}
+
+async function resolveRunArtifactRequest(
+  requestUrl: URL,
+  watchDir: string,
+  latestRun: WorkflowDashboardRunSummary | undefined,
+  latestRuns: WorkflowDashboardRunSummary[] | undefined,
+): Promise<string | undefined> {
+  const artifactFile = requestUrl.searchParams.get("file") ?? "";
+  if (!artifactFile || artifactFile.startsWith("/") || artifactFile.split(/[\\/]+/).includes("..")) {
+    return undefined;
+  }
+
+  const runs = latestRuns ?? await listWorkflowDashboardRuns(watchDir);
+  const runId = requestUrl.searchParams.get("runId") ?? undefined;
+  const selectedRun = runId
+    ? runs.find((run) => run.runId === runId)
+    : latestRun ?? runs[0];
+  if (!selectedRun?.outputDir) {
+    return undefined;
+  }
+
+  const outputDir = resolve(selectedRun.outputDir);
+  const candidate = resolve(outputDir, artifactFile);
+  if (candidate !== outputDir && !candidate.startsWith(`${outputDir}/`)) {
+    return undefined;
+  }
+
+  const fileStats = await stat(candidate);
+  return fileStats.isFile() ? candidate : undefined;
+}
+
+async function resolveRunPayloadArtifactRequest(
+  requestUrl: URL,
+  watchDir: string,
+  latestState: MacroWorkflowRunStateLike | undefined,
+  latestRun: WorkflowDashboardRunSummary | undefined,
+  latestRuns: WorkflowDashboardRunSummary[] | undefined,
+): Promise<{ filename: string; contents: string } | undefined> {
+  const artifactFile = requestUrl.searchParams.get("file") ?? "";
+  if (!artifactFile || artifactFile.startsWith("/") || artifactFile.split(/[\\/]+/).includes("..")) {
+    return undefined;
+  }
+  const suffix = ".payload.json";
+  if (!artifactFile.endsWith(suffix)) {
+    return undefined;
+  }
+
+  const nodeId = artifactFile.slice(0, -suffix.length);
+  const runId = requestUrl.searchParams.get("runId") ?? undefined;
+  const state = await readSelectedWorkflowStateForArtifact(watchDir, runId, latestState, latestRun, latestRuns);
+  const payload = state?.nodeResults.find((result) => result.nodeId === nodeId)?.payload;
+  if (!payload) {
+    return undefined;
+  }
+
+  return {
+    filename: artifactFile,
+    contents: JSON.stringify(payload, null, 2),
+  };
+}
+
+async function readSelectedWorkflowStateForArtifact(
+  watchDir: string,
+  runId: string | undefined,
+  latestState: MacroWorkflowRunStateLike | undefined,
+  latestRun: WorkflowDashboardRunSummary | undefined,
+  latestRuns: WorkflowDashboardRunSummary[] | undefined,
+): Promise<MacroWorkflowRunStateLike | undefined> {
+  if ((!runId || latestState?.runId === runId) && latestState) {
+    return latestState;
+  }
+
+  const cachedRun = runId
+    ? latestRuns?.find((run) => run.runId === runId) ?? (latestRun?.runId === runId ? latestRun : undefined)
+    : latestRun ?? latestRuns?.[0];
+  const runs = cachedRun?.statePath ? [cachedRun] : await listWorkflowDashboardRuns(watchDir);
+  const selectedRun = runId ? runs.find((run) => run.runId === runId) : runs[0];
+  if (!selectedRun?.statePath) {
+    return undefined;
+  }
+
+  const contents = await readFile(selectedRun.statePath, "utf8");
+  return JSON.parse(contents) as MacroWorkflowRunStateLike;
 }
 
 function resolveStaticPath(pathname: string, dashboardDir: string, repoRoot: string): string | undefined {

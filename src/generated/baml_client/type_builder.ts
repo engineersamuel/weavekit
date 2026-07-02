@@ -29,7 +29,23 @@ export default class TypeBuilder {
     
     ClarifyingQuestion: ClassViewer<'ClarifyingQuestion', "id" | "text" | "choices">;
     
+    CorroborationReport: ClassViewer<'CorroborationReport', "sourceId" | "corroboratedClaims" | "disputedClaims" | "competingViews" | "citations">;
+    
     CouncilReport: ClassViewer<'CouncilReport', "recommendation" | "rationale" | "strongestObjections" | "unresolvedQuestions" | "confidence" | "convergence" | "nextExperiment" | "finalReportMarkdown" | "failedPersonas">;
+    
+    EvidenceReference: ClassViewer<'EvidenceReference', "id" | "source" | "quote">;
+    
+    FinalRecommendationReview: ClassViewer<'FinalRecommendationReview', "status" | "actionable" | "improvesProject" | "unnecessaryComplexity" | "benefitOutweighsCost" | "complexityAssessment" | "rationale" | "rejectionReason" | "telegramSummary">;
+    
+    NonApplicableLesson: ClassViewer<'NonApplicableLesson', "lesson" | "reason" | "evidence">;
+    
+    Opportunity: ClassViewer<'Opportunity', "id" | "title" | "lesson" | "projectChange" | "changeSurface" | "score" | "evidence" | "speculative">;
+    
+    OpportunityBundle: ClassViewer<'OpportunityBundle', "id" | "opportunityIds" | "rationale" | "sharedChangeSurface" | "combinedUserValue" | "separationRisk" | "maxPrScope">;
+    
+    OpportunityCouncilReview: ClassViewer<'OpportunityCouncilReview', "opportunities" | "nonApplicableLessons" | "bundles" | "rankingRationale">;
+    
+    OpportunityScore: ClassViewer<'OpportunityScore', "applicability" | "impact" | "confidence" | "implementationCost" | "risk">;
     
     PersonaChoiceCandidate: ClassViewer<'PersonaChoiceCandidate', "id" | "name" | "description" | "archetype" | "tags" | "modes" | "selectionHints" | "selectionAntiHints">;
     
@@ -43,13 +59,19 @@ export default class TypeBuilder {
     
     PersonaSelectionRequest: ClassViewer<'PersonaSelectionRequest', "workflowName" | "workflowPurpose" | "taskPrompt" | "context" | "constraints" | "roundNumber" | "roundFocus" | "previousSelectionIds" | "previousRoundSignals" | "minPersonas" | "maxPersonas" | "candidates">;
     
+    PlanArtifactSummary: ClassViewer<'PlanArtifactSummary', "opportunityIds" | "title" | "recommendation" | "problemSolved" | "sourceLessonApplied" | "targetChange" | "expectedUserValue" | "implementationOutline" | "scope" | "filesLikelyTouched" | "validationCommands" | "risks" | "rawPlanArtifactPath">;
+    
+    ProjectBrief: ClassViewer<'ProjectBrief', "projectId" | "displayName" | "architecture" | "constraints" | "goals" | "changeSurfaces" | "validationCommands" | "risks" | "evidence">;
+    
     RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
     
     RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "needsHumanInput" | "clarifyingQuestions" | "nextRoundBrief">;
     
     RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
     
-    WorkflowNode: ClassViewer<'WorkflowNode', "id" | "kind" | "harness" | "title" | "prompt" | "dependsOn" | "gates" | "writeMode" | "replanPolicy">;
+    SourceAnalysis: ClassViewer<'SourceAnalysis', "sourceId" | "title" | "accessLevel" | "summary" | "claims" | "transferableLessons" | "evidence">;
+    
+    WorkflowNode: ClassViewer<'WorkflowNode', "id" | "kind" | "harness" | "title" | "description" | "model" | "modelRationale" | "prompt" | "dependsOn" | "gates" | "writeMode" | "replanPolicy">;
     
     WorkflowPlan: ClassViewer<'WorkflowPlan', "id" | "objective" | "templateId" | "maxReplans" | "nodes">;
     
@@ -60,7 +82,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ClarifyingQuestion","CouncilReport","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","RawPersonaResult","RoundAssessment","RoutingDecision","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "ClarifyingQuestion","CorroborationReport","CouncilReport","EvidenceReference","FinalRecommendationReview","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","RoundAssessment","RoutingDecision","SourceAnalysis","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             
@@ -72,8 +94,40 @@ export default class TypeBuilder {
           "id","text","choices",
         ]);
         
+        this.CorroborationReport = this.tb.classViewer("CorroborationReport", [
+          "sourceId","corroboratedClaims","disputedClaims","competingViews","citations",
+        ]);
+        
         this.CouncilReport = this.tb.classViewer("CouncilReport", [
           "recommendation","rationale","strongestObjections","unresolvedQuestions","confidence","convergence","nextExperiment","finalReportMarkdown","failedPersonas",
+        ]);
+        
+        this.EvidenceReference = this.tb.classViewer("EvidenceReference", [
+          "id","source","quote",
+        ]);
+        
+        this.FinalRecommendationReview = this.tb.classViewer("FinalRecommendationReview", [
+          "status","actionable","improvesProject","unnecessaryComplexity","benefitOutweighsCost","complexityAssessment","rationale","rejectionReason","telegramSummary",
+        ]);
+        
+        this.NonApplicableLesson = this.tb.classViewer("NonApplicableLesson", [
+          "lesson","reason","evidence",
+        ]);
+        
+        this.Opportunity = this.tb.classViewer("Opportunity", [
+          "id","title","lesson","projectChange","changeSurface","score","evidence","speculative",
+        ]);
+        
+        this.OpportunityBundle = this.tb.classViewer("OpportunityBundle", [
+          "id","opportunityIds","rationale","sharedChangeSurface","combinedUserValue","separationRisk","maxPrScope",
+        ]);
+        
+        this.OpportunityCouncilReview = this.tb.classViewer("OpportunityCouncilReview", [
+          "opportunities","nonApplicableLessons","bundles","rankingRationale",
+        ]);
+        
+        this.OpportunityScore = this.tb.classViewer("OpportunityScore", [
+          "applicability","impact","confidence","implementationCost","risk",
         ]);
         
         this.PersonaChoiceCandidate = this.tb.classViewer("PersonaChoiceCandidate", [
@@ -100,6 +154,14 @@ export default class TypeBuilder {
           "workflowName","workflowPurpose","taskPrompt","context","constraints","roundNumber","roundFocus","previousSelectionIds","previousRoundSignals","minPersonas","maxPersonas","candidates",
         ]);
         
+        this.PlanArtifactSummary = this.tb.classViewer("PlanArtifactSummary", [
+          "opportunityIds","title","recommendation","problemSolved","sourceLessonApplied","targetChange","expectedUserValue","implementationOutline","scope","filesLikelyTouched","validationCommands","risks","rawPlanArtifactPath",
+        ]);
+        
+        this.ProjectBrief = this.tb.classViewer("ProjectBrief", [
+          "projectId","displayName","architecture","constraints","goals","changeSurfaces","validationCommands","risks","evidence",
+        ]);
+        
         this.RawPersonaResult = this.tb.classViewer("RawPersonaResult", [
           "personaId","text",
         ]);
@@ -112,8 +174,12 @@ export default class TypeBuilder {
           "clientName","model","reasoningEffort","rationale",
         ]);
         
+        this.SourceAnalysis = this.tb.classViewer("SourceAnalysis", [
+          "sourceId","title","accessLevel","summary","claims","transferableLessons","evidence",
+        ]);
+        
         this.WorkflowNode = this.tb.classViewer("WorkflowNode", [
-          "id","kind","harness","title","prompt","dependsOn","gates","writeMode","replanPolicy",
+          "id","kind","harness","title","description","model","modelRationale","prompt","dependsOn","gates","writeMode","replanPolicy",
         ]);
         
         this.WorkflowPlan = this.tb.classViewer("WorkflowPlan", [

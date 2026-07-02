@@ -39,9 +39,9 @@ export type RoutingPolicy = Record<RouteTaskKind, RoutingDecision>;
 // The persona default keeps today's SDK model so behavior is unchanged until tuned.
 export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
   [RouteTaskKind.NORMALIZE]: {
-    clientName: "CopilotProxyGpt54",
-    model: "gpt-5.4",
-    rationale: "Lowest-TTFT structured extraction default.",
+    clientName: "CopilotProxyGpt5Mini",
+    model: "gpt-5-mini",
+    rationale: "Structured extraction default optimized for cost and latency.",
   },
   [RouteTaskKind.ASSESS]: {
     clientName: "CopilotProxyGpt54",
@@ -49,12 +49,12 @@ export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
     rationale: "Lowest-TTFT Judge decision default.",
   },
   [RouteTaskKind.REPORT]: {
-    clientName: "CopilotProxyGpt54",
-    model: "gpt-5.4",
-    rationale: "Stable synthesis default compatible with BAML chat-completion parsing.",
+    clientName: "CopilotProxyClaudeOpus48",
+    model: "claude-opus-4.8",
+    rationale: "High-quality report synthesis default.",
   },
   [RouteTaskKind.PERSONA]: {
-    model: "claude-sonnet-4.5",
+    model: "claude-sonnet-5",
     rationale: "Persona debate tier (Copilot SDK model id).",
   },
 };
@@ -112,10 +112,10 @@ export type RouteModelCallFn = (
 
 // Candidate client names (BAML kinds) / SDK model ids (persona) offered to the LLM router.
 export const ROUTER_CANDIDATES: Record<RouteTaskKind, string[]> = {
-  [RouteTaskKind.NORMALIZE]: ["CopilotProxyGpt54", "CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1", "CopilotProxyGpt5Mini"],
+  [RouteTaskKind.NORMALIZE]: ["CopilotProxyGpt5Mini", "CopilotProxyGpt54", "CopilotProxyClaudeHaiku45", "CopilotProxyGrokCodeFast1"],
   [RouteTaskKind.ASSESS]: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
   [RouteTaskKind.REPORT]: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46", "CopilotProxyClaudeOpus48"],
-  [RouteTaskKind.PERSONA]: ["claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
+  [RouteTaskKind.PERSONA]: ["claude-sonnet-5", "claude-sonnet-4.5", "claude-sonnet-4.6", "gpt-5.4"],
 };
 
 // Canonical proxy model id for each BAML candidate client (mirrors baml_src/clients.baml).
@@ -127,8 +127,9 @@ export const BAML_CANDIDATE_CLIENT_MODELS: Record<string, string> = {
   CopilotProxyGrokCodeFast1: "grok-code-fast-1",
   CopilotProxyGpt5Mini: "gpt-5-mini",
   CopilotProxyClaudeSonnet46: "claude-sonnet-4-6",
+  CopilotProxyClaudeSonnet5: "claude-sonnet-5",
   CopilotProxyGpt54: "gpt-5.4",
-  CopilotProxyClaudeOpus48: "claude-opus-4-8",
+  CopilotProxyClaudeOpus48: "claude-opus-4.8",
   CopilotProxyGpt55: "gpt-5.5",
 };
 
@@ -144,9 +145,11 @@ export function normalizeRoutingDecision(
   fallbackModel: string,
 ): RoutingDecision {
   const effort = raw.reasoningEffort ?? undefined;
+  const clientName = raw.clientName ?? undefined;
+  const canonicalClientModel = clientName ? BAML_CANDIDATE_CLIENT_MODELS[clientName] : undefined;
   return {
-    clientName: raw.clientName ?? undefined,
-    model: raw.model ?? fallbackModel,
+    clientName,
+    model: canonicalClientModel ?? raw.model ?? fallbackModel,
     reasoningEffort: effort && VALID_EFFORTS.has(effort) ? (effort as ReasoningEffort) : undefined,
     rationale: raw.rationale ?? "",
   };

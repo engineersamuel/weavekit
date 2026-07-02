@@ -30,7 +30,7 @@ class PersonaSelection {
 }
 
 function ChoosePersonasForTask(request: PersonaSelectionRequest) -> PersonaSelection {
-  client CopilotProxyGpt54
+  client CopilotProxyGpt5Mini
   prompt #"
     {{ _.role("system") }}
     You are a fast persona chooser for reusable Weavekit workflows.

@@ -16,6 +16,86 @@ _Avoid_: agent, role, expert
 A single isolated, single-machine execution of a workflow from start to completion. Owns ephemeral typed state and completes all of its work in-process.
 _Avoid_: job, session, batch
 
+**Source artifact**:
+An external knowledge object such as a blog post, article, or research paper that a Run interprets for lessons applicable to a target project.
+_Avoid_: document, content, input
+
+**Source access level**:
+The handling classification for a Source artifact that determines whether adapters may use public web tools, local-only processing, or sanitized reporting.
+_Avoid_: privacy flag
+
+**Source ingestion**:
+The normalization of a Source artifact into a typed Source analysis contract, regardless of whether the artifact starts as a URL, file, paper, or pasted text.
+_Avoid_: fetch, parse (implementation details)
+
+**Target project**:
+The single repository or project context a Run evaluates against a Source artifact. A portfolio analysis is a fan-out of separate Runs, not one Run spanning many projects.
+_Avoid_: repo (when the project context is broader than files), project set
+
+**Project catalog**:
+The configured set of named Target projects available for Runs to select by stable project identity instead of ad hoc filesystem paths.
+_Avoid_: repo list, workspace list
+
+**Source-to-project workflow**:
+A named workflow that interprets one Source artifact against one Target project to produce ranked Opportunities, Plan artifacts, and optionally pull requests.
+_Avoid_: blog workflow, research workflow
+
+**Source analysis**:
+A read-only interpretation of a Source artifact that extracts its claims, assumptions, evidence, and transferable lessons before considering a Target project.
+_Avoid_: summary
+
+**Corroboration**:
+Bounded external research that checks a Source artifact's claims, competing views, and evidence quality before Opportunity mapping.
+_Avoid_: deep research (too broad), web search
+
+**Target project research**:
+A read-only investigation of the Target project that identifies relevant architecture, constraints, goals, and change surfaces before considering a Source artifact.
+_Avoid_: repo scan, code search
+
+**Project brief**:
+The typed result of Target project research: the project facts, constraints, goals, change surfaces, validation commands, and risk notes needed to judge Source artifact applicability.
+_Avoid_: research transcript, repo summary
+
+**Opportunity mapping**:
+The join point that relates Source analysis to Target project research and identifies project-specific opportunities, non-applicable lessons, and open questions.
+_Avoid_: insight extraction, improvement list
+
+**Opportunity**:
+A project-specific, source-grounded improvement candidate that can be ranked, planned, accepted as advisory, or rejected as not worth pursuing.
+_Avoid_: insight, idea, recommendation (too broad)
+
+**Non-applicable lesson**:
+A Source artifact lesson that was considered against the Target project and rejected with a recorded reason.
+_Avoid_: rejected idea, irrelevant insight
+
+**Opportunity budget**:
+The configured maximum number of ranked Opportunities that may proceed from council review into planning during one Run.
+_Avoid_: max actions, task limit
+
+**Opportunity threshold**:
+The configured score criteria an Opportunity or Opportunity bundle must satisfy before it may produce a Plan artifact or enter Autonomous PR mode.
+_Avoid_: quality bar, cutoff
+
+**Plan artifact**:
+The stored implementation plan produced for a selected Opportunity before any Target project changes are made.
+_Avoid_: plan-mode transcript
+
+**Opportunity bundle**:
+One or more tightly related Opportunities that are planned and implemented together because they share the same change surface and review story. A valid bundle has an explicit rationale, shared value, separation risk, and scope statement.
+_Avoid_: batch, task group
+
+**Advisory mode**:
+A Run mode that produces analysis, ranked opportunities, plans, and a report without modifying the Target project.
+_Avoid_: read-only mode
+
+**Autonomous PR mode**:
+A Run mode that may modify the Target project and prepare a review-ready pull request after opportunities and plans pass automated Verification gates. It never merges or self-approves the pull request.
+_Avoid_: autonomous mode, auto-implement (too vague)
+
+**Worktree preparation**:
+The required preflight that creates or selects an isolated Target project worktree, refreshes it from the configured mainline by rebasing, copies required environment files without recording their contents, and records the baseline before Autonomous PR mode may modify files.
+_Avoid_: checkout setup, branch setup
+
 **Reasoning step**:
 An individual LLM/BAML call inside a Run (persona, normalize, judge, re-plan). Recorded as a Langfuse span; never durable beyond the Run.
 _Avoid_: action, task
@@ -35,6 +115,14 @@ _Avoid_: routing policy (that is the implementation strategy, not the domain obj
 **Verification gate**:
 An automated check (types, lint, unit, eval, schema) interleaved with generation that must pass before a Run proceeds. Its control flow lives in code. The human as a *checkpoint on the council's output* (approval / sign-off) is eliminated and replaced by these automated checks.
 _Avoid_: human approval gate, sign-off — and do not confuse with Elicitation, which is a distinct, sanctioned concept.
+
+**Promotion decision**:
+A human choice at a Run boundary that selects whether a completed recommendation should remain advisory or trigger a follow-on mode such as planning, implementation, or pull-request creation. It is not a Verification gate inside the Run.
+_Avoid_: HILT review, approval gate, sign-off
+
+**Knowledge export**:
+An optional sanitized summary of a completed Run written outside Weavekit's run artifacts for durable reuse when Source access level and Target project policy allow it.
+_Avoid_: memory dump, transcript export
 
 **Elicitation**:
 The human as a *source of input* — supplying requirements or decisions a Run cannot infer — via an Intake interview (front door) or Clarifying questions (in-loop). Sanctioned and deliberately distinct from a Verification gate (the human as a checkpoint on output, which is eliminated). Elicitation never blocks a Run indefinitely: the human may skip or time out, the Run completes with the question recorded as unanswered, and it is enabled or disabled per run.

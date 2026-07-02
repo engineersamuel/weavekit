@@ -106,7 +106,7 @@ describe("persona worker", () => {
     expect(handler()).toEqual({ kind: "denied" });
   });
 
-  it("uses the Copilot CLI default model when no model is supplied", async () => {
+  it("uses the persona worker default model when no model is supplied", async () => {
     const session = {
       sendAndWait: vi.fn().mockResolvedValue({ data: { content: "Response" } }),
       disconnect: vi.fn().mockResolvedValue(undefined),
@@ -125,7 +125,7 @@ describe("persona worker", () => {
 
     expect(client.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "claude-sonnet-4.5",
+        model: "claude-sonnet-5",
       }),
     );
   });

@@ -173,7 +173,7 @@ client<llm> CopilotProxyClaudeOpus48 {
   options {
     base_url "http://127.0.0.1:8080/v1"
     api_key env.COPILOT_PROXY_API_KEY
-    model "claude-opus-4-8"
+    model "claude-opus-4.8"
   }
 }
 
@@ -219,6 +219,15 @@ client<llm> CopilotProxyClaudeSonnet46 {
     base_url "http://127.0.0.1:8080/v1"
     api_key env.COPILOT_PROXY_API_KEY
     model "claude-sonnet-4-6"
+  }
+}
+
+client<llm> CopilotProxyClaudeSonnet5 {
+  provider "openai-generic"
+  options {
+    base_url "http://127.0.0.1:8080/v1"
+    api_key env.COPILOT_PROXY_API_KEY
+    model "claude-sonnet-5"
   }
 }
 
@@ -367,7 +376,7 @@ client<llm> CopilotProxyGpt54 {
 }
 
 client<llm> CopilotProxyGpt55 {
-  provider "openai-generic"
+  provider "openai-responses"
   options {
     base_url "http://127.0.0.1:8080/v1"
     api_key env.COPILOT_PROXY_API_KEY

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -eq 0 ]]; then
+  echo 'Usage: mise run source-to-project "<prompt>"' >&2
+  exit 2
+fi
+
+prompt="$*"
+dashboard_url="${WEAVEKIT_WORKFLOW_DASHBOARD_URL:-http://127.0.0.1:4321}"
+
+args=(
+  --template source-to-project \
+  --prompt "$prompt" \
+  --project "${WEAVEKIT_SOURCE_TO_PROJECT_PROJECT:-weavekit}" \
+  --mode "${WEAVEKIT_SOURCE_TO_PROJECT_MODE:-advisory}" \
+  --output "${WEAVEKIT_WORKFLOW_OUTPUT:-runs}"
+)
+
+if [[ "$dashboard_url" != "off" && "$dashboard_url" != "none" ]]; then
+  args+=(--dashboard-url "$dashboard_url")
+fi
+
+nub src/cli.ts workflow run "${args[@]}"

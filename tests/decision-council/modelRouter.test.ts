@@ -34,25 +34,25 @@ describe("smoke routing", () => {
 });
 
 describe("PolicyModelRouter", () => {
-  it("returns the fast GPT-5.4 client for normalize with no effort override", async () => {
+  it("returns the GPT-5 mini client for normalize with no effort override", async () => {
     const router = new PolicyModelRouter();
     const decision = await router.route({ taskKind: RouteTaskKind.NORMALIZE });
 
-    expect(decision.clientName).toBe("CopilotProxyGpt54");
-    expect(decision.model).toBe("gpt-5.4");
+    expect(decision.clientName).toBe("CopilotProxyGpt5Mini");
+    expect(decision.model).toBe("gpt-5-mini");
     expect(decision.reasoningEffort).toBeUndefined();
     expect(decision.rationale).toMatch(/\S/);
   });
 
-  it("routes assess and report to GPT-5.4", async () => {
+  it("routes assess to GPT-5.4 and report to Opus 4.8", async () => {
     const router = new PolicyModelRouter();
     await expect(router.route({ taskKind: RouteTaskKind.ASSESS })).resolves.toMatchObject({
       clientName: "CopilotProxyGpt54",
       model: "gpt-5.4",
     });
     await expect(router.route({ taskKind: RouteTaskKind.REPORT })).resolves.toMatchObject({
-      clientName: "CopilotProxyGpt54",
-      model: "gpt-5.4",
+      clientName: "CopilotProxyClaudeOpus48",
+      model: "claude-opus-4.8",
     });
   });
 
@@ -61,7 +61,7 @@ describe("PolicyModelRouter", () => {
     const decision = await router.route({ taskKind: RouteTaskKind.PERSONA, personaId: "skeptic" });
 
     expect(decision.clientName).toBeUndefined();
-    expect(decision.model).toBe("claude-sonnet-4.5");
+    expect(decision.model).toBe("claude-sonnet-5");
   });
 
   it("honors a custom policy table", async () => {
@@ -113,7 +113,7 @@ describe("LlmModelRouter", () => {
     const router = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall: call });
 
     await expect(router.route({ taskKind: RouteTaskKind.NORMALIZE })).resolves.toMatchObject({
-      clientName: "CopilotProxyGpt54",
+      clientName: "CopilotProxyGpt5Mini",
     });
   });
 
@@ -143,7 +143,7 @@ describe("LlmModelRouter", () => {
 
     const start = Date.now();
     const decision = await router.route({ taskKind: RouteTaskKind.REPORT });
-    expect(decision.clientName).toBe("CopilotProxyGpt54");
+    expect(decision.clientName).toBe("CopilotProxyClaudeOpus48");
     expect(Date.now() - start).toBeLessThan(500);
   });
 
@@ -190,6 +190,23 @@ describe("normalizeRoutingDecision", () => {
     );
     expect(decision.reasoningEffort).toBe("high");
   });
+
+  it("canonicalizes BAML client decisions to the registered proxy model id", () => {
+    const decision = normalizeRoutingDecision(
+      {
+        clientName: "CopilotProxyGpt5Mini",
+        model: "copilot-proxy-gpt5-mini",
+        reasoningEffort: "low",
+        rationale: "picked",
+      },
+      "fallback",
+    );
+    expect(decision).toMatchObject({
+      clientName: "CopilotProxyGpt5Mini",
+      model: "gpt-5-mini",
+      reasoningEffort: "low",
+    });
+  });
 });
 
 import {
@@ -209,7 +226,7 @@ describe("HybridModelRouter", () => {
     const router = new HybridModelRouter({ policy: new PolicyModelRouter(), llm });
 
     const decision = await router.route({ taskKind: RouteTaskKind.NORMALIZE });
-    expect(decision.clientName).toBe("CopilotProxyGpt54");
+    expect(decision.clientName).toBe("CopilotProxyGpt5Mini");
     expect(llmCalls).toBe(0);
   });
 
@@ -231,7 +248,7 @@ describe("HybridModelRouter", () => {
   it("falls back to policy for dynamic requests when no LLM router is configured", async () => {
     const router = new HybridModelRouter({ policy: new PolicyModelRouter() });
     await expect(router.route({ taskKind: RouteTaskKind.REPORT, dynamic: true })).resolves.toMatchObject({
-      clientName: "CopilotProxyGpt54",
+      clientName: "CopilotProxyClaudeOpus48",
     });
   });
 });
@@ -242,7 +259,7 @@ describe("createDefaultModelRouter", () => {
       throw new Error("LLM should not be called for static requests");
     });
     await expect(router.route({ taskKind: RouteTaskKind.NORMALIZE })).resolves.toMatchObject({
-      clientName: "CopilotProxyGpt54",
+      clientName: "CopilotProxyGpt5Mini",
     });
   });
 });

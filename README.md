@@ -28,6 +28,7 @@ This layer is designed to be extended with additional routes or a faster LLM/BAM
 ## Setup
 
 ```bash
+mise install
 nub install
 nub run baml-generate
 ```
@@ -53,6 +54,73 @@ export BAML_MODEL="gpt-5-mini"
 > - `BAML_OPENAI_API_KEY` → `COPILOT_PROXY_API_KEY`
 
 GitHub Copilot SDK authentication for persona workers follows the SDK's local authentication behavior.
+
+## Source-to-project workflow
+
+The `source-to-project` workflow applies one external Source artifact to one configured Target project. It reads the source, corroborates claims, researches the target project, maps project-specific Opportunities, asks the Decision Council to rank and bundle them, writes Plan artifacts, and can optionally prepare review-ready pull requests.
+
+Advisory mode is the default and does not modify the target project:
+
+```bash
+nub src/cli.ts workflow run --template source-to-project --source "https://example.com/post" --project weavekit --mode advisory
+```
+
+`--source` may be omitted when the prompt or input file includes a URL, `source: ...`, or `blog: ...`; the explicit flag still wins when both are present.
+
+Use `--prompt` when you want a human-readable objective for the run without creating an input file:
+
+```bash
+nub src/cli.ts workflow run \
+  --template source-to-project \
+  --prompt "Read and analyze https://github.com/robert-mcdermott/ai-knowledge-graph for how it will apply to project: secondbrain" \
+  --source "https://github.com/robert-mcdermott/ai-knowledge-graph" \
+  --project secondbrain \
+  --mode advisory
+```
+
+For repeated source-to-project runs against weavekit, use the mise task. If the prompt includes a URL, Weavekit uses that URL as the Source artifact reference; otherwise it treats the prompt text itself as the Source artifact.
+
+```bash
+mise run source-to-project "Adapt these loops to weavekit: https://github.com/cobusgreyling/loop-engineering and also review their code to see how they are doing loops and what might apply to the weavekit static DAG templates or dynamic workflows"
+```
+
+The task defaults to `project=weavekit`, `mode=advisory`, `output=runs`, and dashboard publishing to `http://127.0.0.1:4321`. Override those with `WEAVEKIT_SOURCE_TO_PROJECT_PROJECT`, `WEAVEKIT_SOURCE_TO_PROJECT_MODE`, `WEAVEKIT_WORKFLOW_OUTPUT`, or `WEAVEKIT_WORKFLOW_DASHBOARD_URL`; set `WEAVEKIT_WORKFLOW_DASHBOARD_URL=off` to omit dashboard publishing.
+
+By default, source-to-project runs use the live Copilot SDK harness and generated BAML distillation calls. `WEAVEKIT_SOURCE_TO_PROJECT_MODEL` overrides Copilot SDK calls. Without that override, source reading and source corroboration use `gpt-5.5`, target project research uses `claude-sonnet-5`, planning uses `claude-opus-4.8`, and implementation uses `gpt-5.3-codex`. `BAML_MODEL` affects generated BAML distillation/mapping calls, not Copilot SDK sessions. For long repo inspections, tune `WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS`, `WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS`, or the global `WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS`. For deterministic local smoke tests only, set `WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE=true` to use the offline harness.
+
+Autonomous PR mode must be enabled for the project in `~/.weavekit/config.toml`:
+
+```bash
+nub src/cli.ts workflow run --template source-to-project --source "https://example.com/post" --project weavekit --mode autonomous-pr
+```
+
+Example project catalog entry:
+
+```toml
+[source_to_project]
+max_opportunities = 1
+min_applicability = 0.7
+min_confidence = 0.65
+min_impact = 0.5
+max_risk = 0.8
+mode = "advisory"
+
+[projects.weavekit]
+display_name = "Weavekit"
+working_tree = "/path/to/weavekit"
+mainline = "origin main"
+remote = "origin"
+context_docs = ["CONTEXT.md", "docs/adr"]
+validation_commands = ["nub run typecheck", "nub run test"]
+autonomous_pr_allowed = true
+max_opportunities = 1
+notification = "cli"
+knowledge_export = "off"
+```
+
+Set `notification = "telegram"` to send final-review rejection notices through `TELEGRAM_BOT_TOKEN` and `TELEGRAM_OWNER_CHAT_ID`. The CLI loads these from the current shell first, then local `.env`, then local `.env.fish` without printing secret values. Notification failures are recorded in the workflow artifacts but do not fail a guarded no-op rejection.
+
+Autonomous PR mode prepares an isolated worktree, rebases it from the configured mainline, copies `.env*` files into the worktree without recording their contents, runs implementation and verification, opens a PR, and stops. It never merges or self-approves.
 
 ## Native Flue agent harness
 

@@ -128,7 +128,7 @@ export class CopilotPersonaWorker implements PersonaWorker {
       const telemetryOptions = buildCopilotClientOptions();
       return telemetryOptions ? new CopilotClientCtor(telemetryOptions) : new CopilotClientCtor();
     });
-    this.model = args.model ?? "claude-sonnet-4.5";
+    this.model = args.model ?? "claude-sonnet-5";
     this.timeoutMs = args.timeoutMs ?? 120_000;
     this.onPermissionRequest = args.onPermissionRequest ?? (() => ({ kind: "denied" as const }));
     this.router = args.router;

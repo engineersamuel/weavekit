@@ -165,4 +165,74 @@ describe("macro workflow replanning", () => {
     expect(state.status).toBe("failed");
     expect(state.replans).toHaveLength(1);
   });
+
+  it("fails instead of deleting remaining nodes when no replanner is configured", async () => {
+    const plan: RuntimeWorkflowPlan = {
+      id: "no-default-delete-replan",
+      objective: "Do not hide failed research",
+      templateId: "source-to-project",
+      maxReplans: 2,
+      nodes: [
+        {
+          id: "source-reading",
+          kind: WorkflowNodeKind.RESEARCH,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Read source artifact",
+          prompt: "Read source",
+          dependsOn: [],
+          gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+          writeMode: "read-only",
+          replanPolicy: "on-contract-failure",
+        },
+        {
+          id: "source-corroboration",
+          kind: WorkflowNodeKind.RESEARCH,
+          harness: WorkflowHarnessKind.RESEARCH,
+          title: "Corroborate source claims",
+          prompt: "Corroborate",
+          dependsOn: ["source-reading"],
+          gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+          writeMode: "read-only",
+          replanPolicy: "on-contract-failure",
+        },
+        {
+          id: "project-research",
+          kind: WorkflowNodeKind.RESEARCH,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Research target project",
+          prompt: "Research project",
+          dependsOn: ["source-corroboration"],
+          gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+          writeMode: "read-only",
+          replanPolicy: "on-contract-failure",
+        },
+      ],
+    };
+    const harnesses = createStaticHarnessRegistry({
+      [WorkflowHarnessKind.COPILOT_SDK]: async () => ({ status: "passed", output: "source read" }),
+      [WorkflowHarnessKind.RESEARCH]: async () => ({
+        status: "failed",
+        output: "Timeout after 300000ms waiting for session.idle",
+        error: "Timeout after 300000ms waiting for session.idle",
+      }),
+    });
+
+    const state = await runMacroWorkflow(plan, { harnesses });
+
+    expect(state.status).toBe("failed");
+    expect(state.currentPlan.nodes.map((node) => node.id)).toEqual([
+      "source-reading",
+      "source-corroboration",
+      "project-research",
+    ]);
+    expect(state.replans).toHaveLength(0);
+    expect(state.nodeResults).toEqual([
+      expect.objectContaining({ nodeId: "source-reading", status: "passed" }),
+      expect.objectContaining({
+        nodeId: "source-corroboration",
+        status: "failed",
+        error: "Timeout after 300000ms waiting for session.idle",
+      }),
+    ]);
+  });
 });

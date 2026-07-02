@@ -1,13 +1,23 @@
-import type { RuntimeWorkflowNode, WorkflowNodeStatus } from "./types.js";
+import type { RuntimeWorkflowNode, WorkflowArtifactRef, WorkflowExecutionMetadata, WorkflowNodePayload, WorkflowNodeStatus } from "./types.js";
 import { WorkflowHarnessKind } from "./types.js";
+
+export type WorkflowExecutionContext = {
+  payloads: Map<string, WorkflowNodePayload>;
+  artifacts: Map<string, WorkflowArtifactRef[]>;
+  objective?: string;
+  outputDir?: string;
+};
 
 export type HarnessExecutionResult = {
   status: WorkflowNodeStatus;
   output: string;
   error?: string;
+  payload?: WorkflowNodePayload;
+  artifacts?: WorkflowArtifactRef[];
+  execution?: WorkflowExecutionMetadata;
 };
 
-export type HarnessAdapter = (node: RuntimeWorkflowNode) => Promise<HarnessExecutionResult>;
+export type HarnessAdapter = (node: RuntimeWorkflowNode, context: WorkflowExecutionContext) => Promise<HarnessExecutionResult>;
 export type HarnessRegistry = Map<WorkflowHarnessKind, HarnessAdapter>;
 
 export function createStaticHarnessRegistry(
