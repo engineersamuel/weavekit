@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, memo } from "react";
 import { createRoot } from "react-dom/client";
-import { Background, Controls, MiniMap, ReactFlow, Handle, Position } from "@xyflow/react";
+import { Background, ConnectionLineType, Controls, MiniMap, ReactFlow, Handle, Position } from "@xyflow/react";
+import { layoutWorkflowGraph } from "./layout.ts";
 
 const DEFAULT_STATUS = "pending";
 const STATUS_COLORS = {
@@ -186,7 +187,7 @@ function buildGraph(state) {
     });
   });
 
-  return { nodes, edges };
+  return layoutWorkflowGraph({ nodes, edges });
 }
 
 function buildReplayGraph(history, state, replayIndex) {
@@ -272,7 +273,7 @@ function buildReplayGraph(history, state, replayIndex) {
       };
     });
 
-  return { nodes, edges, replayView };
+  return { ...layoutWorkflowGraph({ nodes, edges }), replayView };
 }
 
 function buildReplayView(events) {
@@ -1480,6 +1481,7 @@ function App() {
           onNodeClick={(_, node) => setSelectedNodeId(node.id)}
           onPaneClick={() => setSelectedNodeId(null)}
           onInit={setFlowInstance}
+          connectionLineType={ConnectionLineType.SmoothStep}
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={20} size={1} color="#243044" />
