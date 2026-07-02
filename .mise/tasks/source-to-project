@@ -12,10 +12,15 @@ dashboard_url="${WEAVEKIT_WORKFLOW_DASHBOARD_URL:-http://127.0.0.1:4321}"
 args=(
   --template source-to-project \
   --prompt "$prompt" \
-  --project "${WEAVEKIT_SOURCE_TO_PROJECT_PROJECT:-weavekit}" \
   --mode "${WEAVEKIT_SOURCE_TO_PROJECT_MODE:-advisory}" \
   --output "${WEAVEKIT_WORKFLOW_OUTPUT:-runs}"
 )
+
+if [[ -n "${WEAVEKIT_SOURCE_TO_PROJECT_PROJECT:-}" ]]; then
+  args+=(--project "$WEAVEKIT_SOURCE_TO_PROJECT_PROJECT")
+else
+  args+=(--project-path "${WEAVEKIT_SOURCE_TO_PROJECT_PROJECT_PATH:-$PWD}")
+fi
 
 if [[ "$dashboard_url" != "off" && "$dashboard_url" != "none" ]]; then
   args+=(--dashboard-url "$dashboard_url")
