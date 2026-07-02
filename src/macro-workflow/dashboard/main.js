@@ -58,8 +58,8 @@ const WorkflowNode = memo(({ data }) => {
       <div className="node-model-line">model {data.model}</div>
       
       {isDecisionCouncil && (
-        <div className="persona-set-container">
-          <div className="persona-set-title">Council Personas</div>
+        <div className="persona-list-container">
+          <div className="persona-list-title">Council Personas</div>
           <div className="persona-grid">
             {personas.map((p) => (
               <span key={p.name} className="persona-badge" style={{ borderColor: p.color, color: p.color }}>

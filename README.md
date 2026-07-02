@@ -2,7 +2,7 @@
 
 Weavekit is a TypeScript-first playground for orchestrating GitHub Copilot SDK agents through explicit, typed workflows.
 
-The v0 workflow is a Design Council. It selects a compact, task-appropriate persona subset each round (or follows a deterministic named set override), normalizes critiques through BAML, asks a Judge reducer whether to continue, and writes:
+The v0 workflow is a Design Council. It selects a compact, task-appropriate persona subset each round from repo-local entity manifests, normalizes critiques through BAML, asks a Judge reducer whether to continue, and writes:
 
 - `DecisionCouncilReport.md`
 - `DecisionCouncilRunState.json`
@@ -205,34 +205,36 @@ BAML can print large raw prompts/responses. Use `BAML_LOG=warn` when you want We
 BAML_LOG=warn COPILOT_PROXY_API_KEY="anything" nub run council decision-council run --input examples/design-question.md --output runs/example
 ```
 
-## Personas and persona sets
+## Workflow Entity Manifests
 
-By default, the council chooses personas dynamically each round. Pass `--persona-set <name>` to bypass dynamic selection with a deterministic static set (recommended for reproducible runs).
+Weavekit uses repo-local YAML Workflow Entity Manifests as the canonical catalog for reusable workflow entities.
+
+- Personas live in `entities/personas/<id>.yaml` with sibling prompt prose in `entities/personas/<id>.md`.
+- Artifacts live in `entities/artifacts/<id>.yaml` and reference BAML-owned functions.
+- Elicitation contracts live in `entities/elicitation/<id>.yaml` with sibling prompt prose.
+- Artifact and elicitation manifests are validated in v1 but are not invoked directly by runtime code.
+
+Validate the catalog before a run:
+
+```bash
+nub src/cli.ts entity validate
+```
+
+Decision Council dynamically selects from all eligible manifest personas. Static persona sets are not supported.
 
 ```bash
 nub run council decision-council run --input examples/design-question.md
-nub run council decision-council run --input examples/design-question.md --persona-set default
 ```
-
-| Set | Personas | Use for |
-| --- | --- | --- |
-| `default` | Socratic Questioner, Deep Module/DRY Architect, Pragmatic Builder, Skeptic | General design critique |
-| `strategic` | the four defaults **+ Strategic Game Theorist + Sun Tzu Strategist** | Decisions with competition, incentives, timing, or positioning |
-| `dialectic` | Dialectic Advocate, Dialectic Adversary, Hostile Auditor | Thesis/antithesis stress test of a single proposal |
-| `smoke` | Pragmatic Builder, Skeptic | Fast integration smoke testing (see below) |
 
 ## Smoke testing
 
-For fast end-to-end integration smoke tests, use `--smoke`. It is a preset that runs the
-lightweight 2-persona `smoke` set for a **single round** and pins every model call (personas and
-BAML normalize/assess/report) to `gpt-5-mini` for speed:
+For fast end-to-end integration smoke tests, use `--smoke`. It is a runtime preset that keeps dynamic persona selection, caps selection to two personas, runs a **single round**, and pins every model call (personas and BAML normalize/assess/report) to `gpt-5-mini` for speed:
 
 ```bash
 nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/smoke
 ```
 
-`--smoke` defaults `--persona-set` to `smoke` and `--max-rounds` to `1`; both can still be
-overridden explicitly. `--max-rounds <n>` is also available independently to cap any run.
+`--smoke` defaults `--max-rounds` to `1`. `--max-rounds <n>` is also available independently to cap any run.
 
 A `mise` task wraps the smoke command (with `BAML_LOG=warn` and a placeholder proxy key):
 
@@ -242,31 +244,28 @@ mise run council:smoke
 
 ### Sun Tzu Strategist
 
-`sun-tzu` reads a decision as terrain. It names the real battlefield and the actual opposing force (not the surface rival), finds the undefended gap, prescribes the exact next move, and names the trap to avoid — then closes on the one governing principle that makes the move win. It is cold and prescriptive ("give the move, not the wisdom"); in-council it ends every critique with the four claims/risks/questions/recommendations lists so BAML normalization stays lossless. The full standalone form lives in the canonical spec [`personas/sun-tzu.md`](personas/sun-tzu.md).
+`sun-tzu` reads a decision as terrain. It names the real battlefield and the actual opposing force (not the surface rival), finds the undefended gap, prescribes the exact next move, and names the trap to avoid — then closes on the one governing principle that makes the move win. It is cold and prescriptive ("give the move, not the wisdom"); in-council it ends every critique with the four claims/risks/questions/recommendations lists so BAML normalization stays lossless. The full standalone form lives in [`entities/personas/sun-tzu.md`](entities/personas/sun-tzu.md).
 
 ### Reusing personas in other workflows
 
-Personas live in a workflow-agnostic registry under [`personas/`](personas/): one TOML file per persona (`personas/<id>.toml`) plus a portable canonical spec (`personas/<id>.md`), grouped into named sets in [`personas/sets.toml`](personas/sets.toml). Future workflows can reuse `createBamlPersonaSelector` (dynamic chooser) or `createStaticPersonaSelector` (deterministic static selection) from `weavekit`, alongside direct registry APIs:
+Personas are loaded from the entity catalog and exposed through manifest-backed APIs. Future workflows can reuse `createBamlPersonaSelector` with `listPersonas()` or direct persona lookup:
 
 ```ts
 import {
   createBamlPersonaSelector,
-  createStaticPersonaSelector,
   getPersona,
-  getPersonaSet,
-  listPersonaSets,
+  listPersonas,
   composePersonaPrompt,
 } from "weavekit";
 
 const sunTzu = getPersona("sun-tzu");
-const dynamicSelector = createBamlPersonaSelector({ candidatePersonas: getPersonaSet("default").personas, minPersonas: 2, maxPersonas: 6 });
-const staticSelector = createStaticPersonaSelector(getPersonaSet("default"));
+const dynamicSelector = createBamlPersonaSelector({ candidatePersonas: listPersonas(), minPersonas: 2, maxPersonas: 6 });
 const message = composePersonaPrompt(sunTzu, {
   brief: { roundNumber: 1, prompt: "Should we out-build a larger competitor?", focus: "Strategy" },
 });
 ```
 
-`getPersona(id)`, `getPersonaSet(name)`, and `listPersonaSets()` read the registry; `composePersonaPrompt` deterministically renders a persona's stance, framing corrections, anti-hedging, and mode into the round message. Set `WEAVEKIT_PERSONAS_DIR` to point at a different directory to load a custom persona library.
+`getPersona(id)` and `listPersonas()` read the validated entity catalog; `composePersonaPrompt` renders the sibling Markdown prompt with the round brief.
 
 ## Model + effort routing
 

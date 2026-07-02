@@ -149,9 +149,8 @@ export interface PersonaChoiceCandidate {
   description: string
   archetype?: string | null
   tags: string[]
-  modes: string[]
-  selectionHints: string[]
-  selectionAntiHints: string[]
+  useWhen: string[]
+  avoidWhen: string[]
   
 }
 

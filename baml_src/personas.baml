@@ -4,9 +4,8 @@ class PersonaChoiceCandidate {
   description string
   archetype string?
   tags string[]
-  modes string[]
-  selectionHints string[]
-  selectionAntiHints string[]
+  useWhen string[]
+  avoidWhen string[]
 }
 
 class PersonaSelectionRequest {

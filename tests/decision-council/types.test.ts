@@ -8,7 +8,13 @@ import {
   DecisionRoundAssessmentSchema,
   createInitialRunState,
 } from "../../src/decision-council/types.js";
-import { defaultPersonaSet } from "../../src/decision-council/personas.js";
+import { listPersonas } from "../../src/personas/index.js";
+
+function testPersonas() {
+  const ids = ["socratic", "deep-module-dry", "pragmatic", "skeptic"];
+  const byId = new Map(listPersonas().map((persona) => [persona.id, persona]));
+  return ids.map((id) => byId.get(id)!);
+}
 
 describe("decision council domain types", () => {
   it("accepts a minimal decision council input", () => {
@@ -23,7 +29,7 @@ describe("decision council domain types", () => {
   it("creates initial run state with max three rounds", () => {
     const state = createInitialRunState(
       { prompt: "Evaluate this decision." },
-      defaultPersonaSet,
+      { name: "test", personas: testPersonas() },
     );
 
     expect(state.maxRounds).toBe(3);
@@ -39,7 +45,7 @@ describe("decision council domain types", () => {
   it("honors a custom maxRounds for single-round smoke runs", () => {
     const state = createInitialRunState(
       { prompt: "Evaluate this decision." },
-      defaultPersonaSet,
+      { name: "test", personas: testPersonas() },
       1,
     );
 
@@ -90,6 +96,27 @@ describe("decision council domain types", () => {
     });
 
     expect(assessment.nextRoundBrief).toBeUndefined();
+  });
+
+  it("normalizes null clarifying question choices from BAML into omitted choices", () => {
+    const assessment = DecisionRoundAssessmentSchema.parse({
+      roundNumber: 2,
+      consensus: "Need user input on scope.",
+      disagreements: ["scope"],
+      confidence: 0.5,
+      convergence: 0.4,
+      shouldContinue: true,
+      diminishingReturns: false,
+      needsHumanInput: true,
+      clarifyingQuestions: [
+        { id: "q1", text: "What is the budget ceiling?", choices: null },
+      ],
+    });
+
+    expect(assessment.clarifyingQuestions?.[0]).toEqual({
+      id: "q1",
+      text: "What is the budget ceiling?",
+    });
   });
 
   it("requires round persona selections to include at least two ids and rationale", () => {

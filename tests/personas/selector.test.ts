@@ -1,26 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PersonaSelectionRequest } from "../../src/generated/baml_client/index.js";
-import type { PersonaDefinition, PersonaSet } from "../../src/personas/schema.js";
+import type { PersonaDefinition } from "../../src/personas/schema.js";
 import {
   createBamlPersonaSelector,
-  createStaticPersonaSelector,
   type PersonaSelectionInput,
 } from "../../src/personas/selector.js";
 import { createBamlPersonaSelector as createFromPersonasIndex } from "../../src/personas/index.js";
-import { createBamlPersonaSelector as createFromRootIndex } from "../../src/index.js";
 
 const candidateA: PersonaDefinition = {
   id: "socratic",
   name: "Socratic",
   description: "Questions assumptions and tests logic.",
   prompt: "Ask hard questions.",
+  role: "advisor",
   archetype: "critic",
   tags: ["questions"],
-  modes: ["analyze"],
-  selectionHints: ["Use for requirement ambiguity."],
-  selectionAntiHints: ["Avoid when pure implementation speed is needed."],
-  framingCorrections: [],
-  ignores: [],
+  useWhen: ["Use for requirement ambiguity."],
+  avoidWhen: ["Avoid when pure implementation speed is needed."],
 };
 
 const candidateB: PersonaDefinition = {
@@ -28,13 +24,11 @@ const candidateB: PersonaDefinition = {
   name: "Builder",
   description: "Turns decisions into concrete implementation steps.",
   prompt: "Build pragmatic plans.",
+  role: "advisor",
   archetype: "analyst",
   tags: ["delivery"],
-  modes: ["advise"],
-  selectionHints: ["Use when execution clarity is needed."],
-  selectionAntiHints: ["Avoid for purely adversarial review."],
-  framingCorrections: [],
-  ignores: [],
+  useWhen: ["Use when execution clarity is needed."],
+  avoidWhen: ["Avoid for purely adversarial review."],
 };
 
 const baseInput: PersonaSelectionInput = {
@@ -50,7 +44,7 @@ const baseInput: PersonaSelectionInput = {
 };
 
 describe("createBamlPersonaSelector", () => {
-  it("sends a compact candidate request and excludes raw persona prompts", async () => {
+  it("sends manifest selector fields and excludes raw persona prompts", async () => {
     let capturedRequest: PersonaSelectionRequest | undefined;
     const selector = createBamlPersonaSelector({
       candidatePersonas: [candidateA, candidateB],
@@ -72,9 +66,8 @@ describe("createBamlPersonaSelector", () => {
         description: "Questions assumptions and tests logic.",
         archetype: "critic",
         tags: ["questions"],
-        modes: ["analyze"],
-        selectionHints: ["Use for requirement ambiguity."],
-        selectionAntiHints: ["Avoid when pure implementation speed is needed."],
+        useWhen: ["Use for requirement ambiguity."],
+        avoidWhen: ["Avoid when pure implementation speed is needed."],
       },
       {
         id: "builder",
@@ -82,9 +75,8 @@ describe("createBamlPersonaSelector", () => {
         description: "Turns decisions into concrete implementation steps.",
         archetype: "analyst",
         tags: ["delivery"],
-        modes: ["advise"],
-        selectionHints: ["Use when execution clarity is needed."],
-        selectionAntiHints: ["Avoid for purely adversarial review."],
+        useWhen: ["Use when execution clarity is needed."],
+        avoidWhen: ["Avoid for purely adversarial review."],
       },
     ]);
     expect(capturedRequest?.candidates[0]).not.toHaveProperty("prompt");
@@ -199,24 +191,9 @@ describe("createBamlPersonaSelector", () => {
   });
 });
 
-describe("createStaticPersonaSelector", () => {
-  it("returns cloned static selection without invoking BAML", async () => {
-    const staticSet: PersonaSet = { name: "default", personas: [candidateA, candidateB] };
-    const selector = createStaticPersonaSelector(staticSet);
-
-    const first = await selector.choosePersonas(baseInput);
-    first.personaSet.personas[0]!.name = "Mutated";
-
-    const second = await selector.choosePersonas(baseInput);
-    expect(second.personaSet.personas[0]!.name).toBe("Socratic");
-    expect(second.rationale).toContain("Static persona selector");
-  });
-});
-
 describe("public exports", () => {
-  it("re-exports selector constructors from personas and root index", () => {
+  it("re-exports the BAML selector constructor from personas index", () => {
     expect(createFromPersonasIndex).toBe(createBamlPersonaSelector);
-    expect(createFromRootIndex).toBe(createBamlPersonaSelector);
   });
 
   it("only calls BAML for BAML-backed selector", async () => {

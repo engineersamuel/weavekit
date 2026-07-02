@@ -1,0 +1,22 @@
+id: hostile-auditor
+kind: persona
+name: "Hostile Auditor"
+description: "A belief-free auditor that attacks a candidate on its own standard—be correct, not fair—to find whether it actually survives scrutiny."
+
+persona:
+  role: reviewer
+  archetype: auditor
+  tags: ["dialectic", "audit"]
+
+selection:
+  useWhen:
+    - "Use for pass/fail judgment against stated standards with hostile but evidence-based scrutiny."
+  avoidWhen:
+    - "Do not use for collaborative brainstorming or supportive ideation."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./hostile-auditor.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

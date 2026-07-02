@@ -92,6 +92,7 @@ export const EntityManifestSchema = z.discriminatedUnion("kind", [
   ArtifactEntityManifestSchema,
   ElicitationEntityManifestSchema,
 ]);
+export const WorkflowEntityManifestSchema = EntityManifestSchema;
 
 export type PersonaEntityManifest = z.infer<typeof PersonaEntityManifestSchema>;
 export type ArtifactEntityManifest = z.infer<typeof ArtifactEntityManifestSchema>;
@@ -113,45 +114,53 @@ export type EntityValidationResult = {
   errors: EntityValidationError[];
 };
 
-export type PersonaRuntimeDefinition = {
-  id: string;
-  name: string;
-  description: string;
-  prompt: string;
-  role: z.infer<typeof PersonaRoleSchema>;
-  archetype?: z.infer<typeof PersonaArchetypeValueSchema>;
-  tags: string[];
-  useWhen: string[];
-  avoidWhen: string[];
-  skill?: {
-    name: string;
-  };
-};
+export const PersonaRuntimeDefinitionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().min(1),
+  prompt: z.string().min(1),
+  role: PersonaRoleSchema,
+  archetype: PersonaArchetypeSchema,
+  tags: z.array(z.string().min(1)),
+  useWhen: z.array(z.string().min(1)),
+  avoidWhen: z.array(z.string().min(1)),
+  skill: z.object({
+    name: z.string().min(1),
+  }).strict().optional(),
+}).strict();
+export type PersonaRuntimeDefinition = z.infer<typeof PersonaRuntimeDefinitionSchema>;
 
 export function collectZodEntityErrors(
   result: { success: false; error: z.ZodError } | { success: true },
   filePath?: string,
 ): EntityValidationError[] {
   if (result.success) return [];
-  return result.error.issues.map((issue) => {
-    // zod uses `unrecognized_keys` with `keys` array for strict unknown-key errors
-    const anyIssue = issue as any;
-    let fieldPath = "";
-    if (anyIssue.code === "unrecognized_keys" && Array.isArray(anyIssue.keys) && anyIssue.keys.length > 0) {
-      fieldPath = anyIssue.keys.join(".");
-    } else {
-      fieldPath = issue.path.join(".") || "<root>";
+  return result.error.issues.flatMap((issue) => {
+    if (issue.code === "unrecognized_keys") {
+      const parentPath = issue.path.join(".");
+      return issue.keys.map((key) => {
+        const fieldPath = parentPath ? `${parentPath}.${key}` : key;
+        return toEntityValidationError(issue.message, fieldPath, filePath);
+      });
     }
 
-    const invalidKind = fieldPath === "kind";
-    return {
-      code: "entity.schema",
-      filePath,
-      fieldPath,
-      message: issue.message,
-      repairHint: invalidKind
-        ? "Use kind: persona and set persona.role: reviewer."
-        : `Fix ${fieldPath} to match the entity manifest schema.`,
-    };
+    const fieldPath = issue.path.join(".") || "<root>";
+    return toEntityValidationError(issue.message, fieldPath, filePath);
   });
+}
+
+function toEntityValidationError(
+  message: string,
+  fieldPath: string,
+  filePath?: string,
+): EntityValidationError {
+  return {
+    code: "entity.schema",
+    filePath,
+    fieldPath,
+    message,
+    repairHint: fieldPath === "kind"
+      ? "Use kind: persona and set persona.role: reviewer."
+      : `Fix ${fieldPath} to match the entity manifest schema.`,
+  };
 }

@@ -1,0 +1,24 @@
+id: project-scope-clarification
+kind: elicitation
+name: Project Scope Clarification
+description: Requests missing project scope when a workflow cannot choose a target safely.
+
+elicitation:
+  channel: deferred
+  requiredResponse: text
+
+selection:
+  useWhen:
+    - The run cannot identify a target project or safe scope.
+  avoidWhen:
+    - The run has enough project metadata to continue.
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./project-scope-clarification.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique
+
+capabilities:
+  skills: []

@@ -137,13 +137,13 @@ describe("ensureSkillInstalled", () => {
     ).rejects.toThrow(/mckinsey/);
   });
 
-  it("throws a descriptive error when skill.bundle is missing", async () => {
+  it("throws a descriptive error when the skill has no bundle mapping", async () => {
     mockExistsSync.mockReturnValue(false); // not yet installed
-    const skillNoBunde = { name: "mckinsey-strategist", installer: "claude-superskills" };
+    const unmappedSkill = { name: "unknown-skill" };
 
     await expect(
-      ensureSkillInstalled({ skill: skillNoBunde, cacheDir: FAKE_CACHE_DIR }),
-    ).rejects.toThrow(/bundle/i);
+      ensureSkillInstalled({ skill: unmappedSkill, cacheDir: FAKE_CACHE_DIR }),
+    ).rejects.toThrow(/bundle mapping/i);
 
     expect(mockExecFile).not.toHaveBeenCalled();
   });

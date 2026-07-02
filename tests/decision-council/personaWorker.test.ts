@@ -19,6 +19,10 @@ const persona: PersonaDefinition = PersonaDefinitionSchema.parse({
   name: "Skeptic",
   description: "Challenges weak evidence.",
   prompt: "Challenge weak evidence.",
+  role: "reviewer",
+  tags: ["risk"],
+  useWhen: ["Use for risk discovery."],
+  avoidWhen: ["Avoid for advocacy."],
 });
 
 const brief: RoundBrief = {
@@ -335,7 +339,11 @@ describe("persona worker — skill-backed branch", () => {
     name: "McKinsey",
     description: "d",
     prompt: "p",
-    skill: { name: "mckinsey-strategist", bundle: "mckinsey" },
+    role: "advisor",
+    tags: ["strategy"],
+    useWhen: ["Use for strategy."],
+    avoidWhen: ["Avoid for implementation detail."],
+    skill: { name: "mckinsey-strategist" },
   });
 
   const skillBrief: RoundBrief = {

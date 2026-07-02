@@ -1,6 +1,6 @@
 import { b, type PersonaChoiceCandidate, type PersonaSelectionRequest } from "../generated/baml_client/index.js";
 import { listPersonas } from "./registry.js";
-import type { PersonaDefinition, PersonaSet } from "./schema.js";
+import type { PersonaDefinition } from "./schema.js";
 
 const DEFAULT_MIN_PERSONAS = 2;
 const DEFAULT_MAX_PERSONAS = 4;
@@ -21,7 +21,7 @@ export type PersonaSelectionInput = {
 };
 
 export type PersonaSelectionResult = {
-  personaSet: PersonaSet;
+  personaSet: { name: "selected" | "candidates"; personas: PersonaDefinition[] };
   rationale: string;
 };
 
@@ -65,9 +65,8 @@ function toCandidateCard(persona: PersonaDefinition): PersonaChoiceCandidate {
     description: persona.description,
     archetype: persona.archetype,
     tags: [...persona.tags],
-    modes: [...persona.modes],
-    selectionHints: [...persona.selectionHints],
-    selectionAntiHints: [...persona.selectionAntiHints],
+    useWhen: [...persona.useWhen],
+    avoidWhen: [...persona.avoidWhen],
   };
 }
 
@@ -175,17 +174,6 @@ export function createBamlPersonaSelector(args: {
         emitSelectorFailureEvent(args.onEvent, input, error);
         throw error;
       }
-    },
-  };
-}
-
-export function createStaticPersonaSelector(personaSet: PersonaSet): PersonaSelector {
-  return {
-    async choosePersonas(): Promise<PersonaSelectionResult> {
-      return {
-        personaSet: structuredClone(personaSet),
-        rationale: `Static persona selector returned persona set "${personaSet.name}".`,
-      };
     },
   };
 }

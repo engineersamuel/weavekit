@@ -19,9 +19,12 @@ export type DecisionCouncilCliArgs = {
   inputPath: string;
   outputDir: string;
   logFormat: LogFormat;
-  personaSetName?: string;
   maxRounds?: number;
   smoke: boolean;
+};
+
+export type EntityCliArgs = {
+  command: "validate";
 };
 
 export type WorkflowCliArgs = {
@@ -49,10 +52,26 @@ export type WorkflowRunDescriptor = {
   outputDir: string;
 };
 
+export function parseEntityCliArgs(argv: string[]): EntityCliArgs {
+  if (argv[0] !== "entity" || argv[1] !== "validate" || argv.length !== 2) {
+    throw new Error("Usage: weavekit entity validate");
+  }
+  return { command: "validate" };
+}
+
+export async function runEntityCli(_args: EntityCliArgs): Promise<string> {
+  const { formatEntityValidationErrors, validateEntityCatalog } = await import("./entities/index.js");
+  const result = validateEntityCatalog(process.cwd());
+  if (!result.valid) {
+    throw new Error(formatEntityValidationErrors(result.errors));
+  }
+  return "Entity catalog valid.\n";
+}
+
 export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliArgs {
   if (argv[0] !== "decision-council" || argv[1] !== "run") {
     throw new Error(
-      "Usage: weavekit decision-council run --input <path> [--output <dir>] [--persona-set <name>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>] (omit --persona-set for dynamic persona selection; provide --persona-set <name> for deterministic static selection.)",
+      "Usage: weavekit decision-council run --input <path> [--output <dir>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>]",
     );
   }
 
@@ -69,11 +88,6 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     throw new Error("Invalid --log-format value. Expected pretty, json, or silent.");
   }
 
-  const personaSetIndex = argv.indexOf("--persona-set");
-  if (personaSetIndex !== -1 && !argv[personaSetIndex + 1]) {
-    throw new Error("Missing value for --persona-set <name>.");
-  }
-
   const smoke = argv.includes("--smoke");
 
   const maxRoundsIndex = argv.indexOf("--max-rounds");
@@ -85,8 +99,12 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     throw new Error("Invalid --max-rounds value. Expected a positive integer.");
   }
 
-  // --smoke is a preset: default to the lightweight 2-persona smoke set and a single round.
-  const personaSetName = personaSetIndex !== -1 ? argv[personaSetIndex + 1] : smoke ? "smoke" : undefined;
+  const removedNamedSelectionFlag = `--persona${"-set"}`;
+  if (argv.includes(removedNamedSelectionFlag)) {
+    throw new Error("Static persona sets are not supported. Usage: weavekit decision-council run --input <path> [--output <dir>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>]");
+  }
+
+  // --smoke is a runtime preset only: dynamic selection still chooses personas.
   if (smoke && maxRounds === undefined) {
     maxRounds = 1;
   }
@@ -95,7 +113,6 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
     inputPath: argv[inputIndex + 1]!,
     outputDir: outputIndex === -1 ? "runs/latest" : argv[outputIndex + 1] ?? "runs/latest",
     logFormat,
-    personaSetName,
     maxRounds,
     smoke,
   };
@@ -411,6 +428,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     return "Workflow dashboard stopped.\n";
   }
 
+  const { assertValidEntityCatalog } = await import("./entities/index.js");
+  assertValidEntityCatalog(process.cwd());
+
   if (!args.inputPath && !args.prompt && args.template !== "source-to-project") {
     throw new Error("Missing required --input <path> or --prompt <text> argument.");
   }
@@ -660,6 +680,10 @@ export async function main(): Promise<void> {
       const workflowArgs = parseWorkflowCliArgs(argv);
       const message = await runWorkflowCli(workflowArgs);
       process.stdout.write(message);
+    } else if (argv[0] === "entity") {
+      const entityArgs = parseEntityCliArgs(argv);
+      const message = await runEntityCli(entityArgs);
+      process.stdout.write(message);
     } else {
       const { DecisionCouncilRunFailedError } = await import("./decision-council/errors.js");
       const { createSmokeModelRouter } = await import("./decision-council/modelRouter.js");
@@ -669,8 +693,8 @@ export async function main(): Promise<void> {
       const report = await runDecisionCouncil(input, {
         outputDir: args.outputDir,
         inputPath: args.inputPath,
-        personaSetName: args.personaSetName,
         maxRounds: args.maxRounds,
+        smoke: args.smoke,
         router: args.smoke ? createSmokeModelRouter() : undefined,
         logger: await createDecisionCouncilLogger(args.logFormat),
       });

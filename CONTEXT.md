@@ -96,6 +96,10 @@ _Avoid_: autonomous mode, auto-implement (too vague)
 The required preflight that creates or selects an isolated Target project worktree, refreshes it from the configured mainline by rebasing, copies required environment files without recording their contents, and records the baseline before Autonomous PR mode may modify files.
 _Avoid_: checkout setup, branch setup
 
+**Workflow entity manifest**:
+A file-backed, author-facing definition for a reusable workflow participant or contract, such as a Persona, Source-to-project Artifact contract, or Elicitation contract. It names metadata, prompts, model/harness policy, capability scope, and BAML contract references; BAML owns typed LLM schemas and TypeScript owns Run control flow.
+_Avoid_: agent manifest, workflow DSL, entity registry
+
 **Reasoning step**:
 An individual LLM/BAML call inside a Run (persona, normalize, judge, re-plan). Recorded as a Langfuse span; never durable beyond the Run.
 _Avoid_: action, task

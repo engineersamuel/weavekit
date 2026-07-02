@@ -7,6 +7,9 @@ import { promisify } from "node:util";
 import type { PersonaSkill } from "./schema.js";
 
 const execFileAsync = promisify(execFile);
+const SKILL_BUNDLES_BY_NAME = {
+  "mckinsey-strategist": "mckinsey",
+} as const;
 
 export interface EnsureSkillOptions {
   skill: PersonaSkill;
@@ -55,10 +58,11 @@ export async function ensureSkillInstalled(opts: EnsureSkillOptions): Promise<st
     return discoveryDir;
   }
 
-  if (!opts.skill.bundle) {
+  const bundle = SKILL_BUNDLES_BY_NAME[opts.skill.name as keyof typeof SKILL_BUNDLES_BY_NAME];
+  if (!bundle) {
     throw new Error(
-      `PersonaSkill "${opts.skill.name}" is missing required field "bundle". ` +
-        `Cannot install via ${opts.skill.installer}. Add a "bundle" value to the skill definition.`,
+      `PersonaSkill "${opts.skill.name}" is not mapped to a claude-superskills bundle. ` +
+        `Add a bundle mapping in skillInstaller.ts or provide a repo-local SKILL.md.`,
     );
   }
 
@@ -78,7 +82,7 @@ export async function ensureSkillInstalled(opts: EnsureSkillOptions): Promise<st
   // Run the installer (async so the worker stays non-blocking)
   await execFileAsync(
     process.execPath,
-    [cli, "install", "--bundle", opts.skill.bundle, "--scope", "local", "-y"],
+    [cli, "install", "--bundle", bundle, "--scope", "local", "-y"],
     { cwd: cacheDir },
   );
 
@@ -86,7 +90,7 @@ export async function ensureSkillInstalled(opts: EnsureSkillOptions): Promise<st
   if (!existsSync(skillMd)) {
     throw new Error(
       `Skill install verification failed: expected SKILL.md at "${skillMd}" after running ` +
-        `bundle "${opts.skill.bundle}" via "${cli}". ` +
+        `bundle "${bundle}" via "${cli}". ` +
         `Check claude-superskills output and ensure the bundle is valid.`,
     );
   }
