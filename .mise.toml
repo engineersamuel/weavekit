@@ -13,6 +13,17 @@ description = "Run source-to-project advisory mode against weavekit using the pr
 env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
 run = ".mise/tasks/source-to-project"
 
+[tasks.dashboard]
+description = "Start the workflow dashboard for recorded runs."
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+nub src/cli.ts workflow dashboard \
+  --port "${WEAVEKIT_WORKFLOW_DASHBOARD_PORT:-4321}" \
+  --watch-dir "${WEAVEKIT_WORKFLOW_OUTPUT:-runs}"
+'''
+
 [tasks."source-to-project:loop-engineering"]
 description = "Run the loop-engineering source-to-project advisory workflow against weavekit."
 run = '''
