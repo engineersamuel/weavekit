@@ -49,7 +49,7 @@ export type WorkflowReplanPolicy =
   | "on-review-rejection"
   | "on-verification-failure";
 
-export type WorkflowPlanTemplateId = "implementation-review" | "source-to-project";
+export type WorkflowPlanTemplateId = "implementation-review" | "source-to-project" | "x-article-summary";
 export type SourceToProjectMode = "advisory" | "autonomous-pr";
 
 export type SourceToProjectTemplateInput = {

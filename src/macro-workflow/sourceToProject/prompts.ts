@@ -1,15 +1,20 @@
-export function buildSourceReadingPrompt(source: string, maxToolCalls = 40): string {
+export function buildSourceReadingPrompt(source: string, maxToolCalls = 40, prefetchedSourceContent?: string): string {
+  const prefetchedContent = prefetchedSourceContent?.trim();
   return [
     "Read the Source artifact and extract claims, assumptions, evidence, and transferable lessons.",
     "Do not inspect the target project in this step.",
     "Do not ask the user for input. This is an unattended workflow run.",
+    prefetchedContent ? "Use the prefetched X post markdown below as the primary Source artifact." : undefined,
+    prefetchedContent ? "Do not fetch, browse, or re-resolve the Source URL unless the prefetched markdown is internally inconsistent or incomplete." : undefined,
     "Keep the investigation bounded: inspect the source README, docs, examples, and only the core implementation files needed to understand the loop mechanics.",
     "Do not recursively inventory the whole repository. Prefer targeted file reads over broad globbing after the initial orientation.",
     "Stop browsing once you have enough evidence for 5-8 grounded claims, even if more files could be inspected.",
     `Hard budget: use at most ${maxToolCalls} tool calls for source reading. If you reach that budget, stop using tools and write the final answer from the evidence gathered.`,
     "Return a concise research transcript with source-grounded claims, evidence references, and transferable lessons. Finish with a clear final answer.",
+    prefetchedContent ? `Source URL: ${source}` : undefined,
+    prefetchedContent ? `Prefetched X post markdown:\n${prefetchedContent}` : undefined,
     `Source: ${source}`,
-  ].join("\n\n");
+  ].filter((part): part is string => Boolean(part)).join("\n\n");
 }
 
 export function buildCorroborationPrompt(sourceAnalysisJson: string): string {

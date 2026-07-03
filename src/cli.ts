@@ -7,7 +7,8 @@ import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
 import type { DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { TelemetryHandle } from "./telemetry/bootstrap.js";
-import type { WorkflowPlanTemplateId, WorkflowReplayEvent } from "./macro-workflow/types.js";
+import { WorkflowHarnessKind, type WorkflowPlanTemplateId, type WorkflowReplayEvent } from "./macro-workflow/types.js";
+import { extractXPostUrls, preprocessWorkflowPrompt, type XPostFetchResult } from "./macro-workflow/promptPreprocessor.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 
@@ -341,7 +342,7 @@ function resolveWorkflowTemplateId(template: string | undefined): WorkflowPlanTe
   if (template === undefined) {
     return undefined;
   }
-  if (template !== "implementation-review" && template !== "source-to-project") {
+  if (template !== "implementation-review" && template !== "source-to-project" && template !== "x-article-summary") {
     throw new Error(`Unknown workflow template: ${template}`);
   }
   return template;
@@ -456,7 +457,17 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   }
 
   const promptWasUserProvided = Boolean(args.prompt || args.inputPath);
-  const prompt = args.prompt ?? (args.inputPath ? await readFile(args.inputPath, "utf8") : `Source: ${args.source ?? ""}\nProject: ${args.project ?? args.projectPath ?? ""}`);
+  const rawPrompt = args.prompt ?? (args.inputPath ? await readFile(args.inputPath, "utf8") : `Source: ${args.source ?? ""}\nProject: ${args.project ?? args.projectPath ?? ""}`);
+  const xPostUrlsToResolve = extractXPostUrls([rawPrompt, args.source].filter((part): part is string => Boolean(part)).join("\n"));
+  if (xPostUrlsToResolve.length > 0) {
+    process.stderr.write(`[weavekit] Resolving ${xPostUrlsToResolve.length} X post source${xPostUrlsToResolve.length === 1 ? "" : "s"} with grok...\n`);
+  }
+  const preprocessedPrompt = await preprocessWorkflowPrompt({ prompt: rawPrompt, source: args.source });
+  if (xPostUrlsToResolve.length > 0) {
+    process.stderr.write(`[weavekit] X post source${xPostUrlsToResolve.length === 1 ? "" : "s"} resolved.\n`);
+  }
+  const prompt = preprocessedPrompt.prompt;
+  const fetchedXPosts = preprocessedPrompt.fetchedXPosts;
   const objective = prompt.trim() || "Macro workflow";
   const runDescriptor = createWorkflowRunDescriptor(args.outputDir, objective);
   const isSourceToProject = args.template === "source-to-project";
@@ -480,6 +491,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       throw new Error(`Autonomous PR mode is disabled for project ${sourceToProjectProject.id}.`);
     }
   }
+  const prefetchedSourceContent = isSourceToProject
+    ? findPrefetchedXPostContent(fetchedXPosts, resolvedSource)
+    : undefined;
 
   process.stderr.write(formatWorkflowRunStartedMessage(runDescriptor));
 
@@ -583,6 +597,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     ? workflowSourceToProjectModule.createSourceToProjectHarnessRegistry({
       source: resolvedSource!,
       originalPrompt: prompt,
+      prefetchedSourceContent,
       project: sourceToProjectProject!,
       mode: sourceToProjectMode!,
       maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
@@ -624,7 +639,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         ? undefined
         : workflowSourceToProjectModule.createLiveSourceToProjectBamlClient({ usageCollector }),
     })
-    : workflowHarnessModule.createStaticHarnessRegistry();
+    : templateId === "x-article-summary"
+      ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)
+      : workflowHarnessModule.createStaticHarnessRegistry();
 
   const state = await workflowRunnerModule.runMacroWorkflow(plan, {
     harnesses,
@@ -634,6 +651,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       ? workflowSourceToProjectModule.createSourceToProjectDynamicExpander({
         source: resolvedSource!,
         originalPrompt: prompt,
+        prefetchedSourceContent,
         project: sourceToProjectProject!,
         mode: sourceToProjectMode!,
         maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
@@ -681,6 +699,73 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     await dashboardServer.stop();
   }
   return [formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir }), dashboardServer ? `Dashboard: ${dashboardServer.url}` : args.dashboardUrl ? `Dashboard: ${args.dashboardUrl}` : ""].filter(Boolean).join("\n");
+}
+
+function findPrefetchedXPostContent(fetchedXPosts: XPostFetchResult[], source: string | undefined): string | undefined {
+  if (!source || fetchedXPosts.length === 0) {
+    return undefined;
+  }
+  const sourceUrls = extractXPostUrls(source);
+  const sourceKeys = new Set(sourceUrls.length > 0 ? sourceUrls : [source]);
+  return fetchedXPosts.find((post) => sourceKeys.has(post.url))?.markdown;
+}
+
+function createXArticleSummaryHarnessRegistry(workflowHarnessModule: typeof import("./macro-workflow/harness.js")) {
+  return workflowHarnessModule.createStaticHarnessRegistry({
+    [WorkflowHarnessKind.COPILOT_SDK]: async (node) => {
+      const articleMarkdown = extractResolvedXArticleMarkdown(node.prompt) ?? node.prompt;
+      const summary = summarizeMarkdown(articleMarkdown);
+      return {
+        status: "passed" as const,
+        output: [
+          `Summary: ${summary}`,
+          "",
+          "Source content was supplied by workflow prompt preprocessing.",
+        ].join("\n"),
+        payload: {
+          summary,
+          articleMarkdown,
+        },
+        execution: {
+          executor: "deterministic",
+          operation: "SummarizeXArticle",
+          mode: "report",
+          prompt: node.prompt,
+          model: "deterministic",
+        },
+      };
+    },
+  });
+}
+
+function extractResolvedXArticleMarkdown(prompt: string): string | undefined {
+  const resolvedSectionIndex = prompt.indexOf("## Resolved X Post Sources");
+  if (resolvedSectionIndex === -1) {
+    return undefined;
+  }
+  const resolvedSection = prompt.slice(resolvedSectionIndex);
+  const articleMatch = resolvedSection.match(/###\s+https?:\/\/[^\n]+\n+([\s\S]+)/u);
+  return articleMatch?.[1]?.trim() || undefined;
+}
+
+function summarizeMarkdown(markdown: string): string {
+  const articleBody = markdown.match(/(?:^|\n)---\s*\n([\s\S]+)/u)?.[1] ?? markdown;
+  const lines = articleBody
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const title = markdown
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("# "))
+    ?.replace(/^#+\s*/u, "");
+  const body = lines
+    .filter((line) => !line.startsWith("#"))
+    .join(" ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  const clippedBody = body.length > 240 ? `${body.slice(0, 237).trimEnd()}...` : body;
+  return [title, clippedBody].filter(Boolean).join(": ") || "No resolved article content was available.";
 }
 
 export async function main(): Promise<void> {

@@ -23,7 +23,7 @@ const templates = {
     title: "Implementation Review",
     description: "A deterministic workflow that gathers context, reviews implementation, and verifies the result.",
     materialize: (objective: string): RuntimeWorkflowPlan => ({
-      id: `implementation-review-${objective.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "plan"}`,
+      id: workflowPlanId("implementation-review", objective),
       objective,
       templateId: "implementation-review",
       maxReplans: 2,
@@ -107,7 +107,43 @@ const templates = {
     description: "Read one Source artifact against one Target project and produce ranked opportunities, plans, and optional PRs.",
     materialize: makeSourceToProjectPlan,
   },
+  "x-article-summary": {
+    id: "x-article-summary",
+    title: "X Article Summary",
+    description: "Fetch a single X status through workflow preprocessing and summarize the resolved article markdown.",
+    materialize: makeXArticleSummaryPlan,
+  },
 } satisfies Record<WorkflowPlanTemplateId, WorkflowTemplate>;
+
+function makeXArticleSummaryPlan(objective: string): RuntimeWorkflowPlan {
+  return {
+    id: workflowPlanId("x-article-summary", objective),
+    objective,
+    templateId: "x-article-summary",
+    maxReplans: 0,
+    nodes: [
+      {
+        id: "summarize-x-article",
+        kind: WorkflowNodeKind.RESEARCH,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Summarize X article",
+        description: "Summarize the X article content resolved by workflow prompt preprocessing.",
+        model: "deterministic",
+        modelRationale: "This smoke workflow summarizes the already-prefetched markdown without another model call.",
+        prompt: [
+          "Summarize this X article.",
+          "Use the resolved X post markdown that workflow prompt preprocessing appended to the objective.",
+          "",
+          objective,
+        ].join("\n"),
+        dependsOn: [],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only" as WorkflowNodeWriteMode,
+        replanPolicy: "never" as WorkflowReplanPolicy,
+      },
+    ],
+  };
+}
 
 function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput = { objective }): RuntimeWorkflowPlan {
   const mode = input.mode ?? "advisory";
@@ -188,7 +224,7 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
   ];
 
   return {
-    id: `source-to-project-${objective.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "plan"}`,
+    id: workflowPlanId("source-to-project", objective),
     objective,
     templateId: "source-to-project",
     maxReplans: 2,
@@ -200,6 +236,11 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
 
 function sourceNodeMetadata(operation: SourceToProjectModelOperation) {
   return sourceToProjectNodeModelMetadata(operation);
+}
+
+function workflowPlanId(prefix: WorkflowPlanTemplateId, objective: string): string {
+  const slug = objective.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "plan";
+  return `${prefix}-${slug.slice(0, 96).replace(/-$/u, "")}`;
 }
 
 export function listWorkflowTemplates(): WorkflowTemplate[] {
