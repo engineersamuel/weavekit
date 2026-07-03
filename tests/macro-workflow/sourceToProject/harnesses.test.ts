@@ -338,6 +338,43 @@ describe("source-to-project harness registry", () => {
     expect(maxToolCalls).toEqual([12]);
   });
 
+  it("passes prefetched X post markdown into source reading as the primary source artifact", async () => {
+    const prompts: string[] = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://x.com/alice/status/12345",
+      prefetchedSourceContent: "# Alice Post\n\nFetched source body.",
+      project: projectFixture(),
+      mode: "advisory",
+      copilot: {
+        async run(args) {
+          prompts.push(args.prompt);
+          return "raw source research";
+        },
+      },
+      baml: {
+        async DistillSourceAnalysis() {
+          return sourceAnalysisFixture();
+        },
+      },
+    });
+
+    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "source-reading",
+      kind: "research",
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Read source",
+      prompt: "Read",
+      dependsOn: [],
+      gates: ["output-contract"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads: new Map(), artifacts: new Map() });
+
+    expect(prompts[0]).toContain("Use the prefetched X post markdown below as the primary Source artifact.");
+    expect(prompts[0]).toContain("Source URL: https://x.com/alice/status/12345");
+    expect(prompts[0]).toContain("# Alice Post\n\nFetched source body.");
+  });
+
   it("uses project-research max tool calls from source-to-project config", async () => {
     const maxToolCalls: Array<number | undefined> = [];
     const registry = createSourceToProjectHarnessRegistry({

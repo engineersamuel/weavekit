@@ -1,11 +1,21 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
 
 const entityValidation = vi.hoisted(() => ({
   assertValidEntityCatalog: vi.fn(),
+}));
+
+const workflowPlanner = vi.hoisted(() => ({
+  planWorkflow: vi.fn(async (args: { objective: string; prompt: string; templateId: string }) => ({
+    id: "mock-plan",
+    objective: args.objective,
+    templateId: args.templateId,
+    maxReplans: 0,
+    nodes: [],
+  })),
 }));
 
 vi.mock("../../src/entities/index.js", async () => {
@@ -16,11 +26,18 @@ vi.mock("../../src/entities/index.js", async () => {
   };
 });
 
+vi.mock("../../src/macro-workflow/bamlAdapters.js", () => ({
+  GeneratedWorkflowPlannerAdapter: class {
+    planWorkflow = workflowPlanner.planWorkflow;
+  },
+}));
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   entityValidation.assertValidEntityCatalog.mockReset();
   entityValidation.assertValidEntityCatalog.mockImplementation(() => {});
+  workflowPlanner.planWorkflow.mockClear();
 });
 
 describe("macro workflow CLI", () => {
@@ -219,6 +236,127 @@ describe("macro workflow CLI", () => {
 
     expect(writes[0]).toContain("Planning workflow DAG");
     expect(writes.some((message) => message.includes("still working"))).toBe(true);
+  });
+
+  it("preprocesses X status URLs before workflow planning", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-x-preprocess-"));
+    const outputRoot = join(rootDir, "runs");
+    const binDir = join(rootDir, "bin");
+    const grokPath = join(binDir, "grok");
+    await mkdir(binDir);
+    await writeFile(grokPath, "#!/bin/sh\nprintf '# X Post\\n\\nFetched planner content.\\n'\n", "utf8");
+    await chmod(grokPath, 0o755);
+    const originalPath = process.env.PATH;
+    process.env.PATH = originalPath ? `${binDir}${delimiter}${originalPath}` : binDir;
+
+    try {
+      await runWorkflowCli({
+        command: "plan",
+        prompt: "Plan from https://x.com/alice/status/12345.",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: true,
+      });
+
+      const call = workflowPlanner.planWorkflow.mock.calls[0]?.[0];
+      expect(call?.prompt).toContain("## Resolved X Post Sources");
+      expect(call?.prompt).toContain("### https://x.com/alice/status/12345");
+      expect(call?.prompt).toContain("Fetched planner content.");
+      expect(call?.objective).toContain("Fetched planner content.");
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("prints progress while resolving X post URLs before the workflow run starts", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-x-progress-"));
+    const outputRoot = join(rootDir, "runs");
+    const binDir = join(rootDir, "bin");
+    const grokPath = join(binDir, "grok");
+    const stderrWrites: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    });
+    await mkdir(binDir);
+    await writeFile(grokPath, "#!/bin/sh\nprintf '# X Post\\n\\nFetched content.\\n'\n", "utf8");
+    await chmod(grokPath, 0o755);
+    const originalPath = process.env.PATH;
+    process.env.PATH = originalPath ? `${binDir}${delimiter}${originalPath}` : binDir;
+
+    try {
+      await runWorkflowCli({
+        command: "plan",
+        prompt: "Summarize https://x.com/alice/status/12345",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: true,
+      });
+
+      expect(stderrWrites[0]).toContain("Resolving 1 X post source with grok");
+      expect(stderrWrites.some((message) => message.includes("X post source resolved."))).toBe(true);
+      expect(stderrWrites.findIndex((message) => message.includes("Resolving 1 X post source"))).toBeLessThan(
+        stderrWrites.findIndex((message) => message.includes("Workflow run id:")),
+      );
+      expect(stderrWrites.findIndex((message) => message.includes("X post source resolved."))).toBeLessThan(
+        stderrWrites.findIndex((message) => message.includes("Workflow run id:")),
+      );
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs a minimal X article summary workflow using preprocessed post content", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-x-summary-"));
+    const outputRoot = join(rootDir, "runs");
+    const binDir = join(rootDir, "bin");
+    const grokPath = join(binDir, "grok");
+    await mkdir(binDir);
+    await writeFile(grokPath, [
+      "#!/bin/sh",
+      "printf '**Full article from the X post**\\n\\n**Author:** Henrikh (@henrikhinai)\\n\\n---\\n\\nThis X article argues for smaller workflow tests. It recommends one-node demos.\\n'",
+    ].join("\n"), "utf8");
+    await chmod(grokPath, 0o755);
+    const originalPath = process.env.PATH;
+    process.env.PATH = originalPath ? `${binDir}${delimiter}${originalPath}` : binDir;
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        prompt: "Summarize this X article https://x.com/henrikhinai/status/2065471716093010128?s=51",
+        outputDir: outputRoot,
+        staticTemplate: true,
+        dryRun: false,
+        template: "x-article-summary",
+      });
+
+      const [runDir] = await readdir(outputRoot);
+      const state = await readFile(join(outputRoot, runDir!, "workflow-state.json"), "utf8");
+      expect(state).toContain('"templateId": "x-article-summary"');
+      expect(state).toContain('"id": "summarize-x-article"');
+      expect(state).toContain("## Resolved X Post Sources");
+      expect(state).toContain("https://x.com/henrikhinai/status/2065471716093010128?s=51");
+      expect(state).toContain("Summary:");
+      expect(state).toContain("Summary: This X article argues for smaller workflow tests");
+      expect(state).not.toContain("Summary: **Full article from the X post**");
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 
   it("writes state and replay artifacts for a plain static workflow run", async () => {

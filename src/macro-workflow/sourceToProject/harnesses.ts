@@ -303,6 +303,7 @@ export type SourceToProjectNotifier = {
 export type SourceToProjectHarnessOptions = {
   source: string;
   originalPrompt?: string;
+  prefetchedSourceContent?: string;
   project: ProjectCatalogEntry;
   mode: SourceToProjectMode;
   maxOpportunities?: number;
@@ -928,7 +929,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
   const copilotAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
     if (node.id === "source-reading") {
       const maxToolCalls = sourceReadingMaxToolCalls(options.sourceToProject);
-      const prompt = buildSourceReadingPrompt(options.source, maxToolCalls);
+      const prompt = buildSourceReadingPrompt(options.source, maxToolCalls, options.prefetchedSourceContent);
       const copilotModel = copilotModelFor(SourceToProjectModelOperation.SOURCE_READING);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.SOURCE_READING);
       const raw = await copilot.run({
