@@ -44,13 +44,16 @@ export function buildProjectResearchPrompt(args: {
   ].filter((part): part is string => Boolean(part)).join("\n\n");
 }
 
-export function buildPlanPrompt(opportunityJson: string, projectJson: string): string {
+export function buildPlanPrompt(opportunityJson: string, projectJson: string, rawPlanArtifactPath?: string): string {
   return [
+    "/plan",
     "Create an implementation plan for this single selected source-to-project candidate.",
     "Do not modify files. Produce a plan suitable for a later implementation harness.",
+    "Return the final plan as markdown. The workflow harness will persist that markdown as the raw plan artifact.",
+    rawPlanArtifactPath ? `Raw plan artifact path:\n${rawPlanArtifactPath}` : undefined,
     "The candidate has already passed selection. Do not switch to a different opportunity or bundle.",
     "The plan must explain the user-visible/project improvement before listing files, tests, or infrastructure chores.",
     `Selected candidate JSON:\n${opportunityJson}`,
     `Project JSON:\n${projectJson}`,
-  ].join("\n\n");
+  ].filter((part): part is string => Boolean(part)).join("\n\n");
 }

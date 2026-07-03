@@ -18,12 +18,19 @@ vi.mock("../src/decision-council/runner.js", () => ({
   })),
 }));
 
+vi.mock("../src/entities/index.js", () => ({
+  validateEntityCatalog: vi.fn(() => ({ valid: true, errors: [] })),
+  formatEntityValidationErrors: vi.fn((errors: unknown[]) => `Entity catalog validation failed with ${errors.length} error(s).`),
+}));
+
 import { main } from "../src/cli.js";
 import { runDecisionCouncil } from "../src/decision-council/runner.js";
+import { validateEntityCatalog } from "../src/entities/index.js";
 import { startTelemetry } from "../src/telemetry/bootstrap.js";
 
 const startTelemetryMock = vi.mocked(startTelemetry);
 const runDecisionCouncilMock = vi.mocked(runDecisionCouncil);
+const validateEntityCatalogMock = vi.mocked(validateEntityCatalog);
 
 describe("CLI main", () => {
   beforeEach(() => {
@@ -73,6 +80,25 @@ describe("CLI main", () => {
       stderrSpy.mockRestore();
       stdoutSpy.mockRestore();
       await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("runs entity validate without invoking Decision Council", async () => {
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const argvSnapshot = process.argv;
+    process.argv = ["node", "weavekit", "entity", "validate"];
+
+    try {
+      await expect(main()).resolves.toBeUndefined();
+
+      expect(validateEntityCatalogMock).toHaveBeenCalledTimes(1);
+      expect(runDecisionCouncilMock).not.toHaveBeenCalled();
+      expect(stdoutSpy).toHaveBeenCalledWith("Entity catalog valid.\n");
+    } finally {
+      process.argv = argvSnapshot;
+      stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
     }
   });
 

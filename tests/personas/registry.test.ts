@@ -1,184 +1,63 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRegistry,
+  defaultRegistry,
   getPersona,
-  getPersonaSet,
   listPersonas,
-  listPersonaSets,
-  resolvePersonaSet,
-  resolvePersonaSetByName,
-  resolvePersonasDir,
 } from "../../src/personas/registry.js";
 
-describe("default persona registry", () => {
-  it("resolves the default set with the approved personas in order", () => {
-    const set = getPersonaSet("default");
-    expect(set.name).toBe("default");
-    expect(set.personas.map((p) => p.name)).toEqual([
-      "Socratic Questioner",
-      "Deep Module/DRY Architect",
-      "Pragmatic Builder",
-      "Skeptic",
-    ]);
-  });
-
-  it("resolves the strategic set as the four defaults plus the three strategists", () => {
-    const set = getPersonaSet("strategic");
-    expect(set.personas).toHaveLength(7);
-    expect(set.personas.some((p) => p.id === "strategic-game-theorist")).toBe(true);
-    expect(set.personas.some((p) => p.id === "sun-tzu")).toBe(true);
-    expect(set.personas.some((p) => p.id === "mckinsey-strategist")).toBe(true);
-    expect(set.personas.slice(0, 4).map((p) => p.id)).toEqual([
-      "socratic",
-      "deep-module-dry",
-      "pragmatic",
-      "skeptic",
-    ]);
-  });
-
-  it("loads the mckinsey-strategist persona with a skill block", () => {
-    const persona = getPersona("mckinsey-strategist");
-    expect(persona.specRef).toBe("mckinsey-strategist.md");
-    expect(persona.skill).toBeDefined();
-    expect(persona.skill?.name).toBe("mckinsey-strategist");
-    expect(persona.skill?.bundle).toBe("mckinsey");
-    expect(persona.skill?.installer).toBe("claude-superskills");
-  });
-
-  it("loads the strategic-game-theorist persona with a matching TOML source and spec reference", () => {
-    const gt = getPersona("strategic-game-theorist");
-    expect(gt.specRef).toBe("strategic-game-theorist.md");
-    expect(gt.prompt).toContain("claims");
-    expect(gt.prompt).toContain("risks");
-    expect(gt.prompt).toContain("questions");
-    expect(gt.prompt).toContain("recommendations");
-  });
-
-  it("loads the sun-tzu persona with a matching TOML source and spec reference", () => {
-    const sunTzu = getPersona("sun-tzu");
-    expect(sunTzu.specRef).toBe("sun-tzu.md");
-    expect(sunTzu.archetype).toBe("analyst");
-    expect(sunTzu.framingCorrections.length).toBeGreaterThan(0);
-    expect(sunTzu.antiHedging).toBeTruthy();
-    expect(sunTzu.prompt).toContain("claims");
-    expect(sunTzu.prompt).toContain("risks");
-    expect(sunTzu.prompt).toContain("questions");
-    expect(sunTzu.prompt).toContain("recommendations");
-  });
-
-  it("lists the registered sets", () => {
-    expect(listPersonaSets().sort()).toEqual(["default", "dialectic", "smoke", "strategic"]);
-  });
-
-  it("has no duplicate persona ids in the registry", () => {
+describe("manifest-backed persona registry", () => {
+  it("loads personas from the entity catalog", () => {
     const personas = listPersonas();
-    const ids = personas.map((p) => p.id);
-    expect(ids).toHaveLength(new Set(ids).size);
+
+    expect(personas.length).toBeGreaterThan(0);
+    expect(personas.map((persona) => persona.id)).toContain("socratic");
+    expect(personas.map((persona) => persona.id)).toContain("mckinsey-strategist");
   });
 
-  it("default set is the four core personas and smoke is unchanged", () => {
-    expect(getPersonaSet("default").personas.map((p) => p.id)).toEqual([
-      "socratic",
-      "deep-module-dry",
-      "pragmatic",
-      "skeptic",
-    ]);
-    expect(getPersonaSet("smoke").personas.map((p) => p.id)).toEqual(["pragmatic", "skeptic"]);
+  it("loads manifest selector fields and prompt prose", () => {
+    const persona = getPersona("mckinsey-strategist");
+
+    expect(persona.role).toBe("advisor");
+    expect(persona.archetype).toBe("analyst");
+    expect(persona.tags).toEqual(["strategic"]);
+    expect(persona.useWhen[0]).toMatch(/structured business problem decomposition/i);
+    expect(persona.avoidWhen[0]).toMatch(/purely technical architecture reviews/i);
+    expect(persona.prompt).toContain("claims");
+    expect(persona.prompt).toContain("risks");
+    expect(persona.skill).toEqual({ name: "mckinsey-strategist" });
   });
 
-  it("lists personas as clones so callers cannot mutate the registry", () => {
+  it("lists personas as clones so callers cannot mutate registry state", () => {
     const personas = listPersonas();
     personas[0]!.name = "Changed";
-    personas[0]!.selectionHints.push("bad");
+    personas[0]!.useWhen.push("bad");
 
     const reloaded = listPersonas();
     expect(reloaded[0]!.name).not.toBe("Changed");
-    expect(reloaded[0]!.selectionHints).not.toContain("bad");
+    expect(reloaded[0]!.useWhen).not.toContain("bad");
   });
 
-  it("ensures each shipped persona has useful selector-facing metadata", () => {
-    const personas = listPersonas();
-    expect(personas.length).toBeGreaterThan(0);
-    for (const persona of personas) {
-      const usefulDescription = persona.description.trim().length >= 20;
-      expect(usefulDescription || persona.selectionHints.length > 0).toBe(true);
+  it("has no duplicate persona ids", () => {
+    const ids = listPersonas().map((persona) => persona.id);
+    expect(ids).toHaveLength(new Set(ids).size);
+  });
+
+  it("ensures each shipped persona has selector-facing manifest metadata", () => {
+    for (const persona of listPersonas()) {
+      expect(persona.description.trim().length).toBeGreaterThanOrEqual(20);
+      expect(persona.useWhen.length).toBeGreaterThan(0);
+      expect(persona.avoidWhen.length).toBeGreaterThan(0);
     }
-  });
-
-  it("resolvePersonaSetByName defaults to the default set", () => {
-    expect(resolvePersonaSetByName(undefined).name).toBe("default");
-    expect(resolvePersonaSetByName().personas).toHaveLength(4);
-  });
-
-  it("clones on resolve so callers cannot mutate the registry", () => {
-    const resolved = resolvePersonaSet(getPersonaSet("default"));
-    resolved.personas[0]!.name = "Changed";
-    expect(getPersonaSet("default").personas[0]!.name).toBe("Socratic Questioner");
-  });
-
-  it("throws a helpful error for an unknown set", () => {
-    expect(() => resolvePersonaSetByName("nonexistent")).toThrow(/nonexistent/);
   });
 
   it("throws a helpful error for an unknown persona", () => {
     expect(() => getPersona("nope")).toThrow(/nope/);
   });
-});
 
-describe("registry directory resolution", () => {
-  it("honors the WEAVEKIT_PERSONAS_DIR override", () => {
-    const prev = process.env.WEAVEKIT_PERSONAS_DIR;
-    process.env.WEAVEKIT_PERSONAS_DIR = "/tmp/custom-personas";
-    try {
-      expect(resolvePersonasDir()).toBe("/tmp/custom-personas");
-    } finally {
-      if (prev === undefined) delete process.env.WEAVEKIT_PERSONAS_DIR;
-      else process.env.WEAVEKIT_PERSONAS_DIR = prev;
-    }
-  });
-
-  it("buildRegistry loads personas from an explicitly resolved directory", () => {
-    const prev = process.env.WEAVEKIT_PERSONAS_DIR;
-    delete process.env.WEAVEKIT_PERSONAS_DIR;
-    try {
-      const registry = buildRegistry(resolvePersonasDir());
-      expect(registry.getPersona("socratic").name).toBe("Socratic Questioner");
-    } finally {
-      if (prev !== undefined) process.env.WEAVEKIT_PERSONAS_DIR = prev;
-    }
-  });
-});
-
-describe("dialectic persona set", () => {
-  it("contains the advocate, adversary, and hostile auditor in order", () => {
-    const set = getPersonaSet("dialectic");
-    expect(set.personas.map((p) => p.id)).toEqual([
-      "dialectic-advocate",
-      "dialectic-adversary",
-      "hostile-auditor",
-    ]);
-  });
-
-  it("loads each believer with a stance, decorrelation ignores, and anti-hedging", () => {
-    const advocate = getPersona("dialectic-advocate");
-    expect(advocate.archetype).toBe("believer");
-    expect(advocate.stance).toMatch(/sound/i);
-    expect(advocate.ignores.length).toBeGreaterThan(0);
-    expect(advocate.antiHedging).toBeTruthy();
-
-    const adversary = getPersona("dialectic-adversary");
-    expect(adversary.archetype).toBe("believer");
-    expect(adversary.ignores.length).toBeGreaterThan(0);
-
-    const auditor = getPersona("hostile-auditor");
-    expect(auditor.archetype).toBe("auditor");
-  });
-
-  it("loads the synthesist but keeps it out of every set", () => {
-    expect(getPersona("synthesist").archetype).toBe("synthesist");
-    const inAnySet = listPersonaSets().some((name) =>
-      getPersonaSet(name).personas.some((p) => p.id === "synthesist"),
-    );
-    expect(inAnySet).toBe(false);
+  it("buildRegistry accepts an explicit repo root", () => {
+    const registry = buildRegistry(process.cwd());
+    expect(registry.getPersona("socratic").name).toBe("Socratic Questioner");
+    expect(registry.listPersonas().length).toBe(defaultRegistry.listPersonas().length);
   });
 });

@@ -58,8 +58,8 @@ const WorkflowNode = memo(({ data }) => {
       <div className="node-model-line">model {data.model}</div>
       
       {isDecisionCouncil && (
-        <div className="persona-set-container">
-          <div className="persona-set-title">Council Personas</div>
+        <div className="persona-list-container">
+          <div className="persona-list-title">Council Personas</div>
           <div className="persona-grid">
             {personas.map((p) => (
               <span key={p.name} className="persona-badge" style={{ borderColor: p.color, color: p.color }}>
@@ -771,7 +771,7 @@ function NodeExecutionContext({ node, result, state }) {
   const plannedPrompt = isPlanningNode
     ? state?.objective ?? "No original prompt recorded."
     : node?.prompt ?? "";
-  const execution = result?.execution;
+  const execution = result?.execution ?? (node?.id ? state?.activeNodeExecutions?.[node.id] : undefined);
   const calls = execution?.calls?.length ? execution.calls : inferExecutionCalls(node, execution);
 
   return (

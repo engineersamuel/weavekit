@@ -1,9 +1,10 @@
 import { defineAgent, type ToolDefinition } from "@flue/runtime";
+import type { FlueDefaults } from "../config.js";
 import usingSuperpowers from "../skills/using-superpowers/SKILL.md" with { type: "skill" };
 
-export function createDecisionCouncilAgent(args: { tools?: ToolDefinition[]; model?: string } = {}) {
+export function createDecisionCouncilAgent(args: { tools?: ToolDefinition[]; model?: string; config?: FlueDefaults } = {}) {
   return defineAgent(() => ({
-    model: args.model ?? process.env.WEAVEKIT_FLUE_MODEL ?? "anthropic/claude-haiku-4-5",
+    model: args.model ?? args.config?.model ?? "anthropic/claude-haiku-4-5",
     tools: args.tools ?? [],
     skills: [usingSuperpowers],
     instructions:

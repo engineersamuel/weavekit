@@ -175,7 +175,7 @@ env?: Record<string, string | undefined>
       }
       
   async DistillPlanArtifact(
-  opportunityJson: string,rawPlan: string,
+  opportunityJson: string,rawPlan: string,rawPlanArtifactPath: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
     try {
@@ -194,7 +194,7 @@ env?: Record<string, string | undefined>
       return await this.runtime.buildRequest(
       "DistillPlanArtifact",
       {
-      "opportunityJson": opportunityJson,"rawPlan": rawPlan
+      "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
       },
       this.ctxManager.cloneContext(),
       __baml_options__?.tb?.__tb(),
@@ -610,7 +610,7 @@ env?: Record<string, string | undefined>
           }
           
       async DistillPlanArtifact(
-      opportunityJson: string,rawPlan: string,
+      opportunityJson: string,rawPlan: string,rawPlanArtifactPath: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
         try {
@@ -629,7 +629,7 @@ env?: Record<string, string | undefined>
           return await this.runtime.buildRequest(
           "DistillPlanArtifact",
           {
-          "opportunityJson": opportunityJson,"rawPlan": rawPlan
+          "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
           },
           this.ctxManager.cloneContext(),
           __baml_options__?.tb?.__tb(),

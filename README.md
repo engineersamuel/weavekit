@@ -2,7 +2,7 @@
 
 Weavekit is a TypeScript-first playground for orchestrating GitHub Copilot SDK agents through explicit, typed workflows.
 
-The v0 workflow is a Design Council. It selects a compact, task-appropriate persona subset each round (or follows a deterministic named set override), normalizes critiques through BAML, asks a Judge reducer whether to continue, and writes:
+The v0 workflow is a Design Council. It selects a compact, task-appropriate persona subset each round from repo-local entity manifests, normalizes critiques through BAML, asks a Judge reducer whether to continue, and writes:
 
 - `DecisionCouncilReport.md`
 - `DecisionCouncilRunState.json`
@@ -84,9 +84,9 @@ For repeated source-to-project runs against weavekit, use the mise task. If the 
 mise run source-to-project "Adapt these loops to weavekit: https://github.com/cobusgreyling/loop-engineering and also review their code to see how they are doing loops and what might apply to the weavekit static DAG templates or dynamic workflows"
 ```
 
-The task defaults to `project=weavekit`, `mode=advisory`, `output=runs`, and dashboard publishing to `http://127.0.0.1:4321`. Override those with `WEAVEKIT_SOURCE_TO_PROJECT_PROJECT`, `WEAVEKIT_SOURCE_TO_PROJECT_MODE`, `WEAVEKIT_WORKFLOW_OUTPUT`, or `WEAVEKIT_WORKFLOW_DASHBOARD_URL`; set `WEAVEKIT_WORKFLOW_DASHBOARD_URL=off` to omit dashboard publishing.
+The task defaults to `project=weavekit`, `mode=advisory`, `output=runs`, and dashboard publishing to `http://127.0.0.1:4321`. For different project or output settings, call `nub src/cli.ts workflow run` directly with `--project` or `--project-path`, `--mode`, `--output`, and `--dashboard-url`.
 
-By default, source-to-project runs use the live Copilot SDK harness and generated BAML distillation calls. `WEAVEKIT_SOURCE_TO_PROJECT_MODEL` overrides Copilot SDK calls. Without that override, source reading and source corroboration use `gpt-5.5`, target project research uses `claude-sonnet-5`, planning uses `claude-opus-4.8`, and implementation uses `gpt-5.3-codex`. `BAML_MODEL` affects generated BAML distillation/mapping calls, not Copilot SDK sessions. For long repo inspections, tune `WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS`, `WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS`, or the global `WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS`. For deterministic local smoke tests only, set `WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE=true` to use the offline harness.
+By default, source-to-project runs use the live Copilot SDK harness and generated BAML distillation calls. Configure first-party source-to-project defaults in `~/.weavekit/config.toml`: `source_to_project.copilot_model` overrides Copilot SDK calls, `timeout_ms` controls SDK wait time, `max_tool_calls` sets the global research tool budget, `source_reading_max_tool_calls` and `project_research_max_tool_calls` tune individual research nodes, and `offline = true` uses the deterministic offline harness for local smoke tests. Without a Copilot model override, source reading and source corroboration use `gpt-5.5`, target project research uses `claude-sonnet-5`, planning uses `claude-opus-4.8`, and implementation uses `gpt-5.3-codex`. `BAML_MODEL` affects generated BAML distillation/mapping calls, not Copilot SDK sessions.
 
 Autonomous PR mode must be enabled for the project in `~/.weavekit/config.toml`:
 
@@ -104,6 +104,30 @@ min_confidence = 0.65
 min_impact = 0.5
 max_risk = 0.8
 mode = "advisory"
+offline = false
+copilot_model = "gpt-5.5"
+timeout_ms = 300000
+max_tool_calls = 60
+source_reading_max_tool_calls = 40
+project_research_max_tool_calls = 60
+
+[copilot]
+verbose_events = false
+# Optional local SDK runtime selection:
+# runtime_url = "http://127.0.0.1:8181"
+# cli_path = "~/.local/bin/copilot"
+sdk_doctor_model = "gpt-5-mini"
+
+[flue]
+model = "anthropic/claude-haiku-4-5"
+
+[tooling]
+skills_directory = "~/.weavekit/skills"
+agent_native_skills_installer = "~/.local/bin/agent-skills"
+mise_bin = "/opt/homebrew/bin/mise"
+
+[plugins.hve-core]
+directory = "~/.copilot/installed-plugins/_direct/hve-core"
 
 [projects.weavekit]
 display_name = "Weavekit"
@@ -126,11 +150,7 @@ Autonomous PR mode prepares an isolated worktree, rebases it from the configured
 
 Weavekit uses Flue as the production workflow/agent harness. The main workflow path should call models through Flue/Pi providers, not through `@github/copilot-sdk`. The Copilot SDK may be used later for an explicit final handoff/autopilot experiment, but it is not the primary Decision Council model-call path.
 
-Set `WEAVEKIT_FLUE_MODEL` to override the default Flue model for Decision Council agents. Defaults to `anthropic/claude-haiku-4-5`. The model must be a registered Flue/Pi provider.
-
-```bash
-export WEAVEKIT_FLUE_MODEL="anthropic/claude-sonnet-4-6"
-```
+Set `[flue].model` in `~/.weavekit/config.toml` to override the default Flue model for Decision Council agents. Defaults to `anthropic/claude-haiku-4-5`. The model must be a registered Flue/Pi provider.
 
 ### Flue MCP tools
 
@@ -205,34 +225,36 @@ BAML can print large raw prompts/responses. Use `BAML_LOG=warn` when you want We
 BAML_LOG=warn COPILOT_PROXY_API_KEY="anything" nub run council decision-council run --input examples/design-question.md --output runs/example
 ```
 
-## Personas and persona sets
+## Workflow Entity Manifests
 
-By default, the council chooses personas dynamically each round. Pass `--persona-set <name>` to bypass dynamic selection with a deterministic static set (recommended for reproducible runs).
+Weavekit uses repo-local YAML Workflow Entity Manifests as the canonical catalog for reusable workflow entities.
+
+- Personas live in `entities/personas/<id>.yaml` with sibling prompt prose in `entities/personas/<id>.md`.
+- Artifacts live in `entities/artifacts/<id>.yaml` and reference BAML-owned functions.
+- Elicitation contracts live in `entities/elicitation/<id>.yaml` with sibling prompt prose.
+- Artifact and elicitation manifests are validated in v1 but are not invoked directly by runtime code.
+
+Validate the catalog before a run:
+
+```bash
+nub src/cli.ts entity validate
+```
+
+Decision Council dynamically selects from all eligible manifest personas. Static persona sets are not supported.
 
 ```bash
 nub run council decision-council run --input examples/design-question.md
-nub run council decision-council run --input examples/design-question.md --persona-set default
 ```
-
-| Set | Personas | Use for |
-| --- | --- | --- |
-| `default` | Socratic Questioner, Deep Module/DRY Architect, Pragmatic Builder, Skeptic | General design critique |
-| `strategic` | the four defaults **+ Strategic Game Theorist + Sun Tzu Strategist** | Decisions with competition, incentives, timing, or positioning |
-| `dialectic` | Dialectic Advocate, Dialectic Adversary, Hostile Auditor | Thesis/antithesis stress test of a single proposal |
-| `smoke` | Pragmatic Builder, Skeptic | Fast integration smoke testing (see below) |
 
 ## Smoke testing
 
-For fast end-to-end integration smoke tests, use `--smoke`. It is a preset that runs the
-lightweight 2-persona `smoke` set for a **single round** and pins every model call (personas and
-BAML normalize/assess/report) to `gpt-5-mini` for speed:
+For fast end-to-end integration smoke tests, use `--smoke`. It is a runtime preset that keeps dynamic persona selection, caps selection to two personas, runs a **single round**, and pins every model call (personas and BAML normalize/assess/report) to `gpt-5-mini` for speed:
 
 ```bash
 nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/smoke
 ```
 
-`--smoke` defaults `--persona-set` to `smoke` and `--max-rounds` to `1`; both can still be
-overridden explicitly. `--max-rounds <n>` is also available independently to cap any run.
+`--smoke` defaults `--max-rounds` to `1`. `--max-rounds <n>` is also available independently to cap any run.
 
 A `mise` task wraps the smoke command (with `BAML_LOG=warn` and a placeholder proxy key):
 
@@ -242,31 +264,28 @@ mise run council:smoke
 
 ### Sun Tzu Strategist
 
-`sun-tzu` reads a decision as terrain. It names the real battlefield and the actual opposing force (not the surface rival), finds the undefended gap, prescribes the exact next move, and names the trap to avoid — then closes on the one governing principle that makes the move win. It is cold and prescriptive ("give the move, not the wisdom"); in-council it ends every critique with the four claims/risks/questions/recommendations lists so BAML normalization stays lossless. The full standalone form lives in the canonical spec [`personas/sun-tzu.md`](personas/sun-tzu.md).
+`sun-tzu` reads a decision as terrain. It names the real battlefield and the actual opposing force (not the surface rival), finds the undefended gap, prescribes the exact next move, and names the trap to avoid — then closes on the one governing principle that makes the move win. It is cold and prescriptive ("give the move, not the wisdom"); in-council it ends every critique with the four claims/risks/questions/recommendations lists so BAML normalization stays lossless. The full standalone form lives in [`entities/personas/sun-tzu.md`](entities/personas/sun-tzu.md).
 
 ### Reusing personas in other workflows
 
-Personas live in a workflow-agnostic registry under [`personas/`](personas/): one TOML file per persona (`personas/<id>.toml`) plus a portable canonical spec (`personas/<id>.md`), grouped into named sets in [`personas/sets.toml`](personas/sets.toml). Future workflows can reuse `createBamlPersonaSelector` (dynamic chooser) or `createStaticPersonaSelector` (deterministic static selection) from `weavekit`, alongside direct registry APIs:
+Personas are loaded from the entity catalog and exposed through manifest-backed APIs. Future workflows can reuse `createBamlPersonaSelector` with `listPersonas()` or direct persona lookup:
 
 ```ts
 import {
   createBamlPersonaSelector,
-  createStaticPersonaSelector,
   getPersona,
-  getPersonaSet,
-  listPersonaSets,
+  listPersonas,
   composePersonaPrompt,
 } from "weavekit";
 
 const sunTzu = getPersona("sun-tzu");
-const dynamicSelector = createBamlPersonaSelector({ candidatePersonas: getPersonaSet("default").personas, minPersonas: 2, maxPersonas: 6 });
-const staticSelector = createStaticPersonaSelector(getPersonaSet("default"));
+const dynamicSelector = createBamlPersonaSelector({ candidatePersonas: listPersonas(), minPersonas: 2, maxPersonas: 6 });
 const message = composePersonaPrompt(sunTzu, {
   brief: { roundNumber: 1, prompt: "Should we out-build a larger competitor?", focus: "Strategy" },
 });
 ```
 
-`getPersona(id)`, `getPersonaSet(name)`, and `listPersonaSets()` read the registry; `composePersonaPrompt` deterministically renders a persona's stance, framing corrections, anti-hedging, and mode into the round message. Set `WEAVEKIT_PERSONAS_DIR` to point at a different directory to load a custom persona library.
+`getPersona(id)` and `listPersonas()` read the validated entity catalog; `composePersonaPrompt` renders the sibling Markdown prompt with the round brief.
 
 ## Model + effort routing
 

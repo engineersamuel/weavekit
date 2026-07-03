@@ -49,24 +49,18 @@ beforeEach(() => {
   mockRealpathSync.mockReturnValue(FAKE_PKG_ROOT);
 });
 
-afterEach(() => {
-  delete process.env.WEAVEKIT_SKILLS_DIR;
-});
-
 // ──────────────────────────────────────────────────────────────────────────────
 // resolveSkillsCacheDir
 // ──────────────────────────────────────────────────────────────────────────────
 describe("resolveSkillsCacheDir", () => {
-  it("(d) explicit cacheDir arg overrides env and default", () => {
-    process.env.WEAVEKIT_SKILLS_DIR = "/from/env";
-    const result = resolveSkillsCacheDir("/explicit/override");
+  it("(d) explicit cacheDir arg overrides config and default", () => {
+    const result = resolveSkillsCacheDir("/explicit/override", { skillsDirectory: "/from/config" });
     expect(result).toBe("/explicit/override");
   });
 
-  it("(d) WEAVEKIT_SKILLS_DIR env overrides computed default", () => {
-    process.env.WEAVEKIT_SKILLS_DIR = "/from/env/skills";
-    const result = resolveSkillsCacheDir();
-    expect(result).toBe("/from/env/skills");
+  it("(d) typed tooling config overrides computed default", () => {
+    const result = resolveSkillsCacheDir(undefined, { skillsDirectory: "/from/config/skills" });
+    expect(result).toBe("/from/config/skills");
   });
 
   it("(d) computed default ends with .weavekit/skills when package.json found", () => {
@@ -137,13 +131,13 @@ describe("ensureSkillInstalled", () => {
     ).rejects.toThrow(/mckinsey/);
   });
 
-  it("throws a descriptive error when skill.bundle is missing", async () => {
+  it("throws a descriptive error when the skill has no bundle mapping", async () => {
     mockExistsSync.mockReturnValue(false); // not yet installed
-    const skillNoBunde = { name: "mckinsey-strategist", installer: "claude-superskills" };
+    const unmappedSkill = { name: "unknown-skill" };
 
     await expect(
-      ensureSkillInstalled({ skill: skillNoBunde, cacheDir: FAKE_CACHE_DIR }),
-    ).rejects.toThrow(/bundle/i);
+      ensureSkillInstalled({ skill: unmappedSkill, cacheDir: FAKE_CACHE_DIR }),
+    ).rejects.toThrow(/bundle mapping/i);
 
     expect(mockExecFile).not.toHaveBeenCalled();
   });

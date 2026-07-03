@@ -40,16 +40,16 @@ describe("source-to-project model policy", () => {
     });
   });
 
-  it("applies WEAVEKIT_SOURCE_TO_PROJECT_MODEL only to Copilot SDK decisions", () => {
-    const env = { WEAVEKIT_SOURCE_TO_PROJECT_MODEL: "copilot-override" };
+  it("applies source_to_project.copilot_model only to Copilot SDK decisions", () => {
+    const config = { copilotModel: "copilot-override" };
 
-    expect(sourceToProjectCopilotModelDecision(SourceToProjectModelOperation.SOURCE_READING, env)).toMatchObject({
+    expect(sourceToProjectCopilotModelDecision(SourceToProjectModelOperation.SOURCE_READING, config)).toMatchObject({
       model: "copilot-override",
     });
-    expect(sourceToProjectCopilotModelDecision(SourceToProjectModelOperation.PROJECT_RESEARCH, env)).toMatchObject({
+    expect(sourceToProjectCopilotModelDecision(SourceToProjectModelOperation.PROJECT_RESEARCH, config)).toMatchObject({
       model: "copilot-override",
     });
-    expect(sourceToProjectBamlRoute(SourceToProjectModelOperation.SOURCE_READING, env)).toMatchObject({
+    expect(sourceToProjectBamlRoute(SourceToProjectModelOperation.SOURCE_READING, {})).toMatchObject({
       model: "gpt-5.5",
       client: "CopilotProxyGpt55",
     });
@@ -66,24 +66,21 @@ describe("source-to-project model policy", () => {
   });
 
   it("uses execution-route metadata for source-to-project node cards", () => {
-    const env = {
-      WEAVEKIT_SOURCE_TO_PROJECT_MODEL: "copilot-override",
-      BAML_MODEL: "baml-override",
-    };
+    const options = { copilotModel: "copilot-override", env: { BAML_MODEL: "baml-override" } };
 
-    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.SOURCE_READING, env)).toMatchObject({
+    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.SOURCE_READING, options)).toMatchObject({
       model: "copilot-override",
     });
-    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.PLAN_GENERATION, env)).toMatchObject({
+    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.PLAN_GENERATION, options)).toMatchObject({
       model: "copilot-override",
     });
-    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.OPPORTUNITY_MAPPING, env)).toMatchObject({
+    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.OPPORTUNITY_MAPPING, options)).toMatchObject({
       model: "baml-override",
     });
-    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW, env)).toMatchObject({
+    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW, options)).toMatchObject({
       model: "baml-override",
     });
-    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.DETERMINISTIC, env)).toMatchObject({
+    expect(sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.DETERMINISTIC, options)).toMatchObject({
       model: "deterministic",
     });
   });

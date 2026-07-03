@@ -7,7 +7,6 @@ import { runWorkflowCli } from "../../../src/cli.js";
 const tempDirs: string[] = [];
 
 afterEach(async () => {
-  delete process.env.WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE;
   while (tempDirs.length > 0) {
     await rm(tempDirs.pop()!, { recursive: true, force: true });
   }
@@ -15,12 +14,14 @@ afterEach(async () => {
 
 describe("source-to-project CLI run", () => {
   it("writes source-to-project artifacts for advisory mode", async () => {
-    process.env.WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE = "true";
     const root = await mkdtemp(join(tmpdir(), "source-to-project-run-"));
     tempDirs.push(root);
     const outputRoot = join(root, "runs");
     const configPath = join(root, "config.toml");
     await writeFile(configPath, `
+[source_to_project]
+offline = true
+
 [projects.weavekit]
 display_name = "Weavekit"
 working_tree = "${root}"
@@ -56,13 +57,15 @@ autonomous_pr_allowed = false
   });
 
   it("uses the prompt as the source artifact when no source URL is provided", async () => {
-    process.env.WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE = "true";
     const root = await mkdtemp(join(tmpdir(), "source-to-project-prompt-source-"));
     tempDirs.push(root);
     const outputRoot = join(root, "runs");
     const configPath = join(root, "config.toml");
     const prompt = "Use the team's internal loop maturity notes to identify weavekit workflow improvements.";
     await writeFile(configPath, `
+[source_to_project]
+offline = true
+
 [projects.weavekit]
 display_name = "Weavekit"
 working_tree = "${root}"

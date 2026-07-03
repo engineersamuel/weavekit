@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runDecisionCouncil, type RunDecisionCouncilOptions } from "../../src/decision-council/runner.js";
 import { runDecisionCouncilLoop } from "../../src/decision-council/workflow.js";
 import { createDecisionCouncilWorkflow } from "../../src/flue/decisionCouncilWorkflowDefinition.js";
-import { defaultPersonaSet } from "../../src/decision-council/personas.js";
 import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
 import { TraceBamlOperation } from "../../src/decision-council/bamlTelemetry.js";
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
 import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
 import { createInitialRunState } from "../../src/decision-council/types.js";
-import type { PersonaDefinition, PersonaSet } from "../../src/decision-council/types.js";
-import { createStaticPersonaSelector, type PersonaSelectionInput, type PersonaSelector } from "../../src/personas/selector.js";
+import type { PersonaDefinition } from "../../src/decision-council/types.js";
+import { listPersonas } from "../../src/personas/index.js";
+import type { PersonaSelectionInput, PersonaSelector } from "../../src/personas/selector.js";
 
 const telemetry = vi.hoisted(() => {
   const startActiveSpanCalls: string[] = [];
@@ -91,6 +91,10 @@ const telemetry = vi.hoisted(() => {
   };
 });
 
+const entityValidation = vi.hoisted(() => ({
+  assertValidEntityCatalog: vi.fn(),
+}));
+
 vi.mock("@opentelemetry/api", () => ({
   SpanStatusCode: {
     OK: 1,
@@ -102,6 +106,14 @@ vi.mock("@opentelemetry/api", () => ({
     })),
   },
 }));
+
+vi.mock("../../src/entities/index.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/entities/index.js")>("../../src/entities/index.js");
+  return {
+    ...actual,
+    assertValidEntityCatalog: entityValidation.assertValidEntityCatalog,
+  };
+});
 
 function fakeWorker(failPersonaIds: string[] = []): PersonaWorker {
   return {
@@ -134,7 +146,29 @@ function recordingWorker(seen: Set<string>): PersonaWorker {
   };
 }
 
-const staticDefaultSelector: PersonaSelector = createStaticPersonaSelector(defaultPersonaSet);
+const defaultPersonaIds = ["socratic", "deep-module-dry", "pragmatic", "skeptic"];
+
+function testPersonas(ids = defaultPersonaIds): PersonaDefinition[] {
+  const byId = new Map(listPersonas().map((persona) => [persona.id, persona]));
+  return ids.map((id) => {
+    const persona = byId.get(id);
+    if (!persona) throw new Error(`Missing test persona "${id}".`);
+    return persona;
+  });
+}
+
+function selectorFromPersonas(personas: PersonaDefinition[], rationale = "Test selected personas."): PersonaSelector {
+  return {
+    async choosePersonas() {
+      return {
+        personaSet: { name: "selected", personas: personas.map((persona) => structuredClone(persona)) },
+        rationale,
+      };
+    },
+  };
+}
+
+const staticDefaultSelector: PersonaSelector = selectorFromPersonas(testPersonas());
 
 function makeSkillPersona(id: string, skillName: string): PersonaDefinition {
   return {
@@ -142,13 +176,11 @@ function makeSkillPersona(id: string, skillName: string): PersonaDefinition {
     name: "McKinsey Strategist",
     description: "Applies McKinsey strategic frameworks to surface second-order effects.",
     prompt: "You are a McKinsey strategist. Apply strategic frameworks.",
-    skill: { name: skillName, installer: "claude-superskills" },
+    role: "advisor",
+    skill: { name: skillName },
     tags: [],
-    framingCorrections: [],
-    ignores: [],
-    modes: [],
-    selectionHints: [],
-    selectionAntiHints: [],
+    useWhen: [],
+    avoidWhen: [],
   };
 }
 
@@ -240,6 +272,20 @@ function judge(roundsBeforeStop: number): JudgeReducer {
 describe("runDecisionCouncil", () => {
   beforeEach(() => {
     telemetry.reset();
+    entityValidation.assertValidEntityCatalog.mockReset();
+    entityValidation.assertValidEntityCatalog.mockImplementation(() => {});
+  });
+
+  it("fails entity validation before running the council loop", async () => {
+    entityValidation.assertValidEntityCatalog.mockImplementationOnce(() => {
+      throw new Error("Entity catalog validation failed with 1 error(s).");
+    });
+    const choosePersonas = vi.fn();
+
+    await expect(runDecisionCouncil({ prompt: "Should we proceed?" }, {
+      deps: { writeArtifacts: false, personaSelector: { choosePersonas } },
+    })).rejects.toThrow("Entity catalog validation failed");
+    expect(choosePersonas).not.toHaveBeenCalled();
   });
 
   it("emits progress events for the council run", async () => {
@@ -305,7 +351,7 @@ describe("runDecisionCouncil", () => {
     const seen = new Set<string>();
     const choosePersonas = vi.fn(async (input: PersonaSelectionInput) => ({
       personaSet: {
-        name: "selected",
+        name: "selected" as const,
         personas: selectFromCandidates(input, ["socratic", "pragmatic"]),
       },
       rationale: "Need one critic and one delivery-focused voice.",
@@ -330,7 +376,7 @@ describe("runDecisionCouncil", () => {
   it("creates a selector observation with persona chooser input and output", async () => {
     const choosePersonas = vi.fn(async (input: PersonaSelectionInput) => ({
       personaSet: {
-        name: "selected",
+        name: "selected" as const,
         personas: selectFromCandidates(input, ["socratic", "pragmatic"]),
       },
       rationale: "Need one critic and one delivery-focused voice.",
@@ -531,7 +577,6 @@ describe("runDecisionCouncil", () => {
     const report = await runCouncilForTest(
       { prompt: "Should Weavekit use Flue?" },
       {
-        personaSet: defaultPersonaSet,
         deps: {
           personaWorker: fakeWorker(),
           normalizer,
@@ -542,84 +587,6 @@ describe("runDecisionCouncil", () => {
 
     expect(report.recommendation).toBe("Use Flue for v0.");
     expect(report.failedPersonas).toEqual([]);
-  });
-
-  it("selects strategic personas from the personaSetName option", async () => {
-    const strategicSeen = new Set<string>();
-    const dynamicSelector = {
-      choosePersonas: vi.fn(async () => {
-        throw new Error("Dynamic selector should be bypassed for explicit personaSetName.");
-      }),
-    };
-    await runCouncilForTest(
-      { prompt: "Pick a set." },
-      {
-        personaSetName: "strategic",
-        deps: {
-          personaSelector: dynamicSelector,
-          personaWorker: recordingWorker(strategicSeen),
-          normalizer,
-          judge: judge(1),
-        },
-      },
-    );
-
-    const defaultSeen = new Set<string>();
-    await runCouncilForTest(
-      { prompt: "Pick a set." },
-      {
-        deps: {
-          personaWorker: recordingWorker(defaultSeen),
-          normalizer,
-          judge: judge(1),
-        },
-      },
-    );
-
-    expect(dynamicSelector.choosePersonas).not.toHaveBeenCalled();
-    expect(strategicSeen.has("strategic-game-theorist")).toBe(true);
-    expect(defaultSeen.has("game-theorist")).toBe(false);
-  });
-
-  it("selects dialectic personas from the personaSetName option", async () => {
-    const seen = new Set<string>();
-    await runCouncilForTest(
-      { prompt: "Pick a set." },
-      {
-        personaSetName: "dialectic",
-        deps: {
-          personaWorker: recordingWorker(seen),
-          normalizer,
-          judge: judge(1),
-        },
-      },
-    );
-
-    expect([...seen].sort()).toEqual(["dialectic-adversary", "dialectic-advocate", "hostile-auditor"]);
-  });
-
-  it("prefers options.personaSet over personaSetName values in input/options", async () => {
-    const seen = new Set<string>();
-    const customSet = {
-      name: "custom",
-      personas: [defaultPersonaSet.personas[0]!, defaultPersonaSet.personas[2]!],
-    };
-
-    await expect(
-      runCouncilForTest(
-        { prompt: "Use the supplied set.", personaSetName: "nonexistent" },
-        {
-          personaSet: customSet,
-          deps: {
-            personaWorker: recordingWorker(seen),
-            normalizer,
-            judge: judge(1),
-          },
-        },
-      ),
-    ).resolves.toBeDefined();
-
-    expect([...seen].sort()).toEqual(customSet.personas.map((persona) => persona.id).sort());
   });
 
   it("stops at max three rounds even if Judge asks to continue", async () => {
@@ -660,9 +627,10 @@ describe("runDecisionCouncil", () => {
     const report = await runDecisionCouncil(
       { prompt: "Run a fast smoke round." },
       {
-        personaSetName: "smoke",
+        smoke: true,
         maxRounds: 1,
         deps: {
+          personaSelector: staticDefaultSelector,
           personaWorker: fakeWorker(),
           normalizer,
           judge: trackingJudge,
@@ -703,7 +671,7 @@ describe("runDecisionCouncil", () => {
 
   it("records round personaSelection ids and rationale in workflow state", async () => {
     const finalState = await runDecisionCouncilLoop(
-      createInitialRunState({ prompt: "Track selected personas per round." }, defaultPersonaSet),
+      createInitialRunState({ prompt: "Track selected personas per round." }, { name: "test", personas: testPersonas() }),
       {
         personaSelector: makeRoundSelector([
           {
@@ -915,7 +883,7 @@ describe("runDecisionCouncil", () => {
   it("includes skill name in persona events for skill-backed personas", async () => {
     const events: unknown[] = [];
     const skillPersona = makeSkillPersona("mckinsey", "mckinsey-strategist");
-    const skillSet: PersonaSet = { name: "skill-test", personas: [skillPersona, defaultPersonaSet.personas[0]!] };
+    const personas = [skillPersona, testPersonas()[0]!];
     const skillWorker: PersonaWorker = {
       async runPersona({ persona }) {
         return {
@@ -930,8 +898,8 @@ describe("runDecisionCouncil", () => {
     await runCouncilForTest(
       { prompt: "Test skill provenance." },
       {
-        personaSet: skillSet,
         deps: {
+          personaSelector: selectorFromPersonas(personas),
           personaWorker: skillWorker,
           normalizer,
           judge: judge(1),
@@ -950,13 +918,13 @@ describe("runDecisionCouncil", () => {
 
   it("sets weavekit.decision_council.skill_personas span attribute for skill-backed personas", async () => {
     const skillPersona = makeSkillPersona("mckinsey", "mckinsey-strategist");
-    const mixedSet: PersonaSet = { name: "mixed-skill-test", personas: [skillPersona, defaultPersonaSet.personas[0]!] };
+    const personas = [skillPersona, testPersonas()[0]!];
 
     await runCouncilForTest(
       { prompt: "Test skill span attribute." },
       {
-        personaSet: mixedSet,
         deps: {
+          personaSelector: selectorFromPersonas(personas),
           personaWorker: fakeWorker(),
           normalizer,
           judge: judge(1),
@@ -971,14 +939,14 @@ describe("runDecisionCouncil", () => {
   it("includes skill name in council.persona.failed event for skill-backed personas", async () => {
     const events: unknown[] = [];
     const skillPersona = makeSkillPersona("mckinsey", "mckinsey-strategist");
-    const skillSet: PersonaSet = { name: "skill-fail-test", personas: [skillPersona, defaultPersonaSet.personas[0]!, defaultPersonaSet.personas[1]!] };
+    const personas = [skillPersona, ...testPersonas().slice(0, 2)];
 
     await expect(
       runCouncilForTest(
         { prompt: "Test skill provenance on failure." },
         {
-          personaSet: skillSet,
           deps: {
+            personaSelector: selectorFromPersonas(personas),
             personaWorker: fakeWorker(["mckinsey"]),
             normalizer,
             judge: judge(1),

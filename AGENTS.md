@@ -12,6 +12,14 @@ Use Nub for Node.js package and script management in this repository.
 
 Nub is preferred because it provides one tool for running files and scripts, installing dependencies, and managing Node itself without adding a new runtime or vendor-specific API surface.
 
+## Workflow entity validation
+
+Run `mise run doctor` before running workflow or decision-council commands. The doctor task validates repo-local workflow entity YAML, sibling prompt Markdown references, generated BAML function references, and `capabilities.skills` availability for configured harnesses.
+
+Also run `mise run doctor` after editing `entities/**/*.yaml`, entity prompt Markdown, BAML output schemas/functions referenced by entity manifests, or skill capability wiring.
+
+Use `mise run doctor:sdk -- --entity <id>` when you need to prove a skill-backed Copilot SDK entity can load its configured skill in a live SDK session. This extended check requires a working Copilot SDK runtime, either through the installed platform package or `COPILOT_RUNTIME_URL`, `COPILOT_CLI_URL`, or `COPILOT_CLI_PATH`.
+
 When working with baml read ./docs/baml/instructions.md
 
 Prefer BAML-generated types over creating new hand-authored TypeScript types when the output shape is already defined in a BAML schema. Reuse generated types as the canonical contract and only add new local types when they represent workflow-specific state or input that is not produced by BAML.

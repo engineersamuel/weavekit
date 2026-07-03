@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
 import { accessSync, constants } from "node:fs";
-import { delimiter, join } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { ClientRegistry, type Collector } from "@boundaryml/baml";
-import { isTruthy } from "@engineersamuel/istruthy";
-import type { ProjectCatalogEntry, SourceToProjectMode, SourceToProjectThresholds } from "../../config.js";
+import { resolveWeavekitPluginDirectory, SupportedPluginId, type CopilotDefaults, type PluginConfigs, type ProjectCatalogEntry, type SourceToProjectDefaults, type SourceToProjectMode, type SourceToProjectThresholds, type ToolingDefaults } from "../../config.js";
 import { buildCopilotClientOptions } from "../../telemetry/copilotSdk.js";
 import { b } from "../../generated/baml_client/index.js";
 import type {
@@ -18,11 +18,11 @@ import type {
   SourceAnalysis,
 } from "../../generated/baml_client/index.js";
 import { TelegramClient } from "../../telegram/client.js";
-import type { HarnessAdapter, HarnessRegistry, WorkflowExecutionContext } from "../harness.js";
+import type { HarnessAdapter, HarnessExecutionResult, HarnessRegistry, WorkflowExecutionContext } from "../harness.js";
 import { createStaticHarnessRegistry } from "../harness.js";
 import type { WorkflowDynamicExpander } from "../runner.js";
 import { extractUsageFromCopilotEventData, type WorkflowTokenUsage, type WorkflowUsageCollector } from "../usage.js";
-import type { RuntimeWorkflowNode, WorkflowExecutionCall, WorkflowExecutionMetadata } from "../types.js";
+import type { RuntimeWorkflowNode, WorkflowArtifactRef, WorkflowExecutionCall, WorkflowExecutionMetadata } from "../types.js";
 import { WorkflowGateKind, WorkflowHarnessKind, WorkflowNodeKind } from "../types.js";
 import {
   SourceToProjectModelOperation,
@@ -126,6 +126,7 @@ type CopilotRuntimeSession = {
 
 const DEFAULT_SOURCE_READING_MAX_TOOL_CALLS = 40;
 const DEFAULT_PROJECT_RESEARCH_MAX_TOOL_CALLS = 60;
+const RAW_PLAN_ARTIFACT_DIR = "raw-plans";
 
 export type CopilotUserInputRequest = {
   question: string;
@@ -177,6 +178,14 @@ export type CopilotHarnessUsageEvent = {
   };
 };
 
+export type CopilotCapabilityScope = {
+  kind: "plugin-command";
+  pluginDirectory: string;
+  command: string;
+  promptInputName: string;
+  commandArgs?: Record<string, string>;
+};
+
 export type CopilotHarnessClient = {
   model?: string;
   run(args: {
@@ -188,8 +197,48 @@ export type CopilotHarnessClient = {
     operation?: string;
     nodeId?: string;
     label?: string;
+    capabilityScope?: CopilotCapabilityScope;
   }): Promise<string>;
 };
+
+function scopedPromptForCapability(prompt: string, capabilityScope?: CopilotCapabilityScope): string {
+  if (!capabilityScope) return prompt;
+  if (capabilityScope.kind === "plugin-command") {
+    const commandArgs = formatPluginCommandArgs(capabilityScope.commandArgs);
+    return [
+      `/${capabilityScope.command}`,
+      `${capabilityScope.promptInputName}=${JSON.stringify(prompt)}`,
+      commandArgs,
+    ].filter((part): part is string => Boolean(part)).join(" ");
+  }
+  return prompt;
+}
+
+function formatPluginCommandArgs(args?: Record<string, string>): string | undefined {
+  if (!args) return undefined;
+  const formatted = Object.entries(args).map(([key, value]) => `${key}=${formatPluginCommandValue(value)}`);
+  return formatted.length > 0 ? formatted.join(" ") : undefined;
+}
+
+function formatPluginCommandValue(value: string): string {
+  return /^[A-Za-z0-9._-]+$/.test(value) ? value : JSON.stringify(value);
+}
+
+function sessionConfigForCapability(capabilityScope?: CopilotCapabilityScope): Record<string, unknown> {
+  if (!capabilityScope) return {};
+  if (capabilityScope.kind === "plugin-command") {
+    return { pluginDirectories: [capabilityScope.pluginDirectory] };
+  }
+  return {};
+}
+
+function capabilityScopeLabel(capabilityScope?: CopilotCapabilityScope): string | undefined {
+  if (!capabilityScope) return undefined;
+  if (capabilityScope.kind === "plugin-command") {
+    return `plugin-command:${capabilityScope.command}`;
+  }
+  return capabilityScope.kind;
+}
 
 export type SourceToProjectBamlClient = {
   DistillSourceAnalysis(sourceArtifactJson: string, rawResearch: string): Promise<SourceAnalysis>;
@@ -200,7 +249,7 @@ export type SourceToProjectBamlClient = {
     corroboration: CorroborationReport,
     projectBrief: ProjectBrief,
   ): Promise<OpportunityCouncilReview>;
-  DistillPlanArtifact(opportunityJson: string, rawPlan: string): Promise<PlanArtifactSummary>;
+  DistillPlanArtifact(opportunityJson: string, rawPlan: string, rawPlanArtifactPath: string): Promise<PlanArtifactSummary>;
   ReviewFinalRecommendation(
     originalPrompt: string,
     source: string,
@@ -261,6 +310,9 @@ export type SourceToProjectHarnessOptions = {
   copilot?: CopilotHarnessClient;
   baml?: Partial<SourceToProjectBamlClient>;
   notifier?: SourceToProjectNotifier;
+  sourceToProject?: SourceToProjectDefaults;
+  tooling?: ToolingDefaults;
+  plugins?: PluginConfigs;
   worktree?: {
     prepare(): Promise<WorktreePreparationResult>;
   };
@@ -322,11 +374,12 @@ export function createLiveSourceToProjectBamlClient(options: {
         )
       );
     },
-    async DistillPlanArtifact(opportunityJson, rawPlan) {
+    async DistillPlanArtifact(opportunityJson, rawPlan, rawPlanArtifactPath) {
       return runSourceToProjectBamlCall(options.usageCollector, "DistillPlanArtifact", (callOptions) =>
         b.DistillPlanArtifact(
           opportunityJson,
           rawPlan,
+          rawPlanArtifactPath,
           callOptions,
         )
       );
@@ -374,6 +427,8 @@ async function runSourceToProjectBamlCall<T>(
 export function createCopilotSdkHarnessClient(args: {
   model?: string;
   timeoutMs?: number;
+  sourceToProject?: SourceToProjectDefaults;
+  copilot?: CopilotDefaults;
   onUserInputRequest?: (request: CopilotUserInputRequest) => Promise<void> | void;
   onLog?: (event: CopilotHarnessLogEvent) => void;
   onUsage?: (event: CopilotHarnessUsageEvent) => void;
@@ -382,16 +437,18 @@ export function createCopilotSdkHarnessClient(args: {
   clientFactory?: () => Promise<CopilotRuntimeClient> | CopilotRuntimeClient;
 } = {}): CopilotHarnessClient {
   const defaultModel = args.model
-    ?? sourceToProjectCopilotModelDecision(SourceToProjectModelOperation.SOURCE_READING).model;
-  const timeoutMs = args.timeoutMs ?? readPositiveIntegerEnv("WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS") ?? 300_000;
-  const defaultMaxToolCalls = args.maxToolCalls ?? readPositiveIntegerEnv("WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS");
-  const verboseEvents = readBooleanEnv("WEAVEKIT_COPILOT_VERBOSE_EVENTS") ?? args.verboseEvents ?? false;
+    ?? sourceToProjectCopilotModelDecision(SourceToProjectModelOperation.SOURCE_READING, {
+      copilotModel: args.sourceToProject?.copilotModel,
+    }).model;
+  const timeoutMs = args.timeoutMs ?? args.sourceToProject?.timeoutMs ?? 300_000;
+  const defaultMaxToolCalls = args.maxToolCalls ?? args.sourceToProject?.maxToolCalls;
+  const verboseEvents = args.verboseEvents ?? args.copilot?.verboseEvents ?? false;
   const clientFactory = args.clientFactory ?? (async () => {
     const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
     const CopilotClientCtor = CopilotClient as unknown as new (options?: unknown) => CopilotRuntimeClient;
     const telemetryOptions = buildCopilotClientOptions();
-    const runtimeUrl = process.env.COPILOT_RUNTIME_URL ?? process.env.COPILOT_CLI_URL;
-    const cliPath = process.env.COPILOT_CLI_PATH;
+    const runtimeUrl = args.copilot?.runtimeUrl ?? args.copilot?.cliUrl;
+    const cliPath = args.copilot?.cliPath;
     const clientOptions: Record<string, unknown> = { ...(telemetryOptions ?? {}) };
     if (runtimeUrl) {
       clientOptions.connection = RuntimeConnection.forUri(runtimeUrl);
@@ -406,13 +463,14 @@ export function createCopilotSdkHarnessClient(args: {
     async run(runArgs) {
       const startedAt = Date.now();
       const model = runArgs.model ?? defaultModel;
+      const prompt = scopedPromptForCapability(runArgs.prompt, runArgs.capabilityScope);
       logCopilotHarnessEvent(args.onLog, {
         phase: "client-create",
         mode: runArgs.mode,
         model,
         cwd: runArgs.cwd,
         timeoutMs,
-        promptLength: runArgs.prompt.length,
+        promptLength: prompt.length,
         elapsedMs: elapsedSince(startedAt),
       }, verboseEvents);
       const client = await clientFactory();
@@ -443,6 +501,7 @@ export function createCopilotSdkHarnessClient(args: {
             await args.onUserInputRequest?.(request);
             throw new Error(formatCopilotUserInputRequiredError(request));
           },
+          ...sessionConfigForCapability(runArgs.capabilityScope),
           ...(maxToolCalls
             ? {
               hooks: {
@@ -480,7 +539,7 @@ export function createCopilotSdkHarnessClient(args: {
           cwd: runArgs.cwd,
           elapsedMs: elapsedSince(startedAt),
         }, verboseEvents);
-        const content = await sendCopilotPromptAndWait(session, runArgs, timeoutMs, {
+        const content = await sendCopilotPromptAndWait(session, { ...runArgs, prompt }, timeoutMs, {
           startedAt,
           model,
           cwd: runArgs.cwd,
@@ -801,12 +860,14 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
   const bamlClient = resolveBamlClient(options);
   const notifier = options.notifier ?? createDefaultSourceToProjectNotifier();
   const registry = createStaticHarnessRegistry();
+  const copilotModelFor = (operation: SourceToProjectModelOperation) =>
+    resolveCopilotModel(operation, options.sourceToProject);
 
   const researchAdapter: HarnessAdapter = async (node, context) => {
     if (node.id === "source-corroboration") {
       const sourceAnalysis = getPayloadValue<SourceAnalysis>(context, "source-reading", "sourceAnalysis");
       const prompt = buildCorroborationPrompt(JSON.stringify(sourceAnalysis));
-      const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.SOURCE_CORROBORATION);
+      const copilotModel = copilotModelFor(SourceToProjectModelOperation.SOURCE_CORROBORATION);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.SOURCE_CORROBORATION);
       const raw = await copilot.run({
         prompt,
@@ -864,11 +925,11 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
     };
   };
 
-  const copilotAdapter: HarnessAdapter = async (node, context) => {
+  const copilotAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
     if (node.id === "source-reading") {
-      const maxToolCalls = sourceReadingMaxToolCalls();
+      const maxToolCalls = sourceReadingMaxToolCalls(options.sourceToProject);
       const prompt = buildSourceReadingPrompt(options.source, maxToolCalls);
-      const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.SOURCE_READING);
+      const copilotModel = copilotModelFor(SourceToProjectModelOperation.SOURCE_READING);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.SOURCE_READING);
       const raw = await copilot.run({
         prompt,
@@ -895,8 +956,8 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       const projectJson = JSON.stringify(options.project);
       const sourceAnalysis = getOptionalPayloadValue<SourceAnalysis>(context, "source-reading", "sourceAnalysis");
       const corroboration = getOptionalPayloadValue<CorroborationReport>(context, "source-corroboration", "corroboration");
-      const maxToolCalls = projectResearchMaxToolCalls();
-      const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.PROJECT_RESEARCH);
+      const maxToolCalls = projectResearchMaxToolCalls(options.sourceToProject);
+      const copilotModel = copilotModelFor(SourceToProjectModelOperation.PROJECT_RESEARCH);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PROJECT_RESEARCH);
       const prompt = buildProjectResearchPrompt({
         objective: context.objective ?? `Apply ${options.source} to ${options.project.displayName}`,
@@ -905,6 +966,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         sourceAnalysisJson: sourceAnalysis ? JSON.stringify(sourceAnalysis) : undefined,
         corroborationJson: corroboration ? JSON.stringify(corroboration) : undefined,
       });
+      const capabilityScope = projectResearchCapabilityScope(node, options.plugins);
       const raw = await copilot.run({
         cwd: options.project.workingTree,
         prompt,
@@ -914,6 +976,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         operation: node.id,
         nodeId: node.id,
         label: "Copilot project research",
+        capabilityScope,
       });
       const projectBrief = await bamlClient.DistillProjectBrief(projectJson, raw);
       return {
@@ -921,7 +984,13 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         output: `Project brief complete: ${projectBrief.displayName}`,
         payload: { projectBrief },
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
-          copilotCall({ mode: "research", cwd: options.project.workingTree, prompt, model: copilotModel }),
+          copilotCall({
+            mode: "research",
+            cwd: options.project.workingTree,
+            prompt,
+            model: copilotModel,
+            capabilityScope,
+          }),
           bamlCall("DistillProjectBrief", bamlModel),
         ]),
       };
@@ -930,23 +999,8 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
     if (isOpportunityPlanNode(node)) {
       const opportunity = readNodeInput<Opportunity>(node, "opportunity");
       const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
-      const councilReview = readCouncilReview(context);
-      const relatedBundles = councilReview.bundles.filter((bundle) => bundle.opportunityIds.includes(opportunity.id));
-      const selectedCandidateJson = JSON.stringify({
-        kind: "opportunity",
-        id: opportunity.id,
-        title: opportunity.title,
-        opportunityIds: [opportunity.id],
-        projectChange: opportunity.projectChange,
-        sourceLesson: opportunity.lesson,
-        userValue: opportunity.projectChange,
-        score: opportunity.score,
-        acceptance,
-        relatedBundles,
-        raw: opportunity,
-      });
-      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(options.project));
-      const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.PLAN_GENERATION);
+      const resolvedPlan = resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject);
+      const { prompt, selectedCandidateJson, copilotModel, rawPlanArtifactPath } = resolvedPlan;
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
       const rawPlan = await copilot.run({
         cwd: options.project.workingTree,
@@ -957,11 +1011,21 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         nodeId: node.id,
         label: `Copilot plan ${opportunity.id}`,
       });
-      const planSummary = await bamlClient.DistillPlanArtifact(selectedCandidateJson, rawPlan);
+      const persistedPlan = await persistRawPlanMarkdown({
+        outputDir: context.outputDir,
+        nodeId: node.id,
+        rawPlan,
+        rawPlanArtifactPath,
+      });
+      const planSummary = withRawPlanArtifactPath(
+        await bamlClient.DistillPlanArtifact(selectedCandidateJson, rawPlan, rawPlanArtifactPath),
+        rawPlanArtifactPath,
+      );
       return {
         status: "passed",
         output: `Plan artifact complete for ${opportunity.id}: ${planSummary.title}`,
         payload: { plan: planSummary, plans: [planSummary], opportunityAcceptance: acceptance },
+        artifacts: persistedPlan.artifacts,
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
           copilotCall({ mode: "plan", cwd: options.project.workingTree, prompt, model: copilotModel }),
           bamlCall("DistillPlanArtifact", bamlModel),
@@ -986,8 +1050,9 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       }
 
       const selectedCandidateJson = JSON.stringify(selection.selectedCandidate);
-      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(options.project));
-      const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.PLAN_GENERATION);
+      const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
+      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(options.project), rawPlanArtifactPath);
+      const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
       const rawPlan = await copilot.run({
         cwd: options.project.workingTree,
@@ -998,11 +1063,21 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         nodeId: node.id,
         label: "Copilot selected-opportunity plan",
       });
-      const planSummary = await bamlClient.DistillPlanArtifact(selectedCandidateJson, rawPlan);
+      const persistedPlan = await persistRawPlanMarkdown({
+        outputDir: context.outputDir,
+        nodeId: node.id,
+        rawPlan,
+        rawPlanArtifactPath,
+      });
+      const planSummary = withRawPlanArtifactPath(
+        await bamlClient.DistillPlanArtifact(selectedCandidateJson, rawPlan, rawPlanArtifactPath),
+        rawPlanArtifactPath,
+      );
       return {
         status: "passed",
         output: `Plan artifact complete: ${planSummary.title}`,
         payload: { plans: [planSummary], planSelection: selection },
+        artifacts: persistedPlan.artifacts,
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
           copilotCall({ mode: "plan", cwd: options.project.workingTree, prompt, model: copilotModel }),
           bamlCall("DistillPlanArtifact", bamlModel),
@@ -1059,12 +1134,14 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         skill: "visual-plan",
         cwd: options.project.workingTree,
         shell: options.shell,
+        offline: options.sourceToProject?.offline,
+        tooling: options.tooling,
       });
       const prompt = buildVisualPlanPrompt({
         opportunity,
         reportMarkdown,
       });
-      const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.VISUAL_DESIGN);
+      const copilotModel = copilotModelFor(SourceToProjectModelOperation.VISUAL_DESIGN);
       const rawVisualPlan = await copilot.run({
         cwd: options.project.workingTree,
         prompt,
@@ -1140,7 +1217,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       const operation = node.id === "fix-review-findings"
         ? SourceToProjectModelOperation.IMPLEMENTATION_FIX
         : SourceToProjectModelOperation.IMPLEMENTATION;
-      const copilotModel = resolveCopilotModel(operation);
+      const copilotModel = copilotModelFor(operation);
       const raw = await copilot.run({
         cwd: worktreePath,
         prompt: node.prompt,
@@ -1162,7 +1239,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
 
     if (node.id === "review-implementation") {
       const worktreePath = getPayloadValue<WorktreePreparationResult>(context, "prepare-worktree", "worktreePreparation").worktreePath;
-      const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.IMPLEMENTATION_REVIEW);
+      const copilotModel = copilotModelFor(SourceToProjectModelOperation.IMPLEMENTATION_REVIEW);
       const raw = await copilot.run({
         cwd: worktreePath,
         prompt: node.prompt,
@@ -1183,7 +1260,14 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
     }
 
     return { status: "passed", output: `Copilot SDK harness skipped unsupported node ${node.id}.` };
-  };
+  }, {
+    async prepareExecution(node: RuntimeWorkflowNode, context: WorkflowExecutionContext) {
+      if (!isOpportunityPlanNode(node)) {
+        return undefined;
+      }
+      return resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject).execution;
+    },
+  });
 
   const verifierAdapter: HarnessAdapter = async (node, context) => {
     if (node.id === "prepare-worktree") {
@@ -1598,18 +1682,93 @@ function buildExecutionMetadata(executor: string, calls: WorkflowExecutionCall[]
   };
 }
 
+function resolveOpportunityPlanExecution(
+  node: RuntimeWorkflowNode,
+  context: WorkflowExecutionContext,
+  project: ProjectCatalogEntry,
+  sourceToProject?: SourceToProjectDefaults,
+): { selectedCandidateJson: string; prompt: string; copilotModel?: string; rawPlanArtifactPath: string; execution: WorkflowExecutionMetadata } {
+  const opportunity = readNodeInput<Opportunity>(node, "opportunity");
+  const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
+  const councilReview = readCouncilReview(context);
+  const relatedBundles = councilReview.bundles.filter((bundle) => bundle.opportunityIds.includes(opportunity.id));
+  const selectedCandidateJson = JSON.stringify({
+    kind: "opportunity",
+    id: opportunity.id,
+    title: opportunity.title,
+    opportunityIds: [opportunity.id],
+    projectChange: opportunity.projectChange,
+    sourceLesson: opportunity.lesson,
+    userValue: opportunity.projectChange,
+    score: opportunity.score,
+    acceptance,
+    relatedBundles,
+    raw: opportunity,
+  });
+  const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
+  const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(project), rawPlanArtifactPath);
+  const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.PLAN_GENERATION, sourceToProject);
+  return {
+    selectedCandidateJson,
+    prompt,
+    copilotModel,
+    rawPlanArtifactPath,
+    execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
+      copilotCall({ mode: "plan", cwd: project.workingTree, prompt, model: copilotModel }),
+    ]),
+  };
+}
+
+async function persistRawPlanMarkdown(args: {
+  outputDir?: string;
+  nodeId: string;
+  rawPlan: string;
+  rawPlanArtifactPath: string;
+}): Promise<{ artifacts: WorkflowArtifactRef[] | undefined }> {
+  if (!args.outputDir) {
+    return { artifacts: undefined };
+  }
+  const artifactPath = join(args.outputDir, args.rawPlanArtifactPath);
+  await mkdir(dirname(artifactPath), { recursive: true });
+  await writeFile(artifactPath, args.rawPlan, "utf8");
+  return {
+    artifacts: [{
+      kind: "markdown",
+      path: args.rawPlanArtifactPath,
+      description: `Raw Copilot plan markdown for ${args.nodeId}.`,
+    }],
+  };
+}
+
+function withRawPlanArtifactPath(plan: PlanArtifactSummary, rawPlanArtifactPath: string): PlanArtifactSummary {
+  return {
+    ...plan,
+    rawPlanArtifactPath,
+  };
+}
+
+function rawPlanArtifactPathForNode(nodeId: string): string {
+  return `${RAW_PLAN_ARTIFACT_DIR}/${sanitizeArtifactFilename(nodeId)}.md`;
+}
+
+function sanitizeArtifactFilename(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, "-");
+}
+
 function copilotCall(args: {
   mode: "research" | "plan" | "implement" | "review";
   prompt: string;
   cwd?: string;
   model?: string;
+  capabilityScope?: CopilotCapabilityScope;
 }): WorkflowExecutionCall {
   return {
     executor: "copilot-sdk",
     mode: args.mode,
-    prompt: args.prompt,
+    prompt: scopedPromptForCapability(args.prompt, args.capabilityScope),
     cwd: args.cwd,
     model: args.model,
+    capabilityScope: capabilityScopeLabel(args.capabilityScope),
   };
 }
 
@@ -1633,14 +1792,16 @@ async function ensureAgentNativeSkillInstalled(args: {
   skill: AgentNativeSkillInstallResult["skill"];
   cwd: string;
   shell?: ShellClient;
+  offline?: boolean;
+  tooling?: Pick<ToolingDefaults, "agentNativeSkillsInstaller" | "miseBin">;
 }): Promise<AgentNativeSkillInstallResult> {
-  const configuredInstaller = process.env.WEAVEKIT_AGENT_NATIVE_SKILLS_INSTALLER;
+  const configuredInstaller = args.tooling?.agentNativeSkillsInstaller;
   const command = configuredInstaller ?? "nub";
   const commandArgs = configuredInstaller
     ? ["@agent-native/skills@latest", "add", "--skill", args.skill]
     : ["x", "@agent-native/skills@latest", "add", "--skill", args.skill];
 
-  if (process.env.WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE === "true") {
+  if (args.offline) {
     return {
       skill: args.skill,
       command,
@@ -1651,7 +1812,7 @@ async function ensureAgentNativeSkillInstalled(args: {
   }
 
   const run = args.shell?.run ?? defaultShellRun;
-  const result = await runAgentNativeInstallerCommand(run, command, commandArgs, { cwd: args.cwd });
+  const result = await runAgentNativeInstallerCommand(run, command, commandArgs, { cwd: args.cwd }, args.tooling);
   return {
     skill: args.skill,
     command: result.command,
@@ -1666,6 +1827,7 @@ async function runAgentNativeInstallerCommand(
   command: string,
   args: string[],
   options: { cwd: string },
+  tooling?: Pick<ToolingDefaults, "miseBin">,
 ): Promise<{ command: string; args: string[]; output: string }> {
   try {
     return {
@@ -1690,7 +1852,7 @@ async function runAgentNativeInstallerCommand(
         throw fallbackError;
       }
       let lastEnoentError: unknown = fallbackError;
-      for (const absoluteMiseCommand of resolveAbsoluteMiseCommands()) {
+      for (const absoluteMiseCommand of resolveAbsoluteMiseCommands(tooling)) {
         try {
           return {
             command: absoluteMiseCommand,
@@ -1713,8 +1875,8 @@ function isEnoentError(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT");
 }
 
-function resolveAbsoluteMiseCommands(): string[] {
-  const configured = process.env.WEAVEKIT_MISE_BIN?.trim();
+function resolveAbsoluteMiseCommands(tooling?: Pick<ToolingDefaults, "miseBin">): string[] {
+  const configured = tooling?.miseBin?.trim();
   const home = process.env.HOME?.trim();
   const candidates = [
     configured,
@@ -1824,43 +1986,38 @@ function buildVisualPlanPrompt(args: {
   ].join("\n");
 }
 
-function readPositiveIntegerEnv(name: string): number | undefined {
-  const value = process.env[name];
-  if (value === undefined || value.trim() === "") {
-    return undefined;
-  }
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function readBooleanEnv(name: string): boolean | undefined {
-  const value = process.env[name]?.trim().toLowerCase();
-  if (!value) {
-    return undefined;
-  }
-  if (["0", "false", "no", "off"].includes(value)) {
-    return false;
-  }
-  if (isTruthy(value, { isEmptyStringFalse: true })) {
-    return true;
-  }
-  return undefined;
-}
-
-function sourceReadingMaxToolCalls(): number {
-  return readPositiveIntegerEnv("WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS")
-    ?? readPositiveIntegerEnv("WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS")
+function sourceReadingMaxToolCalls(config?: SourceToProjectDefaults): number {
+  return config?.sourceReadingMaxToolCalls
+    ?? config?.maxToolCalls
     ?? DEFAULT_SOURCE_READING_MAX_TOOL_CALLS;
 }
 
-function projectResearchMaxToolCalls(): number {
-  return readPositiveIntegerEnv("WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS")
-    ?? readPositiveIntegerEnv("WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS")
+function projectResearchMaxToolCalls(config?: SourceToProjectDefaults): number {
+  return config?.projectResearchMaxToolCalls
+    ?? config?.maxToolCalls
     ?? DEFAULT_PROJECT_RESEARCH_MAX_TOOL_CALLS;
 }
 
-function resolveCopilotModel(operation: SourceToProjectModelOperation): string {
-  return sourceToProjectCopilotModelDecision(operation).model;
+function projectResearchCapabilityScope(node: RuntimeWorkflowNode, plugins?: PluginConfigs): CopilotCapabilityScope | undefined {
+  const capability = node.capabilities?.pluginCommands?.[0];
+  if (!capability) return undefined;
+  if (capability.plugin !== SupportedPluginId.HVE_CORE) {
+    throw new Error(`Unsupported project-research plugin command capability plugin "${capability.plugin}".`);
+  }
+  if (capability.command !== "hve-core:task-research") {
+    throw new Error(`Unsupported project-research plugin command "${capability.command}".`);
+  }
+  return {
+    kind: "plugin-command",
+    pluginDirectory: resolveWeavekitPluginDirectory(SupportedPluginId.HVE_CORE, plugins),
+    command: capability.command,
+    promptInputName: capability.promptInputName,
+    commandArgs: capability.args,
+  };
+}
+
+function resolveCopilotModel(operation: SourceToProjectModelOperation, config?: Pick<SourceToProjectDefaults, "copilotModel">): string {
+  return sourceToProjectCopilotModelDecision(operation, { copilotModel: config?.copilotModel }).model;
 }
 
 function resolveBamlModel(operation: SourceToProjectModelOperation): string {
@@ -2335,7 +2492,7 @@ function createDeterministicBamlClient(options: SourceToProjectHarnessOptions): 
         rankingRationale: "Single deterministic opportunity produced by the offline harness.",
       };
     },
-    async DistillPlanArtifact(_opportunityJson) {
+    async DistillPlanArtifact(_opportunityJson, _rawPlan, rawPlanArtifactPath) {
       return {
         opportunityIds: ["opp-1"],
         title: "Apply source-to-project opportunity",
@@ -2353,7 +2510,7 @@ function createDeterministicBamlClient(options: SourceToProjectHarnessOptions): 
         filesLikelyTouched: ["src"],
         validationCommands: options.project.validationCommands,
         risks: ["Review plan before implementation."],
-        rawPlanArtifactPath: "inline",
+        rawPlanArtifactPath,
       };
     },
     async ReviewFinalRecommendation(_originalPrompt, _source, _sourceAnalysis, _corroboration, _projectBrief, plans) {

@@ -1,5 +1,6 @@
 import { defineWorkflow, type ToolDefinition } from "@flue/runtime";
 import * as v from "valibot";
+import type { FlueDefaults } from "../config.js";
 import { DecisionCouncilRunStateSchema } from "../decision-council/types.js";
 import { type DecisionCouncilWorkflowDeps, runDecisionCouncilLoop } from "../decision-council/workflow.js";
 import { createDecisionCouncilAgent } from "./decisionCouncilAgent.js";
@@ -7,6 +8,7 @@ import { createDecisionCouncilAgent } from "./decisionCouncilAgent.js";
 export type DecisionCouncilFlueOptions = {
   flueTools?: ToolDefinition[];
   flueModel?: string;
+  flue?: FlueDefaults;
 };
 
 // Keep Flue registration separate from the direct CLI/library loop so Node/tsx
@@ -16,7 +18,7 @@ export function createDecisionCouncilWorkflow(
   options: DecisionCouncilFlueOptions = {},
 ) {
   return defineWorkflow({
-    agent: createDecisionCouncilAgent({ tools: options.flueTools, model: options.flueModel }),
+    agent: createDecisionCouncilAgent({ tools: options.flueTools, model: options.flueModel, config: options.flue }),
     input: v.looseObject({}),
     output: v.looseObject({}),
     async run({ input }) {

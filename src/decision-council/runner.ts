@@ -6,27 +6,24 @@ import { errorMessage, timestamp, type DecisionCouncilLogger } from "./logger.js
 import { composeDecisionCouncilLoggers, createOtelDecisionCouncilLogger } from "./otelLogger.js";
 import { CopilotPersonaWorker } from "./personaWorker.js";
 import { SkipSource } from "./elicitation.js";
-import { resolvePersonaSet, resolvePersonaSetByName } from "./personas.js";
-import { createBamlPersonaSelector, createStaticPersonaSelector, listPersonas } from "../personas/index.js";
+import { createBamlPersonaSelector, listPersonas } from "../personas/index.js";
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { setSerializedAttribute } from "./bamlTelemetry.js";
 import {
   DecisionCouncilInputSchema,
   createInitialRunState,
   type DecisionCouncilReport,
-  type PersonaSet,
 } from "./types.js";
 import type { z } from "zod";
 import { createDefaultModelRouter, defaultRouteModelCall, type ModelRouter } from "./modelRouter.js";
 
 export type RunDecisionCouncilOptions = {
-  personaSet?: PersonaSet;
-  personaSetName?: string;
   maxRounds?: number;
   outputDir?: string;
   inputPath?: string;
   logger?: DecisionCouncilLogger;
   router?: ModelRouter;
+  smoke?: boolean;
   deps?: Partial<DecisionCouncilWorkflowDeps> & {
     writeArtifacts?: boolean;
   };
@@ -40,6 +37,9 @@ function traceIdFor(span: { spanContext(): { traceId?: string } }): string | und
 }
 
 export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilInputSchema>, options: RunDecisionCouncilOptions = {}): Promise<DecisionCouncilReport> {
+  const { assertValidEntityCatalog } = await import("../entities/index.js");
+  assertValidEntityCatalog(process.cwd());
+
   const startedAt = performance.now();
   const runId = `council-${Date.now().toString(36)}`;
   return tracer.startActiveSpan("council-run", async (span) => {
@@ -51,24 +51,14 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
       span.setAttribute("langfuse.trace.name", "council-run");
       setSerializedAttribute(span, "langfuse.trace.input", parsedInput);
       setSerializedAttribute(span, "langfuse.observation.input", parsedInput);
-      const explicitPersonaSet = options.personaSet ? resolvePersonaSet(options.personaSet) : undefined;
-      let staticPersonaSet = explicitPersonaSet;
-      if (!staticPersonaSet) {
-        const explicitPersonaSetName = options.personaSetName ?? parsedInput.personaSetName;
-        if (explicitPersonaSetName) {
-          staticPersonaSet = resolvePersonaSetByName(explicitPersonaSetName);
-        }
-      }
-      const candidatePool = staticPersonaSet ? undefined : listPersonas();
-      const personaSelector = staticPersonaSet
-        ? createStaticPersonaSelector(staticPersonaSet)
-        : (options.deps?.personaSelector ??
-          createBamlPersonaSelector({
-            candidatePersonas: candidatePool!,
-            minPersonas: 2,
-            maxPersonas: 6,
-          }));
-      const runVisiblePersonaSet = staticPersonaSet ?? { name: "candidates", personas: candidatePool! };
+      const candidatePool = listPersonas();
+      const personaSelector = options.deps?.personaSelector ??
+        createBamlPersonaSelector({
+          candidatePersonas: candidatePool,
+          minPersonas: 2,
+          maxPersonas: options.smoke ? 2 : 6,
+        });
+      const runVisiblePersonas = { name: "candidates" as const, personas: candidatePool };
       const router = options.router ?? createDefaultModelRouter(defaultRouteModelCall);
       const bamlAdapters = new GeneratedBamlAdapters({ router });
       const maxRounds = options.maxRounds ?? 3;
@@ -82,7 +72,7 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
         elicitation: options.deps?.elicitation ?? new SkipSource(),
       };
 
-      const initialState = createInitialRunState(parsedInput, runVisiblePersonaSet, maxRounds);
+      const initialState = createInitialRunState(parsedInput, runVisiblePersonas, maxRounds);
       span.setAttribute("weavekit.decision_council.run_id", runId);
       span.setAttribute("weavekit.decision_council.persona_count", initialState.personas.length);
       span.setAttribute("weavekit.decision_council.max_rounds", maxRounds);

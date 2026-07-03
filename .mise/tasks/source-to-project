@@ -7,15 +7,16 @@ if [[ $# -eq 0 ]]; then
 fi
 
 prompt="$*"
-dashboard_url="${WEAVEKIT_WORKFLOW_DASHBOARD_URL:-http://127.0.0.1:4321}"
+dashboard_url="http://127.0.0.1:4321"
 
 args=(
   --template source-to-project \
   --prompt "$prompt" \
-  --project "${WEAVEKIT_SOURCE_TO_PROJECT_PROJECT:-weavekit}" \
-  --mode "${WEAVEKIT_SOURCE_TO_PROJECT_MODE:-advisory}" \
-  --output "${WEAVEKIT_WORKFLOW_OUTPUT:-runs}"
+  --mode advisory \
+  --output runs
 )
+
+args+=(--project-path "$PWD")
 
 if [[ "$dashboard_url" != "off" && "$dashboard_url" != "none" ]]; then
   args+=(--dashboard-url "$dashboard_url")

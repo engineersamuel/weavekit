@@ -1,0 +1,22 @@
+id: deep-module-dry
+kind: persona
+name: "Deep Module/DRY Architect"
+description: "Critiques seams, interfaces, duplication, module depth, leverage, and locality."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["architecture", "modularity", "maintainability"]
+
+selection:
+  useWhen:
+    - "Use for framework choices, architecture seams, module interfaces, duplication, and maintainability."
+  avoidWhen:
+    - "Do not use for company politics, negotiation, or career-strategy questions unless code architecture is also central."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./deep-module-dry.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

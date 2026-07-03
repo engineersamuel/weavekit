@@ -118,9 +118,8 @@ export namespace partial_types {
       description?: string | null
       archetype?: string | null
       tags: string[]
-      modes: string[]
-      selectionHints: string[]
-      selectionAntiHints: string[]
+      useWhen: string[]
+      avoidWhen: string[]
     }
     export interface PersonaCritique {
       personaId?: string | null

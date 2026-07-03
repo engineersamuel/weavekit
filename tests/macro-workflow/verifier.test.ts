@@ -8,9 +8,10 @@ import {
   WorkflowNodeKind,
   assertValidWorkflowPlan,
   verifyWorkflowPlan,
+  type RuntimeWorkflowPlan,
 } from "../../src/macro-workflow/index.js";
 
-function validPlan() {
+function validPlan(): RuntimeWorkflowPlan {
   return {
     id: "implement-rich-logging",
     objective: "Choose and implement rich logging for acme.",
@@ -134,5 +135,46 @@ describe("macro workflow verifier", () => {
     expect(result.issues).toContainEqual(
       expect.objectContaining({ code: "missing-verification" }),
     );
+  });
+
+  it("rejects plugin command capabilities for unsupported plugins", () => {
+    const plan = validPlan();
+    plan.nodes[0]!.capabilities = {
+      pluginCommands: [{
+        plugin: "unknown-plugin",
+        command: "unknown-plugin:research",
+        promptInputName: "topic",
+        args: {},
+      }],
+    };
+
+    const result = verifyWorkflowPlan(plan);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: "invalid-plugin-command-capability",
+      nodeId: "research",
+      message: expect.stringContaining("Unsupported plugin unknown-plugin"),
+    }));
+  });
+
+  it("rejects plugin command capabilities missing required command fields", () => {
+    const plan = validPlan();
+    plan.nodes[0]!.capabilities = {
+      pluginCommands: [{
+        plugin: "hve-core",
+        promptInputName: "topic",
+        args: {},
+      }],
+    } as never;
+
+    const result = verifyWorkflowPlan(plan);
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: "invalid-plugin-command-capability",
+      nodeId: "research",
+      message: expect.stringContaining("requires a non-empty command"),
+    }));
   });
 });

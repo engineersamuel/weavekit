@@ -1,12 +1,21 @@
 import type { McpServerConnection, ToolDefinition } from "@flue/runtime";
 import { describe, expect, it, vi } from "vitest";
 import type { CritiqueNormalizer, JudgeReducer } from "../../src/decision-council/bamlAdapters.js";
-import { defaultPersonaSet } from "../../src/decision-council/personas.js";
 import type { PersonaWorker } from "../../src/decision-council/personaWorker.js";
 import { createConfiguredDecisionCouncilWorkflow } from "../../src/flue/decisionCouncilWorkflow.js";
-import { createStaticPersonaSelector } from "../../src/personas/selector.js";
+import { listPersonas } from "../../src/personas/index.js";
+import type { PersonaSelector } from "../../src/personas/selector.js";
 
-const personaSelector = createStaticPersonaSelector(defaultPersonaSet);
+const personaSelector: PersonaSelector = {
+  async choosePersonas() {
+    const ids = ["socratic", "deep-module-dry", "pragmatic", "skeptic"];
+    const byId = new Map(listPersonas().map((persona) => [persona.id, persona]));
+    return {
+      personaSet: { name: "selected", personas: ids.map((id) => byId.get(id)!) },
+      rationale: "Test selected personas.",
+    };
+  },
+};
 
 const personaWorker: PersonaWorker = {
   async runPersona({ persona, brief }) {

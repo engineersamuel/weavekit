@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { formatDecisionCouncilSuccessMessage, parseDecisionCouncilCliArgs, readDecisionCouncilInputFile } from "../src/cli.js";
+import { formatDecisionCouncilSuccessMessage, parseDecisionCouncilCliArgs, parseEntityCliArgs, readDecisionCouncilInputFile } from "../src/cli.js";
 
 function runCommand(command: string, args: string[]): Promise<{ code: number | null; stderr: string; stdout: string }> {
   return new Promise((resolve, reject) => {
@@ -30,6 +30,14 @@ function runCommand(command: string, args: string[]): Promise<{ code: number | n
 }
 
 describe("CLI", () => {
+  it("parses entity validate", () => {
+    expect(parseEntityCliArgs(["entity", "validate"])).toEqual({ command: "validate" });
+  });
+
+  it("rejects unknown entity command", () => {
+    expect(() => parseEntityCliArgs(["entity", "list"])).toThrow("Usage: weavekit entity validate");
+  });
+
   it("parses decision-council run arguments", () => {
     const parsed = parseDecisionCouncilCliArgs([
       "decision-council",
@@ -44,7 +52,6 @@ describe("CLI", () => {
       inputPath: "question.md",
       outputDir: "runs/question",
       logFormat: "pretty",
-      personaSetName: undefined,
       maxRounds: undefined,
       smoke: false,
     });
@@ -64,32 +71,16 @@ describe("CLI", () => {
       inputPath: "question.md",
       outputDir: "runs/latest",
       logFormat: "json",
-      personaSetName: undefined,
       maxRounds: undefined,
       smoke: false,
     });
   });
 
-  it("parses persona set name", () => {
-    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--persona-set", "strategic"]);
-
-    expect(parsed.personaSetName).toBe("strategic");
-  });
-
-  it("parses the dialectic persona set name", () => {
-    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--persona-set", "dialectic"]);
-
-    expect(parsed.personaSetName).toBe("dialectic");
-  });
-
-  it("leaves persona set name undefined when not supplied", () => {
-    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md"]);
-
-    expect(parsed.personaSetName).toBeUndefined();
-  });
-
-  it("rejects missing persona set value", () => {
-    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--persona-set"])).toThrow();
+  it("rejects removed named selection options", () => {
+    const removedFlag = `--persona${"-set"}`;
+    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", removedFlag, "strategic"])).toThrow(
+      "Static persona sets are not supported.",
+    );
   });
 
   it("parses --max-rounds as a positive integer", () => {
@@ -110,35 +101,31 @@ describe("CLI", () => {
     expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds"])).toThrow();
   });
 
-  it("--smoke defaults to the smoke persona set and a single round", () => {
+  it("--smoke defaults max rounds to one without changing persona selection mode", () => {
     const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--smoke"]);
 
     expect(parsed.smoke).toBe(true);
-    expect(parsed.personaSetName).toBe("smoke");
     expect(parsed.maxRounds).toBe(1);
   });
 
-  it("--smoke honors explicit --persona-set and --max-rounds overrides", () => {
+  it("--smoke honors explicit --max-rounds overrides", () => {
     const parsed = parseDecisionCouncilCliArgs([
       "decision-council",
       "run",
       "--input",
       "x.md",
       "--smoke",
-      "--persona-set",
-      "default",
       "--max-rounds",
       "2",
     ]);
 
     expect(parsed.smoke).toBe(true);
-    expect(parsed.personaSetName).toBe("default");
     expect(parsed.maxRounds).toBe(2);
   });
 
-  it("reports usage with dynamic chooser and deterministic override guidance", () => {
+  it("reports decision council run usage", () => {
     expect(() => parseDecisionCouncilCliArgs(["decision-council", "plan", "--input", "x.md"])).toThrow(
-      /omit --persona-set for dynamic persona selection; provide --persona-set <name> for deterministic static selection\./,
+      /Usage: weavekit decision-council run/,
     );
   });
 

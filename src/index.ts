@@ -5,11 +5,10 @@ export type {
   DecisionCouncilReport,
   DecisionCouncilRunState,
   PersonaDefinition,
-  PersonaSet,
 } from "./decision-council/types.js";
-export { PersonaSetName, defaultPersonaSet, gameTheorist, personaSetRegistry, resolvePersonaSet, resolvePersonaSetByName, strategicPersonaSet, sunTzu } from "./decision-council/personas.js";
 export { runDecisionCouncil, type RunDecisionCouncilOptions } from "./decision-council/runner.js";
 export { type DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js";
+export * from "./entities/index.js";
 export * from "./macro-workflow/index.js";
 export {
   Classifier,
@@ -34,17 +33,12 @@ export {
 export {
   composePersonaPrompt,
   createBamlPersonaSelector,
-  createStaticPersonaSelector,
   getPersona,
-  getPersonaSet,
   listPersonas,
-  listPersonaSets,
   PersonaArchetypeSchema,
-  PersonaModeSchema,
 } from "./personas/index.js";
 export type {
   PersonaArchetype,
-  PersonaMode,
   PersonaSelectorEvent,
   PersonaSelectionInput,
   PersonaSelectionResult,

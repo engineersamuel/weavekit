@@ -81,6 +81,18 @@ COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1"
 
 [copilot]
 verbose_events = true
+model = "gpt-5-mini"
+runtime_url = "http://127.0.0.1:9999"
+cli_path = "~/bin/copilot"
+sdk_doctor_model = "gpt-5-mini"
+
+[flue]
+model = "anthropic/claude-sonnet-4-6"
+
+[tooling]
+skills_directory = "~/.weavekit/skills"
+agent_native_skills_installer = "/opt/tools/agent-skills"
+mise_bin = "/opt/homebrew/bin/mise"
 
 [source_to_project]
 max_opportunities = 1
@@ -90,6 +102,12 @@ min_impact = 0.5
 min_acceptance_average = 0.85
 max_risk = 0.8
 mode = "advisory"
+offline = true
+copilot_model = "gpt-5.5"
+timeout_ms = 120000
+max_tool_calls = 50
+source_reading_max_tool_calls = 20
+project_research_max_tool_calls = 30
 
 [projects.weavekit]
 display_name = "Weavekit"
@@ -107,7 +125,21 @@ knowledge_export = "off"
     const config = loadTypedWeavekitConfig(configPath, {});
 
     expect(config.copilot.verboseEvents).toBe(true);
+    expect(config.copilot.model).toBe("gpt-5-mini");
+    expect(config.copilot.runtimeUrl).toBe("http://127.0.0.1:9999");
+    expect(config.copilot.cliPath).toBe(join(homedir(), "bin/copilot"));
+    expect(config.copilot.sdkDoctorModel).toBe("gpt-5-mini");
+    expect(config.flue.model).toBe("anthropic/claude-sonnet-4-6");
+    expect(config.tooling.skillsDirectory).toBe(join(homedir(), ".weavekit/skills"));
+    expect(config.tooling.agentNativeSkillsInstaller).toBe("/opt/tools/agent-skills");
+    expect(config.tooling.miseBin).toBe("/opt/homebrew/bin/mise");
     expect(config.sourceToProject.maxOpportunities).toBe(1);
+    expect(config.sourceToProject.offline).toBe(true);
+    expect(config.sourceToProject.copilotModel).toBe("gpt-5.5");
+    expect(config.sourceToProject.timeoutMs).toBe(120000);
+    expect(config.sourceToProject.maxToolCalls).toBe(50);
+    expect(config.sourceToProject.sourceReadingMaxToolCalls).toBe(20);
+    expect(config.sourceToProject.projectResearchMaxToolCalls).toBe(30);
     expect(config.sourceToProject.thresholds.minApplicability).toBe(0.7);
     expect(config.sourceToProject.thresholds.minAcceptanceAverage).toBe(0.85);
     expect(config.projects.weavekit).toMatchObject({
@@ -136,6 +168,80 @@ working_tree = "~/projects/personal/weavekit"
     expect(config.projects.weavekit?.workingTree).toBe(join(homedir(), "projects/personal/weavekit"));
   });
 
+  it("loads and expands the hve-core plugin directory from typed config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(configPath, `
+[plugins.hve-core]
+directory = "~/.copilot/installed-plugins/_direct/hve-core"
+`, "utf8");
+
+    const config = loadTypedWeavekitConfig(configPath, {});
+
+    expect(config.plugins["hve-core"]?.directory).toBe(join(homedir(), ".copilot/installed-plugins/_direct/hve-core"));
+  });
+
+  it("prefers the hve-core plugin directory from config over the environment", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(configPath, `
+[plugins.hve-core]
+directory = "/config/hve-core"
+`, "utf8");
+
+    const config = loadTypedWeavekitConfig(configPath, {
+      WEAVEKIT_HVE_CORE_PLUGIN_DIR: "/env/hve-core",
+    });
+
+    expect(config.plugins["hve-core"]?.directory).toBe("/config/hve-core");
+  });
+
+  it("uses WEAVEKIT_HVE_CORE_PLUGIN_DIR before the default plugin directory", () => {
+    const config = loadTypedWeavekitConfig("/tmp/weavekit-missing-config.toml", {
+      WEAVEKIT_HVE_CORE_PLUGIN_DIR: "~/plugins/hve-core",
+    });
+
+    expect(config.plugins["hve-core"]?.directory).toBe(join(homedir(), "plugins/hve-core"));
+  });
+
+  it("loads first-party uppercase env vars only as typed config fallbacks", () => {
+    const config = loadTypedWeavekitConfig("/tmp/weavekit-missing-config.toml", {
+      WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE: "true",
+      WEAVEKIT_SOURCE_TO_PROJECT_MODEL: "copilot-override",
+      WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS: "600000",
+      WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS: "72",
+      WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS: "12",
+      WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS: "24",
+      WEAVEKIT_COPILOT_VERBOSE_EVENTS: "true",
+      COPILOT_MODEL: "gpt-5-mini",
+      COPILOT_RUNTIME_URL: "http://127.0.0.1:8181",
+      COPILOT_CLI_PATH: "~/bin/copilot",
+      WEAVEKIT_ENTITY_SDK_DOCTOR_MODEL: "gpt-5-mini",
+      WEAVEKIT_FLUE_MODEL: "anthropic/claude-haiku-4-5",
+      WEAVEKIT_AGENT_NATIVE_SKILLS_INSTALLER: "/tools/agent-skills",
+      WEAVEKIT_MISE_BIN: "/tools/mise",
+      WEAVEKIT_SKILLS_DIR: "~/cache/skills",
+    });
+
+    expect(config.sourceToProject.offline).toBe(true);
+    expect(config.sourceToProject.copilotModel).toBe("copilot-override");
+    expect(config.sourceToProject.timeoutMs).toBe(600000);
+    expect(config.sourceToProject.maxToolCalls).toBe(72);
+    expect(config.sourceToProject.sourceReadingMaxToolCalls).toBe(12);
+    expect(config.sourceToProject.projectResearchMaxToolCalls).toBe(24);
+    expect(config.copilot.verboseEvents).toBe(true);
+    expect(config.copilot.model).toBe("gpt-5-mini");
+    expect(config.copilot.runtimeUrl).toBe("http://127.0.0.1:8181");
+    expect(config.copilot.cliPath).toBe(join(homedir(), "bin/copilot"));
+    expect(config.copilot.sdkDoctorModel).toBe("gpt-5-mini");
+    expect(config.flue.model).toBe("anthropic/claude-haiku-4-5");
+    expect(config.tooling.agentNativeSkillsInstaller).toBe("/tools/agent-skills");
+    expect(config.tooling.miseBin).toBe("/tools/mise");
+    expect(config.tooling.skillsDirectory).toBe(join(homedir(), "cache/skills"));
+  });
+
   it("expands only current-user home path prefixes", () => {
     expect(expandHomePath("~", "/home/tester")).toBe("/home/tester");
     expect(expandHomePath("~/projects/weavekit", "/home/tester")).toBe(join("/home/tester", "projects/weavekit"));
@@ -149,10 +255,20 @@ working_tree = "~/projects/personal/weavekit"
       copilot: {
         verboseEvents: false,
       },
+      flue: {
+        model: "anthropic/claude-haiku-4-5",
+      },
+      tooling: {},
       sourceToProject: {
         maxOpportunities: 1,
         thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
         mode: "advisory" as const,
+        offline: false,
+      },
+      plugins: {
+        "hve-core": {
+          directory: "/plugins/hve-core",
+        },
       },
       projects: {
         weavekit: {
@@ -178,5 +294,8 @@ working_tree = "~/projects/personal/weavekit"
     const config = loadTypedWeavekitConfig("/tmp/weavekit-missing-config.toml", {});
 
     expect(config.copilot.verboseEvents).toBe(false);
+    expect(config.sourceToProject.offline).toBe(false);
+    expect(config.flue.model).toBe("anthropic/claude-haiku-4-5");
+    expect(config.plugins["hve-core"]?.directory).toBe(join(homedir(), ".copilot/installed-plugins/_direct/hve-core"));
   });
 });

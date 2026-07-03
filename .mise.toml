@@ -3,6 +3,14 @@
 [tools]
 node = "24"
 
+[tasks.doctor]
+description = "Validate workflow entity manifests, prompt references, BAML outputs, and skill capabilities."
+run = "nub src/cli.ts entity validate"
+
+[tasks."doctor:sdk"]
+description = "Validate configured entity skills against a live Copilot SDK session."
+run = "nub scripts/entity-sdk-doctor.ts"
+
 [tasks."council:smoke"]
 description = "Fast single-round, 2-persona decision-council smoke test (gpt-5-mini)."
 run = "nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/smoke"
@@ -20,8 +28,8 @@ run = '''
 set -euo pipefail
 
 nub src/cli.ts workflow dashboard \
-  --port "${WEAVEKIT_WORKFLOW_DASHBOARD_PORT:-4321}" \
-  --watch-dir "${WEAVEKIT_WORKFLOW_OUTPUT:-runs}"
+  --port 4321 \
+  --watch-dir runs
 '''
 
 [tasks."source-to-project:loop-engineering"]

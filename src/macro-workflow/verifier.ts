@@ -3,6 +3,7 @@ import {
   WorkflowGateKind,
   WorkflowNodeKind,
   type RuntimeWorkflowPlan,
+  type RuntimeWorkflowNode,
   type WorkflowReplanPatch,
   type WorkflowVerificationIssue,
   type WorkflowVerificationResult,
@@ -13,6 +14,10 @@ import {
  * Task 2 will replace this with generated imports from BAML schema.
  */
 type GeneratedWorkflowPlanLike = RuntimeWorkflowPlan;
+
+const SUPPORTED_PLUGIN_COMMANDS = new Map([
+  ["hve-core", new Set(["hve-core:task-research"])],
+]);
 
 function detectCycle(plan: GeneratedWorkflowPlanLike): boolean {
   const nodes = new Map(plan.nodes.map((node) => [node.id, node]));
@@ -82,6 +87,73 @@ function hasPathBetween(plan: GeneratedWorkflowPlanLike, fromId: string, toId: s
   return false;
 }
 
+function validatePluginCommandCapabilities(node: RuntimeWorkflowNode): WorkflowVerificationIssue[] {
+  const issues: WorkflowVerificationIssue[] = [];
+  for (const commandCapability of node.capabilities?.pluginCommands ?? []) {
+    const record = commandCapability as Record<string, unknown>;
+    const plugin = typeof record.plugin === "string" ? record.plugin.trim() : "";
+    const command = typeof record.command === "string" ? record.command.trim() : "";
+    const promptInputName = typeof record.promptInputName === "string" ? record.promptInputName.trim() : "";
+    if (!plugin) {
+      issues.push({
+        code: "invalid-plugin-command-capability",
+        message: "Plugin command capability requires a non-empty plugin.",
+        nodeId: node.id,
+      });
+      continue;
+    }
+    if (!command) {
+      issues.push({
+        code: "invalid-plugin-command-capability",
+        message: `Plugin command capability for ${plugin} requires a non-empty command.`,
+        nodeId: node.id,
+      });
+    }
+    if (!promptInputName) {
+      issues.push({
+        code: "invalid-plugin-command-capability",
+        message: `Plugin command capability for ${plugin} requires a non-empty promptInputName.`,
+        nodeId: node.id,
+      });
+    }
+    const supportedCommands = SUPPORTED_PLUGIN_COMMANDS.get(plugin);
+    if (!supportedCommands) {
+      issues.push({
+        code: "invalid-plugin-command-capability",
+        message: `Unsupported plugin ${plugin}. Supported plugins: ${[...SUPPORTED_PLUGIN_COMMANDS.keys()].join(", ")}.`,
+        nodeId: node.id,
+      });
+      continue;
+    }
+    if (command && !supportedCommands.has(command)) {
+      issues.push({
+        code: "invalid-plugin-command-capability",
+        message: `Unsupported command ${command} for plugin ${plugin}. Supported commands: ${[...supportedCommands].join(", ")}.`,
+        nodeId: node.id,
+      });
+    }
+    if (record.args !== undefined && (!record.args || typeof record.args !== "object" || Array.isArray(record.args))) {
+      issues.push({
+        code: "invalid-plugin-command-capability",
+        message: `Plugin command capability for ${plugin} must use an object for args.`,
+        nodeId: node.id,
+      });
+      continue;
+    }
+    for (const [key, value] of Object.entries((record.args ?? {}) as Record<string, unknown>)) {
+      if (typeof value !== "string" || !key.trim()) {
+        issues.push({
+          code: "invalid-plugin-command-capability",
+          message: `Plugin command capability for ${plugin} args must have non-empty string keys and string values.`,
+          nodeId: node.id,
+        });
+        break;
+      }
+    }
+  }
+  return issues;
+}
+
 export function verifyWorkflowPlan(
   plan: GeneratedWorkflowPlanLike,
   grammar: WorkflowGrammar = defaultWorkflowGrammar,
@@ -110,6 +182,7 @@ export function verifyWorkflowPlan(
     if (!grammar.allowedHarnesses.has(node.harness)) {
       issues.push({ code: "forbidden-harness", message: `Forbidden harness: ${node.harness}.`, nodeId: node.id });
     }
+    issues.push(...validatePluginCommandCapabilities(node));
   }
 
   for (const node of plan.nodes) {

@@ -27,6 +27,14 @@ describe("source-to-project template", () => {
     expect(plan.nodes.find((node) => node.id === "project-research")?.dependsOn).toEqual([
       "source-corroboration",
     ]);
+    expect(plan.nodes.find((node) => node.id === "project-research")?.capabilities).toEqual({
+      pluginCommands: [{
+        plugin: "hve-core",
+        command: "hve-core:task-research",
+        promptInputName: "topic",
+        args: { subagents: "auto" },
+      }],
+    });
     expect(plan.nodes.find((node) => node.id === "source-reading")).toMatchObject({
       description: expect.stringContaining("Read the source artifact"),
       model: "gpt-5.5",

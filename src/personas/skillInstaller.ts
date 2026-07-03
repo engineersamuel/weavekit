@@ -4,25 +4,29 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import type { ToolingDefaults } from "../config.js";
 import type { PersonaSkill } from "./schema.js";
 
 const execFileAsync = promisify(execFile);
+const SKILL_BUNDLES_BY_NAME = {
+  "mckinsey-strategist": "mckinsey",
+} as const;
 
 export interface EnsureSkillOptions {
   skill: PersonaSkill;
   cacheDir?: string;
+  tooling?: Pick<ToolingDefaults, "skillsDirectory">;
 }
 
 /**
  * Resolves the skills cache directory. Precedence:
  *   1. explicit `override` arg
- *   2. `WEAVEKIT_SKILLS_DIR` env variable
+ *   2. typed tooling config
  *   3. `<repoRoot>/.weavekit/skills` (repo root found by upward search for package.json)
  */
-export function resolveSkillsCacheDir(override?: string): string {
+export function resolveSkillsCacheDir(override?: string, tooling?: Pick<ToolingDefaults, "skillsDirectory">): string {
   if (override) return override;
-  const envDir = process.env.WEAVEKIT_SKILLS_DIR;
-  if (envDir) return envDir;
+  if (tooling?.skillsDirectory) return tooling.skillsDirectory;
 
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let depth = 0; depth < 8; depth++) {
@@ -35,8 +39,8 @@ export function resolveSkillsCacheDir(override?: string): string {
   }
 
   throw new Error(
-    `Could not locate repo root (package.json) searching upward from ` +
-      `${fileURLToPath(import.meta.url)}. Set WEAVEKIT_SKILLS_DIR to override.`,
+      `Could not locate repo root (package.json) searching upward from ` +
+      `${fileURLToPath(import.meta.url)}. Configure tooling.skills_directory to override.`,
   );
 }
 
@@ -46,7 +50,7 @@ export function resolveSkillsCacheDir(override?: string): string {
  * Returns the discovery directory (`<cacheDir>/.github/skills`) to pass as `skillDirectories`.
  */
 export async function ensureSkillInstalled(opts: EnsureSkillOptions): Promise<string> {
-  const cacheDir = resolveSkillsCacheDir(opts.cacheDir);
+  const cacheDir = resolveSkillsCacheDir(opts.cacheDir, opts.tooling);
   const discoveryDir = join(cacheDir, ".github", "skills");
   const skillMd = join(discoveryDir, opts.skill.name, "SKILL.md");
 
@@ -55,10 +59,11 @@ export async function ensureSkillInstalled(opts: EnsureSkillOptions): Promise<st
     return discoveryDir;
   }
 
-  if (!opts.skill.bundle) {
+  const bundle = SKILL_BUNDLES_BY_NAME[opts.skill.name as keyof typeof SKILL_BUNDLES_BY_NAME];
+  if (!bundle) {
     throw new Error(
-      `PersonaSkill "${opts.skill.name}" is missing required field "bundle". ` +
-        `Cannot install via ${opts.skill.installer}. Add a "bundle" value to the skill definition.`,
+      `PersonaSkill "${opts.skill.name}" is not mapped to a claude-superskills bundle. ` +
+        `Add a bundle mapping in skillInstaller.ts or provide a repo-local SKILL.md.`,
     );
   }
 
@@ -78,7 +83,7 @@ export async function ensureSkillInstalled(opts: EnsureSkillOptions): Promise<st
   // Run the installer (async so the worker stays non-blocking)
   await execFileAsync(
     process.execPath,
-    [cli, "install", "--bundle", opts.skill.bundle, "--scope", "local", "-y"],
+    [cli, "install", "--bundle", bundle, "--scope", "local", "-y"],
     { cwd: cacheDir },
   );
 
@@ -86,7 +91,7 @@ export async function ensureSkillInstalled(opts: EnsureSkillOptions): Promise<st
   if (!existsSync(skillMd)) {
     throw new Error(
       `Skill install verification failed: expected SKILL.md at "${skillMd}" after running ` +
-        `bundle "${opts.skill.bundle}" via "${cli}". ` +
+        `bundle "${bundle}" via "${cli}". ` +
         `Check claude-superskills output and ensure the bundle is valid.`,
     );
   }

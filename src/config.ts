@@ -19,11 +19,43 @@ export type SourceToProjectDefaults = {
   maxOpportunities: number;
   thresholds: SourceToProjectThresholds;
   mode: SourceToProjectMode;
+  offline: boolean;
+  copilotModel?: string;
+  timeoutMs?: number;
+  maxToolCalls?: number;
+  sourceReadingMaxToolCalls?: number;
+  projectResearchMaxToolCalls?: number;
 };
 
 export type CopilotDefaults = {
   verboseEvents: boolean;
+  model?: string;
+  runtimeUrl?: string;
+  cliUrl?: string;
+  cliPath?: string;
+  sdkDoctorModel?: string;
 };
+
+export type FlueDefaults = {
+  model: string;
+};
+
+export type ToolingDefaults = {
+  skillsDirectory?: string;
+  agentNativeSkillsInstaller?: string;
+  miseBin?: string;
+};
+
+export const SupportedPluginId = {
+  HVE_CORE: "hve-core",
+} as const;
+export type SupportedPluginId = (typeof SupportedPluginId)[keyof typeof SupportedPluginId];
+
+export type PluginDirectoryConfig = {
+  directory: string;
+};
+
+export type PluginConfigs = Partial<Record<SupportedPluginId, PluginDirectoryConfig>>;
 
 export type ProjectCatalogEntry = {
   id: string;
@@ -43,7 +75,10 @@ export type ProjectCatalogEntry = {
 export type WeavekitConfig = {
   env: Record<string, string>;
   copilot: CopilotDefaults;
+  flue: FlueDefaults;
+  tooling: ToolingDefaults;
   sourceToProject: SourceToProjectDefaults;
+  plugins: PluginConfigs;
   projects: Record<string, ProjectCatalogEntry>;
 };
 
@@ -59,6 +94,31 @@ export function expandHomePath(path: string, home = homedir()): string {
     return join(home, path.slice(2));
   }
   return path;
+}
+
+export function defaultPluginDirectory(plugin: SupportedPluginId): string {
+  if (plugin === SupportedPluginId.HVE_CORE) {
+    return join(homedir(), ".copilot", "installed-plugins", "_direct", "hve-core");
+  }
+  return "";
+}
+
+export function resolveWeavekitPluginDirectory(
+  plugin: SupportedPluginId,
+  plugins: PluginConfigs | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = plugins?.[plugin]?.directory.trim();
+  if (configured) {
+    return expandHomePath(configured);
+  }
+  if (plugin === SupportedPluginId.HVE_CORE) {
+    const envValue = env.WEAVEKIT_HVE_CORE_PLUGIN_DIR?.trim();
+    if (envValue) {
+      return expandHomePath(envValue);
+    }
+  }
+  return defaultPluginDirectory(plugin);
 }
 
 export function loadLocalEnvFiles(cwd = process.cwd(), env: NodeJS.ProcessEnv = process.env): Record<string, string> {
@@ -196,17 +256,23 @@ export function loadTypedWeavekitConfig(configPath = getDefaultWeavekitConfigPat
   if (!existsSync(configPath)) {
     return {
       env: loadedEnv,
-      copilot: defaultCopilotDefaults(),
-      sourceToProject: defaultSourceToProjectDefaults(),
+      copilot: readCopilotDefaults(undefined, env),
+      flue: readFlueDefaults(undefined, env),
+      tooling: readToolingDefaults(undefined, env),
+      sourceToProject: readSourceToProjectDefaults(undefined, env),
+      plugins: readPluginConfigs(undefined, env),
       projects: {},
     };
   }
 
   const parsed = parseToml(readFileSync(configPath, "utf8")) as Record<string, unknown>;
-  const copilot = readCopilotDefaults(parsed.copilot);
-  const sourceToProject = readSourceToProjectDefaults(parsed.source_to_project);
+  const copilot = readCopilotDefaults(parsed.copilot, env);
+  const flue = readFlueDefaults(parsed.flue, env);
+  const tooling = readToolingDefaults(parsed.tooling, env);
+  const sourceToProject = readSourceToProjectDefaults(parsed.source_to_project, env);
+  const plugins = readPluginConfigs(parsed.plugins, env);
   const projects = readProjectCatalog(parsed.projects);
-  return { env: loadedEnv, copilot, sourceToProject, projects };
+  return { env: loadedEnv, copilot, flue, tooling, sourceToProject, plugins, projects };
 }
 
 export function resolveProjectCatalogEntry(config: WeavekitConfig, projectId: string): ProjectCatalogEntry {
@@ -222,12 +288,19 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
     maxOpportunities: 1,
     thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
     mode: "advisory",
+    offline: false,
   };
 }
 
 function defaultCopilotDefaults(): CopilotDefaults {
   return {
     verboseEvents: false,
+  };
+}
+
+function defaultFlueDefaults(): FlueDefaults {
+  return {
+    model: "anthropic/claude-haiku-4-5",
   };
 }
 
@@ -251,17 +324,45 @@ function readBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readOptionalInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function readEnvBoolean(env: NodeJS.ProcessEnv, name: string): boolean | undefined {
+  const value = env[name]?.trim().toLowerCase();
+  if (!value) return undefined;
+  if (["0", "false", "no", "off"].includes(value)) return false;
+  return true;
+}
+
+function readEnvPositiveInteger(env: NodeJS.ProcessEnv, name: string): number | undefined {
+  const value = env[name]?.trim();
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function readNotificationPolicy(value: unknown): NotificationPolicy {
   return value === "telegram" ? "telegram" : "cli";
 }
 
-function readSourceToProjectDefaults(value: unknown): SourceToProjectDefaults {
+function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): SourceToProjectDefaults {
   const defaults = defaultSourceToProjectDefaults();
   const record = asRecord(value);
   const mode = record.mode === "autonomous-pr" ? "autonomous-pr" : "advisory";
   return {
     maxOpportunities: Math.max(1, Math.floor(readNumber(record.max_opportunities, defaults.maxOpportunities))),
     mode,
+    offline: readBoolean(record.offline, readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE") ?? defaults.offline),
+    copilotModel: (readOptionalString(record.copilot_model) ?? env.WEAVEKIT_SOURCE_TO_PROJECT_MODEL?.trim()) || undefined,
+    timeoutMs: readOptionalInteger(record.timeout_ms) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS"),
+    maxToolCalls: readOptionalInteger(record.max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS"),
+    sourceReadingMaxToolCalls: readOptionalInteger(record.source_reading_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS"),
+    projectResearchMaxToolCalls: readOptionalInteger(record.project_research_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS"),
     thresholds: {
       minApplicability: readNumber(record.min_applicability, defaults.thresholds.minApplicability),
       minConfidence: readNumber(record.min_confidence, defaults.thresholds.minConfidence),
@@ -272,11 +373,54 @@ function readSourceToProjectDefaults(value: unknown): SourceToProjectDefaults {
   };
 }
 
-function readCopilotDefaults(value: unknown): CopilotDefaults {
+function readCopilotDefaults(value: unknown, env: NodeJS.ProcessEnv = process.env): CopilotDefaults {
   const defaults = defaultCopilotDefaults();
   const record = asRecord(value);
   return {
-    verboseEvents: readBoolean(record.verbose_events, defaults.verboseEvents),
+    verboseEvents: readBoolean(record.verbose_events, readEnvBoolean(env, "WEAVEKIT_COPILOT_VERBOSE_EVENTS") ?? defaults.verboseEvents),
+    model: (readOptionalString(record.model) ?? env.COPILOT_MODEL?.trim()) || undefined,
+    runtimeUrl: (readOptionalString(record.runtime_url) ?? env.COPILOT_RUNTIME_URL?.trim()) || undefined,
+    cliUrl: (readOptionalString(record.cli_url) ?? env.COPILOT_CLI_URL?.trim()) || undefined,
+    cliPath: expandOptionalPath(readOptionalString(record.cli_path) ?? env.COPILOT_CLI_PATH?.trim()),
+    sdkDoctorModel: (readOptionalString(record.sdk_doctor_model) ?? env.WEAVEKIT_ENTITY_SDK_DOCTOR_MODEL?.trim()) || undefined,
+  };
+}
+
+function readFlueDefaults(value: unknown, env: NodeJS.ProcessEnv): FlueDefaults {
+  const defaults = defaultFlueDefaults();
+  const record = asRecord(value);
+  return {
+    model: readOptionalString(record.model) ?? env.WEAVEKIT_FLUE_MODEL?.trim() ?? defaults.model,
+  };
+}
+
+function readToolingDefaults(value: unknown, env: NodeJS.ProcessEnv): ToolingDefaults {
+  const record = asRecord(value);
+  return {
+    skillsDirectory: expandOptionalPath(readOptionalString(record.skills_directory) ?? env.WEAVEKIT_SKILLS_DIR?.trim()),
+    agentNativeSkillsInstaller: expandOptionalPath(readOptionalString(record.agent_native_skills_installer) ?? env.WEAVEKIT_AGENT_NATIVE_SKILLS_INSTALLER?.trim()),
+    miseBin: expandOptionalPath(readOptionalString(record.mise_bin) ?? env.WEAVEKIT_MISE_BIN?.trim()),
+  };
+}
+
+function expandOptionalPath(path: string | undefined): string | undefined {
+  return path ? expandHomePath(path) : undefined;
+}
+
+function readPluginConfigs(value: unknown, env: NodeJS.ProcessEnv): PluginConfigs {
+  const plugins = asRecord(value);
+  const hveCore = asRecord(plugins[SupportedPluginId.HVE_CORE]);
+  const configuredDirectory = typeof hveCore.directory === "string" && hveCore.directory.trim()
+    ? hveCore.directory
+    : undefined;
+  return {
+    [SupportedPluginId.HVE_CORE]: {
+      directory: expandHomePath(
+        configuredDirectory
+          ?? env.WEAVEKIT_HVE_CORE_PLUGIN_DIR?.trim()
+          ?? defaultPluginDirectory(SupportedPluginId.HVE_CORE),
+      ),
+    },
   };
 }
 

@@ -171,7 +171,7 @@ export class HttpRequest {
   }
   
   DistillPlanArtifact(
-      opportunityJson: string,rawPlan: string,
+      opportunityJson: string,rawPlan: string,rawPlanArtifactPath: string,
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -190,7 +190,7 @@ export class HttpRequest {
       return this.runtime.buildRequestSync(
         "DistillPlanArtifact",
         {
-          "opportunityJson": opportunityJson,"rawPlan": rawPlan
+          "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -606,7 +606,7 @@ export class HttpStreamRequest {
   }
   
   DistillPlanArtifact(
-      opportunityJson: string,rawPlan: string,
+      opportunityJson: string,rawPlan: string,rawPlanArtifactPath: string,
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -625,7 +625,7 @@ export class HttpStreamRequest {
       return this.runtime.buildRequestSync(
         "DistillPlanArtifact",
         {
-          "opportunityJson": opportunityJson,"rawPlan": rawPlan
+          "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),

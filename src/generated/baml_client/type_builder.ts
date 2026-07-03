@@ -47,7 +47,7 @@ export default class TypeBuilder {
     
     OpportunityScore: ClassViewer<'OpportunityScore', "applicability" | "impact" | "confidence" | "implementationCost" | "risk">;
     
-    PersonaChoiceCandidate: ClassViewer<'PersonaChoiceCandidate', "id" | "name" | "description" | "archetype" | "tags" | "modes" | "selectionHints" | "selectionAntiHints">;
+    PersonaChoiceCandidate: ClassViewer<'PersonaChoiceCandidate', "id" | "name" | "description" | "archetype" | "tags" | "useWhen" | "avoidWhen">;
     
     PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "overallSummary" | "summary" | "claims" | "risks" | "questions" | "recommendations">;
     
@@ -131,7 +131,7 @@ export default class TypeBuilder {
         ]);
         
         this.PersonaChoiceCandidate = this.tb.classViewer("PersonaChoiceCandidate", [
-          "id","name","description","archetype","tags","modes","selectionHints","selectionAntiHints",
+          "id","name","description","archetype","tags","useWhen","avoidWhen",
         ]);
         
         this.PersonaCritique = this.tb.classViewer("PersonaCritique", [

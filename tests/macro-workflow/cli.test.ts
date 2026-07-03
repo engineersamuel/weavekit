@@ -4,12 +4,41 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
 
+const entityValidation = vi.hoisted(() => ({
+  assertValidEntityCatalog: vi.fn(),
+}));
+
+vi.mock("../../src/entities/index.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/entities/index.js")>("../../src/entities/index.js");
+  return {
+    ...actual,
+    assertValidEntityCatalog: entityValidation.assertValidEntityCatalog,
+  };
+});
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  entityValidation.assertValidEntityCatalog.mockReset();
+  entityValidation.assertValidEntityCatalog.mockImplementation(() => {});
 });
 
 describe("macro workflow CLI", () => {
+  it("fails entity validation before workflow planning", async () => {
+    entityValidation.assertValidEntityCatalog.mockImplementationOnce(() => {
+      throw new Error("Entity catalog validation failed with 1 error(s).");
+    });
+
+    await expect(runWorkflowCli({
+      command: "run",
+      prompt: "Plan this",
+      outputDir: "runs",
+      staticTemplate: true,
+      dryRun: false,
+      template: "implementation-review",
+    })).rejects.toThrow("Entity catalog validation failed");
+  });
+
   it("formats live Copilot SDK harness diagnostics for stderr", () => {
     expect(formatWorkflowCopilotLog({
       phase: "session-event",

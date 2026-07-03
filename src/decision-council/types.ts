@@ -1,23 +1,25 @@
 import { z } from "zod";
 import {
   PersonaDefinitionSchema,
-  PersonaSetSchema,
   RoundBriefSchema,
   PersonaSkillSchema,
   type PersonaDefinition,
-  type PersonaSet,
   type RoundBrief,
   type PersonaSkill,
 } from "../personas/schema.js";
 
-export { PersonaDefinitionSchema, PersonaSetSchema, RoundBriefSchema, PersonaSkillSchema };
-export type { PersonaDefinition, PersonaSet, RoundBrief, PersonaSkill };
+export { PersonaDefinitionSchema, RoundBriefSchema, PersonaSkillSchema };
+export type { PersonaDefinition, RoundBrief, PersonaSkill };
+
+export type CouncilPersonaSelectionPool = {
+  name: "selected" | "candidates" | "test";
+  personas: PersonaDefinition[];
+};
 
 export const DecisionCouncilInputSchema = z.object({
   prompt: z.string().min(1),
   context: z.array(z.string().min(1)).default([]),
   constraints: z.array(z.string().min(1)).default([]),
-  personaSetName: z.string().min(1).optional(),
 });
 
 export type DecisionCouncilInput = z.infer<typeof DecisionCouncilInputSchema>;
@@ -62,7 +64,7 @@ export type RawPersonaResult = z.infer<typeof RawPersonaResultSchema>;
 export const ClarifyingQuestionSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1),
-  choices: z.array(z.string().min(1)).optional(),
+  choices: z.preprocess((value) => (value === null ? undefined : value), z.array(z.string().min(1)).optional()),
   importance: z.enum(["blocking", "optional"]).optional(),
 });
 
@@ -126,13 +128,13 @@ export const DecisionCouncilRunStateSchema = z.object({
 
 export type DecisionCouncilRunState = z.infer<typeof DecisionCouncilRunStateSchema>;
 
-export function createInitialRunState(input: z.input<typeof DecisionCouncilInputSchema>, personaSet: PersonaSet, maxRounds = 3): DecisionCouncilRunState {
+export function createInitialRunState(input: z.input<typeof DecisionCouncilInputSchema>, personaPool: CouncilPersonaSelectionPool, maxRounds = 3): DecisionCouncilRunState {
   const parsedInput = DecisionCouncilInputSchema.parse(input);
-  const parsedPersonaSet = PersonaSetSchema.parse(personaSet);
+  const parsedPersonas = z.array(PersonaDefinitionSchema).min(2).parse(personaPool.personas);
 
   return {
     input: parsedInput,
-    personas: parsedPersonaSet.personas,
+    personas: parsedPersonas,
     maxRounds,
     rounds: [],
   };

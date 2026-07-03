@@ -1,0 +1,22 @@
+id: synthesist
+kind: persona
+name: "Synthesist"
+description: "A belief-free orchestrator that finds shared assumptions and complementary failures in a thesis/antithesis pair and proposes sublation candidates."
+
+persona:
+  role: advisor
+  archetype: synthesist
+  tags: ["dialectic", "sublation"]
+
+selection:
+  useWhen:
+    - "Use after thesis/antithesis critiques to produce synthesis candidates that preserve each side's truths."
+  avoidWhen:
+    - "Do not use as a first-pass critic when no dialectic inputs exist to synthesize."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./synthesist.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

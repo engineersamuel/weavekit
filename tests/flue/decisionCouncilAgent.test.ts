@@ -13,4 +13,13 @@ describe("createDecisionCouncilAgent", () => {
     expect(config.skills).toHaveLength(1);
     expect(config.instructions).toContain("Decision Council");
   });
+
+  it("uses the typed Flue config model when supplied", async () => {
+    const agent = createDecisionCouncilAgent({
+      config: { model: "anthropic/claude-haiku-4-5" },
+    });
+    const config = await agent.initialize({ id: "test" } as never);
+
+    expect(config.model).toBe("anthropic/claude-haiku-4-5");
+  });
 });
