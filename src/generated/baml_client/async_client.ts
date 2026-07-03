@@ -322,7 +322,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
             
         async DistillPlanArtifact(
-        opportunityJson: string,rawPlan: string,
+        opportunityJson: string,rawPlan: string,rawPlanArtifactPath: string,
         __baml_options__?: BamlCallOptions<never>
         ): Promise<types.PlanArtifactSummary> {
           try {
@@ -336,7 +336,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
           // Check if onTick is provided - route through streaming if so
           if (__options__.onTick) {
           const __stream__ = this.stream.DistillPlanArtifact(
-          opportunityJson,rawPlan,
+          opportunityJson,rawPlan,rawPlanArtifactPath,
           __baml_options__
           );
 
@@ -360,7 +360,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             const __raw__ = await this.runtime.callFunction(
             "DistillPlanArtifact",
             {
-            "opportunityJson": opportunityJson,"rawPlan": rawPlan
+            "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
             },
             this.ctxManager.cloneContext(),
             __options__.tb?.__tb(),
@@ -1136,7 +1136,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   }
                   
             DistillPlanArtifact(
-            opportunityJson: string,rawPlan: string,
+            opportunityJson: string,rawPlan: string,rawPlanArtifactPath: string,
             __baml_options__?: BamlCallOptions<never>
             ): BamlStream<partial_types.PlanArtifactSummary, types.PlanArtifactSummary>
               {
@@ -1185,7 +1185,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                 const __raw__ = this.runtime.streamFunction(
                 "DistillPlanArtifact",
                 {
-                "opportunityJson": opportunityJson,"rawPlan": rawPlan
+                "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
                 },
                 undefined,
                 this.ctxManager.cloneContext(),

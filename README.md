@@ -84,9 +84,9 @@ For repeated source-to-project runs against weavekit, use the mise task. If the 
 mise run source-to-project "Adapt these loops to weavekit: https://github.com/cobusgreyling/loop-engineering and also review their code to see how they are doing loops and what might apply to the weavekit static DAG templates or dynamic workflows"
 ```
 
-The task defaults to `project=weavekit`, `mode=advisory`, `output=runs`, and dashboard publishing to `http://127.0.0.1:4321`. Override those with `WEAVEKIT_SOURCE_TO_PROJECT_PROJECT`, `WEAVEKIT_SOURCE_TO_PROJECT_MODE`, `WEAVEKIT_WORKFLOW_OUTPUT`, or `WEAVEKIT_WORKFLOW_DASHBOARD_URL`; set `WEAVEKIT_WORKFLOW_DASHBOARD_URL=off` to omit dashboard publishing.
+The task defaults to `project=weavekit`, `mode=advisory`, `output=runs`, and dashboard publishing to `http://127.0.0.1:4321`. For different project or output settings, call `nub src/cli.ts workflow run` directly with `--project` or `--project-path`, `--mode`, `--output`, and `--dashboard-url`.
 
-By default, source-to-project runs use the live Copilot SDK harness and generated BAML distillation calls. `WEAVEKIT_SOURCE_TO_PROJECT_MODEL` overrides Copilot SDK calls. Without that override, source reading and source corroboration use `gpt-5.5`, target project research uses `claude-sonnet-5`, planning uses `claude-opus-4.8`, and implementation uses `gpt-5.3-codex`. `BAML_MODEL` affects generated BAML distillation/mapping calls, not Copilot SDK sessions. For long repo inspections, tune `WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS`, `WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS`, or the global `WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS`. For deterministic local smoke tests only, set `WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE=true` to use the offline harness.
+By default, source-to-project runs use the live Copilot SDK harness and generated BAML distillation calls. Configure first-party source-to-project defaults in `~/.weavekit/config.toml`: `source_to_project.copilot_model` overrides Copilot SDK calls, `timeout_ms` controls SDK wait time, `max_tool_calls` sets the global research tool budget, `source_reading_max_tool_calls` and `project_research_max_tool_calls` tune individual research nodes, and `offline = true` uses the deterministic offline harness for local smoke tests. Without a Copilot model override, source reading and source corroboration use `gpt-5.5`, target project research uses `claude-sonnet-5`, planning uses `claude-opus-4.8`, and implementation uses `gpt-5.3-codex`. `BAML_MODEL` affects generated BAML distillation/mapping calls, not Copilot SDK sessions.
 
 Autonomous PR mode must be enabled for the project in `~/.weavekit/config.toml`:
 
@@ -104,6 +104,30 @@ min_confidence = 0.65
 min_impact = 0.5
 max_risk = 0.8
 mode = "advisory"
+offline = false
+copilot_model = "gpt-5.5"
+timeout_ms = 300000
+max_tool_calls = 60
+source_reading_max_tool_calls = 40
+project_research_max_tool_calls = 60
+
+[copilot]
+verbose_events = false
+# Optional local SDK runtime selection:
+# runtime_url = "http://127.0.0.1:8181"
+# cli_path = "~/.local/bin/copilot"
+sdk_doctor_model = "gpt-5-mini"
+
+[flue]
+model = "anthropic/claude-haiku-4-5"
+
+[tooling]
+skills_directory = "~/.weavekit/skills"
+agent_native_skills_installer = "~/.local/bin/agent-skills"
+mise_bin = "/opt/homebrew/bin/mise"
+
+[plugins.hve-core]
+directory = "~/.copilot/installed-plugins/_direct/hve-core"
 
 [projects.weavekit]
 display_name = "Weavekit"
@@ -126,11 +150,7 @@ Autonomous PR mode prepares an isolated worktree, rebases it from the configured
 
 Weavekit uses Flue as the production workflow/agent harness. The main workflow path should call models through Flue/Pi providers, not through `@github/copilot-sdk`. The Copilot SDK may be used later for an explicit final handoff/autopilot experiment, but it is not the primary Decision Council model-call path.
 
-Set `WEAVEKIT_FLUE_MODEL` to override the default Flue model for Decision Council agents. Defaults to `anthropic/claude-haiku-4-5`. The model must be a registered Flue/Pi provider.
-
-```bash
-export WEAVEKIT_FLUE_MODEL="anthropic/claude-sonnet-4-6"
-```
+Set `[flue].model` in `~/.weavekit/config.toml` to override the default Flue model for Decision Council agents. Defaults to `anthropic/claude-haiku-4-5`. The model must be a registered Flue/Pi provider.
 
 ### Flue MCP tools
 

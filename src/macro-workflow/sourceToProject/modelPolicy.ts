@@ -25,6 +25,11 @@ export type SourceToProjectBamlRoute = SourceToProjectModelDecision & {
   client?: string;
 };
 
+export type SourceToProjectModelPolicyOptions = {
+  copilotModel?: string;
+  env?: NodeJS.ProcessEnv;
+};
+
 export const SOURCE_TO_PROJECT_BAML_FUNCTION_OPERATIONS = {
   DistillSourceAnalysis: SourceToProjectModelOperation.SOURCE_READING,
   DistillCorroboration: SourceToProjectModelOperation.SOURCE_CORROBORATION,
@@ -124,10 +129,10 @@ export function sourceToProjectModelDecision(
 
 export function sourceToProjectCopilotModelDecision(
   operation: SourceToProjectModelOperation,
-  env: NodeJS.ProcessEnv = process.env,
+  options: Pick<SourceToProjectModelPolicyOptions, "copilotModel"> = {},
 ): SourceToProjectModelDecision {
   const decision = sourceToProjectModelDecision(operation);
-  const override = env.WEAVEKIT_SOURCE_TO_PROJECT_MODEL?.trim();
+  const override = options.copilotModel?.trim();
   if (!override) {
     if (operation === SourceToProjectModelOperation.PROJECT_RESEARCH) {
       return {
@@ -139,7 +144,7 @@ export function sourceToProjectCopilotModelDecision(
   }
   return {
     model: override,
-    modelRationale: `WEAVEKIT_SOURCE_TO_PROJECT_MODEL overrides ${decision.model} for Copilot SDK calls.`,
+    modelRationale: `source_to_project.copilot_model overrides ${decision.model} for Copilot SDK calls.`,
   };
 }
 
@@ -174,7 +179,7 @@ export function sourceToProjectBamlFunctionRoute(
 
 export function sourceToProjectNodeModelMetadata(
   operation: SourceToProjectModelOperation,
-  env: NodeJS.ProcessEnv = process.env,
+  options: SourceToProjectModelPolicyOptions = {},
 ): SourceToProjectModelDecision {
   if (
     operation === SourceToProjectModelOperation.SOURCE_READING ||
@@ -186,14 +191,14 @@ export function sourceToProjectNodeModelMetadata(
     operation === SourceToProjectModelOperation.IMPLEMENTATION_FIX ||
     operation === SourceToProjectModelOperation.IMPLEMENTATION_REVIEW
   ) {
-    return sourceToProjectCopilotModelDecision(operation, env);
+    return sourceToProjectCopilotModelDecision(operation, { copilotModel: options.copilotModel });
   }
   if (
     operation === SourceToProjectModelOperation.OPPORTUNITY_MAPPING ||
     operation === SourceToProjectModelOperation.PLAN_DISTILLATION ||
     operation === SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW
   ) {
-    return sourceToProjectBamlRoute(operation, env);
+    return sourceToProjectBamlRoute(operation, options.env);
   }
   return sourceToProjectModelDecision(operation);
 }

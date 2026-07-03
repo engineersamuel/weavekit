@@ -49,24 +49,18 @@ beforeEach(() => {
   mockRealpathSync.mockReturnValue(FAKE_PKG_ROOT);
 });
 
-afterEach(() => {
-  delete process.env.WEAVEKIT_SKILLS_DIR;
-});
-
 // ──────────────────────────────────────────────────────────────────────────────
 // resolveSkillsCacheDir
 // ──────────────────────────────────────────────────────────────────────────────
 describe("resolveSkillsCacheDir", () => {
-  it("(d) explicit cacheDir arg overrides env and default", () => {
-    process.env.WEAVEKIT_SKILLS_DIR = "/from/env";
-    const result = resolveSkillsCacheDir("/explicit/override");
+  it("(d) explicit cacheDir arg overrides config and default", () => {
+    const result = resolveSkillsCacheDir("/explicit/override", { skillsDirectory: "/from/config" });
     expect(result).toBe("/explicit/override");
   });
 
-  it("(d) WEAVEKIT_SKILLS_DIR env overrides computed default", () => {
-    process.env.WEAVEKIT_SKILLS_DIR = "/from/env/skills";
-    const result = resolveSkillsCacheDir();
-    expect(result).toBe("/from/env/skills");
+  it("(d) typed tooling config overrides computed default", () => {
+    const result = resolveSkillsCacheDir(undefined, { skillsDirectory: "/from/config/skills" });
+    expect(result).toBe("/from/config/skills");
   });
 
   it("(d) computed default ends with .weavekit/skills when package.json found", () => {

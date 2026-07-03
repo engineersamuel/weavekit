@@ -12,11 +12,13 @@
  *   set -a; source ./.env; set +a; nub scripts/dinner-hitl-copilot.ts
  *
  * Needs: TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_CHAT_ID in .env, and a working
- * Copilot SDK/CLI environment. Optional: COPILOT_MODEL (default gpt-5-mini).
+ * Copilot SDK/CLI environment. Optional: [copilot].model in ~/.weavekit/config.toml
+ * (default gpt-5-mini).
  */
 
 import { pathToFileURL } from "node:url";
 import { CopilotClient } from "@github/copilot-sdk";
+import { loadTypedWeavekitConfig } from "../src/config.js";
 import { TelegramClient } from "../src/telegram/client.js";
 import { TelegramInquiry } from "../src/telegram/inquiry.js";
 import { InquiryRegistry } from "../src/telegram/inquiryRegistry.js";
@@ -76,6 +78,7 @@ async function skipBacklog(client: TelegramClient): Promise<number> {
 }
 
 async function main(): Promise<void> {
+  const config = loadTypedWeavekitConfig();
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     console.error("Need TELEGRAM_BOT_TOKEN in .env.");
@@ -102,7 +105,7 @@ async function main(): Promise<void> {
   try {
     await copilot.start();
     session = (await copilot.createSession({
-      model: process.env.COPILOT_MODEL ?? "gpt-5-mini",
+      model: config.copilot.model ?? "gpt-5-mini",
       onPermissionRequest: () => ({ kind: "denied-interactively-by-user", feedback: "This example only allows ask_user." }),
       onUserInputRequest: async (request: UserInputRequest) => {
         const question = buildTelegramQuestion(request);

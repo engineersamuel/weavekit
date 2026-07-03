@@ -65,6 +65,23 @@ export async function runEntityCli(_args: EntityCliArgs): Promise<string> {
   if (!result.valid) {
     throw new Error(formatEntityValidationErrors(result.errors));
   }
+  const { materializeWorkflowPlan, verifyWorkflowPlan } = await import("./macro-workflow/index.js");
+  const sourceToProjectPlan = materializeWorkflowPlan("source-to-project", {
+    objective: "Validate source-to-project workflow metadata",
+    source: "static-doctor",
+    project: "weavekit",
+    mode: "advisory",
+  });
+  const workflowValidation = verifyWorkflowPlan(sourceToProjectPlan);
+  if (!workflowValidation.valid) {
+    throw new Error([
+      `Workflow metadata validation failed with ${workflowValidation.issues.length} error(s).`,
+      "",
+      ...workflowValidation.issues.map((issue, index) =>
+        `${index + 1}. ${issue.nodeId ?? "<plan>"} ${issue.code}: ${issue.message}`
+      ),
+    ].join("\n"));
+  }
   return "Entity catalog valid.\n";
 }
 
@@ -573,11 +590,15 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         ...typedConfig.sourceToProject.thresholds,
         ...sourceToProjectProject!.thresholds,
       },
+      sourceToProject: typedConfig.sourceToProject,
+      tooling: typedConfig.tooling,
+      plugins: typedConfig.plugins,
       notifier: sourceToProjectNotifier,
-      copilot: process.env.WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE === "true"
+      copilot: typedConfig.sourceToProject.offline
         ? workflowSourceToProjectModule.createOfflineSourceToProjectHarnessClient()
         : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
-          verboseEvents: typedConfig.copilot.verboseEvents,
+          copilot: typedConfig.copilot,
+          sourceToProject: typedConfig.sourceToProject,
           onUserInputRequest: workflowSourceToProjectModule.createSourceToProjectUserInputRequestHandler({
             project: sourceToProjectProject!,
             source: resolvedSource!,
@@ -599,7 +620,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
             });
           },
         }),
-      baml: process.env.WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE === "true"
+      baml: typedConfig.sourceToProject.offline
         ? undefined
         : workflowSourceToProjectModule.createLiveSourceToProjectBamlClient({ usageCollector }),
     })
@@ -607,6 +628,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
 
   const state = await workflowRunnerModule.runMacroWorkflow(plan, {
     harnesses,
+    outputDir: runDescriptor.outputDir,
     replanner: planner,
     expandAfterNode: isSourceToProject
       ? workflowSourceToProjectModule.createSourceToProjectDynamicExpander({

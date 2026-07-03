@@ -771,7 +771,7 @@ function NodeExecutionContext({ node, result, state }) {
   const plannedPrompt = isPlanningNode
     ? state?.objective ?? "No original prompt recorded."
     : node?.prompt ?? "";
-  const execution = result?.execution;
+  const execution = result?.execution ?? (node?.id ? state?.activeNodeExecutions?.[node.id] : undefined);
   const calls = execution?.calls?.length ? execution.calls : inferExecutionCalls(node, execution);
 
   return (

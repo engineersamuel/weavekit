@@ -89,7 +89,7 @@ class PlanArtifactSummary {
   filesLikelyTouched string[] @description("Likely files, directories, or modules affected by the plan.")
   validationCommands string[] @description("Commands or checks that should prove the plan worked.")
   risks string[] @description("Material implementation or product risks.")
-  rawPlanArtifactPath string
+  rawPlanArtifactPath string?
 }
 
 class FinalRecommendationReview {
@@ -187,7 +187,7 @@ function MapSourceToProject(
   "#
 }
 
-function DistillPlanArtifact(opportunityJson: string, rawPlan: string) -> PlanArtifactSummary {
+function DistillPlanArtifact(opportunityJson: string, rawPlan: string, rawPlanArtifactPath: string) -> PlanArtifactSummary {
   client CopilotProxyGpt5Mini
   prompt #"
     {{ _.role("system") }}
@@ -195,10 +195,14 @@ function DistillPlanArtifact(opportunityJson: string, rawPlan: string) -> PlanAr
     The most important fields are recommendation, problemSolved, sourceLessonApplied, targetChange, expectedUserValue, and implementationOutline.
     Do not make the UI reader infer the recommendation from a long scope paragraph.
     Use scope for detailed implementation boundaries only.
+    Set rawPlanArtifactPath exactly to the supplied raw plan artifact path. Do not invent or rewrite it.
 
     {{ _.role("user") }}
     Opportunity or bundle JSON:
     {{ opportunityJson }}
+
+    Raw plan artifact path:
+    {{ rawPlanArtifactPath }}
 
     Raw plan transcript:
     {{ rawPlan }}

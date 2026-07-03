@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,19 +14,11 @@ import {
 describe("source-to-project harness registry", () => {
   afterEach(() => {
     delete process.env.BAML_MODEL;
-    delete process.env.WEAVEKIT_SOURCE_TO_PROJECT_MODEL;
-    delete process.env.WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS;
-    delete process.env.WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS;
-    delete process.env.WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS;
-    delete process.env.WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS;
-    delete process.env.WEAVEKIT_AGENT_NATIVE_SKILLS_INSTALLER;
-    delete process.env.WEAVEKIT_MISE_BIN;
   });
 
   it("distills source reading output into typed payload", async () => {
-    process.env.WEAVEKIT_SOURCE_TO_PROJECT_MODEL = "copilot-research-model";
     process.env.BAML_MODEL = "baml-distill-model";
-    const copilotCalls: Array<{ prompt: string; maxToolCalls?: number }> = [];
+    const copilotCalls: Array<{ prompt: string; maxToolCalls?: number; capabilityScope?: unknown }> = [];
     const registry = createSourceToProjectHarnessRegistry({
       source: "https://example.com/post",
       project: {
@@ -42,9 +34,20 @@ describe("source-to-project harness registry", () => {
         knowledgeExport: "off",
       },
       mode: "advisory",
+      sourceToProject: {
+        maxOpportunities: 1,
+        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        mode: "advisory",
+        offline: false,
+        copilotModel: "copilot-research-model",
+      },
       copilot: {
         async run(args) {
-          copilotCalls.push({ prompt: args.prompt, maxToolCalls: args.maxToolCalls });
+          copilotCalls.push({
+            prompt: args.prompt,
+            maxToolCalls: args.maxToolCalls,
+            capabilityScope: args.capabilityScope,
+          });
           return "raw source research";
         },
       },
@@ -81,6 +84,7 @@ describe("source-to-project harness registry", () => {
     expect(copilotCalls[0]?.prompt).toContain("Hard budget: use at most 40 tool calls");
     expect(copilotCalls[0]?.prompt).toContain("Source: https://example.com/post");
     expect(copilotCalls[0]?.maxToolCalls).toBe(40);
+    expect(copilotCalls[0]?.capabilityScope).toBeUndefined();
     expect(result.execution?.executor).toBe("copilot-sdk");
     expect(result.execution?.calls?.map((call) => call.executor)).toEqual(["copilot-sdk", "baml"]);
     expect(result.execution?.calls?.[0]).toMatchObject({
@@ -98,6 +102,7 @@ describe("source-to-project harness registry", () => {
 
   it("runs prompts through a Copilot SDK session in the live client", async () => {
     const calls: string[] = [];
+    const sessionConfigs: Array<Record<string, unknown>> = [];
     const session = {
       async sendAndWait(message: { prompt: string }) {
         calls.push(`send:${message.prompt}`);
@@ -113,6 +118,7 @@ describe("source-to-project harness registry", () => {
       },
       async createSession(config: unknown) {
         const record = config as Record<string, unknown>;
+        sessionConfigs.push(record);
         calls.push(`session:${String(record.model)}:${String(record.cwd)}`);
         return session;
       },
@@ -136,6 +142,56 @@ describe("source-to-project harness registry", () => {
       "send:Research project",
       "disconnect",
       "stop",
+    ]);
+    expect(sessionConfigs[0]?.pluginDirectories).toBeUndefined();
+  });
+
+  it("scopes a Copilot SDK run to a plugin command capability", async () => {
+    const messages: string[] = [];
+    const sessionConfigs: Array<Record<string, unknown>> = [];
+    const session = {
+      async sendAndWait(message: { prompt: string }) {
+        messages.push(message.prompt);
+        return { data: { content: "scoped response" } };
+      },
+      async disconnect() {},
+    };
+    const client = {
+      async start() {},
+      async createSession(config: unknown) {
+        sessionConfigs.push(config as Record<string, unknown>);
+        return session;
+      },
+      async stop() {
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({
+      model: "gpt-test",
+      clientFactory: () => client,
+    });
+
+    const result = await copilot.run({
+      cwd: "/tmp/project",
+      prompt: "Research project\nUse source evidence.",
+      mode: "research",
+      capabilityScope: {
+        kind: "plugin-command",
+        pluginDirectory: "/plugins/hve-core",
+        command: "hve-core:task-research",
+        promptInputName: "topic",
+        commandArgs: { subagents: "auto" },
+      },
+    });
+
+    expect(result).toBe("scoped response");
+    expect(sessionConfigs[0]).toMatchObject({
+      model: "gpt-test",
+      cwd: "/tmp/project",
+      pluginDirectories: ["/plugins/hve-core"],
+    });
+    expect(messages).toEqual([
+      "/hve-core:task-research topic=\"Research project\\nUse source evidence.\" subagents=auto",
     ]);
   });
 
@@ -208,8 +264,7 @@ describe("source-to-project harness registry", () => {
     expect(models).toEqual(["gpt-5.3-codex"]);
   });
 
-  it("uses WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS for Copilot SDK calls", async () => {
-    process.env.WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS = "600000";
+  it("uses source-to-project config timeout for Copilot SDK calls", async () => {
     const timeouts: unknown[] = [];
     const client = {
       async start() {},
@@ -226,20 +281,35 @@ describe("source-to-project harness registry", () => {
         return undefined;
       },
     };
-    const copilot = createCopilotSdkHarnessClient({ clientFactory: () => client });
+    const copilot = createCopilotSdkHarnessClient({
+      clientFactory: () => client,
+      sourceToProject: {
+        maxOpportunities: 1,
+        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        mode: "advisory",
+        offline: false,
+        timeoutMs: 600000,
+      },
+    });
 
     await copilot.run({ prompt: "Corroborate source", mode: "research" });
 
     expect(timeouts).toEqual([600000]);
   });
 
-  it("uses WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS for source-reading Copilot runs", async () => {
-    process.env.WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS = "12";
+  it("uses source-reading max tool calls from source-to-project config", async () => {
     const maxToolCalls: Array<number | undefined> = [];
     const registry = createSourceToProjectHarnessRegistry({
       source: "https://example.com/post",
       project: projectFixture(),
       mode: "advisory",
+      sourceToProject: {
+        maxOpportunities: 1,
+        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        mode: "advisory",
+        offline: false,
+        sourceReadingMaxToolCalls: 12,
+      },
       copilot: {
         async run(args) {
           maxToolCalls.push(args.maxToolCalls);
@@ -268,13 +338,19 @@ describe("source-to-project harness registry", () => {
     expect(maxToolCalls).toEqual([12]);
   });
 
-  it("uses WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS for project-research Copilot runs", async () => {
-    process.env.WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS = "24";
+  it("uses project-research max tool calls from source-to-project config", async () => {
     const maxToolCalls: Array<number | undefined> = [];
     const registry = createSourceToProjectHarnessRegistry({
       source: "https://example.com/post",
       project: projectFixture(),
       mode: "advisory",
+      sourceToProject: {
+        maxOpportunities: 1,
+        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        mode: "advisory",
+        offline: false,
+        projectResearchMaxToolCalls: 24,
+      },
       copilot: {
         async run(args) {
           maxToolCalls.push(args.maxToolCalls);
@@ -301,6 +377,99 @@ describe("source-to-project harness registry", () => {
     }, { payloads: new Map(), artifacts: new Map(), objective: "Apply source" });
 
     expect(maxToolCalls).toEqual([24]);
+  });
+
+  it("scopes project-research through its declared HVE task-research plugin command", async () => {
+    const copilotCalls: Array<{ prompt: string; capabilityScope?: unknown }> = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/post",
+      project: projectFixture(),
+      mode: "advisory",
+      plugins: {
+        "hve-core": {
+          directory: "/plugins/hve-core",
+        },
+      },
+      copilot: {
+        async run(args) {
+          copilotCalls.push({ prompt: args.prompt, capabilityScope: args.capabilityScope });
+          return "raw project research";
+        },
+      },
+      baml: {
+        async DistillProjectBrief() {
+          return projectBriefFixture();
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "project-research",
+      kind: "research",
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Research target project",
+      prompt: "Research",
+      capabilities: {
+        pluginCommands: [{
+          plugin: "hve-core",
+          command: "hve-core:task-research",
+          promptInputName: "topic",
+          args: { subagents: "auto" },
+        }],
+      },
+      dependsOn: ["source-corroboration"],
+      gates: ["output-contract"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads: new Map(), artifacts: new Map(), objective: "Apply source" });
+
+    expect(copilotCalls[0]?.capabilityScope).toEqual({
+      kind: "plugin-command",
+      pluginDirectory: "/plugins/hve-core",
+      command: "hve-core:task-research",
+      promptInputName: "topic",
+      commandArgs: { subagents: "auto" },
+    });
+    expect(result.execution?.calls?.[0]).toMatchObject({
+      executor: "copilot-sdk",
+      mode: "research",
+      capabilityScope: "plugin-command:hve-core:task-research",
+    });
+    expect(result.execution?.calls?.[0]?.prompt).toContain("/hve-core:task-research topic=");
+  });
+
+  it("does not scope project-research without node capability metadata", async () => {
+    const copilotCalls: Array<{ capabilityScope?: unknown }> = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/post",
+      project: projectFixture(),
+      mode: "advisory",
+      copilot: {
+        async run(args) {
+          copilotCalls.push({ capabilityScope: args.capabilityScope });
+          return "raw project research";
+        },
+      },
+      baml: {
+        async DistillProjectBrief() {
+          return projectBriefFixture();
+        },
+      },
+    });
+
+    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "project-research",
+      kind: "research",
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Research target project",
+      prompt: "Research",
+      dependsOn: ["source-corroboration"],
+      gates: ["output-contract"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads: new Map(), artifacts: new Map(), objective: "Apply source" });
+
+    expect(copilotCalls[0]?.capabilityScope).toBeUndefined();
   });
 
   it("denies Copilot SDK tool calls after the configured tool-call budget", async () => {
@@ -750,6 +919,62 @@ describe("source-to-project harness registry", () => {
     expect(nodes?.filter((node) => node.kind === WorkflowNodeKind.REPORT)).toHaveLength(3);
   });
 
+  it("prepares the full execution prompt for dynamic opportunity plan nodes", async () => {
+    const project = projectFixture();
+    const councilReview = latestRunCouncilReviewFixture();
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project,
+      mode: "advisory",
+    });
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+    const planNode = nodes?.find((node) => node.id === "plan-opportunity-opp-1");
+    expect(planNode?.prompt).toBe("Create a plan artifact for accepted opportunity opp-1.");
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project,
+      mode: "advisory",
+    });
+
+    const execution = await registry.get(WorkflowHarnessKind.COPILOT_SDK)?.prepareExecution?.(planNode!, {
+      payloads: new Map([["council-review", { councilReview }]]),
+      artifacts: new Map(),
+    });
+
+    expect(execution?.prompt).toContain("Create an implementation plan for this single selected source-to-project candidate.");
+    expect(execution?.prompt).toContain("Selected candidate JSON:");
+    expect(execution?.prompt).toContain("Add a conservative loop-engineering-starter advisory template");
+    expect(execution?.prompt).toContain("Project JSON:");
+    expect(execution?.calls?.[0]?.prompt).toBe(execution?.prompt);
+  });
+
   it("publishes a markdown report and feeds it into the visual-plan design node", async () => {
     const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string }> = [];
     const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
@@ -925,7 +1150,6 @@ describe("source-to-project harness registry", () => {
 
     await writeFile(configuredMise, "#!/bin/sh\nexit 0\n");
     await chmod(configuredMise, 0o755);
-    process.env.WEAVEKIT_MISE_BIN = configuredMise;
 
     const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
     const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string }> = [];
@@ -941,6 +1165,7 @@ describe("source-to-project harness registry", () => {
         source: "https://example.com/loops",
         project: projectFixture(),
         mode: "advisory",
+        tooling: { miseBin: configuredMise },
         shell: {
           async run(command, args, options) {
             shellCalls.push({ command, args, cwd: options.cwd });
@@ -1024,7 +1249,7 @@ describe("source-to-project harness registry", () => {
       await writeFile(discoveredMise, "#!/bin/sh\nexit 0\n");
       await chmod(discoveredMise, 0o755);
       process.env.PATH = originalPath ? `${binDir}${delimiter}${originalPath}` : binDir;
-      process.env.WEAVEKIT_MISE_BIN = join(tempDir, "missing", "mise");
+      const staleConfiguredMise = join(tempDir, "missing", "mise");
 
       const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
       const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string }> = [];
@@ -1039,6 +1264,7 @@ describe("source-to-project harness registry", () => {
         source: "https://example.com/loops",
         project: projectFixture(),
         mode: "advisory",
+        tooling: { miseBin: staleConfiguredMise },
         shell: {
           async run(command, args, options) {
             shellCalls.push({ command, args, cwd: options.cwd });
@@ -1048,7 +1274,7 @@ describe("source-to-project harness registry", () => {
             if (command === "mise") {
               throw Object.assign(new Error("spawn mise ENOENT"), { code: "ENOENT" });
             }
-            if (command === process.env.WEAVEKIT_MISE_BIN) {
+            if (command === staleConfiguredMise) {
               throw Object.assign(new Error(`spawn ${command} ENOENT`), { code: "ENOENT" });
             }
             if (command === discoveredMise) {
@@ -1208,6 +1434,77 @@ describe("source-to-project harness registry", () => {
     expect(prompts[0]).toContain("selected source-to-project candidate");
     expect(prompts[0]).toContain("knowledge graph");
     expect(prompts[0]).not.toContain("LLM adapter layer");
+  });
+
+  it("persists per-opportunity plan markdown and supplies its path to BAML", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-plan-artifact-"));
+    try {
+      const councilReview = mixedCouncilReviewFixture();
+      const acceptance = selectAcceptedOpportunities(councilReview, {
+        minApplicability: 0.7,
+        minConfidence: 0.65,
+        minImpact: 0.5,
+        minAcceptanceAverage: 0.85,
+        maxRisk: 0.8,
+      }).find((candidate) => candidate.id === "opp-1")!;
+      const rawMarkdown = "# Plan\n\nImplement the KG pipeline.";
+      const distillCalls: string[][] = [];
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/kg",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return rawMarkdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact(...args: string[]) {
+            distillCalls.push(args);
+            const { rawPlanArtifactPath: _rawPlanArtifactPath, ...summary } = planSummaryFixture("KG pipeline plan");
+            return summary;
+          },
+        },
+      });
+
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+        id: "plan-opportunity-opp-1",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Plan opp-1",
+        prompt: "Plan",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["council-review"],
+        gates: ["verification"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      }, {
+        payloads: new Map([
+          ["council-review", { councilReview }],
+        ]),
+        artifacts: new Map(),
+        outputDir,
+      });
+
+      expect(result.status).toBe("passed");
+      expect(distillCalls).toHaveLength(1);
+      expect(distillCalls[0]?.[1]).toBe(rawMarkdown);
+      expect(distillCalls[0]?.[2]).toBe("raw-plans/plan-opportunity-opp-1.md");
+      await expect(readFile(join(outputDir, "raw-plans", "plan-opportunity-opp-1.md"), "utf8")).resolves.toBe(rawMarkdown);
+      expect(result.payload?.plan).toMatchObject({
+        rawPlanArtifactPath: "raw-plans/plan-opportunity-opp-1.md",
+      });
+      expect(result.artifacts).toEqual([{
+        kind: "markdown",
+        path: "raw-plans/plan-opportunity-opp-1.md",
+        description: "Raw Copilot plan markdown for plan-opportunity-opp-1.",
+      }]);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
   });
 
   it("does not call plan mode when only meta plumbing clears numeric scores", async () => {

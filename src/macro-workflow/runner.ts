@@ -28,6 +28,7 @@ export type MacroWorkflowRunnerDependencies = {
   replanner?: WorkflowReplanner;
   expandAfterNode?: WorkflowDynamicExpander;
   logger?: MacroWorkflowLogger;
+  outputDir?: string;
   onStateChange?: (state: MacroWorkflowRunState, event: MacroWorkflowEvent) => void;
   onReplayEvent?: (event: WorkflowReplayEvent) => void;
 };
@@ -141,8 +142,21 @@ export async function runMacroWorkflow(
       continue;
     }
 
+    const runnableContexts = new Map<string, WorkflowExecutionContext>();
+    const activeNodeExecutions: Record<string, WorkflowExecutionMetadata> = {};
+    for (const node of runnableNodes) {
+      const context: WorkflowExecutionContext = { payloads, artifacts, objective: plan.objective, outputDir: dependencies.outputDir };
+      const preparedExecution = await prepareNodeExecution(node, context, dependencies.harnesses);
+      if (preparedExecution) {
+        context.preparedExecution = preparedExecution;
+        activeNodeExecutions[node.id] = preparedExecution;
+      }
+      runnableContexts.set(node.id, context);
+    }
+
     state.activeNodeId = runnableNodes[0]?.id;
     state.activeNodeIds = runnableNodes.map((node) => node.id);
+    state.activeNodeExecutions = Object.keys(activeNodeExecutions).length > 0 ? activeNodeExecutions : undefined;
     for (const node of runnableNodes) {
       emitReplayEvent({
         kind: WorkflowReplayEventKind.NODE_STATUS_CHANGED,
@@ -155,10 +169,11 @@ export async function runMacroWorkflow(
 
     const batchResults = await Promise.all(runnableNodes.map(async (node) => ({
       node,
-      result: await executeNode(node, { payloads, artifacts, objective: plan.objective }, dependencies.harnesses),
+      result: await executeNode(node, runnableContexts.get(node.id) ?? { payloads, artifacts, objective: plan.objective }, dependencies.harnesses),
     })));
     state.activeNodeId = undefined;
     state.activeNodeIds = undefined;
+    state.activeNodeExecutions = undefined;
 
     for (const { node, result } of batchResults) {
       state.nodeResults.push(result);
@@ -412,7 +427,7 @@ async function executeNode(
       status: WorkflowNodeState.FAILED,
       output: message,
       error: message,
-      execution: inferFailedNodeExecution(node),
+      execution: context.preparedExecution ?? inferFailedNodeExecution(node),
     };
   }
   return {
@@ -422,8 +437,21 @@ async function executeNode(
     error: result.error,
     payload: result.payload,
     artifacts: result.artifacts,
-    execution: result.execution,
+    execution: result.execution ?? context.preparedExecution,
   };
+}
+
+async function prepareNodeExecution(
+  node: RuntimeWorkflowPlan["nodes"][number],
+  context: WorkflowExecutionContext,
+  harnesses?: HarnessRegistry,
+): Promise<WorkflowExecutionMetadata | undefined> {
+  const adapter = harnesses ? resolveHarnessAdapter(harnesses, node.harness) : undefined;
+  try {
+    return await adapter?.prepareExecution?.(node, context);
+  } catch {
+    return undefined;
+  }
 }
 
 function inferFailedNodeExecution(node: RuntimeWorkflowNode): WorkflowExecutionMetadata {

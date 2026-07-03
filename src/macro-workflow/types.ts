@@ -75,6 +75,7 @@ export type WorkflowExecutionCall = {
   prompt?: string;
   cwd?: string;
   model?: string;
+  capabilityScope?: string;
   usage?: WorkflowTokenUsage;
 };
 
@@ -88,6 +89,17 @@ export type WorkflowExecutionMetadata = {
   calls?: WorkflowExecutionCall[];
 };
 
+export type WorkflowPluginCommandCapability = {
+  plugin: string;
+  command: string;
+  promptInputName: string;
+  args?: Record<string, string>;
+};
+
+export type WorkflowNodeCapabilities = {
+  pluginCommands?: WorkflowPluginCommandCapability[];
+};
+
 export type RuntimeWorkflowNode = {
   id: string;
   kind: WorkflowNodeKind;
@@ -98,6 +110,7 @@ export type RuntimeWorkflowNode = {
   modelRationale?: string;
   prompt: string;
   input?: WorkflowNodePayload;
+  capabilities?: WorkflowNodeCapabilities;
   dependsOn: string[];
   runWhen?: {
     nodeId: string;
@@ -156,6 +169,7 @@ export type MacroWorkflowRunState = {
   replans: WorkflowReplanEvent[];
   activeNodeId?: string;
   activeNodeIds?: string[];
+  activeNodeExecutions?: Record<string, WorkflowExecutionMetadata>;
   usage?: WorkflowUsageSummary;
 };
 
@@ -179,7 +193,8 @@ export type WorkflowVerificationIssue = {
     | "below-opportunity-threshold"
     | "invalid-bundle"
     | "autonomous-pr-disabled"
-    | "missing-worktree-preflight";
+    | "missing-worktree-preflight"
+    | "invalid-plugin-command-capability";
   message: string;
   nodeId?: string;
 };
@@ -212,6 +227,7 @@ export type WorkflowReplayNode = {
   modelRationale?: string;
   prompt?: string;
   input?: WorkflowNodePayload;
+  capabilities?: WorkflowNodeCapabilities;
   dependsOn: string[];
   gates?: string[];
   writeMode?: string;

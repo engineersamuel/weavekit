@@ -6,6 +6,7 @@ export type WorkflowExecutionContext = {
   artifacts: Map<string, WorkflowArtifactRef[]>;
   objective?: string;
   outputDir?: string;
+  preparedExecution?: WorkflowExecutionMetadata;
 };
 
 export type HarnessExecutionResult = {
@@ -17,7 +18,10 @@ export type HarnessExecutionResult = {
   execution?: WorkflowExecutionMetadata;
 };
 
-export type HarnessAdapter = (node: RuntimeWorkflowNode, context: WorkflowExecutionContext) => Promise<HarnessExecutionResult>;
+export type HarnessAdapter = {
+  (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult>;
+  prepareExecution?: (node: RuntimeWorkflowNode, context: WorkflowExecutionContext) => Promise<WorkflowExecutionMetadata | undefined> | WorkflowExecutionMetadata | undefined;
+};
 export type HarnessRegistry = Map<WorkflowHarnessKind, HarnessAdapter>;
 
 export function createStaticHarnessRegistry(

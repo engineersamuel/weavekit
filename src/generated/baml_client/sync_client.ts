@@ -298,7 +298,7 @@ export class BamlSyncClient {
   }
   
   DistillPlanArtifact(
-      opportunityJson: string,rawPlan: string,
+      opportunityJson: string,rawPlan: string,rawPlanArtifactPath: string,
       __baml_options__?: BamlCallOptions<never>
   ): types.PlanArtifactSummary {
     try {
@@ -330,7 +330,7 @@ export class BamlSyncClient {
       const __raw__ = this.runtime.callFunctionSync(
         "DistillPlanArtifact",
         {
-          "opportunityJson": opportunityJson,"rawPlan": rawPlan
+          "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
         },
         this.ctxManager.cloneContext(),
         __options__.tb?.__tb(),

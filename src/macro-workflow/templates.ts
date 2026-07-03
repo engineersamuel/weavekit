@@ -146,6 +146,14 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
       description: "Research the target project through the source lens and capture source-relevant change surfaces.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.PROJECT_RESEARCH),
       prompt: `Research target project in relation to source findings: ${input.project ?? input.projectPath ?? ""}`,
+      capabilities: {
+        pluginCommands: [{
+          plugin: "hve-core",
+          command: "hve-core:task-research",
+          promptInputName: "topic",
+          args: { subagents: "auto" },
+        }],
+      },
       dependsOn: ["source-corroboration"],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
       writeMode: "read-only" as WorkflowNodeWriteMode,

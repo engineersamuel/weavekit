@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js";
+import { MacroWorkflowEventKind } from "../../src/macro-workflow/logger.js";
+import type { WorkflowExecutionMetadata } from "../../src/macro-workflow/types.js";
 import { materializeWorkflowPlan } from "../../src/macro-workflow/templates.js";
 import { runMacroWorkflow } from "../../src/macro-workflow/runner.js";
 import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
@@ -69,6 +71,40 @@ describe("macro workflow runner", () => {
     expect(state.nodeResults[0]?.payload).toEqual({ answer: 42 });
   });
 
+  it("passes the configured output directory to harness contexts", async () => {
+    const plan = {
+      id: "output-dir-plan",
+      objective: "Pass output dir",
+      templateId: "implementation-review",
+      maxReplans: 0,
+      nodes: [
+        {
+          id: "plan",
+          kind: "planning" as const,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Plan",
+          prompt: "Plan",
+          dependsOn: [],
+          gates: ["verification" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const seenOutputDirs: Array<string | undefined> = [];
+    const harnesses = createStaticHarnessRegistry({
+      [WorkflowHarnessKind.COPILOT_SDK]: async (_node, context) => {
+        seenOutputDirs.push(context.outputDir);
+        return { status: "passed", output: "planned" };
+      },
+    });
+
+    const state = await runMacroWorkflow(plan, { harnesses, outputDir: "runs/run-123" });
+
+    expect(state.status).toBe("passed");
+    expect(seenOutputDirs).toEqual(["runs/run-123"]);
+  });
+
   it("records planned execution metadata when a harness throws before returning", async () => {
     const plan = {
       id: "metadata-failure-plan",
@@ -114,6 +150,160 @@ describe("macro workflow runner", () => {
           model: "gpt-5.4",
         }],
       },
+    });
+  });
+
+  it("publishes resolved execution metadata before a node starts running", async () => {
+    const plan = {
+      id: "live-metadata-plan",
+      objective: "Show live resolved prompt",
+      templateId: "source-to-project",
+      maxReplans: 0,
+      nodes: [
+        {
+          id: "plan-opportunity-o1",
+          kind: "planning" as const,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Plan O1",
+          model: "claude-opus-4.8",
+          prompt: "Create a plan artifact for accepted opportunity O1.",
+          dependsOn: [],
+          gates: ["verification" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const resolvedExecution: WorkflowExecutionMetadata = {
+      executor: WorkflowHarnessKind.COPILOT_SDK,
+      mode: "plan",
+      prompt: "Create an implementation plan with Selected candidate JSON.",
+      model: "claude-opus-4.8",
+      calls: [{
+        executor: WorkflowHarnessKind.COPILOT_SDK,
+        mode: "plan",
+        prompt: "Create an implementation plan with Selected candidate JSON.",
+        model: "claude-opus-4.8",
+      }],
+    };
+    const livePrompts: Array<string | undefined> = [];
+    const adapter = Object.assign(
+      async () => ({ status: "passed" as const, output: "planned", execution: resolvedExecution }),
+      {
+        async prepareExecution() {
+          return resolvedExecution;
+        },
+      },
+    );
+    const harnesses = createStaticHarnessRegistry({
+      [WorkflowHarnessKind.COPILOT_SDK]: adapter,
+    });
+
+    await runMacroWorkflow(plan, {
+      harnesses,
+      onStateChange(state, event) {
+        if (event.type === MacroWorkflowEventKind.NODE_STARTED) {
+          livePrompts.push(state.activeNodeExecutions?.["plan-opportunity-o1"]?.prompt);
+        }
+      },
+    });
+
+    expect(livePrompts).toEqual(["Create an implementation plan with Selected candidate JSON."]);
+  });
+
+  it("uses resolved execution metadata when a prepared harness throws before returning", async () => {
+    const plan = {
+      id: "prepared-metadata-failure-plan",
+      objective: "Capture prepared failed call metadata",
+      templateId: "source-to-project",
+      maxReplans: 0,
+      nodes: [
+        {
+          id: "plan-opportunity-o1",
+          kind: "planning" as const,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Plan O1",
+          model: "claude-opus-4.8",
+          prompt: "Create a plan artifact for accepted opportunity O1.",
+          dependsOn: [],
+          gates: ["verification" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const resolvedExecution: WorkflowExecutionMetadata = {
+      executor: WorkflowHarnessKind.COPILOT_SDK,
+      mode: "plan",
+      prompt: "Create an implementation plan with Selected candidate JSON.",
+      model: "claude-opus-4.8",
+      calls: [{
+        executor: WorkflowHarnessKind.COPILOT_SDK,
+        mode: "plan",
+        prompt: "Create an implementation plan with Selected candidate JSON.",
+        model: "claude-opus-4.8",
+      }],
+    };
+    const adapter = Object.assign(
+      async () => {
+        throw new Error("Timeout after 300000ms waiting for session.idle");
+      },
+      {
+        async prepareExecution() {
+          return resolvedExecution;
+        },
+      },
+    );
+    const harnesses = createStaticHarnessRegistry({
+      [WorkflowHarnessKind.COPILOT_SDK]: adapter,
+    });
+
+    const state = await runMacroWorkflow(plan, { harnesses });
+
+    expect(state.status).toBe("failed");
+    expect(state.nodeResults[0]?.execution?.prompt).toBe("Create an implementation plan with Selected candidate JSON.");
+    expect(state.nodeResults[0]?.execution?.calls?.[0]?.prompt).toBe("Create an implementation plan with Selected candidate JSON.");
+  });
+
+  it("continues through normal adapter execution if execution metadata preparation fails", async () => {
+    const plan = {
+      id: "prepare-failure-plan",
+      objective: "Preview failure should not crash",
+      templateId: "source-to-project",
+      maxReplans: 0,
+      nodes: [
+        {
+          id: "plan-opportunity-o1",
+          kind: "planning" as const,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Plan O1",
+          prompt: "Create a plan artifact for accepted opportunity O1.",
+          dependsOn: [],
+          gates: ["verification" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const adapter = Object.assign(
+      async () => ({ status: "passed" as const, output: "planned" }),
+      {
+        async prepareExecution() {
+          throw new Error("preview resolver failed");
+        },
+      },
+    );
+    const harnesses = createStaticHarnessRegistry({
+      [WorkflowHarnessKind.COPILOT_SDK]: adapter,
+    });
+
+    const state = await runMacroWorkflow(plan, { harnesses });
+
+    expect(state.status).toBe("passed");
+    expect(state.nodeResults[0]).toMatchObject({
+      nodeId: "plan-opportunity-o1",
+      status: "passed",
+      output: "planned",
     });
   });
 

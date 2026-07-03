@@ -47,7 +47,6 @@ async function runSourceToProjectTask(env: Record<string, string | undefined> = 
       ...env,
       CAPTURE_NUB_ARGS: capturePath,
       PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
-      WEAVEKIT_WORKFLOW_DASHBOARD_URL: "off",
     },
   });
 
@@ -55,11 +54,32 @@ async function runSourceToProjectTask(env: Record<string, string | undefined> = 
 }
 
 describe("mise source-to-project task", () => {
+  it("defines a doctor task for entity wiring validation", async () => {
+    const miseConfig = await readFile(join(process.cwd(), ".mise.toml"), "utf8");
+
+    expect(miseConfig).toContain("[tasks.doctor]");
+    expect(miseConfig).toContain("Validate workflow entity manifests");
+    expect(miseConfig).toContain("nub src/cli.ts entity validate");
+  });
+
+  it("defines an SDK doctor task for live skill-loading validation", async () => {
+    const miseConfig = await readFile(join(process.cwd(), ".mise.toml"), "utf8");
+
+    expect(miseConfig).toContain('[tasks."doctor:sdk"]');
+    expect(miseConfig).toContain("Validate configured entity skills against a live Copilot SDK session");
+    expect(miseConfig).toContain("nub scripts/entity-sdk-doctor.ts");
+  });
+
+  it("tells agents to run doctor before workflows", async () => {
+    const instructions = await readFile(join(process.cwd(), "AGENTS.md"), "utf8");
+
+    expect(instructions).toContain("mise run doctor");
+    expect(instructions).toContain("before running workflow or decision-council commands");
+    expect(instructions).toContain("entities/**/*.yaml");
+  });
+
   it("targets the current checkout by default", async () => {
-    const args = await runSourceToProjectTask({
-      WEAVEKIT_SOURCE_TO_PROJECT_PROJECT: undefined,
-      WEAVEKIT_SOURCE_TO_PROJECT_PROJECT_PATH: undefined,
-    });
+    const args = await runSourceToProjectTask();
 
     expect(args).toContain("--project-path");
     expect(args[args.indexOf("--project-path") + 1]).toBe(process.cwd());

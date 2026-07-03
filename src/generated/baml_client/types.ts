@@ -214,7 +214,7 @@ export interface PlanArtifactSummary {
   filesLikelyTouched: string[]
   validationCommands: string[]
   risks: string[]
-  rawPlanArtifactPath: string
+  rawPlanArtifactPath?: string | null
   
 }
 
