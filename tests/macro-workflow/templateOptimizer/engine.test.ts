@@ -99,6 +99,44 @@ describe("template optimizer engine", () => {
     expect(result.rejectedMoves).toContain("forced no-fit plan");
   });
 
+  it("keeps incumbent when fixture judgment has a critical regression despite aggregate replacement", async () => {
+    const result = await optimizeTemplate({
+      objective,
+      constraintsSummary,
+      baseline,
+      fixtures: [fixture],
+      iterations: 1,
+      candidatesPerIteration: 1,
+      strategies: ["coverage-focused"],
+      minimumDelta: 0.1,
+      minimumDecisionConfidence: 0.6,
+      deps: {
+        generateChallenger: vi.fn(async () => challenger),
+        judgeFixture: vi.fn(async () =>
+          judgment({
+            incumbentScore: 0.5,
+            challengerScore: 0.7,
+            criticalRegression: true,
+            criticalRegressionReason: "Fixture found an advisory-mode regression.",
+            winner: "challenger",
+          }),
+        ),
+        aggregateJudgments: vi.fn(async () =>
+          aggregate({
+            scoreDelta: 0.2,
+            criticalRegressionCount: 0,
+            replacementDecision: "replace-with-challenger",
+            decisionConfidence: 0.8,
+          }),
+        ),
+      },
+    });
+
+    expect(result.finalIncumbent.id).toBe("baseline");
+    expect(result.rejectedMoves).toHaveLength(1);
+    expect(result.rejectedMoves[0]).toContain("critical regression");
+  });
+
   it("keeps incumbent when replacement delta is below the minimum threshold", async () => {
     const result = await optimizeTemplate({
       objective,
@@ -195,6 +233,39 @@ describe("template optimizer engine", () => {
         minimumDecisionConfidence: 0.6,
       }),
     );
+  });
+
+  it("rejects empty fixture sets before calling optimizer dependencies", async () => {
+    const generateChallenger = vi.fn(async () => challenger);
+    const judgeFixture = vi.fn(async () =>
+      judgment({
+        winner: "challenger",
+      }),
+    );
+    const aggregateJudgments = vi.fn(async () => aggregate({}));
+
+    await expect(
+      optimizeTemplate({
+        objective,
+        constraintsSummary,
+        baseline,
+        fixtures: [],
+        iterations: 1,
+        candidatesPerIteration: 1,
+        strategies: ["coverage-focused"],
+        minimumDelta: 0.1,
+        minimumDecisionConfidence: 0.6,
+        deps: {
+          generateChallenger,
+          judgeFixture,
+          aggregateJudgments,
+        },
+      }),
+    ).rejects.toThrow("Template optimizer requires at least one fixture.");
+
+    expect(generateChallenger).not.toHaveBeenCalled();
+    expect(judgeFixture).not.toHaveBeenCalled();
+    expect(aggregateJudgments).not.toHaveBeenCalled();
   });
 });
 

@@ -79,6 +79,10 @@ export interface TemplateOptimizerResult {
 }
 
 export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<TemplateOptimizerResult> {
+  if (args.fixtures.length === 0) {
+    throw new Error("Template optimizer requires at least one fixture.");
+  }
+
   let incumbent = args.baseline;
   const iterations: TemplateOptimizerIteration[] = [];
   const rejectedMoves: string[] = [];
@@ -125,8 +129,10 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
         minimumDelta: args.minimumDelta,
         minimumDecisionConfidence: args.minimumDecisionConfidence,
       });
+      const fixtureCriticalRegressionCount = countFixtureCriticalRegressions(fixtureJudgments);
       const replacedIncumbent = shouldReplaceIncumbent({
         aggregateJudgment,
+        fixtureCriticalRegressionCount,
         minimumDelta: args.minimumDelta,
         minimumDecisionConfidence: args.minimumDecisionConfidence,
       });
@@ -150,6 +156,7 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
             buildRejectedMoveSummary({
               challenger,
               aggregateJudgment,
+              fixtureCriticalRegressionCount,
               minimumDelta: args.minimumDelta,
               minimumDecisionConfidence: args.minimumDecisionConfidence,
             }),
@@ -169,16 +176,21 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
 
 function shouldReplaceIncumbent(args: {
   aggregateJudgment: AggregateTemplateJudgment;
+  fixtureCriticalRegressionCount: number;
   minimumDelta: number;
   minimumDecisionConfidence: number;
 }): boolean {
   return (
     args.aggregateJudgment.replacementDecision === "replace-with-challenger" &&
     args.aggregateJudgment.scoreDelta >= args.minimumDelta &&
-    args.aggregateJudgment.criticalRegressionCount === 0 &&
+    args.fixtureCriticalRegressionCount === 0 &&
     (args.minimumDecisionConfidence <= 0 ||
       args.aggregateJudgment.decisionConfidence >= args.minimumDecisionConfidence)
   );
+}
+
+function countFixtureCriticalRegressions(fixtureJudgments: TemplateFixtureJudgment[]): number {
+  return fixtureJudgments.filter((judgment) => judgment.criticalRegression).length;
 }
 
 function compactRejectedMoveTrace(rejectedMoves: string[]): string {
@@ -194,6 +206,7 @@ function compactRejectedMoveTrace(rejectedMoves: string[]): string {
 function buildRejectedMoveSummary(args: {
   challenger: TemplateCandidate;
   aggregateJudgment: AggregateTemplateJudgment;
+  fixtureCriticalRegressionCount: number;
   minimumDelta: number;
   minimumDecisionConfidence: number;
 }): string {
@@ -206,8 +219,8 @@ function buildRejectedMoveSummary(args: {
       `score delta ${args.aggregateJudgment.scoreDelta} is below minimum delta ${args.minimumDelta}`,
     );
   }
-  if (args.aggregateJudgment.criticalRegressionCount > 0) {
-    reasons.push(`${args.aggregateJudgment.criticalRegressionCount} critical regressions`);
+  if (args.fixtureCriticalRegressionCount > 0) {
+    reasons.push(`${args.fixtureCriticalRegressionCount} fixture critical regressions`);
   }
   if (
     args.minimumDecisionConfidence > 0 &&
