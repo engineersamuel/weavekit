@@ -46,4 +46,18 @@ describe("template optimizer BAML contract", () => {
     expect(typeof b.JudgeTemplateFixture).toBe("function");
     expect(typeof b.AggregateTemplateJudgments).toBe("function");
   });
+
+  it("renders compact optimizer prompt summaries instead of full candidate objects", async () => {
+    const baml = await readFile(join(process.cwd(), "baml_src/template_optimizer.baml"), "utf8");
+
+    expect(baml).not.toContain("Incumbent:\n    {{ incumbent }}");
+    expect(baml).not.toContain("Challenger:\n    {{ challenger }}");
+    expect(baml).not.toContain("Fixtures:\n    {{ fixtures }}");
+    expect(baml).not.toContain("Fixture:\n    {{ fixture }}");
+    expect(baml).not.toContain("Fixture judgments:\n    {{ fixtureJudgments }}");
+    expect(baml).toContain("Incumbent candidate summary");
+    expect(baml).toContain("Challenger candidate summary");
+    expect(baml).toContain("Fixture summaries");
+    expect(baml).toContain("Fixture judgment summaries");
+  });
 });

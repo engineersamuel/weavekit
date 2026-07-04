@@ -84,6 +84,111 @@ class AggregateTemplateJudgment {
   decisionConfidence float @description("Normalized 0..1 score.") @assert(normalized_decisionConfidence, {{ this >= 0 and this <= 1 }})
 }
 
+template_string RenderStringList(items: string[]) #"
+{% for item in items %}
+- {{ item }}
+{% endfor %}
+"#
+
+template_string RenderWorkflowNodeSummary(node: WorkflowNode) #"
+- {{ node.id }} | kind={{ node.kind }} | harness={{ node.harness }} | deps={{ node.dependsOn }} | gates={{ node.gates }} | writeMode={{ node.writeMode }}
+"#
+
+template_string RenderWorkflowNodeSummaries(nodes: WorkflowNode[]) #"
+{% for node in nodes %}
+{{ RenderWorkflowNodeSummary(node) }}
+{% endfor %}
+"#
+
+template_string RenderAdoptionTaskSummary(task: AdoptionTask) #"
+- {{ task.title }} | kind={{ task.kind }}
+  filesLikelyTouched:
+{{ RenderStringList(task.filesLikelyTouched) }}
+  newFiles:
+{{ RenderStringList(task.newFiles) }}
+  acceptanceChecks:
+{{ RenderStringList(task.acceptanceChecks) }}
+"#
+
+template_string RenderAdoptionTaskSummaries(tasks: AdoptionTask[]) #"
+{% for task in tasks %}
+{{ RenderAdoptionTaskSummary(task) }}
+{% endfor %}
+"#
+
+template_string RenderExpansionCaseSummary(expansion: TemplateExpansionCase) #"
+- {{ expansion.id }} | trigger={{ expansion.trigger }} | condition={{ expansion.conditionSummary }} | mustRunBeforeReport={{ expansion.mustRunBeforeReport }}
+  node ids:
+{% for node in expansion.nodes %}
+  - {{ node.id }}
+{% endfor %}
+"#
+
+template_string RenderModePolicySummary(policy: ModeTemplatePolicy) #"
+- policy={{ policy.mode }} | enabledForOptimization={{ policy.enabledForOptimization }}
+  constraints:
+{{ RenderStringList(policy.constraints) }}
+  expansion cases:
+{% for expansion in policy.expansionCases %}
+{{ RenderExpansionCaseSummary(expansion) }}
+{% endfor %}
+"#
+
+template_string RenderModePolicySummaries(policies: ModeTemplatePolicy[]) #"
+{% for policy in policies %}
+{{ RenderModePolicySummary(policy) }}
+{% endfor %}
+"#
+
+template_string RenderTemplateCandidateSummary(candidate: TemplateCandidate) #"
+id: {{ candidate.id }}
+templateId: {{ candidate.templateId }}
+mode: {{ candidate.mode }}
+summary: {{ candidate.summary }}
+flags:
+- changedInitialDag={{ candidate.changedInitialDag }}
+- changedExpansionPolicy={{ candidate.changedExpansionPolicy }}
+- requiresAutonomousPrReview={{ candidate.requiresAutonomousPrReview }}
+shared initial nodes:
+{{ RenderWorkflowNodeSummaries(candidate.sharedInitialNodes) }}
+mode policies:
+{{ RenderModePolicySummaries(candidate.modePolicies) }}
+adoption tasks:
+{{ RenderAdoptionTaskSummaries(candidate.adoptionTasks) }}
+"#
+
+template_string RenderFixtureSummary(fixture: TemplateOptimizationFixture) #"
+- {{ fixture.id }} | mode={{ fixture.mode }} | scenario={{ fixture.scenarioSummary }}
+  mustPreserve:
+{{ RenderStringList(fixture.mustPreserve) }}
+  failureModes:
+{{ RenderStringList(fixture.failureModes) }}
+  idealFeatures:
+{{ RenderStringList(fixture.idealFeatures) }}
+"#
+
+template_string RenderFixtureSummaries(fixtures: TemplateOptimizationFixture[]) #"
+{% for fixture in fixtures %}
+{{ RenderFixtureSummary(fixture) }}
+{% endfor %}
+"#
+
+template_string RenderFixtureJudgmentSummary(judgment: TemplateFixtureJudgment) #"
+- {{ judgment.fixtureId }} | incumbentScore={{ judgment.incumbentScore }} | challengerScore={{ judgment.challengerScore }} | winner={{ judgment.winner }} | criticalRegression={{ judgment.criticalRegression }} | confidence={{ judgment.decisionConfidence }}
+  criticalRegressionReason: {{ judgment.criticalRegressionReason }}
+  rationale: {{ judgment.rationale }}
+  criteria:
+{% for score in judgment.criteriaScores %}
+  - {{ score.criterion }}={{ score.score }} | {{ score.rationale }}
+{% endfor %}
+"#
+
+template_string RenderFixtureJudgmentSummaries(judgments: TemplateFixtureJudgment[]) #"
+{% for judgment in judgments %}
+{{ RenderFixtureJudgmentSummary(judgment) }}
+{% endfor %}
+"#
+
 function GenerateTemplateChallenger(
   objective: string,
   constraintsSummary: string,
@@ -106,8 +211,8 @@ function GenerateTemplateChallenger(
     Constraints:
     {{ constraintsSummary }}
 
-    Incumbent:
-    {{ incumbent }}
+    Incumbent candidate summary:
+    {{ RenderTemplateCandidateSummary(incumbent) }}
 
     Compact trace summary:
     {{ compactTraceSummary }}
@@ -115,8 +220,8 @@ function GenerateTemplateChallenger(
     Strategy:
     {{ strategy }}
 
-    Fixtures:
-    {{ fixtures }}
+    Fixture summaries:
+    {{ RenderFixtureSummaries(fixtures) }}
 
     {{ ctx.output_format }}
   "#
@@ -142,14 +247,14 @@ function JudgeTemplateFixture(
     Constraints:
     {{ constraintsSummary }}
 
-    Fixture:
-    {{ fixture }}
+    Fixture summary:
+    {{ RenderFixtureSummary(fixture) }}
 
-    Incumbent:
-    {{ incumbent }}
+    Incumbent candidate summary:
+    {{ RenderTemplateCandidateSummary(incumbent) }}
 
-    Challenger:
-    {{ challenger }}
+    Challenger candidate summary:
+    {{ RenderTemplateCandidateSummary(challenger) }}
 
     {{ ctx.output_format }}
   "#
@@ -169,14 +274,14 @@ function AggregateTemplateJudgments(
     has zero critical regressions, and meets minimumDecisionConfidence when that threshold is greater than zero.
 
     {{ _.role("user") }}
-    Incumbent:
-    {{ incumbent }}
+    Incumbent candidate summary:
+    {{ RenderTemplateCandidateSummary(incumbent) }}
 
-    Challenger:
-    {{ challenger }}
+    Challenger candidate summary:
+    {{ RenderTemplateCandidateSummary(challenger) }}
 
-    Fixture judgments:
-    {{ fixtureJudgments }}
+    Fixture judgment summaries:
+    {{ RenderFixtureJudgmentSummaries(fixtureJudgments) }}
 
     Minimum delta:
     {{ minimumDelta }}
