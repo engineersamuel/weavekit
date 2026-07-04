@@ -9,6 +9,8 @@ import { optimizeTemplate } from "../../../src/macro-workflow/templateOptimizer/
 
 const baseline = candidate("baseline");
 const challenger = candidate("challenger-1");
+const objective = "Improve source-to-project advisory coverage without adding implementation.";
+const constraintsSummary = "Advisory mode must not write files and must preserve final review.";
 const fixture: TemplateOptimizationFixture = {
   id: "strong-fit",
   mode: "advisory",
@@ -24,6 +26,8 @@ const fixture: TemplateOptimizationFixture = {
 describe("template optimizer engine", () => {
   it("replaces incumbent only when aggregate delta clears threshold and no critical regression exists", async () => {
     const result = await optimizeTemplate({
+      objective,
+      constraintsSummary,
       baseline,
       fixtures: [fixture],
       iterations: 1,
@@ -59,6 +63,8 @@ describe("template optimizer engine", () => {
 
   it("keeps incumbent when critical regression is present", async () => {
     const result = await optimizeTemplate({
+      objective,
+      constraintsSummary,
       baseline,
       fixtures: [fixture],
       iterations: 1,
@@ -95,6 +101,8 @@ describe("template optimizer engine", () => {
 
   it("keeps incumbent when replacement delta is below the minimum threshold", async () => {
     const result = await optimizeTemplate({
+      objective,
+      constraintsSummary,
       baseline,
       fixtures: [fixture],
       iterations: 1,
@@ -127,6 +135,66 @@ describe("template optimizer engine", () => {
     expect(result.rejectedMoves).toHaveLength(1);
     expect(result.rejectedMoves[0]).toContain("challenger-1");
     expect(result.rejectedMoves[0]).toContain("below minimum delta");
+  });
+
+  it("passes integration contract fields through to optimizer dependencies", async () => {
+    const generateChallenger = vi.fn(async () => challenger);
+    const judgeFixture = vi.fn(async () =>
+      judgment({
+        incumbentScore: 0.5,
+        challengerScore: 0.7,
+        criticalRegression: false,
+        winner: "challenger",
+      }),
+    );
+    const aggregateJudgments = vi.fn(async () =>
+      aggregate({
+        scoreDelta: 0.2,
+        criticalRegressionCount: 0,
+        replacementDecision: "replace-with-challenger",
+        decisionConfidence: 0.8,
+      }),
+    );
+
+    await optimizeTemplate({
+      objective,
+      constraintsSummary,
+      baseline,
+      fixtures: [fixture],
+      iterations: 1,
+      candidatesPerIteration: 1,
+      strategies: ["coverage-focused"],
+      minimumDelta: 0.1,
+      minimumDecisionConfidence: 0.6,
+      deps: {
+        generateChallenger,
+        judgeFixture,
+        aggregateJudgments,
+      },
+    });
+
+    expect(generateChallenger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objective,
+        constraintsSummary,
+        incumbent: baseline,
+        compactTraceSummary: "No rejected moves yet.",
+        strategy: "coverage-focused",
+        fixtures: [fixture],
+      }),
+    );
+    expect(judgeFixture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objective,
+        constraintsSummary,
+      }),
+    );
+    expect(aggregateJudgments).toHaveBeenCalledWith(
+      expect.objectContaining({
+        minimumDelta: 0.1,
+        minimumDecisionConfidence: 0.6,
+      }),
+    );
   });
 });
 

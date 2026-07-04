@@ -12,6 +12,8 @@ export interface TemplateOptimizerDeps {
 }
 
 export interface TemplateOptimizerArgs {
+  objective: string;
+  constraintsSummary: string;
   baseline: TemplateCandidate;
   fixtures: TemplateOptimizationFixture[];
   iterations: number;
@@ -23,17 +25,21 @@ export interface TemplateOptimizerArgs {
 }
 
 export interface GenerateChallengerArgs {
+  objective: string;
+  constraintsSummary: string;
   baseline: TemplateCandidate;
   incumbent: TemplateCandidate;
   fixtures: TemplateOptimizationFixture[];
   iterationIndex: number;
   candidateIndex: number;
   strategy: string;
-  rejectedMoveTraceSummary: string;
+  compactTraceSummary: string;
   leaderboard: TemplateCandidate[];
 }
 
 export interface JudgeFixtureArgs {
+  objective: string;
+  constraintsSummary: string;
   fixture: TemplateOptimizationFixture;
   incumbent: TemplateCandidate;
   challenger: TemplateCandidate;
@@ -50,6 +56,8 @@ export interface AggregateJudgmentsArgs {
   iterationIndex: number;
   candidateIndex: number;
   strategy: string;
+  minimumDelta: number;
+  minimumDecisionConfidence: number;
 }
 
 export interface TemplateOptimizerIteration {
@@ -81,18 +89,22 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
       const strategy =
         args.strategies[(index + candidateIndex) % args.strategies.length] ?? "coverage-focused";
       const challenger = await args.deps.generateChallenger({
+        objective: args.objective,
+        constraintsSummary: args.constraintsSummary,
         baseline: args.baseline,
         incumbent,
         fixtures: args.fixtures,
         iterationIndex: index,
         candidateIndex,
         strategy,
-        rejectedMoveTraceSummary: compactRejectedMoveTrace(rejectedMoves),
+        compactTraceSummary: compactRejectedMoveTrace(rejectedMoves),
         leaderboard,
       });
       const fixtureJudgments = await Promise.all(
         args.fixtures.map((fixture) =>
           args.deps.judgeFixture({
+            objective: args.objective,
+            constraintsSummary: args.constraintsSummary,
             fixture,
             incumbent,
             challenger,
@@ -110,6 +122,8 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
         iterationIndex: index,
         candidateIndex,
         strategy,
+        minimumDelta: args.minimumDelta,
+        minimumDecisionConfidence: args.minimumDecisionConfidence,
       });
       const replacedIncumbent = shouldReplaceIncumbent({
         aggregateJudgment,
