@@ -1,48 +1,15 @@
+import type {
+  AdoptionTask,
+  ModeTemplatePolicy,
+  TemplateCandidate,
+  TemplateExpansionCase,
+  WorkflowNode,
+} from "../../generated/baml_client/index.js";
 import { materializeWorkflowPlan } from "../templates.js";
 import { WorkflowGateKind, WorkflowHarnessKind, WorkflowNodeKind, type RuntimeWorkflowNode } from "../types.js";
+import { SourceToProjectModelOperation, sourceToProjectNodeModelMetadata } from "./modelPolicy.js";
 
 export type TemplateMode = "advisory" | "autonomous-pr";
-
-export type TemplateExpansionCase = {
-  id: string;
-  trigger: string;
-  conditionSummary: string;
-  nodes: RuntimeWorkflowNode[];
-  expectedPayloads: string[];
-  mustRunBeforeReport: boolean;
-  rationale: string;
-};
-
-export type ModeTemplatePolicy = {
-  mode: TemplateMode;
-  enabledForOptimization: boolean;
-  expansionCases: TemplateExpansionCase[];
-  constraints: string[];
-};
-
-export type AdoptionTask = {
-  title: string;
-  kind: "template" | "expander" | "test" | "docs";
-  filesLikelyTouched: string[];
-  newFiles: string[];
-  description: string;
-  acceptanceChecks: string[];
-};
-
-export type TemplateCandidate = {
-  id: string;
-  templateId: "source-to-project";
-  mode: TemplateMode;
-  summary: string;
-  sharedInitialNodes: RuntimeWorkflowNode[];
-  modePolicies: ModeTemplatePolicy[];
-  changedInitialDag: boolean;
-  changedExpansionPolicy: boolean;
-  requiresAutonomousPrReview: boolean;
-  rationale: string;
-  suggestedCodeTouchpoints: string[];
-  adoptionTasks: AdoptionTask[];
-};
 
 export type SourceToProjectTemplateAdapter = {
   getBaselineCandidate: (mode: TemplateMode) => TemplateCandidate;
@@ -55,6 +22,7 @@ const BASELINE_PROJECT = "target project";
 export function createSourceToProjectTemplateAdapter(): SourceToProjectTemplateAdapter {
   return {
     getBaselineCandidate(mode) {
+      const adoptionTasks: AdoptionTask[] = [];
       const plan = materializeWorkflowPlan("source-to-project", {
         objective: BASELINE_OBJECTIVE,
         source: BASELINE_SOURCE,
@@ -67,7 +35,7 @@ export function createSourceToProjectTemplateAdapter(): SourceToProjectTemplateA
         templateId: "source-to-project",
         mode,
         summary: `Checked-in ${plan.templateId} baseline with ${plan.nodes.length} shared initial nodes.`,
-        sharedInitialNodes: plan.nodes,
+        sharedInitialNodes: plan.nodes.map(toTemplateNode),
         modePolicies: [
           advisoryModePolicy(),
           autonomousPrModePolicy(),
@@ -84,10 +52,31 @@ export function createSourceToProjectTemplateAdapter(): SourceToProjectTemplateA
           "src/macro-workflow/sourceToProject/harnesses.ts",
           "src/macro-workflow/grammar.ts",
         ],
-        adoptionTasks: [],
+        adoptionTasks,
       };
     },
   };
+}
+
+function toTemplateNode(node: RuntimeWorkflowNode): WorkflowNode {
+  return {
+    id: node.id,
+    kind: node.kind,
+    harness: node.harness,
+    title: node.title,
+    description: node.description,
+    model: node.model,
+    modelRationale: node.modelRationale,
+    prompt: node.prompt,
+    dependsOn: node.dependsOn,
+    gates: node.gates,
+    writeMode: node.writeMode,
+    replanPolicy: node.replanPolicy,
+  };
+}
+
+function nodeModelMetadata(operation: SourceToProjectModelOperation) {
+  return sourceToProjectNodeModelMetadata(operation);
 }
 
 function advisoryModePolicy(): ModeTemplatePolicy {
@@ -132,8 +121,7 @@ function noAcceptedOpportunitiesExpansionCase(): TemplateExpansionCase {
         harness: WorkflowHarnessKind.REPORTER,
         title: "Report source-to-project result",
         description: "Publish a deterministic report explaining that no opportunities passed the acceptance gates.",
-        model: "deterministic",
-        modelRationale: "The reporter formats recorded workflow state without a model call.",
+        ...nodeModelMetadata(SourceToProjectModelOperation.DETERMINISTIC),
         prompt: "Publish the final advisory report for 0 accepted opportunities.",
         dependsOn: ["council-review"],
         gates: [WorkflowGateKind.OUTPUT_CONTRACT],
@@ -156,46 +144,56 @@ function singleSelectedPlanExpansionCase(): TemplateExpansionCase {
   return {
     id: "single-selected-plan",
     trigger: "council-review",
-    conditionSummary: "Council review passes with at least one accepted opportunity or bundle selected for advisory planning.",
+    conditionSummary: "Council review passes with at least one accepted opportunity selected for advisory planning.",
     nodes: [
       {
-        id: "plan-selected-opportunities",
+        id: "plan-opportunity-accepted-opportunity",
         kind: WorkflowNodeKind.PLANNING,
         harness: WorkflowHarnessKind.COPILOT_SDK,
-        title: "Plan selected opportunities",
-        description: "Create read-only plan artifacts for selected source-to-project opportunities and bundles.",
-        model: "gpt-5.5",
-        modelRationale: "Plan generation uses the source-to-project planning model tier.",
-        prompt: "Create plan artifacts for selected opportunities and bundles.",
+        title: "Plan accepted-opportunity: Accepted opportunity",
+        description: "Create an implementation plan artifact for accepted opportunity accepted-opportunity.",
+        ...nodeModelMetadata(SourceToProjectModelOperation.PLAN_GENERATION),
+        prompt: "Create a plan artifact for accepted opportunity accepted-opportunity.",
         dependsOn: ["council-review"],
         gates: [WorkflowGateKind.VERIFICATION],
         writeMode: "read-only",
         replanPolicy: "on-verification-failure",
       },
       {
-        id: "final-recommendation-review",
+        id: "review-opportunity-accepted-opportunity",
         kind: WorkflowNodeKind.DELIBERATION,
         harness: WorkflowHarnessKind.COPILOT_SDK,
-        title: "Review final recommendation",
-        description: "Review selected plan artifacts for source fit, actionability, and complexity before reporting.",
-        model: "gpt-5.5",
-        modelRationale: "Final recommendation review uses the source-to-project review model tier.",
-        prompt: "Review final recommendations.",
-        dependsOn: ["plan-selected-opportunities"],
+        title: "Review accepted-opportunity: Accepted opportunity",
+        description: "Review the plan for accepted opportunity accepted-opportunity against source fit, actionability, and complexity.",
+        ...nodeModelMetadata(SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW),
+        prompt: "Review the plan for accepted opportunity accepted-opportunity.",
+        dependsOn: ["plan-opportunity-accepted-opportunity"],
         gates: [WorkflowGateKind.REVIEW_ACCEPTED],
         writeMode: "read-only",
         replanPolicy: "never",
       },
       {
-        id: "report-source-to-project",
+        id: "report-opportunity-accepted-opportunity",
         kind: WorkflowNodeKind.REPORT,
         harness: WorkflowHarnessKind.REPORTER,
-        title: "Report source-to-project recommendations",
-        description: "Publish the final advisory source-to-project report for selected plans.",
-        model: "deterministic",
-        modelRationale: "The reporter formats recorded workflow state without a model call.",
-        prompt: "Publish the final advisory source-to-project report.",
-        dependsOn: ["final-recommendation-review"],
+        title: "Report accepted-opportunity: Accepted opportunity",
+        description: "Publish a deterministic markdown report for accepted opportunity accepted-opportunity.",
+        ...nodeModelMetadata(SourceToProjectModelOperation.DETERMINISTIC),
+        prompt: "Write the accepted-opportunity Accepted opportunity source-to-project report as markdown.",
+        dependsOn: ["review-opportunity-accepted-opportunity"],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        id: "visual-design-opportunity-accepted-opportunity",
+        kind: WorkflowNodeKind.VISUALIZATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Visual design accepted-opportunity: Accepted opportunity",
+        description: "Create a visual design plan from the accepted opportunity accepted-opportunity report.",
+        ...nodeModelMetadata(SourceToProjectModelOperation.VISUAL_DESIGN),
+        prompt: "Create a visual design plan from the accepted-opportunity source-to-project report.",
+        dependsOn: ["report-opportunity-accepted-opportunity"],
         gates: [WorkflowGateKind.OUTPUT_CONTRACT],
         writeMode: "read-only",
         replanPolicy: "never",
@@ -206,8 +204,9 @@ function singleSelectedPlanExpansionCase(): TemplateExpansionCase {
       "planSelection",
       "finalRecommendationReview",
       "sourceToProjectReportMarkdown",
+      "visualPlanUrl",
     ],
     mustRunBeforeReport: true,
-    rationale: "A selected advisory plan must be planned, reviewed, and reported without introducing write-capable implementation nodes.",
+    rationale: "A selected advisory opportunity follows the checked-in fan-out shape: plan, review, report, and visual-design nodes without introducing write-capable implementation nodes.",
   };
 }

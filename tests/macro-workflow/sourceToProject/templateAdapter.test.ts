@@ -25,11 +25,25 @@ describe("source-to-project template adapter", () => {
     const adapter = createSourceToProjectTemplateAdapter();
     const baseline = adapter.getBaselineCandidate("advisory");
     const advisory = baseline.modePolicies.find((policy) => policy.mode === "advisory");
+    const selectedPlan = advisory?.expansionCases.find((expansionCase) => expansionCase.id === "single-selected-plan");
 
     expect(advisory?.expansionCases.map((expansionCase) => expansionCase.id)).toContain("no-accepted-opportunities");
     expect(advisory?.expansionCases.map((expansionCase) => expansionCase.id)).toContain("single-selected-plan");
-    expect(advisory?.expansionCases.some((expansionCase) =>
-      expansionCase.nodes.some((node) => node.kind === WorkflowNodeKind.REPORT)
-    )).toBe(true);
+    expect(selectedPlan?.nodes.map((node) => node.id)).toEqual([
+      "plan-opportunity-accepted-opportunity",
+      "review-opportunity-accepted-opportunity",
+      "report-opportunity-accepted-opportunity",
+      "visual-design-opportunity-accepted-opportunity",
+    ]);
+    expect(selectedPlan?.nodes.find((node) => node.id === "plan-opportunity-accepted-opportunity")).toMatchObject({
+      kind: WorkflowNodeKind.PLANNING,
+      model: "claude-opus-4.8",
+      dependsOn: ["council-review"],
+    });
+    expect(selectedPlan?.nodes.find((node) => node.id === "visual-design-opportunity-accepted-opportunity")).toMatchObject({
+      kind: WorkflowNodeKind.VISUALIZATION,
+      dependsOn: ["report-opportunity-accepted-opportunity"],
+    });
+    expect(selectedPlan?.nodes.some((node) => node.kind === WorkflowNodeKind.REPORT)).toBe(true);
   });
 });
