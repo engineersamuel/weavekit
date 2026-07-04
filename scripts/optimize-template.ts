@@ -32,13 +32,15 @@ const DEFAULT_ITERATIONS = 5;
 const MAX_ITERATIONS = 10;
 const DEFAULT_CANDIDATES_PER_ITERATION = 1;
 const MAX_CANDIDATES_PER_ITERATION = 3;
+const DEFAULT_JUDGE_MODEL = "gpt-5.5";
+const DEFAULT_GENERATOR_MODEL = "claude-opus-4.8";
 
 export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs {
   const parsed: OptimizeTemplateArgs = {
     iterations: DEFAULT_ITERATIONS,
     candidatesPerIteration: DEFAULT_CANDIDATES_PER_ITERATION,
-    judgeModel: "gpt-5.5",
-    generatorModel: "claude-opus-4.8",
+    judgeModel: DEFAULT_JUDGE_MODEL,
+    generatorModel: DEFAULT_GENERATOR_MODEL,
     minDecisionConfidence: 0,
     outputRoot: join("evals", "template-optimizer", "runs"),
   };
@@ -66,11 +68,19 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
       continue;
     }
     if (arg === "--judge-model") {
-      parsed.judgeModel = readNext(argv, ++index, arg);
+      parsed.judgeModel = readDefaultModelFlag(
+        readNext(argv, ++index, arg),
+        "--judge-model",
+        DEFAULT_JUDGE_MODEL,
+      );
       continue;
     }
     if (arg === "--generator-model") {
-      parsed.generatorModel = readNext(argv, ++index, arg);
+      parsed.generatorModel = readDefaultModelFlag(
+        readNext(argv, ++index, arg),
+        "--generator-model",
+        DEFAULT_GENERATOR_MODEL,
+      );
       continue;
     }
     if (arg === "--min-decision-confidence") {
@@ -292,6 +302,8 @@ function assertRunnableOptimizeTemplateArgs(
   if (args.mode !== "advisory") {
     throw new Error("Autonomous PR template optimization is represented in the schema but not enabled until fixtures exist.");
   }
+  validateDefaultModelFlag(args.judgeModel, "--judge-model", DEFAULT_JUDGE_MODEL);
+  validateDefaultModelFlag(args.generatorModel, "--generator-model", DEFAULT_GENERATOR_MODEL);
 }
 
 function readBoundedInteger(value: string, flag: string, min: number, max: number): number {
@@ -300,6 +312,17 @@ function readBoundedInteger(value: string, flag: string, min: number, max: numbe
     throw new Error(`${flag} must be an integer between ${min} and ${max}.`);
   }
   return parsed;
+}
+
+function readDefaultModelFlag(value: string, flag: string, defaultModel: string): string {
+  validateDefaultModelFlag(value, flag, defaultModel);
+  return value;
+}
+
+function validateDefaultModelFlag(value: string, flag: string, defaultModel: string): void {
+  if (value !== defaultModel) {
+    throw new Error(`${flag} only supports ${defaultModel} until BAML model override wiring exists.`);
+  }
 }
 
 function readNumber(value: string, flag: string, min: number, max: number): number {
