@@ -130,6 +130,45 @@ describe("template optimizer BAML adapter seam", () => {
       },
     ]);
   });
+
+  it("retries transient BAML provider failures", async () => {
+    const challenger = candidate("challenger");
+    let attempts = 0;
+    const adapters = createTemplateOptimizerBamlAdapters(
+      {
+        async GenerateTemplateChallenger() {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new Error("Request failed with status code: 502 Bad Gateway");
+          }
+          return challenger;
+        },
+        async JudgeTemplateFixture() {
+          throw new Error("not used");
+        },
+        async AggregateTemplateJudgments() {
+          throw new Error("not used");
+        },
+      },
+      { retryDelayMs: 0 },
+    );
+
+    await expect(
+      adapters.generateChallenger({
+        objective: "Optimize",
+        constraintsSummary: "constraints",
+        baseline: candidate("baseline"),
+        incumbent: candidate("incumbent"),
+        fixtures: [],
+        iterationIndex: 0,
+        candidateIndex: 0,
+        strategy: "coverage-focused",
+        compactTraceSummary: "No rejected moves yet.",
+        leaderboard: [],
+      }),
+    ).resolves.toBe(challenger);
+    expect(attempts).toBe(2);
+  });
 });
 
 function candidate(id: string): TemplateCandidate {

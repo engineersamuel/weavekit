@@ -34,18 +34,34 @@ const STREAMING_GENERATION_OPTIONS: GenerateTemplateChallengerOptions = {
   },
 };
 
+export type TemplateOptimizerBamlAdapterOptions = {
+  maxAttempts?: number;
+  retryDelayMs?: number;
+};
+
 export function createTemplateOptimizerBamlAdapters(
   client: TemplateOptimizerBamlClient = b,
+  options: TemplateOptimizerBamlAdapterOptions = {},
 ): TemplateOptimizerDeps {
+  const retryOptions = {
+    maxAttempts: options.maxAttempts ?? 3,
+    retryDelayMs: options.retryDelayMs ?? 1_000,
+  };
   return {
     generateChallenger(args) {
-      return generateTemplateChallenger(client, args);
+      return retryTransientBamlCall(
+        () => generateTemplateChallenger(client, args),
+        retryOptions,
+      );
     },
     judgeFixture(args) {
-      return judgeTemplateFixture(client, args);
+      return retryTransientBamlCall(() => judgeTemplateFixture(client, args), retryOptions);
     },
     aggregateJudgments(args) {
-      return aggregateTemplateJudgments(client, args);
+      return retryTransientBamlCall(
+        () => aggregateTemplateJudgments(client, args),
+        retryOptions,
+      );
     },
   };
 }
@@ -89,4 +105,44 @@ async function aggregateTemplateJudgments(
     args.minimumDelta,
     args.minimumDecisionConfidence,
   );
+}
+
+async function retryTransientBamlCall<T>(
+  call: () => Promise<T>,
+  options: Required<TemplateOptimizerBamlAdapterOptions>,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
+    try {
+      return await call();
+    } catch (error) {
+      lastError = error;
+      if (attempt === options.maxAttempts || !isTransientBamlError(error)) {
+        throw error;
+      }
+      await delay(options.retryDelayMs);
+    }
+  }
+  throw lastError;
+}
+
+function isTransientBamlError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return [
+    "502",
+    "Bad Gateway",
+    "408",
+    "Request timed out",
+    "connection_error",
+    "Expected exactly one choices block, got 0",
+  ].some((marker) => message.includes(marker));
+}
+
+async function delay(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return;
+  }
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
