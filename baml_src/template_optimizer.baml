@@ -17,7 +17,7 @@ class ModeTemplatePolicy {
 
 class AdoptionTask {
   title string
-  kind "template" | "expander" | "baml" | "test" | "docs"
+  kind "template" | "expander" | "test" | "docs"
   filesLikelyTouched string[]
   newFiles string[]
   description string
@@ -53,14 +53,14 @@ class TemplateOptimizationFixture {
 
 class CriterionScore {
   criterion string
-  score float
+  score float @description("Normalized 0..1 score.") @assert(normalized_score, {{ this >= 0 and this <= 1 }})
   rationale string
 }
 
 class TemplateFixtureJudgment {
   fixtureId string
-  incumbentScore float
-  challengerScore float
+  incumbentScore float @description("Normalized 0..1 score.") @assert(normalized_incumbentScore, {{ this >= 0 and this <= 1 }})
+  challengerScore float @description("Normalized 0..1 score.") @assert(normalized_challengerScore, {{ this >= 0 and this <= 1 }})
   criteriaScores CriterionScore[]
   criticalRegression bool
   criticalRegressionReason string?
@@ -68,20 +68,20 @@ class TemplateFixtureJudgment {
   rationale string
   critiqueForNextChallenger string
   fixtureGapNotes string[]
-  decisionConfidence float
+  decisionConfidence float @description("Normalized 0..1 score.") @assert(normalized_decisionConfidence, {{ this >= 0 and this <= 1 }})
 }
 
 class AggregateTemplateJudgment {
   incumbentId string
   challengerId string
-  incumbentAggregateScore float
-  challengerAggregateScore float
-  scoreDelta float
+  incumbentAggregateScore float @description("Normalized 0..1 score.") @assert(normalized_incumbentAggregateScore, {{ this >= 0 and this <= 1 }})
+  challengerAggregateScore float @description("Normalized 0..1 score.") @assert(normalized_challengerAggregateScore, {{ this >= 0 and this <= 1 }})
+  scoreDelta float @description("Difference computed as challengerAggregateScore - incumbentAggregateScore; may be negative.")
   criticalRegressionCount int
   replacementDecision "keep-incumbent" | "replace-with-challenger"
   rationale string
   rejectedMoveSummary string?
-  decisionConfidence float
+  decisionConfidence float @description("Normalized 0..1 score.") @assert(normalized_decisionConfidence, {{ this >= 0 and this <= 1 }})
 }
 
 function GenerateTemplateChallenger(

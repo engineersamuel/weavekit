@@ -49,7 +49,7 @@ export function get_checks<CheckName extends string>(checks: Record<CheckName, C
 }
 export interface AdoptionTask {
   title: string
-  kind: "template" | "expander" | "baml" | "test" | "docs"
+  kind: "template" | "expander" | "test" | "docs"
   filesLikelyTouched: string[]
   newFiles: string[]
   description: string

@@ -38,7 +38,7 @@ export interface StreamState<T> {
 export namespace partial_types {
     export interface AdoptionTask {
       title?: string | null
-      kind?: "template" | "expander" | "baml" | "test" | "docs" | null
+      kind?: "template" | "expander" | "test" | "docs" | null
       filesLikelyTouched: string[]
       newFiles: string[]
       description?: string | null
