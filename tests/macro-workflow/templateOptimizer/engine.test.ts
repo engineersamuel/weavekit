@@ -136,6 +136,7 @@ describe("template optimizer engine", () => {
     expect(result.finalIncumbent.id).toBe("baseline");
     expect(result.rejectedMoves).toHaveLength(1);
     expect(result.rejectedMoves[0]).toContain("fixture critical regressions");
+    expect(result.rejectedMoves[0]).toContain("Fixture found an advisory-mode regression.");
   });
 
   it("keeps incumbent when replacement delta is below the minimum threshold", async () => {

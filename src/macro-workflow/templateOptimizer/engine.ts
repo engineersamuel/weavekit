@@ -130,6 +130,8 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
         minimumDecisionConfidence: args.minimumDecisionConfidence,
       });
       const fixtureCriticalRegressionCount = countFixtureCriticalRegressions(fixtureJudgments);
+      const fixtureCriticalRegressionReasons =
+        collectFixtureCriticalRegressionReasons(fixtureJudgments);
       const replacedIncumbent = shouldReplaceIncumbent({
         aggregateJudgment,
         fixtureCriticalRegressionCount,
@@ -156,6 +158,7 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
             challenger,
             aggregateJudgment,
             fixtureCriticalRegressionCount,
+            fixtureCriticalRegressionReasons,
             minimumDelta: args.minimumDelta,
             minimumDecisionConfidence: args.minimumDecisionConfidence,
           }),
@@ -192,6 +195,15 @@ function countFixtureCriticalRegressions(fixtureJudgments: TemplateFixtureJudgme
   return fixtureJudgments.filter((judgment) => judgment.criticalRegression).length;
 }
 
+function collectFixtureCriticalRegressionReasons(
+  fixtureJudgments: TemplateFixtureJudgment[],
+): string[] {
+  return fixtureJudgments
+    .filter((judgment) => judgment.criticalRegression)
+    .map((judgment) => judgment.criticalRegressionReason?.trim())
+    .filter((reason): reason is string => typeof reason === "string" && reason.length > 0);
+}
+
 function compactRejectedMoveTrace(rejectedMoves: string[]): string {
   if (rejectedMoves.length === 0) {
     return "No rejected moves yet.";
@@ -206,6 +218,7 @@ function buildRejectedMoveSummary(args: {
   challenger: TemplateCandidate;
   aggregateJudgment: AggregateTemplateJudgment;
   fixtureCriticalRegressionCount: number;
+  fixtureCriticalRegressionReasons: string[];
   minimumDelta: number;
   minimumDecisionConfidence: number;
 }): string {
@@ -219,7 +232,13 @@ function buildRejectedMoveSummary(args: {
     );
   }
   if (args.fixtureCriticalRegressionCount > 0) {
-    reasons.push(`${args.fixtureCriticalRegressionCount} fixture critical regressions`);
+    const reasonDetail =
+      args.fixtureCriticalRegressionReasons.length > 0
+        ? `: ${args.fixtureCriticalRegressionReasons.join(" | ")}`
+        : "";
+    reasons.push(
+      `${args.fixtureCriticalRegressionCount} fixture critical regressions${reasonDetail}`,
+    );
   }
   if (
     args.minimumDecisionConfidence > 0 &&
