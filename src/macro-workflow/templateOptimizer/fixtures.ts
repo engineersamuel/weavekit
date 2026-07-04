@@ -16,29 +16,80 @@ export async function loadTemplateOptimizationFixtures(args: {
       : [];
   const fixtures: TemplateOptimizationFixture[] = [];
   for (const id of fixtureIds) {
-    const parsed = parseYaml(
-      await readFile(join(fixtureDir, `${id}.yaml`), "utf8"),
-    ) as TemplateOptimizationFixture;
+    const parsed: unknown = parseYaml(await readFile(join(fixtureDir, `${id}.yaml`), "utf8"));
     fixtures.push(validateFixture(parsed, id, args.mode));
   }
   return fixtures;
 }
 
+const requiredArrayFields = [
+  "sourceLessons",
+  "projectConstraints",
+  "opportunities",
+  "idealFeatures",
+  "mustPreserve",
+  "failureModes",
+] as const;
+
 function validateFixture(
-  value: TemplateOptimizationFixture,
+  value: unknown,
   expectedId: string,
   expectedMode: "advisory" | "autonomous-pr",
 ): TemplateOptimizationFixture {
-  if (value.id !== expectedId) {
-    throw new Error(`Fixture ${expectedId} has id ${value.id}.`);
+  if (!isRecord(value)) {
+    throw new Error(`Fixture ${expectedId} requires object fixture.`);
   }
-  if (value.mode !== expectedMode) {
-    throw new Error(`Fixture ${expectedId} has mode ${value.mode}.`);
+  const id = requireNonEmptyStringField(value, expectedId, "id");
+  if (id !== expectedId) {
+    throw new Error(`Fixture ${expectedId} has id ${id}.`);
   }
-  for (const key of ["idealFeatures", "mustPreserve", "failureModes"] as const) {
-    if (!Array.isArray(value[key]) || value[key].length === 0) {
-      throw new Error(`Fixture ${expectedId} requires non-empty ${key}.`);
-    }
+  const mode = requireNonEmptyStringField(value, expectedId, "mode");
+  if (mode !== expectedMode) {
+    throw new Error(`Fixture ${expectedId} has mode ${mode}.`);
   }
-  return value;
+  const scenarioSummary = requireNonEmptyStringField(value, expectedId, "scenarioSummary");
+  const arrays = Object.fromEntries(
+    requiredArrayFields.map((field) => [
+      field,
+      requireNonEmptyStringArrayField(value, expectedId, field),
+    ]),
+  ) as Pick<TemplateOptimizationFixture, (typeof requiredArrayFields)[number]>;
+  return {
+    id,
+    mode,
+    scenarioSummary,
+    ...arrays,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireNonEmptyStringField(
+  value: Record<string, unknown>,
+  fixtureId: string,
+  field: "id" | "mode" | "scenarioSummary",
+): string {
+  const fieldValue = value[field];
+  if (typeof fieldValue !== "string" || fieldValue.trim().length === 0) {
+    throw new Error(`Fixture ${fixtureId} requires non-empty ${field}.`);
+  }
+  return fieldValue;
+}
+
+function requireNonEmptyStringArrayField(
+  value: Record<string, unknown>,
+  fixtureId: string,
+  field: (typeof requiredArrayFields)[number],
+): string[] {
+  const fieldValue = value[field];
+  if (
+    !Array.isArray(fieldValue) ||
+    fieldValue.length === 0 ||
+    fieldValue.some((item) => typeof item !== "string" || item.trim().length === 0)
+  ) {
+    throw new Error(`Fixture ${fixtureId} requires non-empty ${field}.`);
+  }
+  return fieldValue;
 }
