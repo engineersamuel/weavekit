@@ -13,11 +13,22 @@ describe("source-to-project template", () => {
 
     expect(plan.templateId).toBe("source-to-project");
     expect(plan.nodes.map((node) => node.id)).toEqual([
+      "visual-plan-preflight",
       "source-reading",
       "source-corroboration",
       "project-research",
       "opportunity-mapping",
       "council-review",
+    ]);
+    expect(plan.nodes.find((node) => node.id === "visual-plan-preflight")).toMatchObject({
+      kind: "verification",
+      harness: "copilot-sdk",
+      title: "Verify visual-plan capability",
+      dependsOn: [],
+      model: "deterministic",
+    });
+    expect(plan.nodes.find((node) => node.id === "source-reading")?.dependsOn).toEqual([
+      "visual-plan-preflight",
     ]);
     expect(plan.nodes.find((node) => node.id === "opportunity-mapping")?.dependsOn).toEqual([
       "source-reading",

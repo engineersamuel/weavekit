@@ -11,6 +11,10 @@ run = "nub src/cli.ts entity validate"
 description = "Validate configured entity skills against a live Copilot SDK session."
 run = "nub scripts/entity-sdk-doctor.ts"
 
+[tasks."repro:visual-design:live-trace"]
+description = "Replay the captured O3 visual-design node against the live LLM with timing traces and a 10-minute local Plan bridge cleanup TTL."
+run = "nub run repro:visual-design -- --mode live --trace --bridge-ttl-ms 600000"
+
 [tasks."council:smoke"]
 description = "Fast single-round, 2-persona decision-council smoke test (gpt-5-mini)."
 run = "nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/smoke"

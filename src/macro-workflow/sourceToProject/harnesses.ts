@@ -1,7 +1,9 @@
-import { execFile } from "node:child_process";
-import { accessSync, constants } from "node:fs";
+import { execFile, spawn } from "node:child_process";
+import { accessSync, constants, existsSync, readdirSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, delimiter, join } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, delimiter, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { ClientRegistry, type Collector } from "@boundaryml/baml";
 import { resolveWeavekitPluginDirectory, SupportedPluginId, type CopilotDefaults, type PluginConfigs, type ProjectCatalogEntry, type SourceToProjectDefaults, type SourceToProjectMode, type SourceToProjectThresholds, type ToolingDefaults } from "../../config.js";
@@ -45,6 +47,8 @@ const DEFAULT_SOURCE_TO_PROJECT_THRESHOLDS: SourceToProjectThresholds = {
   maxRisk: 0.8,
 };
 
+const DEFAULT_AGENT_NATIVE_SKILLS_PACKAGE = "@agent-native/skills@latest";
+const DEFAULT_VISUAL_PLAN_BRIDGE_TTL_MS = 4 * 60 * 60 * 1000;
 const MIN_PLAN_QUALITY_SCORE = 0.45;
 
 type PlanCandidate = {
@@ -117,10 +121,28 @@ type CopilotRuntimeSessionEvent = {
   } & Record<string, unknown>;
 };
 
+type CopilotRuntimeSkillListItem = {
+  name: string;
+  enabled?: boolean;
+};
+
+type CopilotRuntimeSkillLoadDiagnostics = {
+  warnings?: string[];
+  errors?: string[];
+};
+
 type CopilotRuntimeSession = {
   sendAndWait?(message: { prompt: string }, timeout?: number): Promise<{ data?: ({ content?: string } & Record<string, unknown>) } | undefined>;
   send?(message: { prompt: string; agentMode?: "plan" | "autopilot" | "interactive" | "shell" }): Promise<string>;
   on?(handler: (event: CopilotRuntimeSessionEvent) => void): () => void;
+  rpc?: {
+    skills?: {
+      ensureLoaded?: () => Promise<unknown>;
+      reload?: () => Promise<CopilotRuntimeSkillLoadDiagnostics>;
+      list?: () => Promise<{ skills?: CopilotRuntimeSkillListItem[] }>;
+      enable?: (args: { name: string }) => Promise<unknown>;
+    };
+  };
   disconnect(): Promise<void>;
 };
 
@@ -140,6 +162,7 @@ export type CopilotHarnessLogEvent = {
     | "client-start"
     | "session-create"
     | "session-created"
+    | "skills-load"
     | "prompt-send"
     | "session-event"
     | "assistant-message"
@@ -159,6 +182,7 @@ export type CopilotHarnessLogEvent = {
   eventType?: string;
   contentLength?: number;
   message?: string;
+  skillName?: string;
   toolName?: string;
   toolCallCount?: number;
   maxToolCalls?: number;
@@ -184,6 +208,11 @@ export type CopilotCapabilityScope = {
   command: string;
   promptInputName: string;
   commandArgs?: Record<string, string>;
+} | {
+  kind: "skill";
+  skillName: string;
+  skillDirectories: string[];
+  disabledSkills?: string[];
 };
 
 export type CopilotHarnessClient = {
@@ -211,6 +240,12 @@ function scopedPromptForCapability(prompt: string, capabilityScope?: CopilotCapa
       commandArgs,
     ].filter((part): part is string => Boolean(part)).join(" ");
   }
+  if (capabilityScope.kind === "skill") {
+    const trimmed = prompt.trimStart();
+    return trimmed.startsWith(`/${capabilityScope.skillName}`)
+      ? prompt
+      : `/${capabilityScope.skillName} ${prompt}`;
+  }
   return prompt;
 }
 
@@ -229,6 +264,13 @@ function sessionConfigForCapability(capabilityScope?: CopilotCapabilityScope): R
   if (capabilityScope.kind === "plugin-command") {
     return { pluginDirectories: [capabilityScope.pluginDirectory] };
   }
+  if (capabilityScope.kind === "skill") {
+    return {
+      skillDirectories: capabilityScope.skillDirectories,
+      disabledSkills: capabilityScope.disabledSkills ?? [],
+      enableSkills: true,
+    };
+  }
   return {};
 }
 
@@ -237,7 +279,10 @@ function capabilityScopeLabel(capabilityScope?: CopilotCapabilityScope): string 
   if (capabilityScope.kind === "plugin-command") {
     return `plugin-command:${capabilityScope.command}`;
   }
-  return capabilityScope.kind;
+  if (capabilityScope.kind === "skill") {
+    return `skill:${capabilityScope.skillName}`;
+  }
+  return undefined;
 }
 
 export type SourceToProjectBamlClient = {
@@ -264,13 +309,31 @@ export type ShellClient = {
   run(command: string, args: string[], options: { cwd: string }): Promise<string>;
 };
 
-type AgentNativeSkillInstallResult = {
+export type AgentNativeSkillInstallResult = {
   skill: "visual-plan";
   command: string;
   args: string[];
   output: string;
   skipped: boolean;
 };
+
+export type AgentNativeSkillPreflightResult = {
+  skill: AgentNativeSkillInstallResult["skill"];
+  skillInstall: AgentNativeSkillInstallResult;
+};
+
+export type VisualPlanBridgeCleanupResult = {
+  status: "scheduled" | "disabled";
+  bridgeUrl: string;
+  port: number;
+  cleanupAfterMs: number;
+  cleanupCommand?: string;
+};
+
+export type VisualPlanBridgeCleanupScheduler = (args: {
+  hostedArtifactUrl: string;
+  cleanupAfterMs: number;
+}) => VisualPlanBridgeCleanupResult | undefined;
 
 export type SourceToProjectNotificationResult = {
   channel: "cli" | "telegram";
@@ -319,6 +382,8 @@ export type SourceToProjectHarnessOptions = {
   };
   shell?: ShellClient;
   usageCollector?: WorkflowUsageCollector;
+  visualPlanBridgeCleanup?: VisualPlanBridgeCleanupScheduler;
+  visualPlanBridgeCleanupTtlMs?: number;
 };
 
 export function createOfflineSourceToProjectHarnessClient(): CopilotHarnessClient {
@@ -449,7 +514,7 @@ export function createCopilotSdkHarnessClient(args: {
     const CopilotClientCtor = CopilotClient as unknown as new (options?: unknown) => CopilotRuntimeClient;
     const telemetryOptions = buildCopilotClientOptions();
     const runtimeUrl = args.copilot?.runtimeUrl ?? args.copilot?.cliUrl;
-    const cliPath = args.copilot?.cliPath;
+    const cliPath = args.copilot?.cliPath ?? resolveCopilotCliPathFromSdkModuleUrl(import.meta.resolve("@github/copilot-sdk"));
     const clientOptions: Record<string, unknown> = { ...(telemetryOptions ?? {}) };
     if (runtimeUrl) {
       clientOptions.connection = RuntimeConnection.forUri(runtimeUrl);
@@ -506,7 +571,11 @@ export function createCopilotSdkHarnessClient(args: {
           ...(maxToolCalls
             ? {
               hooks: {
-                onPreToolUse: (input: { toolName?: string }) => {
+                onPreToolUse: (input: { toolName?: string; toolArgs?: unknown }) => {
+                  const visualPlanServeDecision = denyForegroundVisualPlanServe(input, runArgs.capabilityScope);
+                  if (visualPlanServeDecision) {
+                    return visualPlanServeDecision;
+                  }
                   attemptedToolCallCount += 1;
                   if (attemptedToolCallCount <= maxToolCalls) {
                     return;
@@ -530,6 +599,13 @@ export function createCopilotSdkHarnessClient(args: {
                 },
               },
             }
+            : runArgs.capabilityScope?.kind === "skill"
+              ? {
+                hooks: {
+                  onPreToolUse: (input: { toolName?: string; toolArgs?: unknown }) =>
+                    denyForegroundVisualPlanServe(input, runArgs.capabilityScope),
+                },
+              }
             : {}),
           ...(runArgs.cwd ? { cwd: runArgs.cwd } : {}),
         });
@@ -540,6 +616,15 @@ export function createCopilotSdkHarnessClient(args: {
           cwd: runArgs.cwd,
           elapsedMs: elapsedSince(startedAt),
         }, verboseEvents);
+        await loadCopilotCapabilityScope(session, runArgs.capabilityScope, {
+          timeoutMs,
+          mode: runArgs.mode,
+          model,
+          cwd: runArgs.cwd,
+          startedAt,
+          onLog: args.onLog,
+          verboseEvents,
+        });
         const content = await sendCopilotPromptAndWait(session, { ...runArgs, prompt }, timeoutMs, {
           startedAt,
           model,
@@ -579,6 +664,59 @@ export function createCopilotSdkHarnessClient(args: {
   };
 }
 
+function copilotPlatformPackageNames(): string[] {
+  const variants = process.platform === "linux" ? ["linux", "linuxmusl"] : [process.platform];
+  return variants.map((variant) => `@github/copilot-${variant}-${process.arch}`);
+}
+
+function findPackageStoreDir(startPath: string, packageNamePrefix: string): string | undefined {
+  let current = dirname(startPath);
+  while (current !== dirname(current)) {
+    if (basename(current).startsWith(packageNamePrefix)) {
+      return current;
+    }
+    current = dirname(current);
+  }
+  return undefined;
+}
+
+function findPlatformCliPathInVirtualStore(virtualStoreDir: string): string | undefined {
+  for (const packageName of copilotPlatformPackageNames()) {
+    const storePrefix = `${packageName.replace("/", "+")}@`;
+    const entries = existsSync(virtualStoreDir)
+      ? readdirSync(virtualStoreDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && entry.name.startsWith(storePrefix))
+        .map((entry) => entry.name)
+        .sort()
+        .reverse()
+      : [];
+    for (const entry of entries) {
+      const candidate = join(virtualStoreDir, entry, "node_modules", ...packageName.split("/"), "index.js");
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return undefined;
+}
+
+export function resolveCopilotCliPathFromSdkModuleUrl(sdkModuleUrl: string): string | undefined {
+  const sdkModulePath = fileURLToPath(sdkModuleUrl);
+  const sdkStoreDir = findPackageStoreDir(sdkModulePath, "@github+copilot-sdk@");
+  if (sdkStoreDir) {
+    const platformCliPath = findPlatformCliPathInVirtualStore(dirname(sdkStoreDir));
+    if (platformCliPath) {
+      return platformCliPath;
+    }
+  }
+
+  const sdkPackageRoot = dirname(dirname(sdkModulePath));
+  const packageNodeModules = dirname(dirname(sdkPackageRoot));
+  const shimName = process.platform === "win32" ? "copilot.cmd" : "copilot";
+  const copilotShim = join(packageNodeModules, ".bin", shimName);
+  return existsSync(copilotShim) ? copilotShim : undefined;
+}
+
 function logCopilotHarnessEvent(
   onLog: ((event: CopilotHarnessLogEvent) => void) | undefined,
   event: CopilotHarnessLogEvent,
@@ -599,6 +737,129 @@ function shouldSuppressCopilotHarnessEvent(event: CopilotHarnessLogEvent, verbos
 
 function elapsedSince(startedAt: number): number {
   return Date.now() - startedAt;
+}
+
+function denyForegroundVisualPlanServe(
+  input: { toolName?: string; toolArgs?: unknown },
+  capabilityScope?: CopilotCapabilityScope,
+): { permissionDecision: "deny"; permissionDecisionReason: string } | undefined {
+  if (capabilityScope?.kind !== "skill" || capabilityScope.skillName !== "visual-plan") {
+    return undefined;
+  }
+  const toolArgs = stringifyToolArgs(input.toolArgs);
+  if (!/\bplan\s+local\s+serve\b/.test(toolArgs)) {
+    return undefined;
+  }
+  if (/\b(?:nohup|setsid|disown)\b|copilot-detached/i.test(toolArgs)) {
+    return undefined;
+  }
+  return {
+    permissionDecision: "deny",
+    permissionDecisionReason: [
+      "Do not run `plan local serve` as a foreground command in this SDK workflow; it keeps the tool call open and prevents the workflow process from returning.",
+      "Start the bridge detached, poll the `.plan-url` file or serve output until the `https://plan.agent-native.com/local-plans/...` URL is available, then return that URL.",
+      "Use a detached shape such as `nohup nubx @agent-native/core@latest plan local serve --dir <plan-dir> --kind plan --open > /tmp/<slug>-plan-serve.log 2>&1 &`.",
+    ].join(" "),
+  };
+}
+
+function stringifyToolArgs(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+async function loadCopilotCapabilityScope(
+  session: CopilotRuntimeSession,
+  capabilityScope: CopilotCapabilityScope | undefined,
+  diagnostics: {
+    timeoutMs: number;
+    mode: "research" | "plan" | "implement" | "review";
+    model: string;
+    cwd?: string;
+    startedAt: number;
+    onLog?: (event: CopilotHarnessLogEvent) => void;
+    verboseEvents?: boolean;
+  },
+): Promise<void> {
+  if (!capabilityScope || capabilityScope.kind !== "skill") {
+    return;
+  }
+
+  const skills = session.rpc?.skills;
+  if (!skills?.ensureLoaded || !skills.reload || !skills.list || !skills.enable) {
+    throw new Error([
+      `Copilot SDK session does not expose the skill RPCs required for ${capabilityScope.skillName}.`,
+      "Expected rpc.skills.ensureLoaded/reload/list/enable before sending a skill-scoped prompt.",
+    ].join(" "));
+  }
+
+  logCopilotHarnessEvent(diagnostics.onLog, {
+    phase: "skills-load",
+    mode: diagnostics.mode,
+    model: diagnostics.model,
+    cwd: diagnostics.cwd,
+    skillName: capabilityScope.skillName,
+    message: "Loading Copilot SDK skills before sending scoped prompt.",
+    elapsedMs: elapsedSince(diagnostics.startedAt),
+  }, diagnostics.verboseEvents);
+
+  await withCopilotTimeout(
+    `${capabilityScope.skillName} skills.ensureLoaded`,
+    diagnostics.timeoutMs,
+    skills.ensureLoaded(),
+  );
+  const loadDiagnostics = await withCopilotTimeout(
+    `${capabilityScope.skillName} skills.reload`,
+    diagnostics.timeoutMs,
+    skills.reload(),
+  );
+  if (loadDiagnostics.errors?.length) {
+    throw new Error(`Copilot SDK skill reload failed for ${capabilityScope.skillName}: ${loadDiagnostics.errors.join("; ")}`);
+  }
+  await withCopilotTimeout(
+    `${capabilityScope.skillName} skills.enable`,
+    diagnostics.timeoutMs,
+    skills.enable({ name: capabilityScope.skillName }),
+  );
+  const listed = await withCopilotTimeout(
+    `${capabilityScope.skillName} skills.list`,
+    diagnostics.timeoutMs,
+    skills.list(),
+  );
+  assertCopilotSkillListedAndEnabled(capabilityScope.skillName, listed.skills ?? []);
+}
+
+function assertCopilotSkillListedAndEnabled(skillName: string, skills: CopilotRuntimeSkillListItem[]): void {
+  const skill = skills.find((candidate) => candidate.name === skillName);
+  if (!skill) {
+    const available = skills.map((candidate) => candidate.name).sort().join(", ");
+    throw new Error(`Copilot SDK session did not list skill ${skillName}. Available skills: ${available || "<none>"}.`);
+  }
+  if (skill.enabled === false) {
+    throw new Error(`Copilot SDK session listed skill ${skillName}, but it is disabled.`);
+  }
+}
+
+async function withCopilotTimeout<T>(label: string, timeoutMs: number, promise: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Timed out after ${timeoutMs}ms during ${label}`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function addTokenUsage(left: WorkflowTokenUsage, right: WorkflowTokenUsage): WorkflowTokenUsage {
@@ -927,6 +1188,29 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
   };
 
   const copilotAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
+    if (node.id === "visual-plan-preflight") {
+      const install = await ensureAgentNativeSkillInstalled({
+        skill: "visual-plan",
+        cwd: options.project.workingTree,
+        shell: options.shell,
+        offline: options.sourceToProject?.offline,
+        tooling: options.tooling,
+      });
+      return {
+        status: "passed",
+        output: "visual-plan preflight complete.",
+        payload: {
+          visualPlanPreflight: {
+            skill: "visual-plan",
+            skillInstall: install,
+          } satisfies AgentNativeSkillPreflightResult,
+        },
+        execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
+          skillInstallCall(install, options.project.workingTree),
+        ]),
+      };
+    }
+
     if (node.id === "source-reading") {
       const maxToolCalls = sourceReadingMaxToolCalls(options.sourceToProject);
       const prompt = buildSourceReadingPrompt(options.source, maxToolCalls, options.prefetchedSourceContent);
@@ -1131,7 +1415,8 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         throw new Error(`Opportunity visual design node ${node.id} is missing its report dependency.`);
       }
       const reportMarkdown = getPayloadValue<string>(context, reportNodeId, "sourceToProjectReportMarkdown");
-      const install = await ensureAgentNativeSkillInstalled({
+      const preflight = getOptionalPayloadValue<AgentNativeSkillPreflightResult>(context, "visual-plan-preflight", "visualPlanPreflight");
+      const install = preflight?.skillInstall ?? await ensureAgentNativeSkillInstalled({
         skill: "visual-plan",
         cwd: options.project.workingTree,
         shell: options.shell,
@@ -1143,6 +1428,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         reportMarkdown,
       });
       const copilotModel = copilotModelFor(SourceToProjectModelOperation.VISUAL_DESIGN);
+      const capabilityScope = visualPlanSkillCapabilityScope(options.project.workingTree, options.tooling);
       const rawVisualPlan = await copilot.run({
         cwd: options.project.workingTree,
         prompt,
@@ -1151,6 +1437,13 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         operation: node.id,
         nodeId: node.id,
         label: `Copilot visual design ${opportunity.id}`,
+        capabilityScope,
+      });
+      const hostedArtifactUrl = validateHostedVisualPlanArtifact(rawVisualPlan);
+      const bridgeCleanup = scheduleVisualPlanBridgeCleanup({
+        hostedArtifactUrl,
+        cleanupAfterMs: resolveVisualPlanBridgeCleanupTtlMs(options.visualPlanBridgeCleanupTtlMs),
+        scheduler: options.visualPlanBridgeCleanup,
       });
       return {
         status: "passed",
@@ -1163,11 +1456,13 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
             skill: "visual-plan",
             skillInstall: install,
             rawVisualPlan,
+            hostedArtifactUrl,
+            bridgeCleanup,
           },
         },
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
           skillInstallCall(install, options.project.workingTree),
-          copilotCall({ mode: "plan", cwd: options.project.workingTree, prompt, model: copilotModel }),
+          copilotCall({ mode: "plan", cwd: options.project.workingTree, prompt, model: copilotModel, capabilityScope }),
         ]),
       };
     }
@@ -1307,7 +1602,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
     if (node.id === "open-pr") {
       const worktreePath = getPayloadValue<WorktreePreparationResult>(context, "prepare-worktree", "worktreePreparation").worktreePath;
       const prUrl = await openPullRequest(worktreePath, options.shell);
-      return { status: "passed", output: "Pull request prepared.", payload: { prUrl } };
+      return { status: "passed", output: "Pull request prepared.", payload: { prUrl }, execution: reporterExecution(node) };
     }
     if (isOpportunityVisualizationNode(node)) {
       const opportunity = readNodeInput<Opportunity>(node, "opportunity");
@@ -1339,6 +1634,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
           plan,
           finalRecommendationReview: review,
         },
+        execution: reporterExecution(node),
       };
     }
     if (isOpportunityReportNode(node)) {
@@ -1379,6 +1675,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
           plan,
           finalRecommendationReview,
         },
+        execution: reporterExecution(node),
       };
     }
     if (node.id === "report-no-accepted-opportunities") {
@@ -1402,6 +1699,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
           opportunityAcceptances: node.input?.opportunityAcceptances,
           sourceToProjectReportMarkdown,
         },
+        execution: reporterExecution(node),
       };
     }
     return {
@@ -1412,6 +1710,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         rejectedOpportunityCount: node.input?.rejectedOpportunityCount,
         opportunityAcceptances: node.input?.opportunityAcceptances,
       },
+      execution: reporterExecution(node),
     };
   };
 
@@ -1683,6 +1982,16 @@ function buildExecutionMetadata(executor: string, calls: WorkflowExecutionCall[]
   };
 }
 
+function reporterExecution(node: RuntimeWorkflowNode): WorkflowExecutionMetadata {
+  return buildExecutionMetadata(WorkflowHarnessKind.REPORTER, [{
+    executor: WorkflowHarnessKind.REPORTER,
+    operation: node.id,
+    mode: "report",
+    prompt: node.prompt,
+    model: node.model ?? "deterministic",
+  }]);
+}
+
 function resolveOpportunityPlanExecution(
   node: RuntimeWorkflowNode,
   context: WorkflowExecutionContext,
@@ -1789,18 +2098,27 @@ function skillInstallCall(install: AgentNativeSkillInstallResult, cwd: string): 
   };
 }
 
-async function ensureAgentNativeSkillInstalled(args: {
+export async function ensureAgentNativeSkillInstalled(args: {
   skill: AgentNativeSkillInstallResult["skill"];
   cwd: string;
   shell?: ShellClient;
   offline?: boolean;
-  tooling?: Pick<ToolingDefaults, "agentNativeSkillsInstaller" | "miseBin">;
+  tooling?: Pick<ToolingDefaults, "agentNativeSkillsInstaller" | "agentNativeSkillsPackage" | "miseBin">;
+  dryRun?: boolean;
+  noConnect?: boolean;
 }): Promise<AgentNativeSkillInstallResult> {
   const configuredInstaller = args.tooling?.agentNativeSkillsInstaller;
+  const installerPackage = args.tooling?.agentNativeSkillsPackage?.trim() || DEFAULT_AGENT_NATIVE_SKILLS_PACKAGE;
   const command = configuredInstaller ?? "nub";
-  const commandArgs = configuredInstaller
-    ? ["@agent-native/skills@latest", "add", "--skill", args.skill]
-    : ["x", "@agent-native/skills@latest", "add", "--skill", args.skill];
+  const commandArgs = [
+    ...(configuredInstaller ? [] : ["x"]),
+    installerPackage,
+    "add",
+    "--skill",
+    args.skill,
+    ...(args.dryRun ? ["--dry-run"] : []),
+    ...(args.noConnect ? ["--no-connect"] : []),
+  ];
 
   if (args.offline) {
     return {
@@ -1814,6 +2132,7 @@ async function ensureAgentNativeSkillInstalled(args: {
 
   const run = args.shell?.run ?? defaultShellRun;
   const result = await runAgentNativeInstallerCommand(run, command, commandArgs, { cwd: args.cwd }, args.tooling);
+  validateAgentNativeSkillInstallOutput(args.skill, result.output);
   return {
     skill: args.skill,
     command: result.command,
@@ -1870,6 +2189,162 @@ async function runAgentNativeInstallerCommand(
       throw lastEnoentError;
     }
   }
+}
+
+function validateAgentNativeSkillInstallOutput(skill: AgentNativeSkillInstallResult["skill"], output: string): void {
+  const authSignals = [
+    /authentication pending/i,
+    /authentication skipped/i,
+    /skipped url-only hosted mcp config/i,
+    /run agent-native connect/i,
+  ];
+  if (!authSignals.some((signal) => signal.test(output))) {
+    return;
+  }
+  throw new Error([
+    `${skill} hosted capability is not usable: Agent-Native Plan authentication is pending or was skipped.`,
+    "Run `nub x @agent-native/core@latest connect https://plan.agent-native.com --client codex,cowork --scope user` in an interactive shell, then rerun `mise run doctor:sdk`.",
+    "Installer output:",
+    output,
+  ].join("\n"));
+}
+
+function validateHostedVisualPlanArtifact(rawVisualPlan: string): string {
+  if (/\b(?:file:)?(?:~\/|\S*\/)\.copilot\/session-state\/\S+\.html\b/i.test(rawVisualPlan)
+    || /local html fallback/i.test(rawVisualPlan)
+    || /self-contained,\s*no dependencies/i.test(rawVisualPlan)) {
+    throw new Error([
+      "visual-plan did not produce a hosted Agent-Native Plan artifact; it produced a local HTML fallback instead.",
+      rawVisualPlanExcerpt(rawVisualPlan),
+    ].join("\n"));
+  }
+
+  const hostedArtifactUrl = extractHostedVisualPlanArtifactUrl(rawVisualPlan);
+  if (!hostedArtifactUrl) {
+    throw new Error([
+      "visual-plan did not return a hosted Agent-Native Plan or Builder.io artifact URL.",
+      rawVisualPlanExcerpt(rawVisualPlan),
+    ].join("\n"));
+  }
+  return hostedArtifactUrl;
+}
+
+function rawVisualPlanExcerpt(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    return "Raw visual-plan output was empty.";
+  }
+  return `Raw visual-plan output excerpt:\n${normalized.slice(0, 1200)}`;
+}
+
+function extractHostedVisualPlanArtifactUrl(value: string): string | undefined {
+  const matches = value.matchAll(/https?:\/\/[^\s<>)\]`"']+/g);
+  for (const match of matches) {
+    const candidate = match[0]?.replace(/[.,;:!?]+$/, "");
+    if (!candidate) {
+      continue;
+    }
+    try {
+      const url = new URL(candidate);
+      const hostname = url.hostname.toLowerCase();
+      if (hostname === "plan.agent-native.com" && !url.pathname.includes("/_agent-native/mcp")) {
+        return url.toString();
+      }
+      if (hostname === "builder.io" || hostname.endsWith(".builder.io")) {
+        return url.toString();
+      }
+    } catch {
+      // Ignore non-URL matches.
+    }
+  }
+  return undefined;
+}
+
+function resolveVisualPlanBridgeCleanupTtlMs(explicitTtlMs?: number): number {
+  if (explicitTtlMs !== undefined) {
+    return explicitTtlMs;
+  }
+  const envValue = process.env.WEAVEKIT_VISUAL_PLAN_BRIDGE_TTL_MS?.trim();
+  if (!envValue) {
+    return DEFAULT_VISUAL_PLAN_BRIDGE_TTL_MS;
+  }
+  const parsed = Number(envValue);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_VISUAL_PLAN_BRIDGE_TTL_MS;
+}
+
+function scheduleVisualPlanBridgeCleanup(args: {
+  hostedArtifactUrl: string;
+  cleanupAfterMs: number;
+  scheduler?: VisualPlanBridgeCleanupScheduler;
+}): VisualPlanBridgeCleanupResult | undefined {
+  const bridge = localPlanBridgeFromHostedUrl(args.hostedArtifactUrl);
+  if (!bridge) {
+    return undefined;
+  }
+  if (args.cleanupAfterMs === 0) {
+    return {
+      status: "disabled",
+      bridgeUrl: bridge.bridgeUrl,
+      port: bridge.port,
+      cleanupAfterMs: args.cleanupAfterMs,
+    };
+  }
+  return (args.scheduler ?? defaultVisualPlanBridgeCleanupScheduler)({
+    hostedArtifactUrl: args.hostedArtifactUrl,
+    cleanupAfterMs: args.cleanupAfterMs,
+  });
+}
+
+function localPlanBridgeFromHostedUrl(hostedArtifactUrl: string): { bridgeUrl: string; port: number } | undefined {
+  try {
+    const hosted = new URL(hostedArtifactUrl);
+    if (hosted.hostname.toLowerCase() !== "plan.agent-native.com" || !hosted.pathname.startsWith("/local-plans/")) {
+      return undefined;
+    }
+    const bridgeParam = hosted.searchParams.get("bridge");
+    if (!bridgeParam) {
+      return undefined;
+    }
+    const bridge = new URL(bridgeParam);
+    if (bridge.protocol !== "http:" || !["127.0.0.1", "localhost"].includes(bridge.hostname.toLowerCase())) {
+      return undefined;
+    }
+    const port = Number(bridge.port);
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+      return undefined;
+    }
+    return { bridgeUrl: bridge.toString(), port };
+  } catch {
+    return undefined;
+  }
+}
+
+function defaultVisualPlanBridgeCleanupScheduler(args: {
+  hostedArtifactUrl: string;
+  cleanupAfterMs: number;
+}): VisualPlanBridgeCleanupResult | undefined {
+  const bridge = localPlanBridgeFromHostedUrl(args.hostedArtifactUrl);
+  if (!bridge) {
+    return undefined;
+  }
+  const cleanupAfterSeconds = Math.max(1, Math.ceil(args.cleanupAfterMs / 1000));
+  const cleanupCommand = [
+    `sleep ${cleanupAfterSeconds}`,
+    `pids=$(lsof -nP -tiTCP:${bridge.port} -sTCP:LISTEN 2>/dev/null || true)`,
+    `if [ -n "$pids" ]; then kill $pids 2>/dev/null || true; fi`,
+  ].join("; ");
+  const child = spawn("sh", ["-c", cleanupCommand], {
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+  return {
+    status: "scheduled",
+    bridgeUrl: bridge.bridgeUrl,
+    port: bridge.port,
+    cleanupAfterMs: args.cleanupAfterMs,
+    cleanupCommand,
+  };
 }
 
 function isEnoentError(error: unknown): boolean {
@@ -1979,6 +2454,10 @@ function buildVisualPlanPrompt(args: {
   return [
     `/visual-plan Create an actual visual design artifact for source-to-project opportunity ${args.opportunity.id}: ${args.opportunity.title}.`,
     "",
+    "Use Agent-Native Plans local-files privacy mode. Write a local `plan.mdx`, run the Agent-Native `plan local check`, `plan local verify`, and local bridge flow, and return the resulting `https://plan.agent-native.com/local-plans/...` URL. Do not create a standalone HTML fallback.",
+    "",
+    "Important SDK workflow constraint: do not run `plan local serve` as a foreground command because it keeps this workflow process open. If you start a local bridge, start it detached/backgrounded (for example with `nohup ... > /tmp/<slug>-plan-serve.log 2>&1 &`), poll `.plan-url` or the log until the URL is available, then return the URL and stop using tools.",
+    "",
     "Use the markdown report below as the source material. The report is already the textual output, so focus this step on the visual review surface that helps a reader inspect the recommendation, flow, affected project areas, risks, and validation path.",
     "",
     "Source-to-project report:",
@@ -1997,6 +2476,46 @@ function projectResearchMaxToolCalls(config?: SourceToProjectDefaults): number {
   return config?.projectResearchMaxToolCalls
     ?? config?.maxToolCalls
     ?? DEFAULT_PROJECT_RESEARCH_MAX_TOOL_CALLS;
+}
+
+function visualPlanSkillCapabilityScope(cwd: string, tooling?: ToolingDefaults): CopilotCapabilityScope {
+  const skillName = "visual-plan";
+  const skillDirectory = resolveSkillDiscoveryDirectory(skillName, cwd, tooling);
+  return {
+    kind: "skill",
+    skillName,
+    skillDirectories: [skillDirectory],
+    disabledSkills: siblingSkillNames(skillDirectory).filter((name) => name !== skillName),
+  };
+}
+
+function resolveSkillDiscoveryDirectory(skillName: string, cwd: string, tooling?: ToolingDefaults): string {
+  const candidates = uniqueStrings([
+    tooling?.skillsDirectory,
+    join(cwd, ".agents", "skills"),
+    join(cwd, ".copilot", "skills"),
+    join(homedir(), ".agents", "skills"),
+    join(homedir(), ".copilot", "skills"),
+    join(homedir(), ".codex", "skills"),
+  ].filter((value): value is string => Boolean(value)));
+
+  return candidates.find((directory) => existsSync(join(directory, skillName, "SKILL.md")))
+    ?? candidates.find((directory) => existsSync(directory))
+    ?? join(homedir(), ".agents", "skills");
+}
+
+function siblingSkillNames(skillDirectory: string): string[] {
+  if (!existsSync(skillDirectory)) {
+    return [];
+  }
+  return readdirSync(skillDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 function projectResearchCapabilityScope(node: RuntimeWorkflowNode, plugins?: PluginConfigs): CopilotCapabilityScope | undefined {

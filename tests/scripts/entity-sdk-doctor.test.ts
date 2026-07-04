@@ -181,6 +181,7 @@ sdk_doctor_model = "gpt-5-mini"
     const repoRoot = await createRepoWithSkillBackedPersona();
     const { configPath, pluginDir } = await createHveCorePluginConfig(repoRoot);
     await addNoSkillCopilotSdkPersona(repoRoot);
+    const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
     const skillSession = {
       rpc: {
         skills: {
@@ -218,21 +219,83 @@ sdk_doctor_model = "gpt-5-mini"
     const output = await runEntitySdkDoctor({
       repoRoot,
       configPath,
+      shell: {
+        async run(command, args, options) {
+          shellCalls.push({ command, args, cwd: options.cwd });
+          return "visual-plan dry run ok";
+        },
+      },
       clientFactory: () => client,
     });
 
     expect(output.trimEnd().split("\n")).toEqual([
       "✅ pragmatic: no capabilities.skills configured",
+      "✅ source-to-project/visual-plan-preflight: visual-plan installer dry run succeeded",
       "✅ mckinsey-strategist: skill mckinsey-strategist loaded",
       "✅ source-to-project/project-research: plugin command hve-core:task-research discovered",
     ]);
     expect(output).toContain("mckinsey-strategist: skill mckinsey-strategist loaded");
     expect(output).toContain("pragmatic: no capabilities.skills configured");
+    expect(output).toContain("source-to-project/visual-plan-preflight: visual-plan installer dry run succeeded");
     expect(output).toContain("source-to-project/project-research: plugin command hve-core:task-research discovered");
+    expect(shellCalls).toEqual([{
+      command: "nub",
+      args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan", "--dry-run", "--no-connect"],
+      cwd: repoRoot,
+    }]);
     expect(client.createSession).toHaveBeenCalledWith(expect.objectContaining({
       pluginDirectories: [pluginDir],
     }));
     expect(client.createSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails the visual-plan installer dry run when hosted auth is pending", async () => {
+    const repoRoot = await createRepoWithSkillBackedPersona();
+    const client = {
+      start: vi.fn(async () => undefined),
+      createSession: vi.fn(),
+      stop: vi.fn(async () => undefined),
+    };
+
+    await expect(runEntitySdkDoctor({
+      repoRoot,
+      shell: {
+        async run() {
+          return [
+            "Skipped URL-only hosted MCP config for codex, cowork; run agent-native connect https://plan.agent-native.com --client codex,cowork --scope user to write bearer auth.",
+            "Authentication skipped (non-interactive). To finish auth, run: npx @agent-native/core@latest connect https://plan.agent-native.com --client claude-code,codex,cowork,cursor,opencode,github-copilot --scope user",
+            "Authentication pending",
+          ].join("\n");
+        },
+      },
+      clientFactory: () => client,
+    })).rejects.toThrow("visual-plan hosted capability is not usable");
+
+    expect(client.start).not.toHaveBeenCalled();
+    expect(client.createSession).not.toHaveBeenCalled();
+  });
+
+  it("times out when the visual-plan installer dry run hangs", async () => {
+    const repoRoot = await createRepoWithSkillBackedPersona();
+    const client = {
+      start: vi.fn(async () => undefined),
+      createSession: vi.fn(),
+      stop: vi.fn(async () => undefined),
+    };
+
+    await expect(runEntitySdkDoctor({
+      repoRoot,
+      timeoutMs: 1,
+      shell: {
+        async run() {
+          return await new Promise<string>(() => undefined);
+        },
+      },
+      clientFactory: () => client,
+    })).rejects.toThrow("Timed out after 1ms during source-to-project visual-plan installer dry run");
+
+    expect(client.start).not.toHaveBeenCalled();
+    expect(client.createSession).not.toHaveBeenCalled();
   });
 
   it("fails before starting the SDK when the hve-core plugin directory is missing", async () => {
@@ -297,7 +360,48 @@ directory = "${missingPluginDir}"
     await expect(runEntitySdkDoctor({
       repoRoot,
       configPath,
+      shell: {
+        async run() {
+          return "visual-plan dry run ok";
+        },
+      },
       clientFactory: () => client,
     })).rejects.toThrow("Copilot SDK session did not list command hve-core:task-research");
+  });
+
+  it("times out a stalled SDK plugin command session instead of hanging", async () => {
+    const repoRoot = await createRepoWithSkillBackedPersona();
+    const { configPath } = await createHveCorePluginConfig(repoRoot);
+    const skillSession = {
+      rpc: {
+        skills: {
+          ensureLoaded: vi.fn(async () => undefined),
+          list: vi.fn(async () => ({ skills: [{ name: "mckinsey-strategist", enabled: true }] })),
+        },
+      },
+      disconnect: vi.fn(async () => undefined),
+    };
+    const client = {
+      start: vi.fn(async () => undefined),
+      createSession: vi.fn(async (config: unknown) => {
+        if ("pluginDirectories" in (config as Record<string, unknown>)) {
+          return new Promise<never>(() => undefined);
+        }
+        return skillSession;
+      }),
+      stop: vi.fn(async () => undefined),
+    };
+
+    await expect(runEntitySdkDoctor({
+      repoRoot,
+      configPath,
+      timeoutMs: 5,
+      shell: {
+        async run() {
+          return "visual-plan dry run ok";
+        },
+      },
+      clientFactory: () => client,
+    })).rejects.toThrow("Timed out after 5ms during source-to-project plugin command SDK session");
   });
 });

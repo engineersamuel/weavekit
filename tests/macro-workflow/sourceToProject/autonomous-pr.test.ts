@@ -33,6 +33,9 @@ describe("source-to-project autonomous PR mode", () => {
       copilot: {
         async run(args) {
           calls.push(args.mode);
+          if (args.operation?.startsWith("visual-design-")) {
+            return "Published visual-plan MDX artifact: https://plan.agent-native.com/builder/autonomous-pr-visual";
+          }
           return "raw output";
         },
       },

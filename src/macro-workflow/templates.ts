@@ -149,6 +149,19 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
   const mode = input.mode ?? "advisory";
   const advisoryNodes: RuntimeWorkflowPlan["nodes"] = [
     {
+      id: "visual-plan-preflight",
+      kind: WorkflowNodeKind.VERIFICATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Verify visual-plan capability",
+      description: "Fail fast if the visual-plan skill installer cannot resolve before source-to-project research begins.",
+      ...sourceNodeMetadata(SourceToProjectModelOperation.DETERMINISTIC),
+      prompt: "Verify visual-plan skill installation before source-to-project execution.",
+      dependsOn: [],
+      gates: [WorkflowGateKind.VERIFICATION],
+      writeMode: "read-only" as WorkflowNodeWriteMode,
+      replanPolicy: "never" as WorkflowReplanPolicy,
+    },
+    {
       id: "source-reading",
       kind: WorkflowNodeKind.RESEARCH,
       harness: WorkflowHarnessKind.COPILOT_SDK,
@@ -156,7 +169,7 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
       description: "Read the source artifact and extract grounded claims, assumptions, evidence, and transferable lessons.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.SOURCE_READING),
       prompt: `Read and analyze source: ${input.source ?? ""}`,
-      dependsOn: [],
+      dependsOn: ["visual-plan-preflight"],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
       writeMode: "read-only" as WorkflowNodeWriteMode,
       replanPolicy: "on-contract-failure" as WorkflowReplanPolicy,
