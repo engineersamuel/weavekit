@@ -1,6 +1,6 @@
-import { access, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { dryRunApplyTemplateOptimizerPackage } from "../src/macro-workflow/templateOptimizer/apply.js";
 
 type ApplyArgs = {
   runId?: string;
@@ -44,38 +44,16 @@ export function parseApplyArgs(argv: string[]): ApplyArgs {
 }
 
 export async function runApply(args: ApplyArgs): Promise<{ summaryPath: string; dryRun: boolean }> {
-  const runDir = join(args.runsRoot, args.runId!);
-  const runPath = join(runDir, "optimizer-run.json");
-  await access(runPath);
-
   if (!args.dryRun) {
-    throw new Error("Template optimizer apply is scaffolded, but live repository modification is not implemented yet. Re-run with --dry-run to inspect the selected package.");
+    throw new Error("Template optimizer live repository modification is not implemented, use --dry-run.");
   }
 
-  const run = JSON.parse(await readFile(runPath, "utf8")) as {
-    finalRecommendation?: { candidateId?: string; recommendation?: string; rationale?: string };
-  };
-  const candidateId = args.candidateId ?? run.finalRecommendation?.candidateId ?? "unknown";
-  const summary = [
-    "# Template Optimizer Apply",
-    "",
-    `- Run: ${args.runId}`,
-    `- Candidate: ${candidateId}`,
-    `- Mode: ${args.dryRun ? "dry-run" : "apply"}`,
-    "",
-    args.dryRun
-      ? "Dry run only. No repository files were modified."
-      : "No repository files were modified because live adoption-package application is not implemented yet.",
-    "",
-    `Recommendation: ${run.finalRecommendation?.recommendation ?? "unknown"}`,
-    "",
-    run.finalRecommendation?.rationale ?? "",
-    "",
-  ].join("\n");
-  const summaryPath = join(runDir, args.dryRun ? "apply-dry-run.md" : "apply-summary.md");
-  await writeFile(summaryPath, summary, "utf8");
-
-  return { summaryPath, dryRun: args.dryRun };
+  const result = await dryRunApplyTemplateOptimizerPackage({
+    runsRoot: args.runsRoot,
+    runId: args.runId!,
+    candidateId: args.candidateId,
+  });
+  return { summaryPath: result.summaryPath, dryRun: true };
 }
 
 function readNext(argv: string[], index: number, flag: string): string {

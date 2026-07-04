@@ -87,10 +87,18 @@ async function createOptimizerRunFixture(): Promise<{ runsRoot: string; runId: s
   await writeFile(
     join(runDir, "optimizer-run.json"),
     JSON.stringify({
-      finalRecommendation: {
-        candidateId: "candidate-a",
-        recommendation: "adopt",
-        rationale: "Improves template quality.",
+      finalIncumbent: {
+        id: "candidate-a",
+        adoptionTasks: [
+          {
+            title: "Update source-to-project template",
+            kind: "template",
+            filesLikelyTouched: ["src/macro-workflow/templates.ts"],
+            newFiles: [],
+            description: "Apply the selected template improvements.",
+            acceptanceChecks: ["typecheck passes"],
+          },
+        ],
       },
     }),
     "utf8",
