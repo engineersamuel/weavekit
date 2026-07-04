@@ -1,15 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
-import type { TemplateCandidate } from "../src/generated/baml_client/index.js";
 import { defaultWorkflowGrammar } from "../src/macro-workflow/grammar.js";
 import { createSourceToProjectTemplateAdapter } from "../src/macro-workflow/sourceToProject/templateAdapter.js";
+import { writeTemplateOptimizerArtifacts } from "../src/macro-workflow/templateOptimizer/artifacts.js";
 import { createTemplateOptimizerBamlAdapters } from "../src/macro-workflow/templateOptimizer/bamlAdapters.js";
 import { renderTemplateOptimizerConstraints } from "../src/macro-workflow/templateOptimizer/constraints.js";
 import { optimizeTemplate } from "../src/macro-workflow/templateOptimizer/engine.js";
-import type { TemplateOptimizerResult } from "../src/macro-workflow/templateOptimizer/engine.js";
 import { loadTemplateOptimizationFixtures } from "../src/macro-workflow/templateOptimizer/fixtures.js";
 
 const execFileAsync = promisify(execFile);
@@ -145,138 +144,15 @@ export async function runOptimizeTemplate(args: OptimizeTemplateArgs): Promise<{
     ],
     deps: createTemplateOptimizerBamlAdapters(),
   });
-  const packageJson: OptimizerRunArtifact = {
-    status: result.finalIncumbent.id === baseline.id ? "keep-current-template" : "candidate-ready",
-    note: "Template optimizer completed with live BAML candidate generation and judging.",
+  await writeTemplateOptimizerArtifacts({
+    outputDir,
     runId,
-    templateId: args.template,
-    mode: args.mode,
-    options: {
-      iterations: args.iterations,
-      candidatesPerIteration: args.candidatesPerIteration,
-      judgeModel: args.judgeModel,
-      generatorModel: args.generatorModel,
-      minDecisionConfidence: args.minDecisionConfidence,
-    },
-    fixtureIds: fixtures.map((fixture) => fixture.id),
-    baselineCandidateId: baseline.id,
-    finalIncumbent: result.finalIncumbent,
-    leaderboardIds: result.leaderboard.map((candidate) => candidate.id),
-    rejectedMoves: result.rejectedMoves,
-    iterations: result.iterations.map((iteration) => ({
-      index: iteration.index,
-      candidateIndex: iteration.candidateIndex,
-      strategy: iteration.strategy,
-      challengerId: iteration.challenger.id,
-      replacedIncumbent: iteration.replacedIncumbent,
-      aggregateJudgment: iteration.aggregateJudgment,
-      fixtureJudgmentIds: iteration.fixtureJudgments.map((judgment) => judgment.fixtureId),
-    })),
-    finalRecommendation: {
-      candidateId: result.finalIncumbent.id,
-      recommendation: result.finalIncumbent.id === baseline.id ? "keep-current-template" : "adopt-candidate",
-      rationale: renderFinalRecommendationRationale(result, baseline),
-    },
-    generatedAt: new Date().toISOString(),
-  };
-  await writeFile(join(outputDir, "optimizer-run.json"), `${JSON.stringify(packageJson, null, 2)}\n`, "utf8");
-  await writeFile(join(outputDir, "summary.md"), renderSummary(packageJson), "utf8");
-  return { runId, outputDir };
-}
-
-function renderSummary(run: {
-  status: string;
-  runId: string;
-  templateId?: string;
-  mode?: string;
-  note: string;
-  fixtureIds: string[];
-  leaderboardIds: string[];
-  iterations: Array<{ challengerId: string; replacedIncumbent: boolean }>;
-  finalRecommendation: { candidateId: string; recommendation: string; rationale: string };
-}): string {
-  return [
-    "# Template Optimizer Run",
-    "",
-    `- Run: ${run.runId}`,
-    `- Template: ${run.templateId}`,
-    `- Mode: ${run.mode}`,
-    `- Status: ${run.status}`,
-    `- Fixtures: ${run.fixtureIds.join(", ")}`,
-    `- Leaderboard: ${run.leaderboardIds.join(" -> ")}`,
-    "",
-    run.note,
-    "",
-    "## Iterations",
-    "",
-    ...renderIterationSummary(run.iterations),
-    "",
-    "## Final Recommendation",
-    "",
-    `- Candidate: ${run.finalRecommendation.candidateId}`,
-    `- Recommendation: ${run.finalRecommendation.recommendation}`,
-    `- Rationale: ${run.finalRecommendation.rationale}`,
-    "",
-  ].join("\n");
-}
-
-type OptimizerRunArtifact = {
-  status: "keep-current-template" | "candidate-ready";
-  note: string;
-  runId: string;
-  templateId?: OptimizeTemplateId;
-  mode?: OptimizeTemplateMode;
-  options: {
-    iterations: number;
-    candidatesPerIteration: number;
-    judgeModel: string;
-    generatorModel: string;
-    minDecisionConfidence: number;
-  };
-  fixtureIds: string[];
-  baselineCandidateId: string;
-  finalIncumbent: TemplateCandidate;
-  leaderboardIds: string[];
-  rejectedMoves: string[];
-  iterations: Array<{
-    index: number;
-    candidateIndex: number;
-    strategy: string;
-    challengerId: string;
-    replacedIncumbent: boolean;
-    aggregateJudgment: TemplateOptimizerResult["iterations"][number]["aggregateJudgment"];
-    fixtureJudgmentIds: string[];
-  }>;
-  finalRecommendation: {
-    candidateId: string;
-    recommendation: "keep-current-template" | "adopt-candidate";
-    rationale: string;
-  };
-  generatedAt: string;
-};
-
-function renderIterationSummary(
-  iterations: Array<{ challengerId: string; replacedIncumbent: boolean }>,
-): string[] {
-  if (iterations.length === 0) {
-    return ["No iterations ran."];
-  }
-  return iterations.map((iteration, index) => {
-    const decision = iteration.replacedIncumbent ? "replaced incumbent" : "kept incumbent";
-    return `- ${index + 1}. ${iteration.challengerId}: ${decision}`;
+    args,
+    constraintsSummary,
+    fixtures,
+    result,
   });
-}
-
-function renderFinalRecommendationRationale(
-  result: TemplateOptimizerResult,
-  baseline: TemplateCandidate,
-): string {
-  if (result.finalIncumbent.id === baseline.id) {
-    return result.rejectedMoves.length > 0
-      ? `The checked-in baseline remains incumbent after ${result.rejectedMoves.length} rejected move(s).`
-      : "The checked-in baseline remains incumbent.";
-  }
-  return result.finalIncumbent.rationale;
+  return { runId, outputDir };
 }
 
 function readNext(argv: string[], index: number, flag: string): string {
