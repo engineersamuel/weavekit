@@ -152,4 +152,35 @@ describe("template optimizer apply", () => {
       "Optimizer run run-malformed-task finalIncumbent.adoptionTasks[0].filesLikelyTouched must be an array of strings.",
     );
   });
+
+  it("rejects a package whose adoption task kind is not allowed", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "template-optimizer-apply-"));
+    tempDirs.push(runsRoot);
+    const runId = "run-invalid-kind";
+    const runDir = join(runsRoot, runId);
+    await mkdir(runDir);
+    await writeFile(
+      join(runDir, "optimizer-run.json"),
+      JSON.stringify({
+        finalIncumbent: {
+          id: "candidate-1",
+          adoptionTasks: [
+            {
+              title: "Update template",
+              kind: "bogus",
+              filesLikelyTouched: ["src/macro-workflow/templates.ts"],
+              newFiles: [],
+              description: "Update the template shape.",
+              acceptanceChecks: ["typecheck passes"],
+            },
+          ],
+        },
+      }),
+      "utf8",
+    );
+
+    await expect(dryRunApplyTemplateOptimizerPackage({ runsRoot, runId })).rejects.toThrow(
+      "Optimizer run run-invalid-kind finalIncumbent.adoptionTasks[0].kind must be one of: template, expander, test, docs.",
+    );
+  });
 });

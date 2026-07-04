@@ -6,6 +6,8 @@ type ApplyCandidate = Pick<TemplateCandidate, "id"> & {
   adoptionTasks: AdoptionTask[];
 };
 
+const adoptionTaskKinds = ["template", "expander", "test", "docs"] as const satisfies readonly AdoptionTask["kind"][];
+
 export async function dryRunApplyTemplateOptimizerPackage(args: {
   runsRoot: string;
   runId: string;
@@ -39,7 +41,7 @@ function validateAdoptionTask(task: unknown, runId: string, path: string): Adopt
   const record = requireRecord(task, runId, path);
   return {
     title: requireString(record.title, runId, `${path}.title`),
-    kind: requireString(record.kind, runId, `${path}.kind`) as AdoptionTask["kind"],
+    kind: requireAdoptionTaskKind(record.kind, runId, `${path}.kind`),
     filesLikelyTouched: requireStringArray(record.filesLikelyTouched, runId, `${path}.filesLikelyTouched`),
     newFiles: requireStringArray(record.newFiles, runId, `${path}.newFiles`),
     description: requireString(record.description, runId, `${path}.description`),
@@ -75,6 +77,13 @@ function requireArray(value: unknown, runId: string, path: string): unknown[] {
   return value;
 }
 
+function requireAdoptionTaskKind(value: unknown, runId: string, path: string): AdoptionTask["kind"] {
+  if (typeof value !== "string" || !isAdoptionTaskKind(value)) {
+    throw new Error(`Optimizer run ${runId} ${path} must be one of: ${adoptionTaskKinds.join(", ")}.`);
+  }
+  return value;
+}
+
 function requireStringArray(value: unknown, runId: string, path: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error(`Optimizer run ${runId} ${path} must be an array of strings.`);
@@ -84,6 +93,10 @@ function requireStringArray(value: unknown, runId: string, path: string): string
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAdoptionTaskKind(value: string): value is AdoptionTask["kind"] {
+  return adoptionTaskKinds.some((kind) => kind === value);
 }
 
 function renderDryRunSummary(args: {
