@@ -96,7 +96,7 @@ describe("template optimizer engine", () => {
     });
 
     expect(result.finalIncumbent.id).toBe("baseline");
-    expect(result.rejectedMoves).toContain("forced no-fit plan");
+    expect(result.rejectedMoves[0]).toContain("forced no-fit plan");
   });
 
   it("keeps incumbent when fixture judgment has a critical regression despite aggregate replacement", async () => {
@@ -126,6 +126,7 @@ describe("template optimizer engine", () => {
             scoreDelta: 0.2,
             criticalRegressionCount: 0,
             replacementDecision: "replace-with-challenger",
+            rejectedMoveSummary: "minor issue",
             decisionConfidence: 0.8,
           }),
         ),
@@ -134,7 +135,7 @@ describe("template optimizer engine", () => {
 
     expect(result.finalIncumbent.id).toBe("baseline");
     expect(result.rejectedMoves).toHaveLength(1);
-    expect(result.rejectedMoves[0]).toContain("critical regression");
+    expect(result.rejectedMoves[0]).toContain("fixture critical regressions");
   });
 
   it("keeps incumbent when replacement delta is below the minimum threshold", async () => {

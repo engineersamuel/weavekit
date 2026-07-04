@@ -152,14 +152,13 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
         leaderboard.push(challenger);
       } else {
         rejectedMoves.push(
-          aggregateJudgment.rejectedMoveSummary?.trim() ||
-            buildRejectedMoveSummary({
-              challenger,
-              aggregateJudgment,
-              fixtureCriticalRegressionCount,
-              minimumDelta: args.minimumDelta,
-              minimumDecisionConfidence: args.minimumDecisionConfidence,
-            }),
+          buildRejectedMoveSummary({
+            challenger,
+            aggregateJudgment,
+            fixtureCriticalRegressionCount,
+            minimumDelta: args.minimumDelta,
+            minimumDecisionConfidence: args.minimumDecisionConfidence,
+          }),
         );
       }
     }
@@ -229,6 +228,10 @@ function buildRejectedMoveSummary(args: {
     reasons.push(
       `decision confidence ${args.aggregateJudgment.decisionConfidence} is below minimum ${args.minimumDecisionConfidence}`,
     );
+  }
+  const aggregateSummary = args.aggregateJudgment.rejectedMoveSummary?.trim();
+  if (aggregateSummary) {
+    reasons.push(aggregateSummary);
   }
   const rationale = reasons.length > 0 ? reasons.join("; ") : args.aggregateJudgment.rationale;
   return `Rejected ${args.challenger.id}: ${rationale}`;
