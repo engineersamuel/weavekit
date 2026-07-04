@@ -11,11 +11,11 @@ describe("optimize-template args", () => {
         "--judge-model",
         "gpt-5.5",
         "--generator-model",
-        "claude-opus-4.8",
+        "gpt-5.5",
       ]),
     ).toMatchObject({
       judgeModel: "gpt-5.5",
-      generatorModel: "claude-opus-4.8",
+      generatorModel: "gpt-5.5",
     });
   });
 
@@ -25,9 +25,9 @@ describe("optimize-template args", () => {
     ).toThrow("--judge-model only supports gpt-5.5 until BAML model override wiring exists.");
 
     expect(() =>
-      parseOptimizeTemplateArgs([...requiredArgs, "--generator-model", "gpt-5.5"]),
+      parseOptimizeTemplateArgs([...requiredArgs, "--generator-model", "claude-opus-4.8"]),
     ).toThrow(
-      "--generator-model only supports claude-opus-4.8 until BAML model override wiring exists.",
+      "--generator-model only supports gpt-5.5 until BAML model override wiring exists.",
     );
   });
 });

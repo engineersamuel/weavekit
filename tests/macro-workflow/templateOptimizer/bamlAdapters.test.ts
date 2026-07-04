@@ -111,7 +111,7 @@ describe("template optimizer BAML adapter seam", () => {
           "No rejected moves yet.",
           "coverage-focused",
           [fixture],
-          { onTick: expect.any(Function) },
+          { client: "CopilotProxyGpt55", onTick: expect.any(Function) },
         ],
       },
       {

@@ -28,6 +28,7 @@ type GenerateTemplateChallengerOptions = NonNullable<
 >;
 
 const STREAMING_GENERATION_OPTIONS: GenerateTemplateChallengerOptions = {
+  client: "CopilotProxyGpt55",
   onTick() {
     // Supplying onTick routes generated BAML through its streaming request path.
   },

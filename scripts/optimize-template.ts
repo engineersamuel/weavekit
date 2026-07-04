@@ -32,7 +32,7 @@ const MAX_ITERATIONS = 10;
 const DEFAULT_CANDIDATES_PER_ITERATION = 1;
 const MAX_CANDIDATES_PER_ITERATION = 3;
 const DEFAULT_JUDGE_MODEL = "gpt-5.5";
-const DEFAULT_GENERATOR_MODEL = "claude-opus-4.8";
+const DEFAULT_GENERATOR_MODEL = "gpt-5.5";
 
 export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs {
   const parsed: OptimizeTemplateArgs = {
