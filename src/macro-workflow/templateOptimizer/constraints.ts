@@ -19,6 +19,7 @@ export function renderTemplateOptimizerConstraints(args: {
         ]
       : [
           "autonomous-pr mode requires explicit enablement",
+          "final recommendation review before implementation",
           "every included Opportunity must have confidence >= 0.95",
           "worktree preparation must happen before writes",
           "verification gates must run after writes",
@@ -29,6 +30,7 @@ export function renderTemplateOptimizerConstraints(args: {
     `mode: ${args.mode}`,
     `allowedNodeKinds: ${[...args.grammar.allowedNodeKinds].sort().join(", ")}`,
     `allowedHarnesses: ${[...args.grammar.allowedHarnesses].sort().join(", ")}`,
+    `implementationHarnesses: ${[...args.grammar.implementationHarnesses].sort().join(", ")}`,
     `allowedGates: ${Object.values(WorkflowGateKind).sort().join(", ")}`,
     "allowedTransitions:",
     transitions,
