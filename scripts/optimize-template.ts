@@ -3,9 +3,18 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
+import type { TemplateCandidate } from "../src/generated/baml_client/index.js";
+import { defaultWorkflowGrammar } from "../src/macro-workflow/grammar.js";
+import { createSourceToProjectTemplateAdapter } from "../src/macro-workflow/sourceToProject/templateAdapter.js";
+import { createTemplateOptimizerBamlAdapters } from "../src/macro-workflow/templateOptimizer/bamlAdapters.js";
+import { renderTemplateOptimizerConstraints } from "../src/macro-workflow/templateOptimizer/constraints.js";
+import { optimizeTemplate } from "../src/macro-workflow/templateOptimizer/engine.js";
+import type { TemplateOptimizerResult } from "../src/macro-workflow/templateOptimizer/engine.js";
+import { loadTemplateOptimizationFixtures } from "../src/macro-workflow/templateOptimizer/fixtures.js";
 
 const execFileAsync = promisify(execFile);
 
+type OptimizeTemplateId = "source-to-project";
 type OptimizeTemplateMode = "advisory" | "autonomous-pr";
 
 type OptimizeTemplateArgs = {
@@ -93,14 +102,43 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
 
 export async function runOptimizeTemplate(args: OptimizeTemplateArgs): Promise<{ runId: string; outputDir: string }> {
   await execFileAsync("mise", ["run", "doctor"], { cwd: process.cwd() });
+  assertRunnableOptimizeTemplateArgs(args);
 
   const runId = `template-optimizer-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   const outputDir = join(args.outputRoot, runId);
   await mkdir(outputDir, { recursive: true });
 
-  const packageJson = {
-    status: "keep-current-template",
-    note: "Template optimizer command scaffold is installed. Live BAML candidate generation/judging is the next implementation slice.",
+  const baseline = createSourceToProjectTemplateAdapter().getBaselineCandidate(args.mode);
+  const fixtures = await loadTemplateOptimizationFixtures({
+    templateId: args.template,
+    mode: args.mode,
+  });
+  const constraintsSummary = renderTemplateOptimizerConstraints({
+    grammar: defaultWorkflowGrammar,
+    templateId: args.template,
+    mode: args.mode,
+  });
+  const result = await optimizeTemplate({
+    objective: `Optimize ${args.template} ${args.mode} Static template quality.`,
+    constraintsSummary,
+    baseline,
+    fixtures,
+    iterations: args.iterations,
+    candidatesPerIteration: args.candidatesPerIteration,
+    minimumDelta: 0.03,
+    minimumDecisionConfidence: args.minDecisionConfidence,
+    strategies: [
+      "coverage-focused",
+      "minimalist",
+      "verification-focused",
+      "report-quality-focused",
+    ],
+    deps: createTemplateOptimizerBamlAdapters(),
+  });
+  const packageJson: OptimizerRunArtifact = {
+    status: result.finalIncumbent.id === baseline.id ? "keep-current-template" : "candidate-ready",
+    note: "Template optimizer completed with live BAML candidate generation and judging.",
+    runId,
     templateId: args.template,
     mode: args.mode,
     options: {
@@ -110,10 +148,24 @@ export async function runOptimizeTemplate(args: OptimizeTemplateArgs): Promise<{
       generatorModel: args.generatorModel,
       minDecisionConfidence: args.minDecisionConfidence,
     },
+    fixtureIds: fixtures.map((fixture) => fixture.id),
+    baselineCandidateId: baseline.id,
+    finalIncumbent: result.finalIncumbent,
+    leaderboardIds: result.leaderboard.map((candidate) => candidate.id),
+    rejectedMoves: result.rejectedMoves,
+    iterations: result.iterations.map((iteration) => ({
+      index: iteration.index,
+      candidateIndex: iteration.candidateIndex,
+      strategy: iteration.strategy,
+      challengerId: iteration.challenger.id,
+      replacedIncumbent: iteration.replacedIncumbent,
+      aggregateJudgment: iteration.aggregateJudgment,
+      fixtureJudgmentIds: iteration.fixtureJudgments.map((judgment) => judgment.fixtureId),
+    })),
     finalRecommendation: {
-      candidateId: "checked-in-baseline",
-      recommendation: "keep-current-template",
-      rationale: "No live optimizer loop has been implemented yet, so the checked-in template remains the incumbent.",
+      candidateId: result.finalIncumbent.id,
+      recommendation: result.finalIncumbent.id === baseline.id ? "keep-current-template" : "adopt-candidate",
+      rationale: renderFinalRecommendationRationale(result, baseline),
     },
     generatedAt: new Date().toISOString(),
   };
@@ -124,26 +176,97 @@ export async function runOptimizeTemplate(args: OptimizeTemplateArgs): Promise<{
 
 function renderSummary(run: {
   status: string;
+  runId: string;
   templateId?: string;
   mode?: string;
   note: string;
-  finalRecommendation: { recommendation: string; rationale: string };
+  fixtureIds: string[];
+  leaderboardIds: string[];
+  iterations: Array<{ challengerId: string; replacedIncumbent: boolean }>;
+  finalRecommendation: { candidateId: string; recommendation: string; rationale: string };
 }): string {
   return [
     "# Template Optimizer Run",
     "",
+    `- Run: ${run.runId}`,
     `- Template: ${run.templateId}`,
     `- Mode: ${run.mode}`,
     `- Status: ${run.status}`,
+    `- Fixtures: ${run.fixtureIds.join(", ")}`,
+    `- Leaderboard: ${run.leaderboardIds.join(" -> ")}`,
     "",
     run.note,
     "",
+    "## Iterations",
+    "",
+    ...renderIterationSummary(run.iterations),
+    "",
     "## Final Recommendation",
     "",
+    `- Candidate: ${run.finalRecommendation.candidateId}`,
     `- Recommendation: ${run.finalRecommendation.recommendation}`,
     `- Rationale: ${run.finalRecommendation.rationale}`,
     "",
   ].join("\n");
+}
+
+type OptimizerRunArtifact = {
+  status: "keep-current-template" | "candidate-ready";
+  note: string;
+  runId: string;
+  templateId?: OptimizeTemplateId;
+  mode?: OptimizeTemplateMode;
+  options: {
+    iterations: number;
+    candidatesPerIteration: number;
+    judgeModel: string;
+    generatorModel: string;
+    minDecisionConfidence: number;
+  };
+  fixtureIds: string[];
+  baselineCandidateId: string;
+  finalIncumbent: TemplateCandidate;
+  leaderboardIds: string[];
+  rejectedMoves: string[];
+  iterations: Array<{
+    index: number;
+    candidateIndex: number;
+    strategy: string;
+    challengerId: string;
+    replacedIncumbent: boolean;
+    aggregateJudgment: TemplateOptimizerResult["iterations"][number]["aggregateJudgment"];
+    fixtureJudgmentIds: string[];
+  }>;
+  finalRecommendation: {
+    candidateId: string;
+    recommendation: "keep-current-template" | "adopt-candidate";
+    rationale: string;
+  };
+  generatedAt: string;
+};
+
+function renderIterationSummary(
+  iterations: Array<{ challengerId: string; replacedIncumbent: boolean }>,
+): string[] {
+  if (iterations.length === 0) {
+    return ["No iterations ran."];
+  }
+  return iterations.map((iteration, index) => {
+    const decision = iteration.replacedIncumbent ? "replaced incumbent" : "kept incumbent";
+    return `- ${index + 1}. ${iteration.challengerId}: ${decision}`;
+  });
+}
+
+function renderFinalRecommendationRationale(
+  result: TemplateOptimizerResult,
+  baseline: TemplateCandidate,
+): string {
+  if (result.finalIncumbent.id === baseline.id) {
+    return result.rejectedMoves.length > 0
+      ? `The checked-in baseline remains incumbent after ${result.rejectedMoves.length} rejected move(s).`
+      : "The checked-in baseline remains incumbent.";
+  }
+  return result.finalIncumbent.rationale;
 }
 
 function readNext(argv: string[], index: number, flag: string): string {
@@ -152,6 +275,23 @@ function readNext(argv: string[], index: number, flag: string): string {
     throw new Error(`Missing value for ${flag}.`);
   }
   return value;
+}
+
+function assertRunnableOptimizeTemplateArgs(
+  args: OptimizeTemplateArgs,
+): asserts args is OptimizeTemplateArgs & { template: OptimizeTemplateId; mode: OptimizeTemplateMode } {
+  if (!args.template) {
+    throw new Error(usage("Missing required --template <id>."));
+  }
+  if (!args.mode) {
+    throw new Error(usage("Missing required --mode <advisory|autonomous-pr>."));
+  }
+  if (args.template !== "source-to-project") {
+    throw new Error(`Unsupported template "${args.template}". V1 supports source-to-project.`);
+  }
+  if (args.mode !== "advisory") {
+    throw new Error("Autonomous PR template optimization is represented in the schema but not enabled until fixtures exist.");
+  }
 }
 
 function readBoundedInteger(value: string, flag: string, min: number, max: number): number {
