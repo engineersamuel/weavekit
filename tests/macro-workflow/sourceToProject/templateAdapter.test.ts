@@ -44,6 +44,8 @@ describe("source-to-project template adapter", () => {
       kind: WorkflowNodeKind.VISUALIZATION,
       dependsOn: ["report-opportunity-accepted-opportunity"],
     });
+    expect(selectedPlan?.expectedPayloads).toContain("sourceToProjectVisualPlan");
+    expect(selectedPlan?.expectedPayloads).not.toContain("visualPlanUrl");
     expect(selectedPlan?.nodes.some((node) => node.kind === WorkflowNodeKind.REPORT)).toBe(true);
   });
 });

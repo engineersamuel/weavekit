@@ -204,7 +204,7 @@ function singleSelectedPlanExpansionCase(): TemplateExpansionCase {
       "planSelection",
       "finalRecommendationReview",
       "sourceToProjectReportMarkdown",
-      "visualPlanUrl",
+      "sourceToProjectVisualPlan",
     ],
     mustRunBeforeReport: true,
     rationale: "A selected advisory opportunity follows the checked-in fan-out shape: plan, review, report, and visual-design nodes without introducing write-capable implementation nodes.",
