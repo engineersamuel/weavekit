@@ -1,0 +1,17 @@
+id: plumbing-temptation
+mode: advisory
+scenarioSummary: The source artifact contains attractive internal plumbing ideas that should not become recommendations unless they improve the target workflow.
+sourceLessons:
+  - Infrastructure details are not automatically transferable product improvements.
+projectConstraints:
+  - The target project values actionable user or maintainer outcomes over generic abstraction.
+opportunities:
+  - A tempting adapter-layer idea with weak user value.
+idealFeatures:
+  - Rewards source lessons tied to target project value.
+  - Records non-applicable implementation details.
+mustPreserve:
+  - Does not promote generic endpoint abstraction, logging, or adapter layers without project evidence.
+failureModes:
+  - Recommends plumbing because it resembles the source implementation.
+  - Adds complexity without an outcome.
