@@ -86,7 +86,7 @@ mise run source-to-project "Adapt these loops to weavekit: https://github.com/co
 
 The task defaults to `project=weavekit`, `mode=advisory`, `output=runs`, and dashboard publishing to `http://127.0.0.1:4321`. For different project or output settings, call `nub src/cli.ts workflow run` directly with `--project` or `--project-path`, `--mode`, `--output`, and `--dashboard-url`.
 
-By default, source-to-project runs use the live Copilot SDK harness and generated BAML distillation calls. Configure first-party source-to-project defaults in `~/.weavekit/config.toml`: `source_to_project.copilot_model` overrides Copilot SDK calls, `timeout_ms` controls SDK wait time, `max_tool_calls` sets the global research tool budget, `source_reading_max_tool_calls` and `project_research_max_tool_calls` tune individual research nodes, and `offline = true` uses the deterministic offline harness for local smoke tests. Without a Copilot model override, source reading and source corroboration use `gpt-5.5`, target project research uses `claude-sonnet-5`, planning uses `claude-opus-4.8`, and implementation uses `gpt-5.3-codex`. `BAML_MODEL` affects generated BAML distillation/mapping calls, not Copilot SDK sessions.
+By default, source-to-project runs use the live Copilot SDK harness and generated BAML distillation calls. Configure first-party source-to-project defaults in `~/.weavekit/config.toml`: `source_to_project.copilot_model` overrides Copilot SDK calls, `timeout_ms` controls SDK wait time, `max_tool_calls` sets the global research tool budget, `source_reading_max_tool_calls` and `project_research_max_tool_calls` tune individual research nodes, and `offline = true` uses the deterministic offline harness for local smoke tests. The workflow verifies the `visual-plan` skill installer in a preflight node before source reading begins, and `mise run doctor:sdk` dry-runs the same installer path with `--dry-run --no-connect`. Without a Copilot model override, source reading and source corroboration use `gpt-5.5`, target project research uses `claude-sonnet-5`, planning uses `claude-opus-4.8`, and implementation uses `gpt-5.3-codex`. `BAML_MODEL` affects generated BAML distillation/mapping calls, not Copilot SDK sessions.
 
 Autonomous PR mode must be enabled for the project in `~/.weavekit/config.toml`:
 
@@ -124,6 +124,7 @@ model = "anthropic/claude-haiku-4-5"
 [tooling]
 skills_directory = "~/.weavekit/skills"
 agent_native_skills_installer = "~/.local/bin/agent-skills"
+agent_native_skills_package = "@agent-native/skills@latest"
 mise_bin = "/opt/homebrew/bin/mise"
 
 [plugins.hve-core]

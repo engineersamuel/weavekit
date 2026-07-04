@@ -2,8 +2,9 @@
 import { existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { loadTypedWeavekitConfig, SupportedPluginId, type CopilotDefaults, type PluginConfigs } from "../src/config.js";
+import { loadTypedWeavekitConfig, SupportedPluginId, type CopilotDefaults, type PluginConfigs, type ToolingDefaults } from "../src/config.js";
 import { formatEntityValidationErrors, loadEntityCatalog, validateEntityCatalog, validateSkillReference } from "../src/entities/index.js";
+import { ensureAgentNativeSkillInstalled } from "../src/macro-workflow/sourceToProject/harnesses.js";
 import { materializeWorkflowPlan } from "../src/macro-workflow/templates.js";
 import type { WorkflowPluginCommandCapability } from "../src/macro-workflow/types.js";
 
@@ -56,12 +57,21 @@ type EntitySdkDoctorClient = {
 
 type EntitySdkDoctorClientFactory = () => EntitySdkDoctorClient | Promise<EntitySdkDoctorClient>;
 
+type EntitySdkDoctorShell = {
+  run(command: string, args: string[], options: { cwd: string }): Promise<string>;
+};
+
+const DEFAULT_SDK_DOCTOR_TIMEOUT_MS = 120_000;
+
 export type EntitySdkDoctorOptions = {
   repoRoot?: string;
   entityId?: string;
   configPath?: string;
   model?: string;
   clientFactory?: EntitySdkDoctorClientFactory;
+  shell?: EntitySdkDoctorShell;
+  timeoutMs?: number;
+  onProgress?: (message: string) => void;
 };
 
 type EntitySkillCheck = {
@@ -186,6 +196,26 @@ function unique(values: string[]): string[] {
 
 function formatDoctorOutput(lines: string[]): string {
   return `${lines.map((line) => `✅ ${line}`).join("\n")}\n`;
+}
+
+function progress(options: Pick<EntitySdkDoctorOptions, "onProgress">, message: string): void {
+  options.onProgress?.(message);
+}
+
+async function withTimeout<T>(label: string, timeoutMs: number, promise: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Timed out after ${timeoutMs}ms during ${label}`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function collectEntitySkillChecks(options: { repoRoot: string; entityId?: string }): EntitySkillCheck[] {
@@ -329,34 +359,45 @@ async function verifyEntitySkillsInSession(args: {
   client: EntitySdkDoctorClient;
   check: EntitySkillCheck;
   model?: string;
+  timeoutMs: number;
+  onProgress?: (message: string) => void;
 }): Promise<string[]> {
   if (args.check.skillNames.length === 0) {
     return [`${args.check.entityId}: no capabilities.skills configured`];
   }
 
-  const session = await args.client.createSession({
+  args.onProgress?.(`Checking ${args.check.entityId} configured skill loading...`);
+  const session = await withTimeout(`${args.check.entityId} skill SDK session`, args.timeoutMs, args.client.createSession({
     ...(args.model ? { model: args.model } : {}),
     skillDirectories: args.check.skillDirectories,
     disabledSkills: args.check.disabledSkills,
-  });
+  }));
   try {
     if (!session.rpc?.skills?.ensureLoaded || !session.rpc.skills.list) {
       throw new Error("Copilot SDK session does not expose rpc.skills.ensureLoaded/list.");
     }
-    await session.rpc.skills.ensureLoaded();
-    const diagnostics = await session.rpc.skills.reload?.();
+    await withTimeout(`${args.check.entityId} skills.ensureLoaded`, args.timeoutMs, session.rpc.skills.ensureLoaded());
+    const diagnostics = await withTimeout(
+      `${args.check.entityId} skills.reload`,
+      args.timeoutMs,
+      session.rpc.skills.reload?.() ?? Promise.resolve(undefined),
+    );
     if (diagnostics?.errors?.length) {
       throw new Error(`Copilot SDK skill reload failed for ${args.check.entityId}: ${diagnostics.errors.join("; ")}`);
     }
-    const listed = await session.rpc.skills.list();
+    const listed = await withTimeout(`${args.check.entityId} skills.list`, args.timeoutMs, session.rpc.skills.list());
     const skills = listed.skills ?? [];
     for (const skillName of args.check.skillNames) {
-      await session.rpc.skills.enable?.({ name: skillName });
+      await withTimeout(
+        `${args.check.entityId} skills.enable ${skillName}`,
+        args.timeoutMs,
+        session.rpc.skills.enable?.({ name: skillName }) ?? Promise.resolve(undefined),
+      );
       assertSkillListContainsEnabledSkill({ entityId: args.check.entityId, skillName, skills });
     }
     return args.check.skillNames.map((skillName) => `${args.check.entityId}: skill ${skillName} loaded`);
   } finally {
-    await session.disconnect();
+    await withTimeout(`${args.check.entityId} SDK session disconnect`, args.timeoutMs, session.disconnect());
   }
 }
 
@@ -364,21 +405,24 @@ async function verifyWorkflowPluginCommandsInSession(args: {
   client: EntitySdkDoctorClient;
   checks: WorkflowPluginCommandCheck[];
   model?: string;
+  timeoutMs: number;
+  onProgress?: (message: string) => void;
 }): Promise<string[]> {
   if (args.checks.length === 0) {
     return [];
   }
   const pluginDirectories = unique(args.checks.map((check) => check.pluginDirectory));
-  const session = await args.client.createSession({
+  args.onProgress?.("Checking source-to-project plugin command discovery...");
+  const session = await withTimeout("source-to-project plugin command SDK session", args.timeoutMs, args.client.createSession({
     ...(args.model ? { model: args.model } : {}),
     pluginDirectories,
-  });
+  }));
   try {
     if (!session.rpc?.plugins?.list || !session.rpc?.commands?.list) {
       throw new Error("Copilot SDK session does not expose rpc.plugins.list/rpc.commands.list.");
     }
-    const listedPlugins = listResultItems(await session.rpc.plugins.list());
-    const listedCommands = listResultItems(await session.rpc.commands.list());
+    const listedPlugins = listResultItems(await withTimeout("source-to-project plugins.list", args.timeoutMs, session.rpc.plugins.list()));
+    const listedCommands = listResultItems(await withTimeout("source-to-project commands.list", args.timeoutMs, session.rpc.commands.list()));
     const plugins = unique(args.checks.map((check) => check.plugin)) as SupportedPluginId[];
     for (const plugin of plugins) {
       assertPluginListContainsEnabledPlugin({ plugin, plugins: listedPlugins });
@@ -394,12 +438,34 @@ async function verifyWorkflowPluginCommandsInSession(args: {
       `source-to-project/${check.nodeId}: plugin command ${check.command} discovered`
     );
   } finally {
-    await session.disconnect();
+    await withTimeout("source-to-project plugin command SDK session disconnect", args.timeoutMs, session.disconnect());
   }
+}
+
+async function verifySourceToProjectVisualPlanInstaller(args: {
+  repoRoot: string;
+  tooling: ToolingDefaults;
+  timeoutMs: number;
+  shell?: EntitySdkDoctorShell;
+}): Promise<string> {
+  await withTimeout(
+    "source-to-project visual-plan installer dry run",
+    args.timeoutMs,
+    ensureAgentNativeSkillInstalled({
+      skill: "visual-plan",
+      cwd: args.repoRoot,
+      tooling: args.tooling,
+      shell: args.shell,
+      dryRun: true,
+      noConnect: true,
+    }),
+  );
+  return "source-to-project/visual-plan-preflight: visual-plan installer dry run succeeded";
 }
 
 export async function runEntitySdkDoctor(options: EntitySdkDoctorOptions = {}): Promise<string> {
   const repoRoot = resolve(options.repoRoot ?? process.cwd());
+  const timeoutMs = options.timeoutMs ?? DEFAULT_SDK_DOCTOR_TIMEOUT_MS;
   const config = loadTypedWeavekitConfig(options.configPath);
   const staticValidation = validateEntityCatalog(repoRoot);
   if (!staticValidation.valid) {
@@ -410,37 +476,49 @@ export async function runEntitySdkDoctor(options: EntitySdkDoctorOptions = {}): 
   const workflowPluginChecks = options.entityId
     ? []
     : collectWorkflowPluginCommandChecks({ plugins: config.plugins });
-  if (checks.length === 0 && workflowPluginChecks.length === 0) {
-    return formatDoctorOutput(["No copilot-sdk entities configured."]);
-  }
 
   const lines: string[] = [];
   const skillChecks = checks.filter((check) => check.skillNames.length > 0);
   lines.push(...checks
     .filter((check) => check.skillNames.length === 0)
     .map((check) => `${check.entityId}: no capabilities.skills configured`));
+  if (!options.entityId) {
+    progress(options, "Checking source-to-project visual-plan installer dry run...");
+    lines.push(await verifySourceToProjectVisualPlanInstaller({
+      repoRoot,
+      tooling: config.tooling,
+      shell: options.shell,
+      timeoutMs,
+    }));
+  }
   if (skillChecks.length === 0 && workflowPluginChecks.length === 0) {
-    return formatDoctorOutput(checks.map((check) => `${check.entityId}: no capabilities.skills configured`));
+    return formatDoctorOutput(lines.length ? lines : ["No copilot-sdk entities configured."]);
   }
 
+  progress(options, "Starting Copilot SDK doctor client...");
   const client = await (options.clientFactory ? options.clientFactory() : createLiveCopilotClient(config.copilot));
   const model = options.model ?? config.copilot.sdkDoctorModel;
-  await client.start();
+  await withTimeout("Copilot SDK client start", timeoutMs, client.start());
   try {
     for (const check of skillChecks) {
       lines.push(...await verifyEntitySkillsInSession({
         client,
         check,
         model,
+        timeoutMs,
+        onProgress: options.onProgress,
       }));
     }
     lines.push(...await verifyWorkflowPluginCommandsInSession({
       client,
       checks: workflowPluginChecks,
       model,
+      timeoutMs,
+      onProgress: options.onProgress,
     }));
   } finally {
-    const stopErrors = await client.stop();
+    progress(options, "Stopping Copilot SDK doctor client...");
+    const stopErrors = await withTimeout("Copilot SDK client stop", timeoutMs, client.stop());
     if (stopErrors?.length) {
       throw stopErrors[0];
     }
@@ -451,7 +529,12 @@ export async function runEntitySdkDoctor(options: EntitySdkDoctorOptions = {}): 
 
 const isMain = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
 if (isMain) {
-  runEntitySdkDoctor(parseArgs(process.argv.slice(2)))
+  runEntitySdkDoctor({
+    ...parseArgs(process.argv.slice(2)),
+    onProgress(message) {
+      process.stderr.write(`[doctor:sdk] ${message}\n`);
+    },
+  })
     .then((output) => {
       process.stdout.write(output);
     })

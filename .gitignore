@@ -8,6 +8,7 @@ runs/
 evals/results/
 sdd/*.md
 artifacts/
+plans/
 docs/superpowers/
 docs/superpowers/plans/
 docs/superpowers/specs/

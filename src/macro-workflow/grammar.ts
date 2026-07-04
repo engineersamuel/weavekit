@@ -17,7 +17,7 @@ export const defaultWorkflowGrammar: WorkflowGrammar = {
     [WorkflowNodeKind.DELIBERATION, new Set([WorkflowNodeKind.PLANNING, WorkflowNodeKind.IMPLEMENTATION, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
     [WorkflowNodeKind.PLANNING, new Set([WorkflowNodeKind.DELIBERATION, WorkflowNodeKind.IMPLEMENTATION, WorkflowNodeKind.VERIFICATION, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
     [WorkflowNodeKind.IMPLEMENTATION, new Set([WorkflowNodeKind.VERIFICATION])],
-    [WorkflowNodeKind.VERIFICATION, new Set([WorkflowNodeKind.DELIBERATION, WorkflowNodeKind.IMPLEMENTATION, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
+    [WorkflowNodeKind.VERIFICATION, new Set([WorkflowNodeKind.RESEARCH, WorkflowNodeKind.DELIBERATION, WorkflowNodeKind.IMPLEMENTATION, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
     [WorkflowNodeKind.REPORT, new Set([WorkflowNodeKind.VISUALIZATION])],
     [WorkflowNodeKind.VISUALIZATION, new Set([WorkflowNodeKind.VISUALIZATION])],
   ]),

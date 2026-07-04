@@ -92,6 +92,7 @@ model = "anthropic/claude-sonnet-4-6"
 [tooling]
 skills_directory = "~/.weavekit/skills"
 agent_native_skills_installer = "/opt/tools/agent-skills"
+agent_native_skills_package = "@agent-native/skills@0.2.249"
 mise_bin = "/opt/homebrew/bin/mise"
 
 [source_to_project]
@@ -132,6 +133,7 @@ knowledge_export = "off"
     expect(config.flue.model).toBe("anthropic/claude-sonnet-4-6");
     expect(config.tooling.skillsDirectory).toBe(join(homedir(), ".weavekit/skills"));
     expect(config.tooling.agentNativeSkillsInstaller).toBe("/opt/tools/agent-skills");
+    expect(config.tooling.agentNativeSkillsPackage).toBe("@agent-native/skills@0.2.249");
     expect(config.tooling.miseBin).toBe("/opt/homebrew/bin/mise");
     expect(config.sourceToProject.maxOpportunities).toBe(1);
     expect(config.sourceToProject.offline).toBe(true);
@@ -221,6 +223,7 @@ directory = "/config/hve-core"
       WEAVEKIT_ENTITY_SDK_DOCTOR_MODEL: "gpt-5-mini",
       WEAVEKIT_FLUE_MODEL: "anthropic/claude-haiku-4-5",
       WEAVEKIT_AGENT_NATIVE_SKILLS_INSTALLER: "/tools/agent-skills",
+      WEAVEKIT_AGENT_NATIVE_SKILLS_PACKAGE: "@agent-native/skills@0.2.249",
       WEAVEKIT_MISE_BIN: "/tools/mise",
       WEAVEKIT_SKILLS_DIR: "~/cache/skills",
     });
@@ -238,6 +241,7 @@ directory = "/config/hve-core"
     expect(config.copilot.sdkDoctorModel).toBe("gpt-5-mini");
     expect(config.flue.model).toBe("anthropic/claude-haiku-4-5");
     expect(config.tooling.agentNativeSkillsInstaller).toBe("/tools/agent-skills");
+    expect(config.tooling.agentNativeSkillsPackage).toBe("@agent-native/skills@0.2.249");
     expect(config.tooling.miseBin).toBe("/tools/mise");
     expect(config.tooling.skillsDirectory).toBe(join(homedir(), "cache/skills"));
   });

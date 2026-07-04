@@ -1,15 +1,22 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { WorkflowHarnessKind, WorkflowNodeKind } from "../../../src/macro-workflow/types.js";
+import { runMacroWorkflow } from "../../../src/macro-workflow/runner.js";
+import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.js";
 import {
   createCopilotSdkHarnessClient,
   createSourceToProjectUserInputRequestHandler,
   createSourceToProjectDynamicExpander,
   createSourceToProjectHarnessRegistry,
+  resolveCopilotCliPathFromSdkModuleUrl,
   selectAcceptedOpportunities,
 } from "../../../src/macro-workflow/sourceToProject/harnesses.js";
+
+const HOSTED_VISUAL_PLAN_ARTIFACT = "Published visual-plan MDX artifact: https://plan.agent-native.com/builder/o5-visual-plan";
+const HOSTED_VISUAL_PLAN_ARTIFACT_URL = "https://plan.agent-native.com/builder/o5-visual-plan";
 
 describe("source-to-project harness registry", () => {
   afterEach(() => {
@@ -195,6 +202,155 @@ describe("source-to-project harness registry", () => {
     ]);
   });
 
+  it("loads and enables a skill-scoped Copilot SDK run before sending the prompt", async () => {
+    const calls: string[] = [];
+    const sessionConfigs: Array<Record<string, unknown>> = [];
+    const session = {
+      rpc: {
+        skills: {
+          async ensureLoaded() {
+            calls.push("skills.ensureLoaded");
+          },
+          async reload() {
+            calls.push("skills.reload");
+            return { warnings: [], errors: [] };
+          },
+          async enable(args: { name: string }) {
+            calls.push(`skills.enable:${args.name}`);
+          },
+          async list() {
+            calls.push("skills.list");
+            return { skills: [{ name: "visual-plan", enabled: true }] };
+          },
+        },
+      },
+      async sendAndWait(message: { prompt: string }) {
+        calls.push(`send:${message.prompt}`);
+        return { data: { content: "skill response" } };
+      },
+      async disconnect() {
+        calls.push("disconnect");
+      },
+    };
+    const client = {
+      async start() {
+        calls.push("start");
+      },
+      async createSession(config: unknown) {
+        sessionConfigs.push(config as Record<string, unknown>);
+        calls.push("session");
+        return session;
+      },
+      async stop() {
+        calls.push("stop");
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({
+      model: "gpt-test",
+      clientFactory: () => client,
+    });
+
+    const result = await copilot.run({
+      cwd: "/tmp/project",
+      prompt: "Create a local plan.",
+      mode: "plan",
+      capabilityScope: {
+        kind: "skill",
+        skillName: "visual-plan",
+        skillDirectories: ["/skills"],
+        disabledSkills: ["other-skill"],
+      },
+    });
+
+    expect(result).toBe("skill response");
+    expect(sessionConfigs[0]).toMatchObject({
+      model: "gpt-test",
+      cwd: "/tmp/project",
+      skillDirectories: ["/skills"],
+      disabledSkills: ["other-skill"],
+      enableSkills: true,
+    });
+    expect(calls).toEqual([
+      "start",
+      "session",
+      "skills.ensureLoaded",
+      "skills.reload",
+      "skills.enable:visual-plan",
+      "skills.list",
+      "send:/visual-plan Create a local plan.",
+      "disconnect",
+      "stop",
+    ]);
+  });
+
+  it("denies foreground visual-plan local serve commands so SDK runs do not hang", async () => {
+    const decisions: unknown[] = [];
+    const session = {
+      rpc: {
+        skills: {
+          async ensureLoaded() {},
+          async reload() {
+            return { warnings: [], errors: [] };
+          },
+          async enable() {},
+          async list() {
+            return { skills: [{ name: "visual-plan", enabled: true }] };
+          },
+        },
+      },
+      async sendAndWait() {
+        return { data: { content: "skill response" } };
+      },
+      async disconnect() {},
+    };
+    const client = {
+      async start() {},
+      async createSession(config: unknown) {
+        const hook = (config as {
+          hooks?: { onPreToolUse?: (input: { toolName?: string; toolArgs?: unknown }) => unknown };
+        }).hooks?.onPreToolUse;
+        decisions.push(hook?.({
+          toolName: "shell",
+          toolArgs: {
+            command: "nubx @agent-native/core@latest plan local serve --dir plans/o3 --kind plan --open 2>&1 | tail -30",
+          },
+        }));
+        decisions.push(hook?.({
+          toolName: "shell",
+          toolArgs: {
+            command: "nohup nubx @agent-native/core@latest plan local serve --dir plans/o3 --kind plan --open > /tmp/o3.log 2>&1 &",
+          },
+        }));
+        return session;
+      },
+      async stop() {
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({
+      model: "gpt-test",
+      clientFactory: () => client,
+    });
+
+    await expect(copilot.run({
+      cwd: "/tmp/project",
+      prompt: "/visual-plan Create a local plan.",
+      mode: "plan",
+      capabilityScope: {
+        kind: "skill",
+        skillName: "visual-plan",
+        skillDirectories: ["/skills"],
+      },
+    })).resolves.toBe("skill response");
+
+    expect(decisions[0]).toMatchObject({
+      permissionDecision: "deny",
+      permissionDecisionReason: expect.stringContaining("keeps the tool call open"),
+    });
+    expect(decisions[1]).toBeUndefined();
+  });
+
   it("uses an explicit client factory without requiring the platform package resolver", async () => {
     const client = {
       async start() {},
@@ -213,6 +369,47 @@ describe("source-to-project harness registry", () => {
     const copilot = createCopilotSdkHarnessClient({ clientFactory: () => client });
 
     await expect(copilot.run({ prompt: "Hello", mode: "research" })).resolves.toBe("live response");
+  });
+
+  it("resolves the Copilot CLI binary from a Nub SDK package layout", async () => {
+    const root = await mkdtemp(join(tmpdir(), "weavekit-copilot-cli-layout-"));
+    try {
+      const platformPackage = process.platform === "linux"
+        ? `@github+copilot-linux-${process.arch}@1.0.65-b`
+        : `@github+copilot-${process.platform}-${process.arch}@1.0.65-b`;
+      const platformPackageName = process.platform === "linux"
+        ? `copilot-linux-${process.arch}`
+        : `copilot-${process.platform}-${process.arch}`;
+      const sdkIndex = join(
+        root,
+        "node_modules",
+        ".nub",
+        "@github+copilot-sdk@1.0.4-a",
+        "node_modules",
+        "@github",
+        "copilot-sdk",
+        "dist",
+        "index.js",
+      );
+      const copilotCli = join(
+        root,
+        "node_modules",
+        ".nub",
+        platformPackage,
+        "node_modules",
+        "@github",
+        platformPackageName,
+        "index.js",
+      );
+      await mkdir(dirname(sdkIndex), { recursive: true });
+      await mkdir(dirname(copilotCli), { recursive: true });
+      await writeFile(sdkIndex, "");
+      await writeFile(copilotCli, "#!/usr/bin/env node\n");
+
+      expect(resolveCopilotCliPathFromSdkModuleUrl(pathToFileURL(sdkIndex).href)).toBe(copilotCli);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("defaults the Copilot SDK model to the source-to-project primary model, not BAML_MODEL", async () => {
@@ -889,6 +1086,133 @@ describe("source-to-project harness registry", () => {
     expect(acceptances.find((acceptance) => acceptance.id === "opp-2")?.reason).toContain("speculative");
   });
 
+  it("verifies the visual-plan installer as a source-to-project preflight", async () => {
+    const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      tooling: {
+        agentNativeSkillsPackage: "@agent-native/skills@0.2.249",
+      },
+      shell: {
+        async run(command, args, options) {
+          shellCalls.push({ command, args, cwd: options.cwd });
+          return "visual-plan installed";
+        },
+      },
+      copilot: {
+        async run() {
+          throw new Error("preflight should not invoke Copilot");
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "visual-plan-preflight",
+      kind: WorkflowNodeKind.VERIFICATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Verify visual-plan capability",
+      prompt: "Verify visual-plan",
+      dependsOn: [],
+      gates: ["verification"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads: new Map(), artifacts: new Map() });
+
+    expect(shellCalls).toEqual([{
+      command: "nub",
+      args: ["x", "@agent-native/skills@0.2.249", "add", "--skill", "visual-plan"],
+      cwd: "/tmp/secondbrain",
+    }]);
+    expect(result).toMatchObject({
+      status: "passed",
+      output: "visual-plan preflight complete.",
+      payload: {
+        visualPlanPreflight: {
+          skill: "visual-plan",
+          skillInstall: {
+            command: "nub",
+            args: ["x", "@agent-native/skills@0.2.249", "add", "--skill", "visual-plan"],
+            output: "visual-plan installed",
+          },
+        },
+      },
+    });
+  });
+
+  it("fails source-to-project before source reading when visual-plan hosted auth is pending", async () => {
+    const plan = materializeWorkflowPlan("source-to-project", {
+      objective: "Apply loops",
+      source: "https://example.com/loops",
+      project: "weavekit",
+      mode: "advisory",
+    });
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      shell: {
+        async run() {
+          return [
+            "Skipped URL-only hosted MCP config for codex, cowork; run agent-native connect https://plan.agent-native.com --client codex,cowork --scope user to write bearer auth.",
+            "Authentication skipped (non-interactive). To finish auth, run: npx @agent-native/core@latest connect https://plan.agent-native.com --client claude-code,codex,cowork,cursor,opencode,github-copilot --scope user",
+            "Authentication pending",
+          ].join("\n");
+        },
+      },
+      copilot: {
+        async run() {
+          throw new Error("source-reading should not run after unusable visual-plan preflight");
+        },
+      },
+    });
+
+    const state = await runMacroWorkflow(plan, { harnesses: registry });
+
+    expect(state.status).toBe("failed");
+    expect(state.nodeResults.map((result) => result.nodeId)).toEqual(["visual-plan-preflight"]);
+    expect(state.nodeResults[0]?.error).toContain("visual-plan");
+    expect(state.nodeResults[0]?.error).toContain("not usable");
+    expect(state.nodeResults[0]?.error).toContain("Authentication pending");
+  });
+
+  it("fails source-to-project before source reading when visual-plan preflight fails", async () => {
+    const plan = materializeWorkflowPlan("source-to-project", {
+      objective: "Apply loops",
+      source: "https://example.com/loops",
+      project: "weavekit",
+      mode: "advisory",
+    });
+    const copilotCalls: string[] = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      shell: {
+        async run() {
+          throw new Error("ERR_NUB_TRUST_DOWNGRADE");
+        },
+      },
+      copilot: {
+        async run(args) {
+          copilotCalls.push(args.operation ?? "unknown");
+          throw new Error("source-reading should not run after preflight failure");
+        },
+      },
+    });
+
+    const state = await runMacroWorkflow(plan, { harnesses: registry });
+
+    expect(state.status).toBe("failed");
+    expect(state.nodeResults.map((result) => result.nodeId)).toEqual(["visual-plan-preflight"]);
+    expect(state.nodeResults[0]).toMatchObject({
+      status: "failed",
+      error: "ERR_NUB_TRUST_DOWNGRADE",
+    });
+    expect(copilotCalls).toEqual([]);
+  });
+
   it("creates dynamic planning, review, report, and visual design nodes after council review", async () => {
     const expander = createSourceToProjectDynamicExpander({
       source: "https://example.com/loops",
@@ -1013,7 +1337,7 @@ describe("source-to-project harness registry", () => {
   });
 
   it("publishes a markdown report and feeds it into the visual-plan design node", async () => {
-    const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string }> = [];
+    const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string; capabilityScope?: unknown }> = [];
     const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
     const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
       minApplicability: 0.7,
@@ -1035,7 +1359,7 @@ describe("source-to-project harness registry", () => {
       copilot: {
         async run(args) {
           copilotCalls.push(args);
-          return "visual plan artifact";
+          return HOSTED_VISUAL_PLAN_ARTIFACT;
         },
       },
     });
@@ -1068,6 +1392,18 @@ describe("source-to-project harness registry", () => {
     expect(reportResult.status).toBe("passed");
     expect(reportResult.output).toContain("# Source-to-Project Report: opp-1");
     expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain("## Implementation Outline");
+    expect(reportResult.execution).toMatchObject({
+      executor: WorkflowHarnessKind.REPORTER,
+      mode: "report",
+      prompt: "Report",
+      model: "deterministic",
+      calls: [{
+        executor: WorkflowHarnessKind.REPORTER,
+        mode: "report",
+        prompt: "Report",
+        model: "deterministic",
+      }],
+    });
 
     const visualResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
       id: "visual-design-opportunity-opp-1",
@@ -1097,12 +1433,215 @@ describe("source-to-project harness registry", () => {
     }]);
     expect(copilotCalls).toHaveLength(1);
     expect(copilotCalls[0]).toMatchObject({ cwd: "/tmp/secondbrain", mode: "plan", model: "claude-opus-4.8" });
+    expect(copilotCalls[0]?.capabilityScope).toMatchObject({
+      kind: "skill",
+      skillName: "visual-plan",
+    });
     expect(copilotCalls[0]?.prompt).toContain("/visual-plan Create an actual visual design artifact");
+    expect(copilotCalls[0]?.prompt).toContain("Use Agent-Native Plans local-files privacy mode.");
+    expect(copilotCalls[0]?.prompt).toContain("do not run `plan local serve` as a foreground command");
     expect(copilotCalls[0]?.prompt).toContain("# Source-to-Project Report: opp-1");
+    expect(visualResult.execution?.calls?.[1]).toMatchObject({
+      executor: "copilot-sdk",
+      capabilityScope: "skill:visual-plan",
+    });
     expect(visualResult.payload?.sourceToProjectVisualPlan).toMatchObject({
       opportunityId: "opp-1",
       skill: "visual-plan",
-      rawVisualPlan: "visual plan artifact",
+      rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
+      hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
+    });
+  });
+
+  it("reuses the visual-plan preflight install for the final visual design node", async () => {
+    const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string }> = [];
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).find((candidate) => candidate.id === "opp-1")!;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      shell: {
+        async run() {
+          throw new Error("visual design should reuse the preflight install");
+        },
+      },
+      copilot: {
+        async run(args) {
+          copilotCalls.push(args);
+          return HOSTED_VISUAL_PLAN_ARTIFACT;
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "visual-design-opportunity-opp-1",
+      kind: WorkflowNodeKind.VISUALIZATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Visual design opp-1",
+      prompt: "Visual design",
+      input: {
+        opportunity: acceptance.opportunity,
+        opportunityAcceptance: acceptance,
+      },
+      dependsOn: ["report-opportunity-opp-1"],
+      gates: ["output-contract" as const],
+      writeMode: "read-only" as const,
+      replanPolicy: "never" as const,
+    }, {
+      payloads: new Map([
+        ["visual-plan-preflight", {
+          visualPlanPreflight: {
+            skill: "visual-plan",
+            skillInstall: {
+              skill: "visual-plan",
+              command: "nub",
+              args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+              output: "visual-plan installed during preflight",
+              skipped: false,
+            },
+          },
+        }],
+        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+      ]),
+      artifacts: new Map(),
+    });
+
+    expect(copilotCalls).toHaveLength(1);
+    expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
+      skillInstall: {
+        output: "visual-plan installed during preflight",
+      },
+      rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
+      hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
+    });
+  });
+
+  it("fails visual design when the visual-plan response is only a local HTML fallback", async () => {
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).find((candidate) => candidate.id === "opp-1")!;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      shell: {
+        async run() {
+          return "visual-plan installed";
+        },
+      },
+      copilot: {
+        async run() {
+          return [
+            "Created and opened the visual review artifact.",
+            "File: `~/.copilot/session-state/example/files/o5-visual-plan.html` (self-contained, no dependencies)",
+          ].join("\n");
+        },
+      },
+    });
+
+    await expect(registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "visual-design-opportunity-opp-1",
+      kind: WorkflowNodeKind.VISUALIZATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Visual design opp-1",
+      prompt: "Visual design",
+      input: {
+        opportunity: acceptance.opportunity,
+        opportunityAcceptance: acceptance,
+      },
+      dependsOn: ["report-opportunity-opp-1"],
+      gates: ["output-contract" as const],
+      writeMode: "read-only" as const,
+      replanPolicy: "never" as const,
+    }, {
+      payloads: new Map([
+        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+      ]),
+      artifacts: new Map(),
+    })).rejects.toThrow("local HTML fallback");
+  });
+
+  it("schedules cleanup for local visual-plan bridge URLs", async () => {
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).find((candidate) => candidate.id === "opp-1")!;
+    const cleanupCalls: Array<{ hostedArtifactUrl: string; cleanupAfterMs: number }> = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      visualPlanBridgeCleanupTtlMs: 60_000,
+      visualPlanBridgeCleanup(args) {
+        cleanupCalls.push(args);
+        return {
+          status: "scheduled",
+          bridgeUrl: "http://127.0.0.1:57044/local-plan.json?token=fixture",
+          port: 57044,
+          cleanupAfterMs: args.cleanupAfterMs,
+          cleanupCommand: "mock cleanup",
+        };
+      },
+      shell: {
+        async run() {
+          return "visual-plan installed";
+        },
+      },
+      copilot: {
+        async run() {
+          return [
+            "The plan is live.",
+            "https://plan.agent-native.com/local-plans/o3-run-readiness-scorer?bridge=http%3A%2F%2F127.0.0.1%3A57044%2Flocal-plan.json%3Ftoken%3Dfixture",
+          ].join("\n");
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "visual-design-opportunity-opp-1",
+      kind: WorkflowNodeKind.VISUALIZATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Visual design opp-1",
+      prompt: "Visual design",
+      input: {
+        opportunity: acceptance.opportunity,
+        opportunityAcceptance: acceptance,
+      },
+      dependsOn: ["report-opportunity-opp-1"],
+      gates: ["output-contract" as const],
+      writeMode: "read-only" as const,
+      replanPolicy: "never" as const,
+    }, {
+      payloads: new Map([
+        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+      ]),
+      artifacts: new Map(),
+    });
+
+    expect(cleanupCalls).toEqual([{
+      hostedArtifactUrl: "https://plan.agent-native.com/local-plans/o3-run-readiness-scorer?bridge=http%3A%2F%2F127.0.0.1%3A57044%2Flocal-plan.json%3Ftoken%3Dfixture",
+      cleanupAfterMs: 60_000,
+    }]);
+    expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
+      hostedArtifactUrl: "https://plan.agent-native.com/local-plans/o3-run-readiness-scorer?bridge=http%3A%2F%2F127.0.0.1%3A57044%2Flocal-plan.json%3Ftoken%3Dfixture",
+      bridgeCleanup: {
+        status: "scheduled",
+        port: 57044,
+        cleanupAfterMs: 60_000,
+      },
     });
   });
 
@@ -1132,7 +1671,7 @@ describe("source-to-project harness registry", () => {
       copilot: {
         async run(args) {
           copilotCalls.push(args);
-          return "visual plan artifact";
+          return HOSTED_VISUAL_PLAN_ARTIFACT;
         },
       },
     });
@@ -1177,7 +1716,8 @@ describe("source-to-project harness registry", () => {
         args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
         output: "visual-plan installed through mise",
       },
-      rawVisualPlan: "visual plan artifact",
+      rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
+      hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
     });
   });
 
@@ -1218,7 +1758,7 @@ describe("source-to-project harness registry", () => {
         copilot: {
           async run(args) {
             copilotCalls.push(args);
-            return "visual plan artifact";
+            return HOSTED_VISUAL_PLAN_ARTIFACT;
           },
         },
       });
@@ -1268,7 +1808,8 @@ describe("source-to-project harness registry", () => {
           args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
           output: "visual-plan installed through absolute mise",
         },
-        rawVisualPlan: "visual plan artifact",
+        rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
+        hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
       });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -1323,7 +1864,7 @@ describe("source-to-project harness registry", () => {
         copilot: {
           async run(args) {
             copilotCalls.push(args);
-            return "visual plan artifact";
+            return HOSTED_VISUAL_PLAN_ARTIFACT;
           },
         },
       });
@@ -1373,7 +1914,8 @@ describe("source-to-project harness registry", () => {
           args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
           output: "visual-plan installed through discovered mise",
         },
-        rawVisualPlan: "visual plan artifact",
+        rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
+        hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
       });
     } finally {
       if (originalPath === undefined) {

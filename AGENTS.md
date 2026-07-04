@@ -20,6 +20,14 @@ Also run `mise run doctor` after editing `entities/**/*.yaml`, entity prompt Mar
 
 Use `mise run doctor:sdk -- --entity <id>` when you need to prove a skill-backed Copilot SDK entity can load its configured skill in a live SDK session. This extended check requires a working Copilot SDK runtime, either through the installed platform package or `COPILOT_RUNTIME_URL`, `COPILOT_CLI_URL`, or `COPILOT_CLI_PATH`.
 
+Use `mise run repro:visual-design:live-trace` when iterating on the source-to-project visual design node or the `/visual-plan` Copilot SDK skill path. This task replays the captured O3 visual-design fixture against the live LLM with elapsed timing logs, so you can see when the SDK session starts, when the local Plan URL appears, and what the harness is waiting on. It runs:
+
+```sh
+nub run repro:visual-design -- --mode live --trace --bridge-ttl-ms 600000
+```
+
+The replay should produce an Agent-Native local Plan URL, not a standalone HTML artifact. The `--bridge-ttl-ms 600000` setting keeps the localhost Plan bridge alive for review for 10 minutes, then schedules cleanup so the repro can progress without leaving long-lived `plan local serve` processes behind.
+
 When working with baml read ./docs/baml/instructions.md
 
 Prefer BAML-generated types over creating new hand-authored TypeScript types when the output shape is already defined in a BAML schema. Reuse generated types as the canonical contract and only add new local types when they represent workflow-specific state or input that is not produced by BAML.

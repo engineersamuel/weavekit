@@ -1,0 +1,122 @@
+{
+  "sourceRunId": "2cb8bdc8-c6e5-4795-b34c-9b98d8c2ed87",
+  "sourceRunOutputDir": "runs/2cb8bdc8-c6e5-4795-b34c-9b98d8c2ed87",
+  "sourcePayloadFile": "report-opportunity-o3.payload.json",
+  "visualDesignNode": {
+    "id": "visual-design-opportunity-o3",
+    "kind": "visualization",
+    "harness": "copilot-sdk",
+    "title": "Visual design O3: Automated run-readiness/audit scorer to gate Autonomous PR promotions",
+    "description": "Create a visual design plan from the accepted opportunity O3 report.",
+    "model": "claude-opus-4.8",
+    "modelRationale": "Visual design planning uses the strongest available Claude synthesis model.",
+    "prompt": "Create a visual design plan from the O3 source-to-project report.",
+    "input": {
+      "opportunity": {
+        "id": "O3",
+        "title": "Automated run-readiness/audit scorer to gate Autonomous PR promotions",
+        "lesson": "Readiness is operationalized via an auditable score/gates (filesystem signals, run logs, verifier presence, activity evidence), not just documentation.",
+        "projectChange": "Introduce an automated readiness scorer run as a pre-promotion check (CI/verifier pipeline) that consumes run logs, verifier results, and usage/cost summaries and emits existing WorkflowVerificationIssue codes (e.g., autonomous-pr-disabled). The scorer must be fully automated (no human approval) and capable of blocking Autonomous PR promotion when readiness gates are not met. Ensure the scorer writes machine-readable artifacts into the run report for later audits.",
+        "changeSurface": "src/macro-workflow/verifier.ts (or a dedicated pre-promotion scoring module), CI/promotion flow that promotes Autonomous PRs (hook to prepareAutonomousWorktree), run report generation and storage.",
+        "score": {
+          "applicability": 0.95,
+          "impact": 0.9,
+          "confidence": 0.9,
+          "implementationCost": 0.5,
+          "risk": 0.35
+        },
+        "evidence": [
+          {
+            "id": "P-E4",
+            "source": "src/sourceToProject/worktree.ts",
+            "quote": "prepareAutonomousWorktree creates/rebases an isolated git worktree... records baseline commit before Autonomous PR writes"
+          },
+          {
+            "id": "P-E3",
+            "source": "src/macro-workflow/verifier.ts and src/macro-workflow/grammar.ts",
+            "quote": "enforces node-kind transitions... and mandatory downstream verification after IMPLEMENTATION nodes"
+          },
+          {
+            "id": "S-E11",
+            "source": "tools/loop-audit/README.md (loop-engineering)",
+            "quote": "Describes auditable signals, loopActivity proof, and scoring used to gate L1->L3 readiness."
+          }
+        ],
+        "speculative": false
+      },
+      "opportunityAcceptance": {
+        "id": "O3",
+        "title": "Automated run-readiness/audit scorer to gate Autonomous PR promotions",
+        "accepted": true,
+        "reason": "Accepted with 0.92 average applicability, impact, and confidence.",
+        "acceptanceAverage": 0.9166666666666666,
+        "scores": {
+          "applicability": 0.95,
+          "impact": 0.9,
+          "confidence": 0.9,
+          "risk": 0.35
+        },
+        "opportunity": {
+          "id": "O3",
+          "title": "Automated run-readiness/audit scorer to gate Autonomous PR promotions",
+          "lesson": "Readiness is operationalized via an auditable score/gates (filesystem signals, run logs, verifier presence, activity evidence), not just documentation.",
+          "projectChange": "Introduce an automated readiness scorer run as a pre-promotion check (CI/verifier pipeline) that consumes run logs, verifier results, and usage/cost summaries and emits existing WorkflowVerificationIssue codes (e.g., autonomous-pr-disabled). The scorer must be fully automated (no human approval) and capable of blocking Autonomous PR promotion when readiness gates are not met. Ensure the scorer writes machine-readable artifacts into the run report for later audits.",
+          "changeSurface": "src/macro-workflow/verifier.ts (or a dedicated pre-promotion scoring module), CI/promotion flow that promotes Autonomous PRs (hook to prepareAutonomousWorktree), run report generation and storage.",
+          "score": {
+            "applicability": 0.95,
+            "impact": 0.9,
+            "confidence": 0.9,
+            "implementationCost": 0.5,
+            "risk": 0.35
+          },
+          "evidence": [
+            {
+              "id": "P-E4",
+              "source": "src/sourceToProject/worktree.ts",
+              "quote": "prepareAutonomousWorktree creates/rebases an isolated git worktree... records baseline commit before Autonomous PR writes"
+            },
+            {
+              "id": "P-E3",
+              "source": "src/macro-workflow/verifier.ts and src/macro-workflow/grammar.ts",
+              "quote": "enforces node-kind transitions... and mandatory downstream verification after IMPLEMENTATION nodes"
+            },
+            {
+              "id": "S-E11",
+              "source": "tools/loop-audit/README.md (loop-engineering)",
+              "quote": "Describes auditable signals, loopActivity proof, and scoring used to gate L1->L3 readiness."
+            }
+          ],
+          "speculative": false
+        }
+      }
+    },
+    "dependsOn": [
+      "report-opportunity-o3"
+    ],
+    "gates": [
+      "output-contract"
+    ],
+    "writeMode": "read-only",
+    "replanPolicy": "never"
+  },
+  "payloads": {
+    "report-opportunity-o3": {
+      "sourceToProjectReportMarkdown": "# Source-to-Project Report: O3 Automated run-readiness/audit scorer to gate Autonomous PR promotions\n\n- Mode: advisory\n- Review status: accepted\n- Acceptance average: 0.92\n- Acceptance rationale: Accepted with 0.92 average applicability, impact, and confidence.\n\n## Opportunity\n\nIntroduce an automated readiness scorer run as a pre-promotion check (CI/verifier pipeline) that consumes run logs, verifier results, and usage/cost summaries and emits existing WorkflowVerificationIssue codes (e.g., autonomous-pr-disabled). The scorer must be fully automated (no human approval) and capable of blocking Autonomous PR promotion when readiness gates are not met. Ensure the scorer writes machine-readable artifacts into the run report for later audits.\n\n## Recommendation\n\nAdd a fully automated, auditable run-readiness scorer as a pre-promotion CI/verifier gate that consumes run logs, verifier outputs, and usage summaries, emits existing WorkflowVerificationIssue codes (e.g., autonomous-pr-disabled), writes a machine-readable readiness.json into the run report, and blocks Autonomous PR promotion when gates fail.\n\n## Source Lesson Applied\n\nReadiness must be operationalized via an auditable score/gates (filesystem signals, run logs, verifier presence, activity evidence), not just documentation.\n\n## Target Change\n\nImplement a pure scorer function scoreRunReadiness() that is executed as a new 'score-run-readiness' verification node between review-implementation and open-pr. The scorer consumes verifier results, worktree/preflight evidence, and usage/cost summaries, emits WorkflowVerificationIssue codes, returns pass/fail to the runner (fail-closed), and causes artifacts.ts to persist readiness.json and a 'Run Readiness' report section. Update CI/promotion wiring so open-pr depends on the scorer node.\n\n## Implementation Outline\n\n- Create a scorer module with scoreRunReadiness() and typed outputs; reuse and call verifyAutonomousSafety() logic where applicable.\n- Add a new verification node 'score-run-readiness' into the DAG between review-implementation and open-pr, and make open-pr depend on it.\n- Wire inputs in verifier-adapter/runner so the scorer receives run logs, verifier results, worktree preflight evidence, and usage/cost summaries.\n- Implement artifact emission: write readiness.json (machine-readable) and append a '## Run Readiness' section to the run report via artifacts.ts.\n- Return deterministic pass/fail from the node; when failing emit appropriate WorkflowVerificationIssue codes (use existing codes or add one narrowly scoped if absolutely necessary).\n- Author unit tests for scoring logic and integration tests that simulate passing and failing runs, assert open-pr gating behavior, and validate readiness.json contents.\n- Typecheck and run vitest; update CI to include the scorer node in pre-promotion checks.\n\n## Validation\n\n- `yarn typecheck && yarn vitest -u (unit tests updated/added)`\n- `Run the integration test that simulates a passing run: assert open-pr node runs and readiness.json exists with pass=true and no blocking codes`\n- `Run the integration test that simulates failure/ambiguous evidence: assert open-pr is not executed and readiness.json contains emitted WorkflowVerificationIssue codes (e.g., autonomous-pr-disabled)`\n- `Inspect run report: ensure '## Run Readiness' section is present and readiness.json is machine-readable and schema-compliant`\n- `Simulate missing verifier/log inputs and confirm scorer fails-closed`\n- `CI pipeline end-to-end: promote flow with scorer enabled and verify expected artifacts in run storage`\n\n## Risks\n\n- False positives or false negatives from the scorer causing unnecessary blocking or unsafe promotions -- requires careful gate definitions and test coverage.\n- Missing or delayed provenance/log inputs could cause frequent ambiguous states; scorer must treat missing evidence as fail-closed, but this may increase operational friction.\n- Performance/regression of the CI/promotion flow if scorer is too slow or does heavy I/O (mitigate by keeping scorer pure and offloading I/O to artifacts.ts).\n- Tight coupling or scope creep if bundling other opportunities (O4/O5) into the same change -- keep this PR focused.\n- Incorrect emission or misuse of existing WorkflowVerificationIssue codes could complicate downstream tooling; prefer reuse over adding new codes unless necessary.\n\n## Review\n\nThe recommendation is concrete, scoped, and maps directly to stated project goals (add a readiness/audit gate before Autonomous PR promotions). It applies a documented loop-engineering lesson (operationalised, auditable readiness gates) without violating ADRs (no durable cross-run queue, no human approval gate). The plan specifies where to place the node, how to feed inputs, how to emit artifacts, and how to validate behavior, so it can be implemented as a bounded enhancement that improves safety, auditability, and traceability of Autonomous PR promotions. The added complexity is limited and intentionally designed (pure scorer, artifacts.ts for persistence) to keep maintenance costs low while delivering clear benefits."
+    },
+    "visual-plan-preflight": {
+      "visualPlanPreflight": {
+        "skill": "visual-plan",
+        "skillInstall": {
+          "skill": "visual-plan",
+          "command": "fixture",
+          "args": [
+            "visual-plan-preflight",
+            "already-checked"
+          ],
+          "output": "Fixture assumes visual-plan install/auth was checked separately; this replay starts at the visual-design node.",
+          "skipped": false
+        }
+      }
+    }
+  }
+}

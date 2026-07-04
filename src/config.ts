@@ -43,6 +43,7 @@ export type FlueDefaults = {
 export type ToolingDefaults = {
   skillsDirectory?: string;
   agentNativeSkillsInstaller?: string;
+  agentNativeSkillsPackage?: string;
   miseBin?: string;
 };
 
@@ -399,6 +400,7 @@ function readToolingDefaults(value: unknown, env: NodeJS.ProcessEnv): ToolingDef
   return {
     skillsDirectory: expandOptionalPath(readOptionalString(record.skills_directory) ?? env.WEAVEKIT_SKILLS_DIR?.trim()),
     agentNativeSkillsInstaller: expandOptionalPath(readOptionalString(record.agent_native_skills_installer) ?? env.WEAVEKIT_AGENT_NATIVE_SKILLS_INSTALLER?.trim()),
+    agentNativeSkillsPackage: readOptionalString(record.agent_native_skills_package) ?? env.WEAVEKIT_AGENT_NATIVE_SKILLS_PACKAGE?.trim(),
     miseBin: expandOptionalPath(readOptionalString(record.mise_bin) ?? env.WEAVEKIT_MISE_BIN?.trim()),
   };
 }
