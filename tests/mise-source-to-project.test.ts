@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
+import { runApply } from "../scripts/optimize-template-apply.js";
 
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
@@ -75,6 +76,26 @@ async function runMiseTaskScript(scriptPath: string, args: string[], env: Record
   });
 
   return (await readFile(capturePath, "utf8")).trimEnd().split("\n");
+}
+
+async function createOptimizerRunFixture(): Promise<{ runsRoot: string; runId: string; runDir: string }> {
+  const runsRoot = await mkdtemp(join(tmpdir(), "weavekit-template-runs-"));
+  tempDirs.push(runsRoot);
+  const runId = "run-123";
+  const runDir = join(runsRoot, runId);
+  await mkdir(runDir, { recursive: true });
+  await writeFile(
+    join(runDir, "optimizer-run.json"),
+    JSON.stringify({
+      finalRecommendation: {
+        candidateId: "candidate-a",
+        recommendation: "adopt",
+        rationale: "Improves template quality.",
+      },
+    }),
+    "utf8",
+  );
+  return { runsRoot, runId, runDir };
 }
 
 describe("mise source-to-project task", () => {
@@ -188,5 +209,21 @@ describe("mise source-to-project task", () => {
       "run-123",
       "--dry-run",
     ]);
+  });
+
+  it("does not write an apply summary before failing live apply", async () => {
+    const { runsRoot, runId, runDir } = await createOptimizerRunFixture();
+
+    await expect(runApply({ runsRoot, runId, dryRun: false })).rejects.toThrow("live repository modification is not implemented");
+    await expect(access(join(runDir, "apply-summary.md"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("writes an apply dry-run summary", async () => {
+    const { runsRoot, runId, runDir } = await createOptimizerRunFixture();
+
+    const result = await runApply({ runsRoot, runId, dryRun: true });
+
+    expect(result).toEqual({ summaryPath: join(runDir, "apply-dry-run.md"), dryRun: true });
+    await expect(readFile(join(runDir, "apply-dry-run.md"), "utf8")).resolves.toContain("Dry run only. No repository files were modified.");
   });
 });

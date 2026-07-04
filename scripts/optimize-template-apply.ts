@@ -47,6 +47,11 @@ export async function runApply(args: ApplyArgs): Promise<{ summaryPath: string; 
   const runDir = join(args.runsRoot, args.runId!);
   const runPath = join(runDir, "optimizer-run.json");
   await access(runPath);
+
+  if (!args.dryRun) {
+    throw new Error("Template optimizer apply is scaffolded, but live repository modification is not implemented yet. Re-run with --dry-run to inspect the selected package.");
+  }
+
   const run = JSON.parse(await readFile(runPath, "utf8")) as {
     finalRecommendation?: { candidateId?: string; recommendation?: string; rationale?: string };
   };
@@ -69,10 +74,6 @@ export async function runApply(args: ApplyArgs): Promise<{ summaryPath: string; 
   ].join("\n");
   const summaryPath = join(runDir, args.dryRun ? "apply-dry-run.md" : "apply-summary.md");
   await writeFile(summaryPath, summary, "utf8");
-
-  if (!args.dryRun) {
-    throw new Error("Template optimizer apply is scaffolded, but live repository modification is not implemented yet. Re-run with --dry-run to inspect the selected package.");
-  }
 
   return { summaryPath, dryRun: args.dryRun };
 }
