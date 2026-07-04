@@ -23,6 +23,16 @@ export type TemplateOptimizerBamlClient = {
   ) => ReturnType<typeof b.AggregateTemplateJudgments>;
 };
 
+type GenerateTemplateChallengerOptions = NonNullable<
+  Parameters<typeof b.GenerateTemplateChallenger>[6]
+>;
+
+const STREAMING_GENERATION_OPTIONS: GenerateTemplateChallengerOptions = {
+  onTick() {
+    // Supplying onTick routes generated BAML through its streaming request path.
+  },
+};
+
 export function createTemplateOptimizerBamlAdapters(
   client: TemplateOptimizerBamlClient = b,
 ): TemplateOptimizerDeps {
@@ -50,6 +60,7 @@ async function generateTemplateChallenger(
     args.compactTraceSummary,
     args.strategy,
     args.fixtures,
+    STREAMING_GENERATION_OPTIONS,
   );
 }
 
