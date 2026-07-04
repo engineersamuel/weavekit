@@ -100,4 +100,56 @@ describe("template optimizer apply", () => {
       dryRunApplyTemplateOptimizerPackage({ runsRoot, runId, candidateId: "candidate-2" }),
     ).rejects.toThrow("Candidate candidate-2 is not the final incumbent (candidate-1)");
   });
+
+  it("rejects a package whose final incumbent is missing adoption tasks", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "template-optimizer-apply-"));
+    tempDirs.push(runsRoot);
+    const runId = "run-missing-tasks";
+    const runDir = join(runsRoot, runId);
+    await mkdir(runDir);
+    await writeFile(
+      join(runDir, "optimizer-run.json"),
+      JSON.stringify({
+        finalIncumbent: {
+          id: "candidate-1",
+        },
+      }),
+      "utf8",
+    );
+
+    await expect(dryRunApplyTemplateOptimizerPackage({ runsRoot, runId })).rejects.toThrow(
+      "Optimizer run run-missing-tasks finalIncumbent.adoptionTasks must be an array.",
+    );
+  });
+
+  it("rejects a package whose adoption task fields have the wrong shape", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "template-optimizer-apply-"));
+    tempDirs.push(runsRoot);
+    const runId = "run-malformed-task";
+    const runDir = join(runsRoot, runId);
+    await mkdir(runDir);
+    await writeFile(
+      join(runDir, "optimizer-run.json"),
+      JSON.stringify({
+        finalIncumbent: {
+          id: "candidate-1",
+          adoptionTasks: [
+            {
+              title: "Update template",
+              kind: "template",
+              filesLikelyTouched: "src/macro-workflow/templates.ts",
+              newFiles: [],
+              description: "Update the template shape.",
+              acceptanceChecks: ["typecheck passes"],
+            },
+          ],
+        },
+      }),
+      "utf8",
+    );
+
+    await expect(dryRunApplyTemplateOptimizerPackage({ runsRoot, runId })).rejects.toThrow(
+      "Optimizer run run-malformed-task finalIncumbent.adoptionTasks[0].filesLikelyTouched must be an array of strings.",
+    );
+  });
 });

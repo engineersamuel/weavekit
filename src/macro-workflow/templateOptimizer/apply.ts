@@ -2,8 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AdoptionTask, TemplateCandidate } from "../../generated/baml_client/index.js";
 
-type TemplateOptimizerApplyPayload = {
-  finalIncumbent?: Pick<TemplateCandidate, "id" | "adoptionTasks">;
+type ApplyCandidate = Pick<TemplateCandidate, "id"> & {
+  adoptionTasks: AdoptionTask[];
 };
 
 export async function dryRunApplyTemplateOptimizerPackage(args: {
@@ -12,11 +12,8 @@ export async function dryRunApplyTemplateOptimizerPackage(args: {
   candidateId?: string;
 }): Promise<{ summaryPath: string }> {
   const runDir = join(args.runsRoot, args.runId);
-  const payload = JSON.parse(await readFile(join(runDir, "optimizer-run.json"), "utf8")) as TemplateOptimizerApplyPayload;
-  const candidate = payload.finalIncumbent;
-  if (!candidate?.id) {
-    throw new Error(`Optimizer run ${args.runId} does not include a finalIncumbent candidate.`);
-  }
+  const payload = JSON.parse(await readFile(join(runDir, "optimizer-run.json"), "utf8")) as unknown;
+  const candidate = validateApplyCandidate(payload, args.runId);
   if (args.candidateId && args.candidateId !== candidate.id) {
     throw new Error(
       `Candidate ${args.candidateId} is not the final incumbent (${candidate.id}); candidate lookup is not implemented for dry-run apply.`,
@@ -28,9 +25,70 @@ export async function dryRunApplyTemplateOptimizerPackage(args: {
   return { summaryPath };
 }
 
+function validateApplyCandidate(payload: unknown, runId: string): ApplyCandidate {
+  const root = requireRecord(payload, runId, "optimizer-run.json");
+  const finalIncumbent = requireRecord(root.finalIncumbent, runId, "finalIncumbent");
+  const id = requireNonEmptyString(finalIncumbent.id, runId, "finalIncumbent.id");
+  const adoptionTasks = requireArray(finalIncumbent.adoptionTasks, runId, "finalIncumbent.adoptionTasks").map(
+    (task, index) => validateAdoptionTask(task, runId, `finalIncumbent.adoptionTasks[${index}]`),
+  );
+  return { id, adoptionTasks };
+}
+
+function validateAdoptionTask(task: unknown, runId: string, path: string): AdoptionTask {
+  const record = requireRecord(task, runId, path);
+  return {
+    title: requireString(record.title, runId, `${path}.title`),
+    kind: requireString(record.kind, runId, `${path}.kind`) as AdoptionTask["kind"],
+    filesLikelyTouched: requireStringArray(record.filesLikelyTouched, runId, `${path}.filesLikelyTouched`),
+    newFiles: requireStringArray(record.newFiles, runId, `${path}.newFiles`),
+    description: requireString(record.description, runId, `${path}.description`),
+    acceptanceChecks: requireStringArray(record.acceptanceChecks, runId, `${path}.acceptanceChecks`),
+  };
+}
+
+function requireRecord(value: unknown, runId: string, path: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`Optimizer run ${runId} ${path} must be an object.`);
+  }
+  return value;
+}
+
+function requireNonEmptyString(value: unknown, runId: string, path: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`Optimizer run ${runId} ${path} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function requireString(value: unknown, runId: string, path: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`Optimizer run ${runId} ${path} must be a string.`);
+  }
+  return value;
+}
+
+function requireArray(value: unknown, runId: string, path: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Optimizer run ${runId} ${path} must be an array.`);
+  }
+  return value;
+}
+
+function requireStringArray(value: unknown, runId: string, path: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`Optimizer run ${runId} ${path} must be an array of strings.`);
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function renderDryRunSummary(args: {
   runId: string;
-  candidate: Pick<TemplateCandidate, "id" | "adoptionTasks">;
+  candidate: ApplyCandidate;
 }): string {
   return [
     "# Template Optimizer Apply Dry Run",
