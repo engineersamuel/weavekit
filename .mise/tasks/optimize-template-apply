@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+nub scripts/optimize-template-apply.ts "$@"

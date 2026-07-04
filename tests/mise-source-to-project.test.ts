@@ -55,6 +55,28 @@ async function runSourceToProjectTask(env: Record<string, string | undefined> = 
   return (await readFile(capturePath, "utf8")).trimEnd().split("\n");
 }
 
+async function runMiseTaskScript(scriptPath: string, args: string[], env: Record<string, string | undefined> = {}): Promise<string[]> {
+  const repoRoot = process.cwd();
+  const tempDir = await mkdtemp(join(tmpdir(), "weavekit-mise-task-"));
+  tempDirs.push(tempDir);
+  const binDir = join(tempDir, "bin");
+  await mkdir(binDir);
+  const capturePath = join(tempDir, "nub-args.txt");
+  await installCommandCapture(binDir, capturePath, "nub");
+
+  await execFileAsync(join(repoRoot, scriptPath), args, {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ...env,
+      CAPTURE_NUB_ARGS: capturePath,
+      PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+    },
+  });
+
+  return (await readFile(capturePath, "utf8")).trimEnd().split("\n");
+}
+
 describe("mise source-to-project task", () => {
   it("defines a doctor task for entity wiring validation", async () => {
     const miseConfig = await readFile(join(process.cwd(), ".mise.toml"), "utf8");
@@ -133,5 +155,38 @@ describe("mise source-to-project task", () => {
     expect(miseConfig).toContain("nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard");
     expect(miseConfig).toContain("--watch-dir runs");
     expect(miseConfig).not.toContain("--port 4321");
+  });
+
+  it("defines template optimizer tasks", async () => {
+    const miseConfig = await readFile(join(process.cwd(), ".mise.toml"), "utf8");
+
+    expect(miseConfig).toContain('[tasks."optimize-template"]');
+    expect(miseConfig).toContain('[tasks."optimize-template:apply"]');
+    expect(miseConfig).toContain(".mise/tasks/optimize-template");
+    expect(miseConfig).toContain(".mise/tasks/optimize-template-apply");
+  });
+
+  it("routes optimize-template through the TypeScript optimizer script", async () => {
+    const args = await runMiseTaskScript(".mise/tasks/optimize-template", ["--template", "source-to-project", "--mode", "advisory"]);
+
+    expect(args).toEqual([
+      "nub",
+      "scripts/optimize-template.ts",
+      "--template",
+      "source-to-project",
+      "--mode",
+      "advisory",
+    ]);
+  });
+
+  it("routes optimize-template apply through the TypeScript apply script", async () => {
+    const args = await runMiseTaskScript(".mise/tasks/optimize-template-apply", ["run-123", "--dry-run"]);
+
+    expect(args).toEqual([
+      "nub",
+      "scripts/optimize-template-apply.ts",
+      "run-123",
+      "--dry-run",
+    ]);
   });
 });

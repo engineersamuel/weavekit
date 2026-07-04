@@ -25,6 +25,15 @@ description = "Run source-to-project advisory mode against weavekit using the pr
 env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
 run = ".mise/tasks/source-to-project"
 
+[tasks."optimize-template"]
+description = "Run the offline template optimizer for a static workflow template."
+env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
+run = ".mise/tasks/optimize-template"
+
+[tasks."optimize-template:apply"]
+description = "Apply or dry-run a template optimizer recommendation package."
+run = ".mise/tasks/optimize-template-apply"
+
 [tasks.dashboard]
 description = "Start the workflow dashboard for recorded runs."
 run = '''
