@@ -34,6 +34,15 @@ run = ".mise/tasks/optimize-template"
 description = "Apply or dry-run a template optimizer recommendation package."
 run = ".mise/tasks/optimize-template-apply"
 
+[tasks."source-to-project:optimize-template"]
+description = "Run source-to-project template optimization, dry-run apply, and open the artifacts."
+env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
+run = ".mise/tasks/source-to-project-optimize-template"
+
+[tasks."source-to-project:optimize-template:open"]
+description = "Open artifacts for a source-to-project template optimizer run."
+run = ".mise/tasks/source-to-project-optimize-template-open"
+
 [tasks.dashboard]
 description = "Start the workflow dashboard for recorded runs."
 run = '''

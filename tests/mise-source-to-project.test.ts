@@ -33,6 +33,49 @@ async function installCommandCapture(binDir: string, capturePath: string, comman
   await chmod(commandPath, 0o755);
 }
 
+async function installSourceToProjectOptimizeNubCapture(
+  binDir: string,
+  capturePath: string,
+): Promise<void> {
+  const nubPath = join(binDir, "nub");
+  await writeFile(nubPath, [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    "printf 'CALL\\n' >> \"$CAPTURE_NUB_ARGS\"",
+    "for arg in \"$@\"; do",
+    "  printf '%s\\n' \"$arg\" >> \"$CAPTURE_NUB_ARGS\"",
+    "done",
+    "printf 'END\\n' >> \"$CAPTURE_NUB_ARGS\"",
+    "if [[ \"${1:-}\" == \"scripts/optimize-template.ts\" ]]; then",
+    "  run_dir=\"evals/template-optimizer/runs/run-123\"",
+    "  mkdir -p \"$run_dir\"",
+    "  printf '# Summary\\n' > \"$run_dir/summary.md\"",
+    "  printf '# Apply\\n' > \"$run_dir/apply-dry-run.md\"",
+    "  printf '{}\\n' > \"$run_dir/optimizer-run.json\"",
+    "  printf '[weavekit] Template optimizer run: run-123\\n'",
+    "  printf '[weavekit] Output: %s\\n' \"$run_dir\"",
+    "elif [[ \"${1:-}\" == \"scripts/optimize-template-apply.ts\" ]]; then",
+    "  printf '[weavekit] Template optimizer dry-run summary: evals/template-optimizer/runs/%s/apply-dry-run.md\\n' \"${2:-unknown}\"",
+    "fi",
+    "",
+  ].join("\n"));
+  await chmod(nubPath, 0o755);
+}
+
+async function installOpenCapture(binDir: string, capturePath: string): Promise<void> {
+  const openPath = join(binDir, "open");
+  await writeFile(openPath, [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    ": > \"$CAPTURE_OPEN_ARGS\"",
+    "for arg in \"$@\"; do",
+    "  printf '%s\\n' \"$arg\" >> \"$CAPTURE_OPEN_ARGS\"",
+    "done",
+    "",
+  ].join("\n"));
+  await chmod(openPath, 0o755);
+}
+
 async function runSourceToProjectTask(env: Record<string, string | undefined> = {}): Promise<string[]> {
   const repoRoot = process.cwd();
   const tempDir = await mkdtemp(join(tmpdir(), "weavekit-mise-source-"));
@@ -76,6 +119,77 @@ async function runMiseTaskScript(scriptPath: string, args: string[], env: Record
   });
 
   return (await readFile(capturePath, "utf8")).trimEnd().split("\n");
+}
+
+function parseCapturedCalls(text: string): string[][] {
+  const calls: string[][] = [];
+  let current: string[] | undefined;
+  for (const line of text.trimEnd().split("\n")) {
+    if (line === "CALL") {
+      current = [];
+      continue;
+    }
+    if (line === "END") {
+      if (current) {
+        calls.push(current);
+      }
+      current = undefined;
+      continue;
+    }
+    current?.push(line);
+  }
+  return calls;
+}
+
+async function runSourceToProjectOptimizeTask(args: string[] = []): Promise<{
+  nubCalls: string[][];
+  openArgs: string[];
+}> {
+  const repoRoot = process.cwd();
+  const tempDir = await mkdtemp(join(tmpdir(), "weavekit-source-optimize-"));
+  tempDirs.push(tempDir);
+  const binDir = join(tempDir, "bin");
+  await mkdir(binDir);
+  const captureNubPath = join(tempDir, "nub-args.txt");
+  const captureOpenPath = join(tempDir, "open-args.txt");
+  await installSourceToProjectOptimizeNubCapture(binDir, captureNubPath);
+  await installOpenCapture(binDir, captureOpenPath);
+
+  await execFileAsync(join(repoRoot, ".mise/tasks/source-to-project-optimize-template"), args, {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      CAPTURE_NUB_ARGS: captureNubPath,
+      CAPTURE_OPEN_ARGS: captureOpenPath,
+      PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+    },
+  });
+
+  return {
+    nubCalls: parseCapturedCalls(await readFile(captureNubPath, "utf8")),
+    openArgs: (await readFile(captureOpenPath, "utf8")).trimEnd().split("\n"),
+  };
+}
+
+async function runSourceToProjectOptimizeOpenTask(runId: string): Promise<string[]> {
+  const repoRoot = process.cwd();
+  const tempDir = await mkdtemp(join(tmpdir(), "weavekit-source-optimize-open-"));
+  tempDirs.push(tempDir);
+  const binDir = join(tempDir, "bin");
+  await mkdir(binDir);
+  const captureOpenPath = join(tempDir, "open-args.txt");
+  await installOpenCapture(binDir, captureOpenPath);
+
+  await execFileAsync(join(repoRoot, ".mise/tasks/source-to-project-optimize-template-open"), [runId], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      CAPTURE_OPEN_ARGS: captureOpenPath,
+      PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+    },
+  });
+
+  return (await readFile(captureOpenPath, "utf8")).trimEnd().split("\n");
 }
 
 async function createOptimizerRunFixture(): Promise<{ runsRoot: string; runId: string; runDir: string }> {
@@ -191,8 +305,12 @@ describe("mise source-to-project task", () => {
 
     expect(miseConfig).toContain('[tasks."optimize-template"]');
     expect(miseConfig).toContain('[tasks."optimize-template:apply"]');
+    expect(miseConfig).toContain('[tasks."source-to-project:optimize-template"]');
+    expect(miseConfig).toContain('[tasks."source-to-project:optimize-template:open"]');
     expect(miseConfig).toContain(".mise/tasks/optimize-template");
     expect(miseConfig).toContain(".mise/tasks/optimize-template-apply");
+    expect(miseConfig).toContain(".mise/tasks/source-to-project-optimize-template");
+    expect(miseConfig).toContain(".mise/tasks/source-to-project-optimize-template-open");
   });
 
   it("routes optimize-template through the TypeScript optimizer script", async () => {
@@ -216,6 +334,43 @@ describe("mise source-to-project task", () => {
       "scripts/optimize-template-apply.ts",
       "run-123",
       "--dry-run",
+    ]);
+  });
+
+  it("runs source-to-project template optimization, dry-run apply, and opens artifacts", async () => {
+    const result = await runSourceToProjectOptimizeTask();
+
+    expect(result.nubCalls).toEqual([
+      [
+        "scripts/optimize-template.ts",
+        "--template",
+        "source-to-project",
+        "--mode",
+        "advisory",
+        "--iterations",
+        "1",
+        "--candidates-per-iteration",
+        "1",
+      ],
+      ["scripts/optimize-template-apply.ts", "run-123", "--dry-run"],
+    ]);
+    expect(result.openArgs).toEqual([
+      "evals/template-optimizer/runs/run-123/summary.md",
+      "evals/template-optimizer/runs/run-123/apply-dry-run.md",
+    ]);
+  });
+
+  it("opens source-to-project template optimizer artifacts for an existing run", async () => {
+    const runDir = join("evals", "template-optimizer", "runs", "run-123");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, "summary.md"), "# Summary\n", "utf8");
+    await writeFile(join(runDir, "apply-dry-run.md"), "# Apply\n", "utf8");
+
+    const openArgs = await runSourceToProjectOptimizeOpenTask("run-123");
+
+    expect(openArgs).toEqual([
+      "evals/template-optimizer/runs/run-123/summary.md",
+      "evals/template-optimizer/runs/run-123/apply-dry-run.md",
     ]);
   });
 
