@@ -16,6 +16,7 @@
     "eval": "tsx src/eval-cli.ts",
     "eval:router": "tsx src/eval-router-cli.ts",
     "bench:router": "tsx scripts/router-benchmark.ts",
+    "dashboard": "nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard --watch-dir runs",
     "repro:visual-design": "nub scripts/source-to-project-visual-design-repro.ts"
   },
   "dependencies": {
@@ -45,6 +46,7 @@
     "@types/node": "^22.15.0",
     "@types/prettyjson": "^0.0.33",
     "esbuild": "^0.28.1",
+    "portless": "^0.15.1",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0"

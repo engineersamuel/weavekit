@@ -57,7 +57,7 @@ export async function createWorkflowDashboardServer(
 ): Promise<WorkflowDashboardServer> {
   const dashboardDir = fileURLToPath(new URL("./dashboard/", import.meta.url));
   const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-  const port = options.port ?? 0;
+  const port = resolveDashboardListenPort(options.port);
 
   await ensureDashboardBundle(dashboardDir, repoRoot);
   const watchDir = options.watchDir ? resolve(options.watchDir) : undefined;
@@ -209,7 +209,7 @@ export async function createWorkflowDashboardServer(
 
   const address = server.address();
   const resolvedPort = typeof address === "object" && address ? address.port : port;
-  const baseUrl = `http://127.0.0.1:${resolvedPort}`;
+  const baseUrl = process.env.PORTLESS_URL || `http://127.0.0.1:${resolvedPort}`;
 
   const publishStateInternal = (
     nextState: MacroWorkflowRunStateLike,
@@ -269,6 +269,21 @@ export async function createWorkflowDashboardServer(
       });
     },
   };
+}
+
+function resolveDashboardListenPort(explicitPort: number | undefined): number {
+  if (explicitPort !== undefined) {
+    return explicitPort;
+  }
+  const rawPort = process.env.PORT;
+  if (rawPort === undefined) {
+    return 0;
+  }
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("Invalid PORT value. Expected an integer between 1 and 65535.");
+  }
+  return port;
 }
 
 export async function createWorkflowDashboardPublisher(baseUrl: string): Promise<WorkflowDashboardPublisher> {
