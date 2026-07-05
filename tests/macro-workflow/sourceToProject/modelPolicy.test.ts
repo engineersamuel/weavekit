@@ -50,18 +50,18 @@ describe("source-to-project model policy", () => {
       model: "copilot-override",
     });
     expect(sourceToProjectBamlRoute(SourceToProjectModelOperation.SOURCE_READING, {})).toMatchObject({
-      model: "gpt-5.5",
-      client: "CopilotProxyGpt55",
+      model: "gpt-5-mini",
+      client: "CopilotProxyGpt5Mini",
     });
   });
 
-  it("routes target project Copilot SDK research to Sonnet without changing BAML project distillation", () => {
+  it("routes target project Copilot SDK research to Sonnet while BAML project distillation uses mini", () => {
     expect(sourceToProjectCopilotModelDecision(SourceToProjectModelOperation.PROJECT_RESEARCH)).toMatchObject({
       model: "claude-sonnet-5",
     });
     expect(sourceToProjectBamlFunctionRoute("DistillProjectBrief")).toMatchObject({
-      model: "gpt-5.5",
-      client: "CopilotProxyGpt55",
+      model: "gpt-5-mini",
+      client: "CopilotProxyGpt5Mini",
     });
   });
 
@@ -112,16 +112,16 @@ describe("source-to-project model policy", () => {
     });
 
     expect(sourceToProjectBamlFunctionRoute("DistillSourceAnalysis")).toMatchObject({
-      model: "gpt-5.5",
-      client: "CopilotProxyGpt55",
+      model: "gpt-5-mini",
+      client: "CopilotProxyGpt5Mini",
     });
     expect(sourceToProjectBamlFunctionRoute("DistillCorroboration")).toMatchObject({
-      model: "gpt-5.5",
-      client: "CopilotProxyGpt55",
+      model: "gpt-5-mini",
+      client: "CopilotProxyGpt5Mini",
     });
     expect(sourceToProjectBamlFunctionRoute("DistillProjectBrief")).toMatchObject({
-      model: "gpt-5.5",
-      client: "CopilotProxyGpt55",
+      model: "gpt-5-mini",
+      client: "CopilotProxyGpt5Mini",
     });
     expect(sourceToProjectBamlFunctionRoute("MapSourceToProject")).toMatchObject({
       model: "claude-opus-4.8",

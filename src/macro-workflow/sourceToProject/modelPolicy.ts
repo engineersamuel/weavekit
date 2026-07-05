@@ -121,6 +121,21 @@ const OPERATION_POLICY: Record<SourceToProjectModelOperation, SourceToProjectMod
   },
 };
 
+const BAML_OPERATION_MODEL_OVERRIDES: Partial<Record<SourceToProjectModelOperation, SourceToProjectModelDecision>> = {
+  [SourceToProjectModelOperation.SOURCE_READING]: {
+    model: MINI_MODEL,
+    modelRationale: "Source analysis distillation is structured extraction from an existing Copilot transcript.",
+  },
+  [SourceToProjectModelOperation.SOURCE_CORROBORATION]: {
+    model: MINI_MODEL,
+    modelRationale: "Corroboration distillation is structured extraction from an existing Copilot transcript.",
+  },
+  [SourceToProjectModelOperation.PROJECT_RESEARCH]: {
+    model: MINI_MODEL,
+    modelRationale: "Project brief distillation is structured extraction from an existing Copilot transcript.",
+  },
+};
+
 export function sourceToProjectModelDecision(
   operation: SourceToProjectModelOperation,
 ): SourceToProjectModelDecision {
@@ -163,7 +178,7 @@ export function sourceToProjectBamlRoute(
     };
   }
 
-  const decision = sourceToProjectModelDecision(operation);
+  const decision = BAML_OPERATION_MODEL_OVERRIDES[operation] ?? sourceToProjectModelDecision(operation);
   return {
     ...decision,
     client: BAML_CLIENT_BY_MODEL[decision.model],
