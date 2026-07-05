@@ -34,10 +34,3 @@ set -euo pipefail
 nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard \
   --watch-dir runs
 '''
-
-[tasks."source-to-project:loop-engineering"]
-description = "Run the loop-engineering source-to-project advisory workflow against weavekit."
-run = '''
-#!/usr/bin/env bash
-mise run source-to-project "Adapt these loops to weavekit: https://github.com/cobusgreyling/loop-engineering and also review their code to see how they are doing loops and what might apply to the weavekit static DAG templates or dynamic workflows"
-'''

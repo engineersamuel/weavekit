@@ -315,6 +315,8 @@ export type AgentNativeSkillInstallResult = {
   args: string[];
   output: string;
   skipped: boolean;
+  usable?: boolean;
+  warning?: string;
 };
 
 export type AgentNativeSkillPreflightResult = {
@@ -1189,7 +1191,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
 
   const copilotAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
     if (node.id === "visual-plan-preflight") {
-      const install = await ensureAgentNativeSkillInstalled({
+      const install = await ensureAgentNativeSkillInstalledForAdvisoryWorkflow({
         skill: "visual-plan",
         cwd: options.project.workingTree,
         shell: options.shell,
@@ -1198,7 +1200,9 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       });
       return {
         status: "passed",
-        output: "visual-plan preflight complete.",
+        output: install.usable === false
+          ? `visual-plan preflight warning: ${install.warning ?? "visual-plan hosted capability is unavailable; local visual-plan mode will still be attempted."}`
+          : "visual-plan preflight complete.",
         payload: {
           visualPlanPreflight: {
             skill: "visual-plan",
@@ -2139,7 +2143,34 @@ export async function ensureAgentNativeSkillInstalled(args: {
     args: result.args,
     output: result.output,
     skipped: false,
+    usable: true,
   };
+}
+
+async function ensureAgentNativeSkillInstalledForAdvisoryWorkflow(args: Parameters<typeof ensureAgentNativeSkillInstalled>[0]): Promise<AgentNativeSkillInstallResult> {
+  try {
+    const install = await ensureAgentNativeSkillInstalled(args);
+    return { ...install, usable: install.usable ?? true };
+  } catch (error) {
+    if (!isAgentNativeHostedAuthPendingError(error)) {
+      throw error;
+    }
+    return {
+      skill: args.skill,
+      command: args.tooling?.agentNativeSkillsInstaller ?? "nub",
+      args: [
+        ...(args.tooling?.agentNativeSkillsInstaller ? [] : ["x"]),
+        args.tooling?.agentNativeSkillsPackage?.trim() || DEFAULT_AGENT_NATIVE_SKILLS_PACKAGE,
+        "add",
+        "--skill",
+        args.skill,
+      ],
+      output: error instanceof Error ? error.message : String(error),
+      skipped: true,
+      usable: false,
+      warning: "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
+    };
+  }
 }
 
 async function runAgentNativeInstallerCommand(
@@ -2189,6 +2220,14 @@ async function runAgentNativeInstallerCommand(
       throw lastEnoentError;
     }
   }
+}
+
+function isAgentNativeHostedAuthPendingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Agent-Native Plan authentication is pending or was skipped/i.test(message)
+    || /Authentication pending/i.test(message)
+    || /Authentication skipped/i.test(message)
+    || /Skipped URL-only hosted MCP config/i.test(message);
 }
 
 function validateAgentNativeSkillInstallOutput(skill: AgentNativeSkillInstallResult["skill"], output: string): void {

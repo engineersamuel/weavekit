@@ -17,7 +17,7 @@ args=(
   --output runs
 )
 
-args+=(--project-path "$PWD")
+args+=(--project weavekit)
 
 run_with_portless=false
 case "$dashboard_mode" in

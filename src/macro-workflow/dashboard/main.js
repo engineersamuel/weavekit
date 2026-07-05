@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState, memo } from "react";
+import React, { useEffect, useMemo, useRef, useState, memo } from "react";
 import { createRoot } from "react-dom/client";
 import { Background, ConnectionLineType, Controls, MiniMap, ReactFlow, Handle, Position } from "@xyflow/react";
 import { layoutWorkflowGraph } from "./layout.ts";
+import { createWorkflowViewportFitKey, shouldFitWorkflowViewport } from "./viewport.ts";
 
 const DEFAULT_STATUS = "pending";
 const STATUS_COLORS = {
@@ -31,6 +32,7 @@ function statusColor(status) {
 const WorkflowNode = memo(({ data }) => {
   const isDecisionCouncil = data.harness === "decision-council";
   const nodeStatus = data.status ?? DEFAULT_STATUS;
+  const prLaunchState = data.prLaunchState;
   
   // Personas representing the Decision Council
   const personas = isDecisionCouncil ? [
@@ -56,6 +58,22 @@ const WorkflowNode = memo(({ data }) => {
       <div className="custom-node-title">{data.label}</div>
       <div className="node-harness-line">{data.harness}</div>
       <div className="node-model-line">model {data.model}</div>
+      {data.canCreatePr ? (
+        <div className="node-inline-actions nodrag">
+          <button
+            type="button"
+            className="node-action-button"
+            disabled={prLaunchState?.status === "running"}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onCreatePr?.(data.sourceNode?.id);
+            }}
+          >
+            {prLaunchState?.status === "running" ? "Creating..." : prLaunchState?.status === "passed" ? "PR Agent Started" : "Create PR"}
+          </button>
+          {prLaunchState?.status === "failed" ? <span className="node-action-error">{prLaunchState.message}</span> : null}
+        </div>
+      ) : null}
       
       {isDecisionCouncil && (
         <div className="persona-list-container">
@@ -1156,6 +1174,8 @@ function App() {
   const [autoTrackNewRuns, setAutoTrackNewRuns] = useState(true);
   const [flowInstance, setFlowInstance] = useState(null);
   const [artifactModal, setArtifactModal] = useState(null);
+  const [prLaunches, setPrLaunches] = useState({});
+  const lastViewportFitKey = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -1278,6 +1298,45 @@ function App() {
     }
   }
 
+  async function createPrForNode(nodeId) {
+    const runId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
+    if (!runId || !nodeId) {
+      return;
+    }
+    const launchKey = prLaunchKey(runId, nodeId);
+    setPrLaunches((current) => ({
+      ...current,
+      [launchKey]: { status: "running", message: "Creating PR agent..." },
+    }));
+    try {
+      const response = await fetch("/api/source-to-project/pr-launch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ runId, nodeId }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || `PR launch failed with HTTP ${response.status}.`);
+      }
+      setPrLaunches((current) => ({
+        ...current,
+        [launchKey]: {
+          status: "passed",
+          message: payload.launch?.agentName ? `Started ${payload.launch.agentName}` : "PR agent started.",
+          launch: payload.launch,
+        },
+      }));
+    } catch (error) {
+      setPrLaunches((current) => ({
+        ...current,
+        [launchKey]: {
+          status: "failed",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      }));
+    }
+  }
+
   function artifactKind(file) {
     if (file.endsWith(".md") || file.endsWith(".markdown")) {
       return "markdown";
@@ -1303,23 +1362,61 @@ function App() {
     }
     return buildGraph(snapshot.state);
   }, [effectiveReplayIndex, hasHistory, replayEvents, snapshot]);
+  const graphWithActions = useMemo(() => ({
+    ...graph,
+    nodes: graph.nodes.map((node) => {
+      const sourceNode = node.data?.sourceNode;
+      const runId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
+      const launchKey = prLaunchKey(runId, node.id);
+      const nodeResult = snapshot?.state?.nodeResults?.find((entry) => entry.nodeId === node.id);
+      const canCreatePr = Boolean(
+        runId
+        && snapshot?.state?.templateId === "source-to-project"
+        && sourceNode?.kind === "report"
+        && sourceNode?.id?.startsWith("report-opportunity-")
+        && node.data?.status === "passed"
+        && nodeResult?.status === "passed",
+      );
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          canCreatePr,
+          prLaunchState: prLaunches[launchKey],
+          onCreatePr: createPrForNode,
+        },
+      };
+    }),
+  }), [graph, prLaunches, snapshot]);
+  const activeRunId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
+  const viewportFitKey = useMemo(() => createWorkflowViewportFitKey({
+    runId: activeRunId,
+    nodes: graphWithActions.nodes,
+    edges: graphWithActions.edges,
+  }), [activeRunId, graphWithActions.nodes, graphWithActions.edges]);
 
   useEffect(() => {
-    if (!flowInstance || !autoTrackNewRuns || graph.nodes.length === 0) {
+    if (!flowInstance || !shouldFitWorkflowViewport({
+      autoTrackNewRuns,
+      nodeCount: graphWithActions.nodes.length,
+      fitKey: viewportFitKey,
+      previousFitKey: lastViewportFitKey.current,
+    })) {
       return;
     }
 
     const frame = requestAnimationFrame(() => {
+      lastViewportFitKey.current = viewportFitKey;
       void flowInstance.fitView({ padding: 0.2, duration: 220 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [autoTrackNewRuns, flowInstance, graph.nodes, graph.edges]);
+  }, [autoTrackNewRuns, flowInstance, graphWithActions.nodes.length, viewportFitKey]);
 
   const selectedNode = useMemo(() => {
     if (!selectedNodeId) {
       return null;
     }
-    const graphNode = graph.nodes.find((node) => node.id === selectedNodeId);
+    const graphNode = graphWithActions.nodes.find((node) => node.id === selectedNodeId);
     if (graphNode?.data?.sourceNode) {
       return graphNode.data.sourceNode;
     }
@@ -1328,7 +1425,7 @@ function App() {
     }
     const plan = snapshot.state.currentPlan ?? snapshot.state.plan ?? { nodes: [] };
     return plan.nodes.find((node) => node.id === selectedNodeId) ?? null;
-  }, [graph.nodes, selectedNodeId, snapshot]);
+  }, [graphWithActions.nodes, selectedNodeId, snapshot]);
 
   const selectedResult = useMemo(() => {
     if (!snapshot?.state || !selectedNode) {
@@ -1340,8 +1437,8 @@ function App() {
     if (!selectedNodeId) {
       return null;
     }
-    return graph.nodes.find((node) => node.id === selectedNodeId) ?? null;
-  }, [graph.nodes, selectedNodeId]);
+    return graphWithActions.nodes.find((node) => node.id === selectedNodeId) ?? null;
+  }, [graphWithActions.nodes, selectedNodeId]);
   const selectedNodeStatus = selectedGraphNode?.data?.status
     ?? selectedResult?.status
     ?? (selectedNode ? resolveNodeStatus(selectedNode, snapshot?.state ?? { nodeResults: [] }) : DEFAULT_STATUS);
@@ -1388,7 +1485,7 @@ function App() {
           <p>{objective}</p>
           <div className="meta-grid">
             <div><strong>Plan:</strong> {planId}</div>
-            <div><strong>Nodes:</strong> {graph.nodes.length}</div>
+            <div><strong>Nodes:</strong> {graphWithActions.nodes.length}</div>
             <div><strong>Replans:</strong> {snapshot?.state?.replans?.length ?? 0}</div>
             <div><strong>Phase:</strong> {activePhase}</div>
           </div>
@@ -1474,10 +1571,9 @@ function App() {
       </aside>
       <div className="canvas-shell">
         <ReactFlow
-          nodes={graph.nodes}
-          edges={graph.edges}
+          nodes={graphWithActions.nodes}
+          edges={graphWithActions.edges}
           nodeTypes={nodeTypes}
-          fitView
           onNodeClick={(_, node) => setSelectedNodeId(node.id)}
           onPaneClick={() => setSelectedNodeId(null)}
           onInit={setFlowInstance}
@@ -1518,6 +1614,10 @@ function App() {
       <ArtifactModal artifact={artifactModal} onClose={() => setArtifactModal(null)} />
     </div>
   );
+}
+
+function prLaunchKey(runId, nodeId) {
+  return `${runId ?? ""}:${nodeId ?? ""}`;
 }
 
 const root = createRoot(document.getElementById("root"));

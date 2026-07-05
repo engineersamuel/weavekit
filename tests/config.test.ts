@@ -142,6 +142,12 @@ knowledge_export = "off"
     expect(config.sourceToProject.maxToolCalls).toBe(50);
     expect(config.sourceToProject.sourceReadingMaxToolCalls).toBe(20);
     expect(config.sourceToProject.projectResearchMaxToolCalls).toBe(30);
+    expect(config.sourceToProject.prLauncher).toEqual({
+      provider: "herdr",
+      agentCommand: "codex",
+      agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+      split: "right",
+    });
     expect(config.sourceToProject.thresholds.minApplicability).toBe(0.7);
     expect(config.sourceToProject.thresholds.minAcceptanceAverage).toBe(0.85);
     expect(config.projects.weavekit).toMatchObject({
@@ -153,6 +159,28 @@ knowledge_export = "off"
       autonomousPrAllowed: true,
       maxOpportunities: 2,
       notification: "telegram",
+    });
+  });
+
+  it("loads source-to-project manual PR launcher configuration", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(configPath, `
+[source_to_project.pr_launcher]
+provider = "herdr"
+agent_command = "claude"
+agent_args = ["--dangerously-skip-permissions"]
+split = "down"
+`, "utf8");
+
+    const config = loadTypedWeavekitConfig(configPath, {});
+
+    expect(config.sourceToProject.prLauncher).toEqual({
+      provider: "herdr",
+      agentCommand: "claude",
+      agentArgs: ["--dangerously-skip-permissions"],
+      split: "down",
     });
   });
 
@@ -268,6 +296,7 @@ directory = "/config/hve-core"
         thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
         mode: "advisory" as const,
         offline: false,
+        prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"], split: "right" as const },
       },
       plugins: {
         "hve-core": {

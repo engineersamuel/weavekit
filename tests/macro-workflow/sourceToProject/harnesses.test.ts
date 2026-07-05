@@ -47,6 +47,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         copilotModel: "copilot-research-model",
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" },
       },
       copilot: {
         async run(args) {
@@ -486,6 +487,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         timeoutMs: 600000,
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" },
       },
     });
 
@@ -506,6 +508,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         sourceReadingMaxToolCalls: 12,
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" },
       },
       copilot: {
         async run(args) {
@@ -584,6 +587,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         projectResearchMaxToolCalls: 24,
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" },
       },
       copilot: {
         async run(args) {
@@ -1141,7 +1145,7 @@ describe("source-to-project harness registry", () => {
     });
   });
 
-  it("fails source-to-project before source reading when visual-plan hosted auth is pending", async () => {
+  it("continues source-to-project after warning when visual-plan hosted auth is pending", async () => {
     const plan = materializeWorkflowPlan("source-to-project", {
       objective: "Apply loops",
       source: "https://example.com/loops",
@@ -1163,7 +1167,7 @@ describe("source-to-project harness registry", () => {
       },
       copilot: {
         async run() {
-          throw new Error("source-reading should not run after unusable visual-plan preflight");
+          throw new Error("source-reading ran after non-fatal visual-plan preflight warning");
         },
       },
     });
@@ -1171,10 +1175,17 @@ describe("source-to-project harness registry", () => {
     const state = await runMacroWorkflow(plan, { harnesses: registry });
 
     expect(state.status).toBe("failed");
-    expect(state.nodeResults.map((result) => result.nodeId)).toEqual(["visual-plan-preflight"]);
-    expect(state.nodeResults[0]?.error).toContain("visual-plan");
-    expect(state.nodeResults[0]?.error).toContain("not usable");
-    expect(state.nodeResults[0]?.error).toContain("Authentication pending");
+    expect(state.nodeResults.map((result) => result.nodeId)).toEqual(["visual-plan-preflight", "source-reading"]);
+    expect(state.nodeResults[0]).toMatchObject({
+      status: "passed",
+    });
+    expect(state.nodeResults[0]?.output).toContain("visual-plan preflight warning");
+    const visualPlanPreflight = state.nodeResults[0]?.payload?.visualPlanPreflight as { skillInstall?: unknown } | undefined;
+    expect(visualPlanPreflight?.skillInstall).toMatchObject({
+      usable: false,
+      skipped: true,
+    });
+    expect(state.nodeResults[1]?.error).toContain("source-reading ran after non-fatal visual-plan preflight warning");
   });
 
   it("fails source-to-project before source reading when visual-plan preflight fails", async () => {
@@ -1516,6 +1527,81 @@ describe("source-to-project harness registry", () => {
     expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
       skillInstall: {
         output: "visual-plan installed during preflight",
+      },
+      rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
+      hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
+    });
+  });
+
+  it("still runs visual design when preflight only warned about hosted Agent-Native auth", async () => {
+    const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string }> = [];
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).find((candidate) => candidate.id === "opp-1")!;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      shell: {
+        async run() {
+          throw new Error("visual design should not reinstall after preflight");
+        },
+      },
+      copilot: {
+        async run(args) {
+          copilotCalls.push(args);
+          return HOSTED_VISUAL_PLAN_ARTIFACT;
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "visual-design-opportunity-opp-1",
+      kind: WorkflowNodeKind.VISUALIZATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Visual design opp-1",
+      prompt: "Visual design",
+      input: {
+        opportunity: acceptance.opportunity,
+        opportunityAcceptance: acceptance,
+      },
+      dependsOn: ["report-opportunity-opp-1"],
+      gates: ["output-contract" as const],
+      writeMode: "read-only" as const,
+      replanPolicy: "never" as const,
+    }, {
+      payloads: new Map([
+        ["visual-plan-preflight", {
+          visualPlanPreflight: {
+            skill: "visual-plan",
+            skillInstall: {
+              skill: "visual-plan",
+              command: "nub",
+              args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+              output: "visual-plan hosted capability is not usable: Agent-Native Plan authentication is pending or was skipped.",
+              skipped: true,
+              usable: false,
+              warning: "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
+            },
+          },
+        }],
+        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+      ]),
+      artifacts: new Map(),
+    });
+
+    expect(copilotCalls).toHaveLength(1);
+    expect(copilotCalls[0]).toMatchObject({ cwd: "/tmp/secondbrain", mode: "plan", model: "claude-opus-4.8" });
+    expect(copilotCalls[0]?.prompt).toContain("Use Agent-Native Plans local-files privacy mode.");
+    expect(result.output).toBe("Visual design complete for opportunity opp-1.");
+    expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
+      skillInstall: {
+        usable: false,
+        warning: "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
       },
       rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
       hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,

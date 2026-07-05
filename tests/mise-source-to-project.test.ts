@@ -80,12 +80,12 @@ describe("mise source-to-project task", () => {
     expect(instructions).toContain("entities/**/*.yaml");
   });
 
-  it("targets the current checkout by default", async () => {
+  it("targets the configured weavekit project by default", async () => {
     const args = await runSourceToProjectTask();
 
-    expect(args).toContain("--project-path");
-    expect(args[args.indexOf("--project-path") + 1]).toBe(process.cwd());
-    expect(args).not.toContain("--project");
+    expect(args).toContain("--project");
+    expect(args[args.indexOf("--project") + 1]).toBe("weavekit");
+    expect(args).not.toContain("--project-path");
   });
 
   it("runs the default source-to-project task with an embedded Portless dashboard", async () => {

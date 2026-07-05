@@ -1,10 +1,22 @@
+import { execFile } from "node:child_process";
 import { readdir, mkdir, readFile, stat } from "node:fs/promises";
-import { createServer, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { build } from "esbuild";
+import { loadTypedWeavekitConfig, type ProjectCatalogEntry, type WeavekitConfig } from "../config.js";
 import { MacroWorkflowEventKind, type MacroWorkflowEvent } from "./logger.js";
 import type { MacroWorkflowRunStateLike, WorkflowReplayEvent } from "./types.js";
+import type { ProjectBrief } from "../generated/baml_client/index.js";
+import {
+  launchSourceToProjectPrAgent,
+  type SourceToProjectPrLaunchArgs,
+  type SourceToProjectPrLaunchContext,
+  type SourceToProjectPrLauncher,
+} from "./sourceToProject/prLauncher.js";
+
+const execFileAsync = promisify(execFile);
 
 export type WorkflowDashboardRunSummary = {
   runId: string;
@@ -40,6 +52,8 @@ export type WorkflowDashboardPublisher = {
 export type WorkflowDashboardServerOptions = {
   port?: number;
   watchDir?: string;
+  configPath?: string;
+  prLauncher?: SourceToProjectPrLauncher;
 };
 
 const CONTENT_TYPES = new Map<string, string>([
@@ -68,6 +82,7 @@ export async function createWorkflowDashboardServer(
   let latestHistory: WorkflowReplayEvent[] | undefined;
   let latestRun: WorkflowDashboardRunSummary | undefined;
   let latestRuns: WorkflowDashboardRunSummary[] | undefined;
+  let latestWatchSnapshotVersion: string | undefined;
 
   const server = createServer(async (request, response) => {
     if (!request.url) {
@@ -137,6 +152,41 @@ export async function createWorkflowDashboardServer(
       }
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ runs: latestRuns ?? [], activeRunId: latestRun?.runId ?? latestState?.runId }));
+      return;
+    }
+
+    if (requestUrl.pathname === "/api/source-to-project/pr-launch") {
+      if (request.method !== "POST") {
+        writePrLaunchErrorResponse(response, 405, "Method not allowed.");
+        return;
+      }
+      if (!watchDir) {
+        writePrLaunchErrorResponse(response, 404, "PR launch requires a dashboard watch directory.");
+        return;
+      }
+      const body = await readRequestBody(request).catch(() => "");
+      try {
+        const payload = parsePrLaunchRequestBody(body);
+        const state = await readSelectedWorkflowStateForArtifact(watchDir, payload.runId, latestState, latestRun, latestRuns);
+        if (!state) {
+          throw dashboardRequestError(404, "Workflow run not found.");
+        }
+        const config = loadTypedWeavekitConfig(options.configPath);
+        const launchArgs = await buildSourceToProjectPrLaunchArgs({
+          state,
+          nodeId: payload.nodeId,
+          config,
+        });
+        const launcher = options.prLauncher ?? { launch: launchSourceToProjectPrAgent };
+        const launch = await launcher.launch(launchArgs);
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ ok: true, launch }));
+      } catch (error) {
+        const statusCode = typeof (error as { statusCode?: unknown }).statusCode === "number"
+          ? (error as { statusCode: number }).statusCode
+          : 500;
+        writePrLaunchErrorResponse(response, statusCode, error instanceof Error ? error.message : String(error));
+      }
       return;
     }
 
@@ -237,12 +287,14 @@ export async function createWorkflowDashboardServer(
   if (watchDir) {
     watchInterval = setInterval(() => {
       void refreshWorkflowSnapshot(watchDir, undefined, (snapshot) => {
+        const snapshotVersion = createWorkflowDashboardSnapshotVersion(snapshot);
         latestState = snapshot.state;
         latestEvent = snapshot.event;
         latestHistory = snapshot.history;
         latestRun = snapshot.run;
         latestRuns = snapshot.runs;
-        if (snapshot.state && snapshot.event) {
+        if (snapshot.state && snapshot.event && snapshotVersion !== latestWatchSnapshotVersion) {
+          latestWatchSnapshotVersion = snapshotVersion;
           publishStateInternal(snapshot.state, snapshot.event, snapshot.history);
         }
       }).catch(() => undefined);
@@ -284,6 +336,17 @@ function resolveDashboardListenPort(explicitPort: number | undefined): number {
     throw new Error("Invalid PORT value. Expected an integer between 1 and 65535.");
   }
   return port;
+}
+
+function readRequestBody(request: IncomingMessage): Promise<string> {
+  return new Promise((resolveBody, rejectBody) => {
+    let body = "";
+    request.on("data", (chunk: Buffer | string) => {
+      body += chunk;
+    });
+    request.on("end", () => resolveBody(body));
+    request.on("error", rejectBody);
+  });
 }
 
 export async function createWorkflowDashboardPublisher(baseUrl: string): Promise<WorkflowDashboardPublisher> {
@@ -334,6 +397,206 @@ function toSerializablePayload(
   runs?: WorkflowDashboardRunSummary[],
 ): WorkflowDashboardSnapshot {
   return JSON.parse(JSON.stringify({ state, history, event, run, runs, activeRunId: run?.runId ?? state?.runId })) as WorkflowDashboardSnapshot;
+}
+
+export function createWorkflowDashboardSnapshotVersion(snapshot: WorkflowDashboardSnapshot): string {
+  const latestHistoryEvent = snapshot.history?.at(-1);
+  return JSON.stringify({
+    stateRunId: snapshot.state?.runId,
+    stateStatus: snapshot.state?.status,
+    runUpdatedAt: snapshot.run?.updatedAt,
+    event: latestHistoryEvent
+      ? {
+          seq: latestHistoryEvent.seq,
+          ts: latestHistoryEvent.ts,
+          kind: latestHistoryEvent.kind,
+          nodeId: latestHistoryEvent.nodeId,
+        }
+      : undefined,
+    historyLength: snapshot.history?.length ?? 0,
+    runs: snapshot.runs?.map((run) => ({
+      runId: run.runId,
+      status: run.status,
+      updatedAt: run.updatedAt,
+    })) ?? [],
+  });
+}
+
+function parsePrLaunchRequestBody(body: string): { runId?: string; nodeId: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw dashboardRequestError(400, "Invalid PR launch request JSON.");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw dashboardRequestError(400, "Invalid PR launch request.");
+  }
+  const record = parsed as Record<string, unknown>;
+  if (typeof record.nodeId !== "string" || !record.nodeId.trim()) {
+    throw dashboardRequestError(400, "Missing nodeId.");
+  }
+  return {
+    runId: typeof record.runId === "string" && record.runId.trim() ? record.runId : undefined,
+    nodeId: record.nodeId,
+  };
+}
+
+async function buildSourceToProjectPrLaunchArgs(args: {
+  state: MacroWorkflowRunStateLike;
+  nodeId: string;
+  config: WeavekitConfig;
+}): Promise<SourceToProjectPrLaunchArgs> {
+  if (args.state.templateId !== "source-to-project") {
+    throw dashboardRequestError(409, "Manual PR launch is only available for source-to-project runs.");
+  }
+  const node = (args.state.currentPlan?.nodes ?? args.state.plan?.nodes ?? []).find((candidate) => candidate.id === args.nodeId);
+  const isReportNode = node?.kind === "report" && node.id.startsWith("report-opportunity-");
+  if (!node || !isReportNode) {
+    throw dashboardRequestError(409, "Manual PR launch requires a passed report node.");
+  }
+  const result = args.state.nodeResults?.find((entry) => entry.nodeId === args.nodeId);
+  if (result?.status !== "passed") {
+    throw dashboardRequestError(409, "Manual PR launch requires a passed report node.");
+  }
+  const reportMarkdown = readString(result.payload?.sourceToProjectReportMarkdown) ?? result.output;
+  if (!reportMarkdown?.trim()) {
+    throw dashboardRequestError(409, "Node is missing its reviewed source-to-project report.");
+  }
+  const project = await resolveProjectForSourceToProjectRun(args.state, args.config);
+  if (!project.autonomousPrAllowed) {
+    throw dashboardRequestError(403, `Autonomous PR work is disabled for project ${project.id}.`);
+  }
+  const opportunity = readObject(node.input?.opportunity);
+  const plan = readObject(result.payload?.plan);
+  const projectBrief = readProjectBrief(args.state);
+  const context: SourceToProjectPrLaunchContext = {
+    runId: args.state.runId ?? args.state.planId,
+    nodeId: args.nodeId,
+    objective: args.state.objective,
+    source: readSourceReference(args.state),
+    project,
+    opportunityId: readString(opportunity?.id) ?? args.nodeId,
+    opportunityTitle: readString(opportunity?.title) ?? node.title,
+    reportMarkdown,
+    planTitle: readString(plan?.title),
+    recommendation: readString(plan?.recommendation),
+    projectBrief,
+  };
+  return {
+    config: args.config.sourceToProject.prLauncher,
+    context,
+  };
+}
+
+async function resolveProjectForSourceToProjectRun(state: MacroWorkflowRunStateLike, config: WeavekitConfig): Promise<ProjectCatalogEntry> {
+  const projects = Object.values(config.projects);
+  if (projects.length === 0) {
+    throw dashboardRequestError(409, "No configured project matches this source-to-project run.");
+  }
+  const cwdCandidates = Array.from(new Set(executionCwdCandidates(state)));
+  for (const cwd of cwdCandidates) {
+    const matched = projects.find((project) => resolve(project.workingTree) === resolve(cwd));
+    if (matched) {
+      return matched;
+    }
+  }
+  const gitRemoteMatched = await resolveProjectByGitRemote(cwdCandidates, projects);
+  if (gitRemoteMatched) {
+    return gitRemoteMatched;
+  }
+  if (projects.length === 1) {
+    return projects[0]!;
+  }
+  throw dashboardRequestError(409, "Could not determine which configured project owns this source-to-project run.");
+}
+
+async function resolveProjectByGitRemote(cwdCandidates: string[], projects: ProjectCatalogEntry[]): Promise<ProjectCatalogEntry | undefined> {
+  const candidateRemoteUrls = new Set<string>();
+  const remoteNames = Array.from(new Set(projects.map((project) => project.remote || "origin")));
+  for (const cwd of cwdCandidates) {
+    for (const remoteName of remoteNames) {
+      const remoteUrl = await readGitRemoteUrl(cwd, remoteName);
+      if (remoteUrl) {
+        candidateRemoteUrls.add(remoteUrl);
+      }
+    }
+  }
+  if (candidateRemoteUrls.size === 0) {
+    return undefined;
+  }
+
+  const matches: ProjectCatalogEntry[] = [];
+  for (const project of projects) {
+    const remoteUrl = await readGitRemoteUrl(project.workingTree, project.remote || "origin");
+    if (remoteUrl && candidateRemoteUrls.has(remoteUrl)) {
+      matches.push(project);
+    }
+  }
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+async function readGitRemoteUrl(cwd: string, remoteName: string): Promise<string | undefined> {
+  try {
+    const result = await execFileAsync("git", ["-C", cwd, "remote", "get-url", remoteName], { timeout: 3000 });
+    const remoteUrl = normalizeGitRemoteUrl(result.stdout);
+    return remoteUrl || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeGitRemoteUrl(value: string): string {
+  return value.trim().replace(/\/$/, "").replace(/\.git$/, "");
+}
+
+function executionCwdCandidates(state: MacroWorkflowRunStateLike): string[] {
+  const candidates: string[] = [];
+  for (const result of state.nodeResults ?? []) {
+    const execution = result.execution;
+    if (execution?.cwd) {
+      candidates.push(execution.cwd);
+    }
+    for (const call of execution?.calls ?? []) {
+      if (call.cwd) {
+        candidates.push(call.cwd);
+      }
+    }
+  }
+  return candidates;
+}
+
+function readSourceReference(state: MacroWorkflowRunStateLike): string {
+  const sourcePayload = state.nodeResults?.find((result) => result.nodeId === "source-reading")?.payload;
+  const sourceAnalysis = readObject(sourcePayload?.sourceAnalysis);
+  return readString(sourceAnalysis?.sourceId) ?? state.objective;
+}
+
+function readProjectBrief(state: MacroWorkflowRunStateLike): ProjectBrief | undefined {
+  const projectResearchPayload = state.nodeResults?.find((result) => result.nodeId === "project-research")?.payload;
+  return readObject(projectResearchPayload?.projectBrief) as ProjectBrief | undefined;
+}
+
+function readObject(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function dashboardRequestError(statusCode: number, message: string): Error & { statusCode: number } {
+  return Object.assign(new Error(message), { statusCode });
+}
+
+function writePrLaunchErrorResponse(response: ServerResponse, statusCode: number, message: string) {
+  logDashboardError(`Manual PR launch failed (${statusCode}): ${message}`);
+  response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  response.end(JSON.stringify({ ok: false, error: message }));
+}
+
+function logDashboardError(message: string) {
+  process.stderr.write(`[weavekit][error] ${message}\n`);
 }
 
 async function resolveRunArtifactRequest(

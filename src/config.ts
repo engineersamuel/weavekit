@@ -15,6 +15,13 @@ export type SourceToProjectThresholds = {
   maxRisk: number;
 };
 
+export type SourceToProjectPrLauncherConfig = {
+  provider: "herdr";
+  agentCommand: string;
+  agentArgs: string[];
+  split: "right" | "down";
+};
+
 export type SourceToProjectDefaults = {
   maxOpportunities: number;
   thresholds: SourceToProjectThresholds;
@@ -25,6 +32,7 @@ export type SourceToProjectDefaults = {
   maxToolCalls?: number;
   sourceReadingMaxToolCalls?: number;
   projectResearchMaxToolCalls?: number;
+  prLauncher: SourceToProjectPrLauncherConfig;
 };
 
 export type CopilotDefaults = {
@@ -290,6 +298,12 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
     thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
     mode: "advisory",
     offline: false,
+    prLauncher: {
+      provider: "herdr",
+      agentCommand: "codex",
+      agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+      split: "right",
+    },
   };
 }
 
@@ -364,6 +378,7 @@ function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): So
     maxToolCalls: readOptionalInteger(record.max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS"),
     sourceReadingMaxToolCalls: readOptionalInteger(record.source_reading_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS"),
     projectResearchMaxToolCalls: readOptionalInteger(record.project_research_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS"),
+    prLauncher: readSourceToProjectPrLauncherConfig(record.pr_launcher, defaults.prLauncher),
     thresholds: {
       minApplicability: readNumber(record.min_applicability, defaults.thresholds.minApplicability),
       minConfidence: readNumber(record.min_confidence, defaults.thresholds.minConfidence),
@@ -371,6 +386,19 @@ function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): So
       minAcceptanceAverage: readNumber(record.min_acceptance_average, defaults.thresholds.minAcceptanceAverage),
       maxRisk: readNumber(record.max_risk, defaults.thresholds.maxRisk),
     },
+  };
+}
+
+function readSourceToProjectPrLauncherConfig(
+  value: unknown,
+  defaults: SourceToProjectPrLauncherConfig,
+): SourceToProjectPrLauncherConfig {
+  const record = asRecord(value);
+  return {
+    provider: record.provider === "herdr" ? "herdr" : defaults.provider,
+    agentCommand: readString(record.agent_command, defaults.agentCommand),
+    agentArgs: Array.isArray(record.agent_args) ? readStringArray(record.agent_args) : defaults.agentArgs,
+    split: record.split === "down" ? "down" : "right",
   };
 }
 
