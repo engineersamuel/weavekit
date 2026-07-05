@@ -13,3 +13,5 @@ docs/superpowers/
 docs/superpowers/plans/
 docs/superpowers/specs/
 .weavekit/
+.playwright-mcp/
+manual-pr-toolbar-check.png

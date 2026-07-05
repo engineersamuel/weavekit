@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
+import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowNodeFailureMessage, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
 
 const entityValidation = vi.hoisted(() => ({
   assertValidEntityCatalog: vi.fn(),
@@ -67,6 +67,21 @@ describe("macro workflow CLI", () => {
       maxToolCalls: 40,
       elapsedMs: 1234,
     })).toBe("[weavekit][copilot-sdk] session-event mode=research model=gpt-5.4 event=tool.execution_start tool=read_file toolCalls=7 maxToolCalls=40 elapsedMs=1234\n");
+  });
+
+  it("formats workflow node failures for terminal stderr", () => {
+    expect(formatWorkflowNodeFailureMessage({
+      nodeId: "visual-plan-preflight",
+      title: "Verify visual-plan capability",
+      status: "failed",
+      error: "visual-plan hosted capability is not usable",
+    })).toContain("[weavekit][error] Workflow node failed: Verify visual-plan capability (visual-plan-preflight)");
+    expect(formatWorkflowNodeFailureMessage({
+      nodeId: "visual-plan-preflight",
+      title: "Verify visual-plan capability",
+      status: "failed",
+      error: "visual-plan hosted capability is not usable",
+    })).toContain("[weavekit][error] Error: visual-plan hosted capability is not usable");
   });
 
   it("parses workflow plan arguments", () => {

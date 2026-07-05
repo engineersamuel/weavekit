@@ -17,7 +17,9 @@
     "eval:router": "tsx src/eval-router-cli.ts",
     "bench:router": "tsx scripts/router-benchmark.ts",
     "dashboard": "nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard --watch-dir runs",
-    "repro:visual-design": "nub scripts/source-to-project-visual-design-repro.ts"
+    "repro:visual-design": "nub scripts/source-to-project-visual-design-repro.ts",
+    "smoke:pr-launch": "nub scripts/source-to-project-pr-launch-smoke.ts",
+    "smoke:pr-launch-dashboard": "nub scripts/source-to-project-pr-launch-dashboard-smoke.ts"
   },
   "dependencies": {
     "@boundaryml/baml": "^0.223.0",

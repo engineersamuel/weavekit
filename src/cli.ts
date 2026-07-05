@@ -8,6 +8,7 @@ import type { DecisionCouncilInput } from "./decision-council/types.js";
 import type { DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { TelemetryHandle } from "./telemetry/bootstrap.js";
 import { WorkflowHarnessKind, type WorkflowPlanTemplateId, type WorkflowReplayEvent } from "./macro-workflow/types.js";
+import { MacroWorkflowEventKind } from "./macro-workflow/logger.js";
 import { extractXPostUrls, preprocessWorkflowPrompt, type XPostFetchResult } from "./macro-workflow/promptPreprocessor.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
@@ -302,6 +303,22 @@ export function formatWorkflowRunStartedMessage(args: { runId: string; outputDir
   ].join("\n") + "\n";
 }
 
+export function formatWorkflowNodeFailureMessage(args: {
+  nodeId: string;
+  title?: string;
+  status?: string;
+  error?: string;
+  output?: string;
+}): string {
+  const details = [
+    `[weavekit][error] Workflow node failed: ${args.title ? `${args.title} (${args.nodeId})` : args.nodeId}`,
+    args.status ? `[weavekit][error] Status: ${args.status}` : undefined,
+    args.error ? `[weavekit][error] Error: ${args.error}` : undefined,
+    !args.error && args.output ? `[weavekit][error] Output: ${args.output}` : undefined,
+  ].filter((line): line is string => Boolean(line));
+  return `${details.join("\n")}\n`;
+}
+
 export function createWorkflowRunDescriptor(outputRoot: string, objective: string): WorkflowRunDescriptor {
   const runId = randomUUID();
   const normalizedRoot = basename(outputRoot) === "latest" ? dirname(outputRoot) : outputRoot;
@@ -431,6 +448,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     const dashboardServer = await workflowDashboardModule.createWorkflowDashboardServer(undefined, {
       port: args.dashboardPort,
       watchDir: args.watchDir ?? args.outputDir,
+      configPath: args.configPath,
     });
     process.stdout.write(`Workflow dashboard: ${dashboardServer.url}\n`);
     await new Promise<void>((resolve) => {
@@ -584,7 +602,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     await workflowArtifactsModule.writeMacroWorkflowStateArtifact(runDescriptor.outputDir, initialRunState);
   });
   if (args.dashboard) {
-    dashboardServer = await workflowDashboardModule.createWorkflowDashboardServer(initialRunState, { port: args.dashboardPort, watchDir: args.outputDir });
+    dashboardServer = await workflowDashboardModule.createWorkflowDashboardServer(initialRunState, { port: args.dashboardPort, watchDir: args.outputDir, configPath: args.configPath });
   } else if (args.dashboardUrl) {
     dashboardPublisher = await workflowDashboardModule.createWorkflowDashboardPublisher(args.dashboardUrl);
   }
@@ -668,6 +686,18 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         runId: runDescriptor.runId,
         runName: runDescriptor.runName,
       };
+      if (event.type === MacroWorkflowEventKind.NODE_FAILED && event.nodeId) {
+        const failedResult = stateWithRun.nodeResults.find((result) => result.nodeId === event.nodeId);
+        const failedNode = stateWithRun.currentPlan.nodes.find((node) => node.id === event.nodeId)
+          ?? stateWithRun.plan.nodes.find((node) => node.id === event.nodeId);
+        process.stderr.write(formatWorkflowNodeFailureMessage({
+          nodeId: event.nodeId,
+          title: failedNode?.title,
+          status: failedResult?.status ?? event.status,
+          error: failedResult?.error,
+          output: failedResult?.output,
+        }));
+      }
       stateSnapshotWrite = stateSnapshotWrite.then(async () => {
         await workflowArtifactsModule.writeMacroWorkflowStateArtifact(runDescriptor.outputDir, stateWithRun);
       });

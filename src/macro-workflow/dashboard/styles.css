@@ -938,6 +938,57 @@ body {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
 }
 
+.node-action-button {
+  background: #14b8a6;
+  border: 1px solid rgba(153, 246, 228, 0.55);
+  border-radius: 8px;
+  color: #042f2e;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1;
+  min-height: 30px;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.node-action-button:hover:not(:disabled) {
+  background: #2dd4bf;
+}
+
+.node-action-button:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.node-action-error {
+  background: rgba(127, 29, 29, 0.92);
+  border: 1px solid rgba(251, 113, 133, 0.45);
+  border-radius: 8px;
+  color: #fecdd3;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.25;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 6px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-inline-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.node-inline-actions .node-action-button {
+  width: 100%;
+}
+
 .custom-node-header {
   display: flex;
   justify-content: space-between;
