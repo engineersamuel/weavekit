@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer as createTcpServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createWorkflowDashboardServer,
   listWorkflowDashboardRuns,
@@ -24,9 +25,64 @@ describe("readWorkflowReplayEvents", () => {
 
 describe("workflow dashboard replay bootstrap", () => {
   const servers: WorkflowDashboardServer[] = [];
+  const originalPort = process.env.PORT;
+  const originalPortlessUrl = process.env.PORTLESS_URL;
+
+  beforeEach(() => {
+    delete process.env.PORT;
+    delete process.env.PORTLESS_URL;
+  });
 
   afterEach(async () => {
     await Promise.all(servers.splice(0).map((server) => server.stop()));
+    restoreEnv("PORT", originalPort);
+    restoreEnv("PORTLESS_URL", originalPortlessUrl);
+  });
+
+  it("uses an ephemeral localhost URL by default", async () => {
+    delete process.env.PORT;
+    delete process.env.PORTLESS_URL;
+
+    const server = await createWorkflowDashboardServer(undefined);
+    servers.push(server);
+
+    expect(server.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(server.url).not.toBe("http://127.0.0.1:0");
+  });
+
+  it("listens on PORT when no explicit port option is passed", async () => {
+    const port = await getAvailablePort();
+    process.env.PORT = String(port);
+
+    const server = await createWorkflowDashboardServer(undefined);
+    servers.push(server);
+
+    expect(server.url).toBe(`http://127.0.0.1:${port}`);
+  });
+
+  it("lets an explicit port option override PORT", async () => {
+    const explicitPort = await getAvailablePort();
+    process.env.PORT = "not-a-port";
+
+    const server = await createWorkflowDashboardServer(undefined, { port: explicitPort });
+    servers.push(server);
+
+    expect(server.url).toBe(`http://127.0.0.1:${explicitPort}`);
+  });
+
+  it("reports PORTLESS_URL when Portless provides one", async () => {
+    process.env.PORTLESS_URL = "https://calm-meadow.weavekit-dashboard.localhost";
+
+    const server = await createWorkflowDashboardServer(undefined);
+    servers.push(server);
+
+    expect(server.url).toBe("https://calm-meadow.weavekit-dashboard.localhost");
+  });
+
+  it("fails clearly when PORT is invalid", async () => {
+    process.env.PORT = "not-a-port";
+
+    await expect(createWorkflowDashboardServer(undefined)).rejects.toThrow("Invalid PORT value. Expected an integer between 1 and 65535.");
   });
 
   it("merges workflow-state.json with adjacent workflow-events.jsonl", async () => {
@@ -258,4 +314,34 @@ async function readUntil(body: ReadableStream<Uint8Array>, needle: string): Prom
     }
   }
   return text;
+}
+
+function restoreEnv(name: "PORT" | "PORTLESS_URL", value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
+async function getAvailablePort(): Promise<number> {
+  const server = createTcpServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const address = server.address();
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+  if (!address || typeof address !== "object") {
+    throw new Error("Failed to allocate an available port.");
+  }
+  return address.port;
 }

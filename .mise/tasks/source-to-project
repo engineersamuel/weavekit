@@ -7,7 +7,8 @@ if [[ $# -eq 0 ]]; then
 fi
 
 prompt="$*"
-dashboard_url="http://127.0.0.1:4321"
+dashboard_mode="${WEAVEKIT_DASHBOARD:-embedded}"
+dashboard_url="${WEAVEKIT_DASHBOARD_URL:-}"
 
 args=(
   --template source-to-project \
@@ -18,8 +19,26 @@ args=(
 
 args+=(--project-path "$PWD")
 
-if [[ "$dashboard_url" != "off" && "$dashboard_url" != "none" ]]; then
-  args+=(--dashboard-url "$dashboard_url")
-fi
+run_with_portless=false
+case "$dashboard_mode" in
+  embedded)
+    if [[ -n "$dashboard_url" ]]; then
+      args+=(--dashboard-url "$dashboard_url")
+    else
+      args+=(--dashboard)
+      run_with_portless=true
+    fi
+    ;;
+  off|none)
+    ;;
+  *)
+    echo 'WEAVEKIT_DASHBOARD must be "embedded" or "off".' >&2
+    exit 2
+    ;;
+esac
 
-nub src/cli.ts workflow run "${args[@]}"
+if [[ "$run_with_portless" == "true" ]]; then
+  nubx portless run --name weavekit-source-to-project nub src/cli.ts workflow run "${args[@]}"
+else
+  nub src/cli.ts workflow run "${args[@]}"
+fi
