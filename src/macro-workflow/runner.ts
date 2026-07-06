@@ -147,9 +147,18 @@ export async function runMacroWorkflow(
     for (const node of runnableNodes) {
       const context: WorkflowExecutionContext = { payloads, artifacts, objective: plan.objective, outputDir: dependencies.outputDir };
       const preparedExecution = await prepareNodeExecution(node, context, dependencies.harnesses);
-      if (preparedExecution) {
-        context.preparedExecution = preparedExecution;
-        activeNodeExecutions[node.id] = preparedExecution;
+      if (preparedExecution.warning) {
+        emitStateChange({
+          type: MacroWorkflowEventKind.NODE_WARNING,
+          planId: plan.id,
+          nodeId: node.id,
+          reason: preparedExecution.warning,
+          timestamp: new Date(),
+        });
+      }
+      if (preparedExecution.execution) {
+        context.preparedExecution = preparedExecution.execution;
+        activeNodeExecutions[node.id] = preparedExecution.execution;
       }
       runnableContexts.set(node.id, context);
     }
@@ -445,12 +454,12 @@ async function prepareNodeExecution(
   node: RuntimeWorkflowPlan["nodes"][number],
   context: WorkflowExecutionContext,
   harnesses?: HarnessRegistry,
-): Promise<WorkflowExecutionMetadata | undefined> {
+): Promise<{ execution?: WorkflowExecutionMetadata; warning?: string }> {
   const adapter = harnesses ? resolveHarnessAdapter(harnesses, node.harness) : undefined;
   try {
-    return await adapter?.prepareExecution?.(node, context);
-  } catch {
-    return undefined;
+    return { execution: await adapter?.prepareExecution?.(node, context) };
+  } catch (error) {
+    return { warning: `Harness ${node.harness} prepareExecution failed for ${node.id}: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
 

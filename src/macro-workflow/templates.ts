@@ -1,3 +1,4 @@
+import type { DeepResearchProvider } from "../config.js";
 import type { RuntimeWorkflowPlan, WorkflowPlanTemplateId, WorkflowNodeWriteMode, WorkflowReplanPolicy } from "./types.js";
 import { WorkflowGateKind, WorkflowHarnessKind, WorkflowNodeKind } from "./types.js";
 import { SourceToProjectModelOperation, sourceToProjectNodeModelMetadata } from "./sourceToProject/modelPolicy.js";
@@ -15,6 +16,12 @@ export type WorkflowTemplateInput = {
   project?: string;
   projectPath?: string;
   mode?: "advisory" | "autonomous-pr";
+  providers?: DeepResearchProvider[];
+  maxIterations?: number;
+  questionsPerIteration?: number;
+  maxResultsPerQuestion?: number;
+  providerRetryAttempts?: number;
+  visualize?: boolean;
 };
 
 const templates = {
@@ -113,7 +120,22 @@ const templates = {
     description: "Fetch a single X status through workflow preprocessing and summarize the resolved article markdown.",
     materialize: makeXArticleSummaryPlan,
   },
+  "deep-research": {
+    id: "deep-research",
+    title: "Deep Research",
+    description: "Run an iterative, provider-backed research loop and compile a cited Markdown report.",
+    materialize: makeDeepResearchPlan,
+  },
 } satisfies Record<WorkflowPlanTemplateId, WorkflowTemplate>;
+
+const DEFAULT_DEEP_RESEARCH_CONFIG = {
+  providers: ["grok", "exa", "copilot-last30days"] as DeepResearchProvider[],
+  maxIterations: 3,
+  questionsPerIteration: 5,
+  maxResultsPerQuestion: 5,
+  providerRetryAttempts: 1,
+  visualize: false,
+};
 
 function makeXArticleSummaryPlan(objective: string): RuntimeWorkflowPlan {
   return {
@@ -136,6 +158,44 @@ function makeXArticleSummaryPlan(objective: string): RuntimeWorkflowPlan {
           "",
           objective,
         ].join("\n"),
+        dependsOn: [],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only" as WorkflowNodeWriteMode,
+        replanPolicy: "never" as WorkflowReplanPolicy,
+      },
+    ],
+  };
+}
+
+function makeDeepResearchPlan(objective: string, input: WorkflowTemplateInput = { objective }): RuntimeWorkflowPlan {
+  const config = {
+    providers: input.providers?.length ? input.providers : DEFAULT_DEEP_RESEARCH_CONFIG.providers,
+    maxIterations: readPositiveInteger(input.maxIterations, DEFAULT_DEEP_RESEARCH_CONFIG.maxIterations),
+    questionsPerIteration: readPositiveInteger(input.questionsPerIteration, DEFAULT_DEEP_RESEARCH_CONFIG.questionsPerIteration),
+    maxResultsPerQuestion: readPositiveInteger(input.maxResultsPerQuestion, DEFAULT_DEEP_RESEARCH_CONFIG.maxResultsPerQuestion),
+    providerRetryAttempts: readNonNegativeInteger(input.providerRetryAttempts, DEFAULT_DEEP_RESEARCH_CONFIG.providerRetryAttempts),
+    visualize: input.visualize ?? DEFAULT_DEEP_RESEARCH_CONFIG.visualize,
+  };
+  return {
+    id: workflowPlanId("deep-research", objective),
+    objective,
+    templateId: "deep-research",
+    maxReplans: 0,
+    nodes: [
+      {
+        id: "deep-research-questions-1",
+        kind: WorkflowNodeKind.RESEARCH,
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Generate research questions",
+        description: "Generate the first bounded question batch for iterative deep research.",
+        model: "gpt-5.5",
+        modelRationale: "Question generation uses the primary research synthesis model.",
+        prompt: "Generate the first research question set for the objective.",
+        input: {
+          deepResearchStep: "generate-questions",
+          iteration: 1,
+          config,
+        },
         dependsOn: [],
         gates: [WorkflowGateKind.OUTPUT_CONTRACT],
         writeMode: "read-only" as WorkflowNodeWriteMode,
@@ -254,6 +314,14 @@ function sourceNodeMetadata(operation: SourceToProjectModelOperation) {
 function workflowPlanId(prefix: WorkflowPlanTemplateId, objective: string): string {
   const slug = objective.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "plan";
   return `${prefix}-${slug.slice(0, 96).replace(/-$/u, "")}`;
+}
+
+function readPositiveInteger(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function readNonNegativeInteger(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
 export function listWorkflowTemplates(): WorkflowTemplate[] {

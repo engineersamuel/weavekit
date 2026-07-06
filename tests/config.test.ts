@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { expandHomePath, loadLocalEnvFiles, loadTypedWeavekitConfig, loadWeavekitConfig, resolveProjectCatalogEntry } from "../src/config.js";
+import { DeepResearchProvider, expandHomePath, loadLocalEnvFiles, loadTypedWeavekitConfig, loadWeavekitConfig, resolveProjectCatalogEntry } from "../src/config.js";
 
 const tempDirs: string[] = [];
 
@@ -110,6 +110,14 @@ max_tool_calls = 50
 source_reading_max_tool_calls = 20
 project_research_max_tool_calls = 30
 
+[deep_research]
+providers = ["exa", "perplexity"]
+max_iterations = 4
+questions_per_iteration = 6
+max_results_per_question = 7
+provider_retry_attempts = 2
+visualize = true
+
 [projects.weavekit]
 display_name = "Weavekit"
 working_tree = "/tmp/weavekit"
@@ -142,6 +150,14 @@ knowledge_export = "off"
     expect(config.sourceToProject.maxToolCalls).toBe(50);
     expect(config.sourceToProject.sourceReadingMaxToolCalls).toBe(20);
     expect(config.sourceToProject.projectResearchMaxToolCalls).toBe(30);
+    expect(config.deepResearch).toEqual({
+      providers: ["exa", "perplexity"],
+      maxIterations: 4,
+      questionsPerIteration: 6,
+      maxResultsPerQuestion: 7,
+      providerRetryAttempts: 2,
+      visualize: true,
+    });
     expect(config.sourceToProject.prLauncher).toEqual({
       provider: "herdr",
       agentCommand: "codex",
@@ -244,6 +260,12 @@ directory = "/config/hve-core"
       WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS: "72",
       WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS: "12",
       WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS: "24",
+      WEAVEKIT_DEEP_RESEARCH_PROVIDERS: "grok,copilot-last30days,grok,tavily",
+      WEAVEKIT_DEEP_RESEARCH_MAX_ITERATIONS: "5",
+      WEAVEKIT_DEEP_RESEARCH_QUESTIONS_PER_ITERATION: "8",
+      WEAVEKIT_DEEP_RESEARCH_MAX_RESULTS_PER_QUESTION: "9",
+      WEAVEKIT_DEEP_RESEARCH_PROVIDER_RETRY_ATTEMPTS: "2",
+      WEAVEKIT_DEEP_RESEARCH_VISUALIZE: "true",
       WEAVEKIT_COPILOT_VERBOSE_EVENTS: "true",
       COPILOT_MODEL: "gpt-5-mini",
       COPILOT_RUNTIME_URL: "http://127.0.0.1:8181",
@@ -262,6 +284,14 @@ directory = "/config/hve-core"
     expect(config.sourceToProject.maxToolCalls).toBe(72);
     expect(config.sourceToProject.sourceReadingMaxToolCalls).toBe(12);
     expect(config.sourceToProject.projectResearchMaxToolCalls).toBe(24);
+    expect(config.deepResearch).toEqual({
+      providers: ["grok", "copilot-last30days", "tavily"],
+      maxIterations: 5,
+      questionsPerIteration: 8,
+      maxResultsPerQuestion: 9,
+      providerRetryAttempts: 2,
+      visualize: true,
+    });
     expect(config.copilot.verboseEvents).toBe(true);
     expect(config.copilot.model).toBe("gpt-5-mini");
     expect(config.copilot.runtimeUrl).toBe("http://127.0.0.1:8181");
@@ -298,6 +328,14 @@ directory = "/config/hve-core"
         offline: false,
         prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"], split: "right" as const },
       },
+      deepResearch: {
+        providers: [DeepResearchProvider.GROK, DeepResearchProvider.EXA, DeepResearchProvider.COPILOT_LAST30DAYS],
+        maxIterations: 3,
+        questionsPerIteration: 5,
+        maxResultsPerQuestion: 5,
+        providerRetryAttempts: 1,
+        visualize: false,
+      },
       plugins: {
         "hve-core": {
           directory: "/plugins/hve-core",
@@ -328,6 +366,14 @@ directory = "/config/hve-core"
 
     expect(config.copilot.verboseEvents).toBe(false);
     expect(config.sourceToProject.offline).toBe(false);
+    expect(config.deepResearch).toEqual({
+      providers: ["grok", "exa", "copilot-last30days"],
+      maxIterations: 3,
+      questionsPerIteration: 5,
+      maxResultsPerQuestion: 5,
+      providerRetryAttempts: 1,
+      visualize: false,
+    });
     expect(config.flue.model).toBe("anthropic/claude-haiku-4-5");
     expect(config.plugins["hve-core"]?.directory).toBe(join(homedir(), ".copilot/installed-plugins/_direct/hve-core"));
   });

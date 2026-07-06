@@ -139,7 +139,9 @@ export async function createWorkflowDashboardServer(
           latestHistory = snapshot.history;
           latestRun = snapshot.run;
           latestRuns = snapshot.runs;
-        }).catch(() => undefined);
+        }).catch((error: unknown) => {
+          logDashboardError(`Dashboard replay refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
       }
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify(toSerializablePayload(latestState, latestEvent, latestHistory, latestRun, latestRuns)));
@@ -297,7 +299,9 @@ export async function createWorkflowDashboardServer(
           latestWatchSnapshotVersion = snapshotVersion;
           publishStateInternal(snapshot.state, snapshot.event, snapshot.history);
         }
-      }).catch(() => undefined);
+      }).catch((error: unknown) => {
+        logDashboardError(`Dashboard watch refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
     }, 1000);
   }
 

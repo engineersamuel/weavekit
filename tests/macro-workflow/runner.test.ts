@@ -297,13 +297,25 @@ describe("macro workflow runner", () => {
       [WorkflowHarnessKind.COPILOT_SDK]: adapter,
     });
 
-    const state = await runMacroWorkflow(plan, { harnesses });
+    const events: Array<{ type?: string; reason?: string; nodeId?: string }> = [];
+
+    const state = await runMacroWorkflow(plan, {
+      harnesses,
+      onStateChange(_state, event) {
+        events.push({ type: event.type, reason: event.reason, nodeId: event.nodeId });
+      },
+    });
 
     expect(state.status).toBe("passed");
     expect(state.nodeResults[0]).toMatchObject({
       nodeId: "plan-opportunity-o1",
       status: "passed",
       output: "planned",
+    });
+    expect(events).toContainEqual({
+      type: MacroWorkflowEventKind.NODE_WARNING,
+      nodeId: "plan-opportunity-o1",
+      reason: "Harness copilot-sdk prepareExecution failed for plan-opportunity-o1: preview resolver failed",
     });
   });
 

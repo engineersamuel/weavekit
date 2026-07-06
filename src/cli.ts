@@ -2,12 +2,12 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { expandHomePath, loadLocalEnvFiles, loadTypedWeavekitConfig, loadWeavekitConfig, resolveProjectCatalogEntry, type ProjectCatalogEntry } from "./config.js";
+import { DeepResearchProvider, expandHomePath, loadLocalEnvFiles, loadTypedWeavekitConfig, loadWeavekitConfig, resolveProjectCatalogEntry, type DeepResearchDefaults, type ProjectCatalogEntry } from "./config.js";
 import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
 import type { DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { TelemetryHandle } from "./telemetry/bootstrap.js";
-import { WorkflowHarnessKind, type WorkflowPlanTemplateId, type WorkflowReplayEvent } from "./macro-workflow/types.js";
+import { WorkflowHarnessKind, type RuntimeWorkflowNode, type WorkflowArtifactRef, type WorkflowPlanTemplateId, type WorkflowReplayEvent } from "./macro-workflow/types.js";
 import { MacroWorkflowEventKind } from "./macro-workflow/logger.js";
 import { extractXPostUrls, preprocessWorkflowPrompt, type XPostFetchResult } from "./macro-workflow/promptPreprocessor.js";
 
@@ -45,6 +45,7 @@ export type WorkflowCliArgs = {
   project?: string;
   projectPath?: string;
   mode?: "advisory" | "autonomous-pr";
+  deepResearch?: Partial<DeepResearchDefaults>;
   configPath?: string;
 };
 
@@ -160,6 +161,10 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   const projectPathIndex = argv.indexOf("--project-path");
   const modeIndex = argv.indexOf("--mode");
   const configIndex = argv.indexOf("--config");
+  const providersIndex = argv.indexOf("--providers");
+  const maxIterationsIndex = argv.indexOf("--max-iterations");
+  const questionsPerIterationIndex = argv.indexOf("--questions-per-iteration");
+  const maxResultsPerQuestionIndex = argv.indexOf("--max-results-per-question");
 
   if (templateIndex !== -1 && !argv[templateIndex + 1]) {
     throw new Error("Missing value for --template <id>.");
@@ -190,6 +195,18 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   }
   if (configIndex !== -1 && !argv[configIndex + 1]) {
     throw new Error("Missing value for --config <path>.");
+  }
+  if (providersIndex !== -1 && !argv[providersIndex + 1]) {
+    throw new Error("Missing value for --providers <comma-separated-providers>.");
+  }
+  if (maxIterationsIndex !== -1 && !argv[maxIterationsIndex + 1]) {
+    throw new Error("Missing value for --max-iterations <n>.");
+  }
+  if (questionsPerIterationIndex !== -1 && !argv[questionsPerIterationIndex + 1]) {
+    throw new Error("Missing value for --questions-per-iteration <n>.");
+  }
+  if (maxResultsPerQuestionIndex !== -1 && !argv[maxResultsPerQuestionIndex + 1]) {
+    throw new Error("Missing value for --max-results-per-question <n>.");
   }
   if (promptIndex !== -1 && !argv[promptIndex + 1]) {
     throw new Error("Missing value for --prompt <text>.");
@@ -268,6 +285,16 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (configIndex !== -1) {
     parsed.configPath = argv[configIndex + 1];
   }
+  const deepResearch = parseDeepResearchCliConfig({
+    providers: providersIndex === -1 ? undefined : argv[providersIndex + 1],
+    maxIterations: maxIterationsIndex === -1 ? undefined : argv[maxIterationsIndex + 1],
+    questionsPerIteration: questionsPerIterationIndex === -1 ? undefined : argv[questionsPerIterationIndex + 1],
+    maxResultsPerQuestion: maxResultsPerQuestionIndex === -1 ? undefined : argv[maxResultsPerQuestionIndex + 1],
+    visualize: argv.includes("--visualize") ? true : undefined,
+  });
+  if (Object.keys(deepResearch).length > 0) {
+    parsed.deepResearch = deepResearch;
+  }
   return parsed;
 }
 
@@ -319,6 +346,62 @@ export function formatWorkflowNodeFailureMessage(args: {
   return `${details.join("\n")}\n`;
 }
 
+export function formatWorkflowNodeStartedMessage(args: {
+  nodeId: string;
+  title?: string;
+  harness?: string;
+  kind?: string;
+}): string {
+  return [
+    `[weavekit] Node started: ${formatWorkflowNodeLabel(args.nodeId, args.title)}`,
+    args.harness ? `harness=${args.harness}` : undefined,
+    args.kind ? `kind=${args.kind}` : undefined,
+  ].filter((part): part is string => Boolean(part)).join(" ") + "\n";
+}
+
+export function formatWorkflowNodeWarningMessage(args: {
+  nodeId: string;
+  title?: string;
+  warning?: string;
+}): string {
+  return [
+    `[weavekit][warn] Workflow node warning: ${formatWorkflowNodeLabel(args.nodeId, args.title)}`,
+    args.warning ? `[weavekit][warn] Warning: ${args.warning}` : undefined,
+  ].filter((line): line is string => Boolean(line)).join("\n") + "\n";
+}
+
+export function formatWorkflowNodeCompletedMessage(args: {
+  nodeId: string;
+  title?: string;
+  status?: string;
+  output?: string;
+  artifacts?: WorkflowArtifactRef[];
+}): string {
+  const lines = [
+    [
+      `[weavekit] Node ${args.status ?? "completed"}: ${formatWorkflowNodeLabel(args.nodeId, args.title)}`,
+      args.output ? `output=${truncateOneLine(args.output, 220)}` : undefined,
+    ].filter((part): part is string => Boolean(part)).join(" "),
+    ...(args.artifacts ?? []).map((artifact) =>
+      `[weavekit]   artifact ${artifact.kind}: ${artifact.path} - ${artifact.description}`
+    ),
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+export function formatWorkflowRunCompletedMessage(args: { status?: string; outputDir: string }): string {
+  return `[weavekit] Workflow completed with status=${args.status ?? "unknown"} output=${args.outputDir}\n`;
+}
+
+function formatWorkflowNodeLabel(nodeId: string, title: string | undefined): string {
+  return title ? `${title} (${nodeId})` : nodeId;
+}
+
+function truncateOneLine(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/gu, " ").trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trimEnd()}...` : normalized;
+}
+
 export function createWorkflowRunDescriptor(outputRoot: string, objective: string): WorkflowRunDescriptor {
   const runId = randomUUID();
   const normalizedRoot = basename(outputRoot) === "latest" ? dirname(outputRoot) : outputRoot;
@@ -359,10 +442,56 @@ function resolveWorkflowTemplateId(template: string | undefined): WorkflowPlanTe
   if (template === undefined) {
     return undefined;
   }
-  if (template !== "implementation-review" && template !== "source-to-project" && template !== "x-article-summary") {
+  if (template !== "implementation-review" && template !== "source-to-project" && template !== "x-article-summary" && template !== "deep-research") {
     throw new Error(`Unknown workflow template: ${template}`);
   }
   return template;
+}
+
+function parseDeepResearchCliConfig(args: {
+  providers?: string;
+  maxIterations?: string;
+  questionsPerIteration?: string;
+  maxResultsPerQuestion?: string;
+  visualize?: boolean;
+}): Partial<DeepResearchDefaults> {
+  const config: Partial<DeepResearchDefaults> = {};
+  if (args.providers !== undefined) {
+    const providers = args.providers.split(",").map((provider) => provider.trim()).filter(Boolean).map((provider) => {
+      const normalized = provider.toLowerCase();
+      if (normalized === DeepResearchProvider.EXA) return DeepResearchProvider.EXA;
+      if (normalized === DeepResearchProvider.GROK) return DeepResearchProvider.GROK;
+      if (normalized === DeepResearchProvider.TAVILY) return DeepResearchProvider.TAVILY;
+      if (normalized === DeepResearchProvider.PERPLEXITY) return DeepResearchProvider.PERPLEXITY;
+      if (normalized === DeepResearchProvider.COPILOT_LAST30DAYS) return DeepResearchProvider.COPILOT_LAST30DAYS;
+      throw new Error(`Invalid --providers value: ${provider}. Expected exa, grok, tavily, perplexity, or copilot-last30days.`);
+    });
+    if (providers.length === 0) {
+      throw new Error("Invalid --providers value. Expected at least one provider.");
+    }
+    config.providers = [...new Set(providers)];
+  }
+  if (args.maxIterations !== undefined) {
+    config.maxIterations = parsePositiveIntegerFlag("--max-iterations", args.maxIterations);
+  }
+  if (args.questionsPerIteration !== undefined) {
+    config.questionsPerIteration = parsePositiveIntegerFlag("--questions-per-iteration", args.questionsPerIteration);
+  }
+  if (args.maxResultsPerQuestion !== undefined) {
+    config.maxResultsPerQuestion = parsePositiveIntegerFlag("--max-results-per-question", args.maxResultsPerQuestion);
+  }
+  if (args.visualize !== undefined) {
+    config.visualize = args.visualize;
+  }
+  return config;
+}
+
+function parsePositiveIntegerFlag(flag: string, value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`Invalid ${flag} value. Expected a positive integer.`);
+  }
+  return parsed;
 }
 
 function createProjectCatalogEntryFromPath(projectPath: string): ProjectCatalogEntry {
@@ -378,6 +507,15 @@ function createProjectCatalogEntryFromPath(projectPath: string): ProjectCatalogE
     notification: "cli",
     knowledgeExport: "off",
   };
+}
+
+function findWorkflowNode(
+  currentPlan: { nodes: RuntimeWorkflowNode[] },
+  originalPlan: { nodes: RuntimeWorkflowNode[] },
+  nodeId: string,
+): RuntimeWorkflowNode | undefined {
+  return currentPlan.nodes.find((node) => node.id === nodeId)
+    ?? originalPlan.nodes.find((node) => node.id === nodeId);
 }
 
 export function createWorkflowProgressReporter(stream: Pick<NodeJS.WritableStream, "write"> = process.stderr) {
@@ -416,17 +554,20 @@ type WorkflowCopilotLogEvent = {
   eventType?: string;
   contentLength?: number;
   message?: string;
+  skillName?: string;
   toolName?: string;
   toolCallCount?: number;
   maxToolCalls?: number;
 };
 
 export function formatWorkflowCopilotLog(event: WorkflowCopilotLogEvent): string {
+  const severityPrefix = copilotLogSeverityPrefix(event.phase);
   const details = [
     event.mode ? `mode=${event.mode}` : undefined,
     event.model ? `model=${event.model}` : undefined,
     event.cwd ? `cwd=${event.cwd}` : undefined,
     event.eventType ? `event=${event.eventType}` : undefined,
+    event.skillName ? `skill=${event.skillName}` : undefined,
     event.toolName ? `tool=${event.toolName}` : undefined,
     event.toolCallCount !== undefined ? `toolCalls=${event.toolCallCount}` : undefined,
     event.maxToolCalls !== undefined ? `maxToolCalls=${event.maxToolCalls}` : undefined,
@@ -436,7 +577,17 @@ export function formatWorkflowCopilotLog(event: WorkflowCopilotLogEvent): string
     event.contentLength !== undefined ? `contentChars=${event.contentLength}` : undefined,
     event.message ? `message=${event.message.replace(/\s+/g, " ").slice(0, 160)}` : undefined,
   ].filter((part): part is string => Boolean(part));
-  return `[weavekit][copilot-sdk] ${event.phase}${details.length ? ` ${details.join(" ")}` : ""}\n`;
+  return `${severityPrefix} ${event.phase}${details.length ? ` ${details.join(" ")}` : ""}\n`;
+}
+
+function copilotLogSeverityPrefix(phase: string): string {
+  if (phase.includes("error") || phase === "timeout") {
+    return "[weavekit][error][copilot-sdk]";
+  }
+  if (phase.includes("warning") || phase === "timeout-partial" || phase === "tool-budget") {
+    return "[weavekit][warn][copilot-sdk]";
+  }
+  return "[weavekit][copilot-sdk]";
 }
 
 export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
@@ -524,6 +675,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     workflowTemplatesModule,
     workflowDashboardModule,
     workflowSourceToProjectModule,
+    workflowDeepResearchModule,
     workflowUsageModule,
   ] = await Promise.all([
     import("./macro-workflow/artifacts.js"),
@@ -534,11 +686,17 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     import("./macro-workflow/templates.js"),
     import("./macro-workflow/dashboardServer.js"),
     import("./macro-workflow/sourceToProject/harnesses.js"),
+    import("./macro-workflow/deepResearch/harnesses.js"),
     import("./macro-workflow/usage.js"),
   ]);
   const usageCollector = new workflowUsageModule.WorkflowUsageCollector();
   const planner = new workflowBamlAdapterModule.GeneratedWorkflowPlannerAdapter({ usageCollector });
   const templateId = resolveWorkflowTemplateId(args.template);
+  const isDeepResearch = templateId === "deep-research";
+  const deepResearchConfig: DeepResearchDefaults = {
+    ...typedConfig.deepResearch,
+    ...args.deepResearch,
+  };
   const progress = createWorkflowProgressReporter();
   let plan;
 
@@ -551,6 +709,12 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         project: args.project,
         projectPath: args.projectPath,
         mode: sourceToProjectMode ?? args.mode,
+        providers: isDeepResearch ? deepResearchConfig.providers : undefined,
+        maxIterations: isDeepResearch ? deepResearchConfig.maxIterations : undefined,
+        questionsPerIteration: isDeepResearch ? deepResearchConfig.questionsPerIteration : undefined,
+        maxResultsPerQuestion: isDeepResearch ? deepResearchConfig.maxResultsPerQuestion : undefined,
+        providerRetryAttempts: isDeepResearch ? deepResearchConfig.providerRetryAttempts : undefined,
+        visualize: isDeepResearch ? deepResearchConfig.visualize : undefined,
       })
       : await planner.planWorkflow({ objective, prompt, templateId: "implementation-review" });
     progress.stop("Workflow plan generated.");
@@ -611,62 +775,13 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     ? workflowSourceToProjectModule.createDefaultSourceToProjectNotifier()
     : undefined;
 
-  const harnesses = isSourceToProject
-    ? workflowSourceToProjectModule.createSourceToProjectHarnessRegistry({
-      source: resolvedSource!,
-      originalPrompt: prompt,
-      prefetchedSourceContent,
-      project: sourceToProjectProject!,
-      mode: sourceToProjectMode!,
-      maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
-      thresholds: {
-        ...typedConfig.sourceToProject.thresholds,
-        ...sourceToProjectProject!.thresholds,
-      },
-      sourceToProject: typedConfig.sourceToProject,
-      tooling: typedConfig.tooling,
-      plugins: typedConfig.plugins,
-      notifier: sourceToProjectNotifier,
-      copilot: typedConfig.sourceToProject.offline
-        ? workflowSourceToProjectModule.createOfflineSourceToProjectHarnessClient()
-        : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
-          copilot: typedConfig.copilot,
-          sourceToProject: typedConfig.sourceToProject,
-          onUserInputRequest: workflowSourceToProjectModule.createSourceToProjectUserInputRequestHandler({
-            project: sourceToProjectProject!,
-            source: resolvedSource!,
-            notifier: sourceToProjectNotifier!,
-          }),
-          onLog: (event) => {
-            process.stderr.write(formatWorkflowCopilotLog(event));
-          },
-          onUsage: (event) => {
-            usageCollector.record({
-              executor: "copilot-sdk",
-              operation: event.operation,
-              mode: event.mode,
-              model: event.model,
-              cwd: event.cwd,
-              nodeId: event.nodeId,
-              label: event.label,
-              ...event.usage,
-            });
-          },
-        }),
-      baml: typedConfig.sourceToProject.offline
-        ? undefined
-        : workflowSourceToProjectModule.createLiveSourceToProjectBamlClient({ usageCollector }),
-    })
-    : templateId === "x-article-summary"
-      ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)
-      : workflowHarnessModule.createStaticHarnessRegistry();
+  const deepResearchExaMcp = isDeepResearch
+    ? await workflowDeepResearchModule.createDefaultDeepResearchExaMcpConnection()
+    : undefined;
 
-  const state = await workflowRunnerModule.runMacroWorkflow(plan, {
-    harnesses,
-    outputDir: runDescriptor.outputDir,
-    replanner: planner,
-    expandAfterNode: isSourceToProject
-      ? workflowSourceToProjectModule.createSourceToProjectDynamicExpander({
+  try {
+    const harnesses = isSourceToProject
+      ? workflowSourceToProjectModule.createSourceToProjectHarnessRegistry({
         source: resolvedSource!,
         originalPrompt: prompt,
         prefetchedSourceContent,
@@ -677,58 +792,177 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
           ...typedConfig.sourceToProject.thresholds,
           ...sourceToProjectProject!.thresholds,
         },
+        sourceToProject: typedConfig.sourceToProject,
+        tooling: typedConfig.tooling,
+        plugins: typedConfig.plugins,
+        notifier: sourceToProjectNotifier,
+        copilot: typedConfig.sourceToProject.offline
+          ? workflowSourceToProjectModule.createOfflineSourceToProjectHarnessClient()
+          : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+            copilot: typedConfig.copilot,
+            sourceToProject: typedConfig.sourceToProject,
+            onUserInputRequest: workflowSourceToProjectModule.createSourceToProjectUserInputRequestHandler({
+              project: sourceToProjectProject!,
+              source: resolvedSource!,
+              notifier: sourceToProjectNotifier!,
+            }),
+            onLog: (event) => {
+              process.stderr.write(formatWorkflowCopilotLog(event));
+            },
+            onUsage: (event) => {
+              usageCollector.record({
+                executor: "copilot-sdk",
+                operation: event.operation,
+                mode: event.mode,
+                model: event.model,
+                cwd: event.cwd,
+                nodeId: event.nodeId,
+                label: event.label,
+                ...event.usage,
+              });
+            },
+          }),
+        baml: typedConfig.sourceToProject.offline
+          ? undefined
+          : workflowSourceToProjectModule.createLiveSourceToProjectBamlClient({ usageCollector }),
       })
-      : undefined,
-    logger: workflowLoggerModule.createInMemoryMacroWorkflowLogger(),
-    onStateChange: (nextState, event) => {
-      const stateWithRun = {
-        ...nextState,
-        runId: runDescriptor.runId,
-        runName: runDescriptor.runName,
-      };
-      if (event.type === MacroWorkflowEventKind.NODE_FAILED && event.nodeId) {
-        const failedResult = stateWithRun.nodeResults.find((result) => result.nodeId === event.nodeId);
-        const failedNode = stateWithRun.currentPlan.nodes.find((node) => node.id === event.nodeId)
-          ?? stateWithRun.plan.nodes.find((node) => node.id === event.nodeId);
-        process.stderr.write(formatWorkflowNodeFailureMessage({
-          nodeId: event.nodeId,
-          title: failedNode?.title,
-          status: failedResult?.status ?? event.status,
-          error: failedResult?.error,
-          output: failedResult?.output,
-        }));
-      }
-      stateSnapshotWrite = stateSnapshotWrite.then(async () => {
-        await workflowArtifactsModule.writeMacroWorkflowStateArtifact(runDescriptor.outputDir, stateWithRun);
-      });
-      if (dashboardServer) {
-        dashboardServer.publishState(stateWithRun, event, replayEvents);
-        return;
-      }
-      if (dashboardPublisher) {
-        void dashboardPublisher.publishState(stateWithRun, event, replayEvents).catch((error) => {
-          process.stderr.write(`[weavekit] Dashboard update failed: ${error instanceof Error ? error.message : String(error)}\n`);
+      : isDeepResearch
+        ? workflowDeepResearchModule.createDeepResearchHarnessRegistry({
+          config: deepResearchConfig,
+          exaMcp: deepResearchExaMcp?.client,
+          tooling: typedConfig.tooling,
+          copilot: workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+            model: typedConfig.copilot.model ?? "gpt-5.5",
+            copilot: typedConfig.copilot,
+            onLog: (event) => {
+              process.stderr.write(formatWorkflowCopilotLog(event));
+            },
+            onUsage: (event) => {
+              usageCollector.record({
+                executor: "copilot-sdk",
+                operation: event.operation,
+                mode: event.mode,
+                model: event.model,
+                cwd: event.cwd,
+                nodeId: event.nodeId,
+                label: event.label,
+                ...event.usage,
+              });
+            },
+          }),
+          baml: workflowDeepResearchModule.createLiveDeepResearchBamlClient({ usageCollector }),
+        })
+        : templateId === "x-article-summary"
+          ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)
+          : workflowHarnessModule.createStaticHarnessRegistry();
+
+    const state = await workflowRunnerModule.runMacroWorkflow(plan, {
+      harnesses,
+      outputDir: runDescriptor.outputDir,
+      replanner: planner,
+      expandAfterNode: isSourceToProject
+        ? workflowSourceToProjectModule.createSourceToProjectDynamicExpander({
+          source: resolvedSource!,
+          originalPrompt: prompt,
+          prefetchedSourceContent,
+          project: sourceToProjectProject!,
+          mode: sourceToProjectMode!,
+          maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
+          thresholds: {
+            ...typedConfig.sourceToProject.thresholds,
+            ...sourceToProjectProject!.thresholds,
+          },
+        })
+        : isDeepResearch
+          ? workflowDeepResearchModule.createDeepResearchDynamicExpander()
+          : undefined,
+      logger: workflowLoggerModule.createInMemoryMacroWorkflowLogger(),
+      onStateChange: (nextState, event) => {
+        const stateWithRun = {
+          ...nextState,
+          runId: runDescriptor.runId,
+          runName: runDescriptor.runName,
+        };
+        const eventType = event.type ?? event.kind;
+        if (eventType === MacroWorkflowEventKind.NODE_STARTED && event.nodeId) {
+          const startedNode = findWorkflowNode(stateWithRun.currentPlan, stateWithRun.plan, event.nodeId);
+          process.stderr.write(formatWorkflowNodeStartedMessage({
+            nodeId: event.nodeId,
+            title: startedNode?.title,
+            harness: startedNode?.harness,
+            kind: startedNode?.kind,
+          }));
+        }
+        if (eventType === MacroWorkflowEventKind.NODE_WARNING && event.nodeId) {
+          const warningNode = findWorkflowNode(stateWithRun.currentPlan, stateWithRun.plan, event.nodeId);
+          process.stderr.write(formatWorkflowNodeWarningMessage({
+            nodeId: event.nodeId,
+            title: warningNode?.title,
+            warning: event.reason,
+          }));
+        }
+        if (eventType === MacroWorkflowEventKind.NODE_COMPLETED && event.nodeId) {
+          const completedResult = stateWithRun.nodeResults.find((result) => result.nodeId === event.nodeId);
+          const completedNode = findWorkflowNode(stateWithRun.currentPlan, stateWithRun.plan, event.nodeId);
+          process.stderr.write(formatWorkflowNodeCompletedMessage({
+            nodeId: event.nodeId,
+            title: completedNode?.title,
+            status: completedResult?.status ?? event.status,
+            output: completedResult?.output,
+            artifacts: completedResult?.artifacts,
+          }));
+        }
+        if (eventType === MacroWorkflowEventKind.NODE_FAILED && event.nodeId) {
+          const failedResult = stateWithRun.nodeResults.find((result) => result.nodeId === event.nodeId);
+          const failedNode = findWorkflowNode(stateWithRun.currentPlan, stateWithRun.plan, event.nodeId);
+          process.stderr.write(formatWorkflowNodeFailureMessage({
+            nodeId: event.nodeId,
+            title: failedNode?.title,
+            status: failedResult?.status ?? event.status,
+            error: failedResult?.error,
+            output: failedResult?.output,
+          }));
+        }
+        if (eventType === MacroWorkflowEventKind.RUN_COMPLETED) {
+          process.stderr.write(formatWorkflowRunCompletedMessage({
+            status: event.status ?? stateWithRun.status,
+            outputDir: runDescriptor.outputDir,
+          }));
+        }
+        stateSnapshotWrite = stateSnapshotWrite.then(async () => {
+          await workflowArtifactsModule.writeMacroWorkflowStateArtifact(runDescriptor.outputDir, stateWithRun);
         });
-      }
-    },
-    onReplayEvent: (event) => {
-      replayEvents.push(event);
-      replayEventWrite = replayEventWrite.then(async () => {
-        await workflowArtifactsModule.appendWorkflowReplayEvent(runDescriptor.outputDir, event);
-      });
-    },
-  });
-  await stateSnapshotWrite;
-  await replayEventWrite;
-  state.runId = runDescriptor.runId;
-  state.runName = runDescriptor.runName;
-  state.usage = usageCollector.summarize();
-  await workflowArtifactsModule.writeMacroWorkflowArtifacts({ outputDir: runDescriptor.outputDir, state, replayEvents });
-  process.stderr.write(workflowUsageModule.renderWorkflowUsageSummary(state.usage));
-  if (dashboardServer) {
-    await dashboardServer.stop();
+        if (dashboardServer) {
+          dashboardServer.publishState(stateWithRun, event, replayEvents);
+          return;
+        }
+        if (dashboardPublisher) {
+          void dashboardPublisher.publishState(stateWithRun, event, replayEvents).catch((error) => {
+            process.stderr.write(`[weavekit] Dashboard update failed: ${error instanceof Error ? error.message : String(error)}\n`);
+          });
+        }
+      },
+      onReplayEvent: (event) => {
+        replayEvents.push(event);
+        replayEventWrite = replayEventWrite.then(async () => {
+          await workflowArtifactsModule.appendWorkflowReplayEvent(runDescriptor.outputDir, event);
+        });
+      },
+    });
+    await stateSnapshotWrite;
+    await replayEventWrite;
+    state.runId = runDescriptor.runId;
+    state.runName = runDescriptor.runName;
+    state.usage = usageCollector.summarize();
+    await workflowArtifactsModule.writeMacroWorkflowArtifacts({ outputDir: runDescriptor.outputDir, state, replayEvents });
+    process.stderr.write(workflowUsageModule.renderWorkflowUsageSummary(state.usage));
+    return [formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir }), dashboardServer ? `Dashboard: ${dashboardServer.url}` : args.dashboardUrl ? `Dashboard: ${args.dashboardUrl}` : ""].filter(Boolean).join("\n");
+  } finally {
+    await deepResearchExaMcp?.close();
+    if (dashboardServer) {
+      await dashboardServer.stop();
+    }
   }
-  return [formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir }), dashboardServer ? `Dashboard: ${dashboardServer.url}` : args.dashboardUrl ? `Dashboard: ${args.dashboardUrl}` : ""].filter(Boolean).join("\n");
 }
 
 function findPrefetchedXPostContent(fetchedXPosts: XPostFetchResult[], source: string | undefined): string | undefined {

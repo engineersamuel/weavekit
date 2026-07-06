@@ -1,11 +1,22 @@
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowNodeFailureMessage, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowNodeCompletedMessage, formatWorkflowNodeFailureMessage, formatWorkflowNodeStartedMessage, formatWorkflowNodeWarningMessage, formatWorkflowRunCompletedMessage, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
+import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js";
+import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
 
 const entityValidation = vi.hoisted(() => ({
   assertValidEntityCatalog: vi.fn(),
+}));
+
+const deepResearchHarnesses = vi.hoisted(() => ({
+  createDefaultDeepResearchExaMcpConnection: vi.fn(),
+  createDeepResearchHarnessRegistry: vi.fn(),
+}));
+
+const sourceToProjectHarnesses = vi.hoisted(() => ({
+  createCopilotSdkHarnessClient: vi.fn(),
 }));
 
 const workflowPlanner = vi.hoisted(() => ({
@@ -32,12 +43,39 @@ vi.mock("../../src/macro-workflow/bamlAdapters.js", () => ({
   },
 }));
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.restoreAllMocks();
+vi.mock("../../src/macro-workflow/deepResearch/harnesses.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/macro-workflow/deepResearch/harnesses.js")>("../../src/macro-workflow/deepResearch/harnesses.js");
+  return {
+    ...actual,
+    createDefaultDeepResearchExaMcpConnection: deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection,
+    createDeepResearchHarnessRegistry: deepResearchHarnesses.createDeepResearchHarnessRegistry,
+  };
+});
+
+vi.mock("../../src/macro-workflow/sourceToProject/harnesses.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/macro-workflow/sourceToProject/harnesses.js")>("../../src/macro-workflow/sourceToProject/harnesses.js");
+  return {
+    ...actual,
+    createCopilotSdkHarnessClient: sourceToProjectHarnesses.createCopilotSdkHarnessClient,
+  };
+});
+
+beforeEach(() => {
   entityValidation.assertValidEntityCatalog.mockReset();
   entityValidation.assertValidEntityCatalog.mockImplementation(() => {});
   workflowPlanner.planWorkflow.mockClear();
+  deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockReset();
+  deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReset();
+  sourceToProjectHarnesses.createCopilotSdkHarnessClient.mockReset();
+  sourceToProjectHarnesses.createCopilotSdkHarnessClient.mockImplementation(() => ({
+    model: "fake-copilot",
+    run: vi.fn(async () => "fake copilot output"),
+  }));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("macro workflow CLI", () => {
@@ -67,6 +105,43 @@ describe("macro workflow CLI", () => {
       maxToolCalls: 40,
       elapsedMs: 1234,
     })).toBe("[weavekit][copilot-sdk] session-event mode=research model=gpt-5.4 event=tool.execution_start tool=read_file toolCalls=7 maxToolCalls=40 elapsedMs=1234\n");
+    expect(formatWorkflowCopilotLog({
+      phase: "session-error",
+      mode: "plan",
+      model: "claude-opus-4.8",
+      message: "SDK crashed",
+      elapsedMs: 99,
+    })).toContain("[weavekit][error][copilot-sdk] session-error");
+    expect(formatWorkflowCopilotLog({
+      phase: "skills-warning",
+      mode: "plan",
+      model: "claude-opus-4.8",
+      skillName: "visual-plan",
+      message: "auth pending",
+    })).toContain("[weavekit][warn][copilot-sdk] skills-warning mode=plan model=claude-opus-4.8 skill=visual-plan");
+  });
+
+  it("formats workflow node lifecycle diagnostics for terminal stderr", () => {
+    expect(formatWorkflowNodeStartedMessage({
+      nodeId: "deep-research-assess-1",
+      title: "Assess research iteration 1",
+      harness: "research",
+      kind: "research",
+    })).toBe("[weavekit] Node started: Assess research iteration 1 (deep-research-assess-1) harness=research kind=research\n");
+    expect(formatWorkflowNodeCompletedMessage({
+      nodeId: "deep-research-report",
+      title: "Compile deep research report",
+      status: "passed",
+      output: "# Report\n\nDone",
+      artifacts: [{ kind: "markdown", path: "DeepResearchReport.md", description: "Deep research Markdown report." }],
+    })).toContain("[weavekit] Node passed: Compile deep research report (deep-research-report)");
+    expect(formatWorkflowNodeWarningMessage({
+      nodeId: "plan-opportunity-o1",
+      title: "Plan O1",
+      warning: "Harness copilot-sdk prepareExecution failed for plan-opportunity-o1: preview resolver failed",
+    })).toContain("[weavekit][warn] Workflow node warning: Plan O1 (plan-opportunity-o1)");
+    expect(formatWorkflowRunCompletedMessage({ status: "passed", outputDir: "runs/run-1" }))
+      .toBe("[weavekit] Workflow completed with status=passed output=runs/run-1\n");
   });
 
   it("formats workflow node failures for terminal stderr", () => {
@@ -126,6 +201,109 @@ describe("macro workflow CLI", () => {
       dryRun: false,
       template: "implementation-review",
     });
+  });
+
+  it("parses deep-research template controls", () => {
+    const parsed = parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "deep-research",
+      "--prompt",
+      "Research current agent workflow tools",
+      "--providers",
+      "exa,grok,copilot-last30days",
+      "--max-iterations",
+      "4",
+      "--questions-per-iteration",
+      "6",
+      "--max-results-per-question",
+      "7",
+      "--visualize",
+    ]);
+
+    expect(parsed).toEqual({
+      command: "run",
+      template: "deep-research",
+      prompt: "Research current agent workflow tools",
+      outputDir: "runs",
+      staticTemplate: true,
+      dryRun: false,
+      deepResearch: {
+        providers: ["exa", "grok", "copilot-last30days"],
+        maxIterations: 4,
+        questionsPerIteration: 6,
+        maxResultsPerQuestion: 7,
+        visualize: true,
+      },
+    });
+  });
+
+  it("rejects invalid deep-research numeric controls", () => {
+    expect(() => parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "deep-research",
+      "--prompt",
+      "Research",
+      "--max-iterations",
+      "0",
+    ])).toThrow("Invalid --max-iterations value. Expected a positive integer.");
+  });
+
+  it("rejects invalid deep-research providers with all accepted provider names", () => {
+    expect(() => parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "deep-research",
+      "--prompt",
+      "Research",
+      "--providers",
+      "invalid-provider",
+    ])).toThrow("Expected exa, grok, tavily, perplexity, or copilot-last30days.");
+  });
+
+  it("connects the default Exa MCP client for deep-research workflow runs", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-deep-research-"));
+    const outputRoot = join(rootDir, "runs");
+    const exaMcp = {
+      web_search_exa: vi.fn(),
+    };
+    const close = vi.fn(async () => {});
+    deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockResolvedValueOnce({ client: exaMcp, close });
+    deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReturnValueOnce(createStaticHarnessRegistry({
+      [WorkflowHarnessKind.RESEARCH]: async () => ({
+        status: "passed",
+        output: "Generated seed research questions.",
+      }),
+    }));
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        prompt: "Research current agent workflow tools",
+        outputDir: outputRoot,
+        configPath: join(rootDir, "missing-config.toml"),
+        staticTemplate: true,
+        dryRun: false,
+        template: "deep-research",
+      });
+
+      expect(deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection).toHaveBeenCalledTimes(1);
+      expect(deepResearchHarnesses.createDeepResearchHarnessRegistry).toHaveBeenCalledWith(expect.objectContaining({
+        config: expect.objectContaining({
+          providers: ["grok", "exa", "copilot-last30days"],
+        }),
+        exaMcp,
+        copilot: expect.any(Object),
+      }));
+      expect(sourceToProjectHarnesses.createCopilotSdkHarnessClient).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 
   it("parses source-to-project workflow selectors", () => {
