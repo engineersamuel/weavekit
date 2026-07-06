@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  EvidenceReference,  FinalRecommendationReview,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -58,6 +58,76 @@ export namespace partial_types {
       nextExperiment?: string | null
       finalReportMarkdown?: string | null
       failedPersonas: PersonaFailure[]
+    }
+    export interface DeepResearchCompiledReport {
+      markdown?: string | null
+    }
+    export interface DeepResearchConfig {
+      providers: string[]
+      maxIterations?: number | null
+      questionsPerIteration?: number | null
+      maxResultsPerQuestion?: number | null
+      providerRetryAttempts?: number | null
+      visualize?: boolean | null
+    }
+    export interface DeepResearchEvidence {
+      id?: string | null
+      provider?: string | null
+      questionId?: string | null
+      query?: string | null
+      url?: string | null
+      title?: string | null
+      excerpt?: string | null
+      content?: string | null
+      sourceQuality?: string | null
+      provenance?: string | null
+    }
+    export interface DeepResearchEvidenceMatrixEntry {
+      questionId?: string | null
+      evidenceId?: string | null
+      relevance?: string | null
+      quality?: string | null
+    }
+    export interface DeepResearchFinding {
+      title?: string | null
+      summary?: string | null
+      evidenceIds: string[]
+      confidence?: string | null
+    }
+    export interface DeepResearchPriorState {
+      iteration?: number | null
+      completedQuestionIds: string[]
+      evidence: DeepResearchEvidence[]
+      assessments: ResearchIterationAssessment[]
+    }
+    export interface DeepResearchQuestion {
+      id?: string | null
+      text?: string | null
+      rationale?: string | null
+      priority?: number | null
+      providerHints: string[]
+      searchQueries: string[]
+      completionCriteria: string[]
+      status?: string | null
+      dependencies: string[]
+    }
+    export interface DeepResearchReport {
+      objective?: string | null
+      methodology?: string | null
+      findings: DeepResearchFinding[]
+      evidenceMatrix: DeepResearchEvidenceMatrixEntry[]
+      contradictions: string[]
+      gaps: string[]
+      confidence?: string | null
+      sources: DeepResearchReportSource[]
+      markdown?: string | null
+    }
+    export interface DeepResearchReportSource {
+      id?: string | null
+      provider?: string | null
+      url?: string | null
+      title?: string | null
+      quality?: string | null
     }
     export interface EvidenceReference {
       id?: string | null
@@ -187,6 +257,25 @@ export namespace partial_types {
     export interface RawPersonaResult {
       personaId?: string | null
       text?: string | null
+    }
+    export interface ResearchIterationAssessment {
+      iteration?: number | null
+      questionCoverage: ResearchQuestionCoverage[]
+      contradictions: string[]
+      newFollowUpQuestions: DeepResearchQuestion[]
+      answerSufficient?: boolean | null
+      stopReason?: string | null
+    }
+    export interface ResearchQuestionCoverage {
+      questionId?: string | null
+      coverageScore?: number | null
+      evidenceQuality?: string | null
+      contradictions: string[]
+      gaps: string[]
+    }
+    export interface ResearchQuestionSet {
+      iteration?: number | null
+      questions: DeepResearchQuestion[]
     }
     export interface RoundAssessment {
       roundNumber?: number | null

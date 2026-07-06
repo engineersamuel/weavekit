@@ -33,6 +33,24 @@ export default class TypeBuilder {
     
     CouncilReport: ClassViewer<'CouncilReport', "recommendation" | "rationale" | "strongestObjections" | "unresolvedQuestions" | "confidence" | "convergence" | "nextExperiment" | "finalReportMarkdown" | "failedPersonas">;
     
+    DeepResearchCompiledReport: ClassViewer<'DeepResearchCompiledReport', "markdown">;
+    
+    DeepResearchConfig: ClassViewer<'DeepResearchConfig', "providers" | "maxIterations" | "questionsPerIteration" | "maxResultsPerQuestion" | "providerRetryAttempts" | "visualize">;
+    
+    DeepResearchEvidence: ClassViewer<'DeepResearchEvidence', "id" | "provider" | "questionId" | "query" | "url" | "title" | "excerpt" | "content" | "sourceQuality" | "provenance">;
+    
+    DeepResearchEvidenceMatrixEntry: ClassViewer<'DeepResearchEvidenceMatrixEntry', "questionId" | "evidenceId" | "relevance" | "quality">;
+    
+    DeepResearchFinding: ClassViewer<'DeepResearchFinding', "title" | "summary" | "evidenceIds" | "confidence">;
+    
+    DeepResearchPriorState: ClassViewer<'DeepResearchPriorState', "iteration" | "completedQuestionIds" | "evidence" | "assessments">;
+    
+    DeepResearchQuestion: ClassViewer<'DeepResearchQuestion', "id" | "text" | "rationale" | "priority" | "providerHints" | "searchQueries" | "completionCriteria" | "status" | "dependencies">;
+    
+    DeepResearchReport: ClassViewer<'DeepResearchReport', "objective" | "methodology" | "findings" | "evidenceMatrix" | "contradictions" | "gaps" | "confidence" | "sources" | "markdown">;
+    
+    DeepResearchReportSource: ClassViewer<'DeepResearchReportSource', "id" | "provider" | "url" | "title" | "quality">;
+    
     EvidenceReference: ClassViewer<'EvidenceReference', "id" | "source" | "quote">;
     
     FinalRecommendationReview: ClassViewer<'FinalRecommendationReview', "status" | "actionable" | "improvesProject" | "unnecessaryComplexity" | "benefitOutweighsCost" | "complexityAssessment" | "rationale" | "rejectionReason" | "telegramSummary">;
@@ -65,6 +83,12 @@ export default class TypeBuilder {
     
     RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
     
+    ResearchIterationAssessment: ClassViewer<'ResearchIterationAssessment', "iteration" | "questionCoverage" | "contradictions" | "newFollowUpQuestions" | "answerSufficient" | "stopReason">;
+    
+    ResearchQuestionCoverage: ClassViewer<'ResearchQuestionCoverage', "questionId" | "coverageScore" | "evidenceQuality" | "contradictions" | "gaps">;
+    
+    ResearchQuestionSet: ClassViewer<'ResearchQuestionSet', "iteration" | "questions">;
+    
     RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "needsHumanInput" | "clarifyingQuestions" | "nextRoundBrief">;
     
     RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
@@ -82,7 +106,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ClarifyingQuestion","CorroborationReport","CouncilReport","EvidenceReference","FinalRecommendationReview","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","RoundAssessment","RoutingDecision","SourceAnalysis","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "ClarifyingQuestion","CorroborationReport","CouncilReport","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             
@@ -100,6 +124,42 @@ export default class TypeBuilder {
         
         this.CouncilReport = this.tb.classViewer("CouncilReport", [
           "recommendation","rationale","strongestObjections","unresolvedQuestions","confidence","convergence","nextExperiment","finalReportMarkdown","failedPersonas",
+        ]);
+        
+        this.DeepResearchCompiledReport = this.tb.classViewer("DeepResearchCompiledReport", [
+          "markdown",
+        ]);
+        
+        this.DeepResearchConfig = this.tb.classViewer("DeepResearchConfig", [
+          "providers","maxIterations","questionsPerIteration","maxResultsPerQuestion","providerRetryAttempts","visualize",
+        ]);
+        
+        this.DeepResearchEvidence = this.tb.classViewer("DeepResearchEvidence", [
+          "id","provider","questionId","query","url","title","excerpt","content","sourceQuality","provenance",
+        ]);
+        
+        this.DeepResearchEvidenceMatrixEntry = this.tb.classViewer("DeepResearchEvidenceMatrixEntry", [
+          "questionId","evidenceId","relevance","quality",
+        ]);
+        
+        this.DeepResearchFinding = this.tb.classViewer("DeepResearchFinding", [
+          "title","summary","evidenceIds","confidence",
+        ]);
+        
+        this.DeepResearchPriorState = this.tb.classViewer("DeepResearchPriorState", [
+          "iteration","completedQuestionIds","evidence","assessments",
+        ]);
+        
+        this.DeepResearchQuestion = this.tb.classViewer("DeepResearchQuestion", [
+          "id","text","rationale","priority","providerHints","searchQueries","completionCriteria","status","dependencies",
+        ]);
+        
+        this.DeepResearchReport = this.tb.classViewer("DeepResearchReport", [
+          "objective","methodology","findings","evidenceMatrix","contradictions","gaps","confidence","sources","markdown",
+        ]);
+        
+        this.DeepResearchReportSource = this.tb.classViewer("DeepResearchReportSource", [
+          "id","provider","url","title","quality",
         ]);
         
         this.EvidenceReference = this.tb.classViewer("EvidenceReference", [
@@ -164,6 +224,18 @@ export default class TypeBuilder {
         
         this.RawPersonaResult = this.tb.classViewer("RawPersonaResult", [
           "personaId","text",
+        ]);
+        
+        this.ResearchIterationAssessment = this.tb.classViewer("ResearchIterationAssessment", [
+          "iteration","questionCoverage","contradictions","newFollowUpQuestions","answerSufficient","stopReason",
+        ]);
+        
+        this.ResearchQuestionCoverage = this.tb.classViewer("ResearchQuestionCoverage", [
+          "questionId","coverageScore","evidenceQuality","contradictions","gaps",
+        ]);
+        
+        this.ResearchQuestionSet = this.tb.classViewer("ResearchQuestionSet", [
+          "iteration","questions",
         ]);
         
         this.RoundAssessment = this.tb.classViewer("RoundAssessment", [

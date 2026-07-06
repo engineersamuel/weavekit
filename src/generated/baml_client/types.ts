@@ -76,6 +76,94 @@ export interface CouncilReport {
   
 }
 
+export interface DeepResearchCompiledReport {
+  markdown: string
+  
+}
+
+export interface DeepResearchConfig {
+  providers: string[]
+  maxIterations: number
+  questionsPerIteration: number
+  maxResultsPerQuestion: number
+  providerRetryAttempts: number
+  visualize: boolean
+  
+}
+
+export interface DeepResearchEvidence {
+  id: string
+  provider: string
+  questionId: string
+  query: string
+  url?: string | null
+  title?: string | null
+  excerpt?: string | null
+  content?: string | null
+  sourceQuality: string
+  provenance: string
+  
+}
+
+export interface DeepResearchEvidenceMatrixEntry {
+  questionId: string
+  evidenceId: string
+  relevance: string
+  quality: string
+  
+}
+
+export interface DeepResearchFinding {
+  title: string
+  summary: string
+  evidenceIds: string[]
+  confidence: string
+  
+}
+
+export interface DeepResearchPriorState {
+  iteration: number
+  completedQuestionIds: string[]
+  evidence: DeepResearchEvidence[]
+  assessments: ResearchIterationAssessment[]
+  
+}
+
+export interface DeepResearchQuestion {
+  id: string
+  text: string
+  rationale: string
+  priority: number
+  providerHints: string[]
+  searchQueries: string[]
+  completionCriteria: string[]
+  status: string
+  dependencies: string[]
+  
+}
+
+export interface DeepResearchReport {
+  objective: string
+  methodology: string
+  findings: DeepResearchFinding[]
+  evidenceMatrix: DeepResearchEvidenceMatrixEntry[]
+  contradictions: string[]
+  gaps: string[]
+  confidence: string
+  sources: DeepResearchReportSource[]
+  markdown: string
+  
+}
+
+export interface DeepResearchReportSource {
+  id: string
+  provider: string
+  url: string
+  title: string
+  quality: string
+  
+}
+
 export interface EvidenceReference {
   id: string
   source: string
@@ -234,6 +322,31 @@ export interface ProjectBrief {
 export interface RawPersonaResult {
   personaId: string
   text: string
+  
+}
+
+export interface ResearchIterationAssessment {
+  iteration: number
+  questionCoverage: ResearchQuestionCoverage[]
+  contradictions: string[]
+  newFollowUpQuestions: DeepResearchQuestion[]
+  answerSufficient: boolean
+  stopReason: string
+  
+}
+
+export interface ResearchQuestionCoverage {
+  questionId: string
+  coverageScore: number
+  evidenceQuality: string
+  contradictions: string[]
+  gaps: string[]
+  
+}
+
+export interface ResearchQuestionSet {
+  iteration: number
+  questions: DeepResearchQuestion[]
   
 }
 

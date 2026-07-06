@@ -8,3 +8,4 @@ export * from "./logger.js";
 export * from "./artifacts.js";
 export * from "./bamlAdapters.js";
 export * from "./replay.js";
+export * from "./deepResearch/harnesses.js";

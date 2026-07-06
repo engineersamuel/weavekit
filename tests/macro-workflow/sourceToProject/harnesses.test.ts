@@ -285,6 +285,89 @@ describe("source-to-project harness registry", () => {
     ]);
   });
 
+  it("emits Copilot SDK lifecycle errors thrown before a session exists", async () => {
+    const logs: Array<{ phase: string; message?: string }> = [];
+    const copilot = createCopilotSdkHarnessClient({
+      model: "gpt-test",
+      clientFactory: () => {
+        throw new Error("client factory failed");
+      },
+      onLog(event) {
+        logs.push({ phase: event.phase, message: event.message });
+      },
+    });
+
+    await expect(copilot.run({
+      cwd: "/tmp/project",
+      prompt: "Research project",
+      mode: "research",
+    })).rejects.toThrow("client factory failed");
+
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        phase: "session-error",
+        message: expect.stringContaining("client factory failed"),
+      }),
+    ]));
+  });
+
+  it("emits Copilot SDK skill reload warnings before sending a skill-scoped prompt", async () => {
+    const logs: Array<{ phase: string; message?: string; skillName?: string }> = [];
+    const session = {
+      rpc: {
+        skills: {
+          async ensureLoaded() {},
+          async reload() {
+            return { warnings: ["auth pending"], errors: [] };
+          },
+          async enable() {},
+          async list() {
+            return { skills: [{ name: "visual-plan", enabled: true }] };
+          },
+        },
+      },
+      async sendAndWait() {
+        return { data: { content: "skill response" } };
+      },
+      async disconnect() {},
+    };
+    const client = {
+      async start() {},
+      async createSession() {
+        return session;
+      },
+      async stop() {
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({
+      model: "gpt-test",
+      clientFactory: () => client,
+      onLog(event) {
+        logs.push({ phase: event.phase, message: event.message, skillName: event.skillName });
+      },
+    });
+
+    await expect(copilot.run({
+      cwd: "/tmp/project",
+      prompt: "Create a local plan.",
+      mode: "plan",
+      capabilityScope: {
+        kind: "skill",
+        skillName: "visual-plan",
+        skillDirectories: ["/skills"],
+      },
+    })).resolves.toBe("skill response");
+
+    expect(logs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        phase: "skills-warning",
+        skillName: "visual-plan",
+        message: "auth pending",
+      }),
+    ]));
+  });
+
   it("denies foreground visual-plan local serve commands so SDK runs do not hang", async () => {
     const decisions: unknown[] = [];
     const session = {

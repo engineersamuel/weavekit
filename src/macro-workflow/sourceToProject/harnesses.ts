@@ -163,6 +163,7 @@ export type CopilotHarnessLogEvent = {
     | "session-create"
     | "session-created"
     | "skills-load"
+    | "skills-warning"
     | "prompt-send"
     | "session-event"
     | "assistant-message"
@@ -541,7 +542,20 @@ export function createCopilotSdkHarnessClient(args: {
         promptLength: prompt.length,
         elapsedMs: elapsedSince(startedAt),
       }, verboseEvents);
-      const client = await clientFactory();
+      let client: CopilotRuntimeClient;
+      try {
+        client = await clientFactory();
+      } catch (error) {
+        logCopilotHarnessEvent(args.onLog, {
+          phase: "session-error",
+          mode: runArgs.mode,
+          model,
+          cwd: runArgs.cwd,
+          message: `Copilot SDK client creation failed: ${errorMessage(error)}`,
+          elapsedMs: elapsedSince(startedAt),
+        }, verboseEvents);
+        throw error;
+      }
       logCopilotHarnessEvent(args.onLog, {
         phase: "client-start",
         mode: runArgs.mode,
@@ -549,9 +563,9 @@ export function createCopilotSdkHarnessClient(args: {
         cwd: runArgs.cwd,
         elapsedMs: elapsedSince(startedAt),
       }, verboseEvents);
-      await client.start();
       let session: Awaited<ReturnType<CopilotRuntimeClient["createSession"]>> | undefined;
       try {
+        await client.start();
         const { approveAll } = await import("@github/copilot-sdk");
         const maxToolCalls = runArgs.maxToolCalls ?? defaultMaxToolCalls;
         let attemptedToolCallCount = 0;
@@ -639,6 +653,16 @@ export function createCopilotSdkHarnessClient(args: {
           throw new Error(`Copilot SDK returned an empty ${runArgs.mode} response.`);
         }
         return content;
+      } catch (error) {
+        logCopilotHarnessEvent(args.onLog, {
+          phase: "session-error",
+          mode: runArgs.mode,
+          model,
+          cwd: runArgs.cwd,
+          message: errorMessage(error),
+          elapsedMs: elapsedSince(startedAt),
+        }, verboseEvents);
+        throw error;
       } finally {
         if (session) {
           logCopilotHarnessEvent(args.onLog, {
@@ -648,7 +672,19 @@ export function createCopilotSdkHarnessClient(args: {
             cwd: runArgs.cwd,
             elapsedMs: elapsedSince(startedAt),
           }, verboseEvents);
-          await session.disconnect();
+          try {
+            await session.disconnect();
+          } catch (error) {
+            logCopilotHarnessEvent(args.onLog, {
+              phase: "session-error",
+              mode: runArgs.mode,
+              model,
+              cwd: runArgs.cwd,
+              message: `Copilot SDK session disconnect failed: ${errorMessage(error)}`,
+              elapsedMs: elapsedSince(startedAt),
+            }, verboseEvents);
+            throw error;
+          }
         }
         logCopilotHarnessEvent(args.onLog, {
           phase: "client-stop",
@@ -659,6 +695,14 @@ export function createCopilotSdkHarnessClient(args: {
         }, verboseEvents);
         const stopErrors = await client.stop();
         if (stopErrors && stopErrors.length > 0) {
+          logCopilotHarnessEvent(args.onLog, {
+            phase: "session-error",
+            mode: runArgs.mode,
+            model,
+            cwd: runArgs.cwd,
+            message: `Copilot SDK client stop failed: ${errorMessage(stopErrors[0])}`,
+            elapsedMs: elapsedSince(startedAt),
+          }, verboseEvents);
           throw stopErrors[0];
         }
       }
@@ -741,6 +785,10 @@ function elapsedSince(startedAt: number): number {
   return Date.now() - startedAt;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function denyForegroundVisualPlanServe(
   input: { toolName?: string; toolArgs?: unknown },
   capabilityScope?: CopilotCapabilityScope,
@@ -821,6 +869,17 @@ async function loadCopilotCapabilityScope(
     diagnostics.timeoutMs,
     skills.reload(),
   );
+  for (const warning of loadDiagnostics.warnings ?? []) {
+    logCopilotHarnessEvent(diagnostics.onLog, {
+      phase: "skills-warning",
+      mode: diagnostics.mode,
+      model: diagnostics.model,
+      cwd: diagnostics.cwd,
+      skillName: capabilityScope.skillName,
+      message: warning,
+      elapsedMs: elapsedSince(diagnostics.startedAt),
+    }, diagnostics.verboseEvents);
+  }
   if (loadDiagnostics.errors?.length) {
     throw new Error(`Copilot SDK skill reload failed for ${capabilityScope.skillName}: ${loadDiagnostics.errors.join("; ")}`);
   }

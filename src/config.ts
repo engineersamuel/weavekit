@@ -35,6 +35,24 @@ export type SourceToProjectDefaults = {
   prLauncher: SourceToProjectPrLauncherConfig;
 };
 
+export const DeepResearchProvider = {
+  EXA: "exa",
+  GROK: "grok",
+  TAVILY: "tavily",
+  PERPLEXITY: "perplexity",
+  COPILOT_LAST30DAYS: "copilot-last30days",
+} as const;
+export type DeepResearchProvider = (typeof DeepResearchProvider)[keyof typeof DeepResearchProvider];
+
+export type DeepResearchDefaults = {
+  providers: DeepResearchProvider[];
+  maxIterations: number;
+  questionsPerIteration: number;
+  maxResultsPerQuestion: number;
+  providerRetryAttempts: number;
+  visualize: boolean;
+};
+
 export type CopilotDefaults = {
   verboseEvents: boolean;
   model?: string;
@@ -87,6 +105,7 @@ export type WeavekitConfig = {
   flue: FlueDefaults;
   tooling: ToolingDefaults;
   sourceToProject: SourceToProjectDefaults;
+  deepResearch: DeepResearchDefaults;
   plugins: PluginConfigs;
   projects: Record<string, ProjectCatalogEntry>;
 };
@@ -269,6 +288,7 @@ export function loadTypedWeavekitConfig(configPath = getDefaultWeavekitConfigPat
       flue: readFlueDefaults(undefined, env),
       tooling: readToolingDefaults(undefined, env),
       sourceToProject: readSourceToProjectDefaults(undefined, env),
+      deepResearch: readDeepResearchDefaults(undefined, env),
       plugins: readPluginConfigs(undefined, env),
       projects: {},
     };
@@ -279,9 +299,10 @@ export function loadTypedWeavekitConfig(configPath = getDefaultWeavekitConfigPat
   const flue = readFlueDefaults(parsed.flue, env);
   const tooling = readToolingDefaults(parsed.tooling, env);
   const sourceToProject = readSourceToProjectDefaults(parsed.source_to_project, env);
+  const deepResearch = readDeepResearchDefaults(parsed.deep_research, env);
   const plugins = readPluginConfigs(parsed.plugins, env);
   const projects = readProjectCatalog(parsed.projects);
-  return { env: loadedEnv, copilot, flue, tooling, sourceToProject, plugins, projects };
+  return { env: loadedEnv, copilot, flue, tooling, sourceToProject, deepResearch, plugins, projects };
 }
 
 export function resolveProjectCatalogEntry(config: WeavekitConfig, projectId: string): ProjectCatalogEntry {
@@ -304,6 +325,17 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
       agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
       split: "right",
     },
+  };
+}
+
+function defaultDeepResearchDefaults(): DeepResearchDefaults {
+  return {
+    providers: [DeepResearchProvider.GROK, DeepResearchProvider.EXA, DeepResearchProvider.COPILOT_LAST30DAYS],
+    maxIterations: 3,
+    questionsPerIteration: 5,
+    maxResultsPerQuestion: 5,
+    providerRetryAttempts: 1,
+    visualize: false,
   };
 }
 
@@ -361,6 +393,12 @@ function readEnvPositiveInteger(env: NodeJS.ProcessEnv, name: string): number | 
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function readEnvStringArray(env: NodeJS.ProcessEnv, name: string): string[] | undefined {
+  const value = env[name]?.trim();
+  if (!value) return undefined;
+  return value.split(",").map((entry) => entry.trim()).filter(Boolean);
+}
+
 function readNotificationPolicy(value: unknown): NotificationPolicy {
   return value === "telegram" ? "telegram" : "cli";
 }
@@ -387,6 +425,44 @@ function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): So
       maxRisk: readNumber(record.max_risk, defaults.thresholds.maxRisk),
     },
   };
+}
+
+function readDeepResearchDefaults(value: unknown, env: NodeJS.ProcessEnv): DeepResearchDefaults {
+  const defaults = defaultDeepResearchDefaults();
+  const record = asRecord(value);
+  const configuredProviders = readDeepResearchProviders(
+    readStringArray(record.providers).length > 0
+      ? readStringArray(record.providers)
+      : readEnvStringArray(env, "WEAVEKIT_DEEP_RESEARCH_PROVIDERS"),
+    defaults.providers,
+  );
+  return {
+    providers: configuredProviders,
+    maxIterations: readOptionalInteger(record.max_iterations) ?? readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_MAX_ITERATIONS") ?? defaults.maxIterations,
+    questionsPerIteration: readOptionalInteger(record.questions_per_iteration) ?? readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_QUESTIONS_PER_ITERATION") ?? defaults.questionsPerIteration,
+    maxResultsPerQuestion: readOptionalInteger(record.max_results_per_question) ?? readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_MAX_RESULTS_PER_QUESTION") ?? defaults.maxResultsPerQuestion,
+    providerRetryAttempts: readOptionalInteger(record.provider_retry_attempts) ?? readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_PROVIDER_RETRY_ATTEMPTS") ?? defaults.providerRetryAttempts,
+    visualize: readBoolean(record.visualize, readEnvBoolean(env, "WEAVEKIT_DEEP_RESEARCH_VISUALIZE") ?? defaults.visualize),
+  };
+}
+
+function readDeepResearchProviders(value: string[] | undefined, fallback: DeepResearchProvider[]): DeepResearchProvider[] {
+  const providers = (value ?? []).flatMap((provider) => normalizeDeepResearchProvider(provider) ?? []);
+  return providers.length > 0 ? uniqueDeepResearchProviders(providers) : fallback;
+}
+
+function normalizeDeepResearchProvider(provider: string): DeepResearchProvider | undefined {
+  const normalized = provider.trim().toLowerCase();
+  if (normalized === DeepResearchProvider.EXA) return DeepResearchProvider.EXA;
+  if (normalized === DeepResearchProvider.GROK) return DeepResearchProvider.GROK;
+  if (normalized === DeepResearchProvider.TAVILY) return DeepResearchProvider.TAVILY;
+  if (normalized === DeepResearchProvider.PERPLEXITY) return DeepResearchProvider.PERPLEXITY;
+  if (normalized === DeepResearchProvider.COPILOT_LAST30DAYS) return DeepResearchProvider.COPILOT_LAST30DAYS;
+  return undefined;
+}
+
+function uniqueDeepResearchProviders(providers: DeepResearchProvider[]): DeepResearchProvider[] {
+  return [...new Set(providers)];
 }
 
 function readSourceToProjectPrLauncherConfig(

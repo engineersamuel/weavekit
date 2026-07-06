@@ -22,7 +22,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video } from "@bou
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
 import type * as types from "./types.js"
-import type {ClarifyingQuestion, CorroborationReport, CouncilReport, EvidenceReference, FinalRecommendationReview, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, ProjectBrief, RawPersonaResult, RoundAssessment, RoutingDecision, SourceAnalysis, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
+import type {ClarifyingQuestion, CorroborationReport, CouncilReport, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RoutingDecision, SourceAnalysis, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import type * as events from "./events.js"
 
@@ -71,6 +71,39 @@ export class HttpRequest {
     }
   }
   
+  AssessResearchIteration(
+      questionSet: types.ResearchQuestionSet,evidence: types.DeepResearchEvidence[],priorState: types.DeepResearchPriorState,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "AssessResearchIteration",
+        {
+          "questionSet": questionSet,"evidence": evidence,"priorState": priorState
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        false,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   ChoosePersonasForTask(
       request: types.PersonaSelectionRequest,
       __baml_options__?: BamlCallOptions<never>
@@ -92,6 +125,39 @@ export class HttpRequest {
         "ChoosePersonasForTask",
         {
           "request": request
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        false,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  CompileDeepResearchReport(
+      prompt: string,finalState: types.DeepResearchPriorState,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "CompileDeepResearchReport",
+        {
+          "prompt": prompt,"finalState": finalState
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -290,6 +356,39 @@ export class HttpRequest {
         "GenerateReplanPatch",
         {
           "reason": reason,"maxRemainingReplans": maxRemainingReplans,"completedNodeIds": completedNodeIds,"currentPlan": currentPlan
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        false,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  GenerateResearchQuestions(
+      prompt: string,priorState: types.DeepResearchPriorState,config: types.DeepResearchConfig,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "GenerateResearchQuestions",
+        {
+          "prompt": prompt,"priorState": priorState,"config": config
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -506,6 +605,39 @@ export class HttpStreamRequest {
     }
   }
   
+  AssessResearchIteration(
+      questionSet: types.ResearchQuestionSet,evidence: types.DeepResearchEvidence[],priorState: types.DeepResearchPriorState,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "AssessResearchIteration",
+        {
+          "questionSet": questionSet,"evidence": evidence,"priorState": priorState
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        true,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   ChoosePersonasForTask(
       request: types.PersonaSelectionRequest,
       __baml_options__?: BamlCallOptions<never>
@@ -527,6 +659,39 @@ export class HttpStreamRequest {
         "ChoosePersonasForTask",
         {
           "request": request
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        true,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  CompileDeepResearchReport(
+      prompt: string,finalState: types.DeepResearchPriorState,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "CompileDeepResearchReport",
+        {
+          "prompt": prompt,"finalState": finalState
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -725,6 +890,39 @@ export class HttpStreamRequest {
         "GenerateReplanPatch",
         {
           "reason": reason,"maxRemainingReplans": maxRemainingReplans,"completedNodeIds": completedNodeIds,"currentPlan": currentPlan
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        true,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  GenerateResearchQuestions(
+      prompt: string,priorState: types.DeepResearchPriorState,config: types.DeepResearchConfig,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "GenerateResearchQuestions",
+        {
+          "prompt": prompt,"priorState": priorState,"config": config
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),

@@ -1,6 +1,7 @@
 export const MacroWorkflowEventKind = {
   RUN_STARTED: "macro-workflow.run.started",
   NODE_STARTED: "macro-workflow.node.started",
+  NODE_WARNING: "macro-workflow.node.warning",
   NODE_COMPLETED: "macro-workflow.node.completed",
   NODE_FAILED: "macro-workflow.node.failed",
   REPLAN_APPLIED: "macro-workflow.replan.applied",
