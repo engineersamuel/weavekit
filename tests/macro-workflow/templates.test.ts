@@ -8,6 +8,7 @@ describe("macro workflow templates", () => {
     expect(templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "implementation-review" }),
+        expect.objectContaining({ id: "verification-optimizer" }),
         expect.objectContaining({ id: "x-article-summary" }),
       ]),
     );

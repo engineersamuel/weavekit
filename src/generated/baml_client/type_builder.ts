@@ -95,6 +95,16 @@ export default class TypeBuilder {
     
     SourceAnalysis: ClassViewer<'SourceAnalysis', "sourceId" | "title" | "accessLevel" | "summary" | "claims" | "transferableLessons" | "evidence">;
     
+    VerificationAudit: ClassViewer<'VerificationAudit', "projectId" | "summary" | "verificationCommands" | "verificationSurfaces" | "gaps" | "evidence">;
+    
+    VerificationOpportunity: ClassViewer<'VerificationOpportunity', "id" | "title" | "currentVerificationGap" | "targetChange" | "allowedChangeKind" | "score" | "evidence" | "proofCommands" | "speculative">;
+    
+    VerificationOpportunityReview: ClassViewer<'VerificationOpportunityReview', "opportunities" | "nonApplicableGaps" | "rankingRationale">;
+    
+    VerificationOpportunityScore: ClassViewer<'VerificationOpportunityScore', "confidence" | "impact" | "risk" | "implementationCost">;
+    
+    VerificationRecommendationReview: ClassViewer<'VerificationRecommendationReview', "status" | "selectedOpportunity" | "rationale" | "rejectionReason" | "proofCommands">;
+    
     WorkflowNode: ClassViewer<'WorkflowNode', "id" | "kind" | "harness" | "title" | "description" | "model" | "modelRationale" | "prompt" | "dependsOn" | "gates" | "writeMode" | "replanPolicy">;
     
     WorkflowPlan: ClassViewer<'WorkflowPlan', "id" | "objective" | "templateId" | "maxReplans" | "nodes">;
@@ -106,7 +116,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ClarifyingQuestion","CorroborationReport","CouncilReport","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "ClarifyingQuestion","CorroborationReport","CouncilReport","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","VerificationAudit","VerificationOpportunity","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             
@@ -248,6 +258,26 @@ export default class TypeBuilder {
         
         this.SourceAnalysis = this.tb.classViewer("SourceAnalysis", [
           "sourceId","title","accessLevel","summary","claims","transferableLessons","evidence",
+        ]);
+        
+        this.VerificationAudit = this.tb.classViewer("VerificationAudit", [
+          "projectId","summary","verificationCommands","verificationSurfaces","gaps","evidence",
+        ]);
+        
+        this.VerificationOpportunity = this.tb.classViewer("VerificationOpportunity", [
+          "id","title","currentVerificationGap","targetChange","allowedChangeKind","score","evidence","proofCommands","speculative",
+        ]);
+        
+        this.VerificationOpportunityReview = this.tb.classViewer("VerificationOpportunityReview", [
+          "opportunities","nonApplicableGaps","rankingRationale",
+        ]);
+        
+        this.VerificationOpportunityScore = this.tb.classViewer("VerificationOpportunityScore", [
+          "confidence","impact","risk","implementationCost",
+        ]);
+        
+        this.VerificationRecommendationReview = this.tb.classViewer("VerificationRecommendationReview", [
+          "status","selectedOpportunity","rationale","rejectionReason","proofCommands",
         ]);
         
         this.WorkflowNode = this.tb.classViewer("WorkflowNode", [

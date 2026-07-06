@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -303,6 +303,43 @@ export namespace partial_types {
       claims: string[]
       transferableLessons: string[]
       evidence: EvidenceReference[]
+    }
+    export interface VerificationAudit {
+      projectId?: string | null
+      summary?: string | null
+      verificationCommands: string[]
+      verificationSurfaces: string[]
+      gaps: string[]
+      evidence: EvidenceReference[]
+    }
+    export interface VerificationOpportunity {
+      id?: string | null
+      title?: string | null
+      currentVerificationGap?: string | null
+      targetChange?: string | null
+      allowedChangeKind?: "test" | "lint" | "typecheck" | "format" | "script" | "ci" | "docs" | null
+      score?: VerificationOpportunityScore | null
+      evidence: EvidenceReference[]
+      proofCommands: string[]
+      speculative?: boolean | null
+    }
+    export interface VerificationOpportunityReview {
+      opportunities: VerificationOpportunity[]
+      nonApplicableGaps: string[]
+      rankingRationale?: string | null
+    }
+    export interface VerificationOpportunityScore {
+      confidence?: number | null
+      impact?: number | null
+      risk?: number | null
+      implementationCost?: number | null
+    }
+    export interface VerificationRecommendationReview {
+      status?: "accepted" | "rejected" | null
+      selectedOpportunity?: VerificationOpportunity | null
+      rationale?: string | null
+      rejectionReason?: string | null
+      proofCommands: string[]
     }
     export interface WorkflowNode {
       id?: string | null

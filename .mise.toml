@@ -25,6 +25,11 @@ description = "Run source-to-project advisory mode against weavekit using the pr
 env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
 run = ".mise/tasks/source-to-project"
 
+[tasks."verification-optimizer"]
+description = "Run verification-optimizer for a required project with advisory mode by default."
+env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
+run = ".mise/tasks/verification-optimizer"
+
 [tasks.dashboard]
 description = "Start the workflow dashboard for recorded runs."
 run = '''

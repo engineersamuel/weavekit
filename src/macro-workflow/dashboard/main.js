@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Background, ConnectionLineType, Controls, MiniMap, ReactFlow, Handle, Position } from "@xyflow/react";
 import { layoutWorkflowGraph } from "./layout.ts";
 import { createWorkflowViewportFitKey, shouldFitWorkflowViewport } from "./viewport.ts";
+import { resolveNodeExecutionDisplay, resolveNodeModelDisplay } from "./executionContext.ts";
 
 const DEFAULT_STATUS = "pending";
 const STATUS_COLORS = {
@@ -111,21 +112,7 @@ function resolveNodeStatus(node, state) {
 }
 
 function resolveNodeModel(node, state) {
-  const result = state?.nodeResults?.find((entry) => entry.nodeId === node.id);
-  const firstCallModel = result?.execution?.calls?.find((call) => call.model)?.model;
-  if (result?.execution?.model) {
-    return result.execution.model;
-  }
-  if (firstCallModel) {
-    return firstCallModel;
-  }
-  if (node?.model) {
-    return node.model;
-  }
-  if (node?.harness === "verifier" || node?.harness === "reporter" || node?.model === "deterministic") {
-    return "deterministic";
-  }
-  return "Not recorded";
+  return resolveNodeModelDisplay(node, state);
 }
 
 function buildGraph(state) {
@@ -786,11 +773,7 @@ function formatScoreValue(value) {
 
 function NodeExecutionContext({ node, result, state }) {
   const isPlanningNode = node?.id === PLANNING_NODE_ID;
-  const plannedPrompt = isPlanningNode
-    ? state?.objective ?? "No original prompt recorded."
-    : node?.prompt ?? "";
-  const execution = result?.execution ?? (node?.id ? state?.activeNodeExecutions?.[node.id] : undefined);
-  const calls = execution?.calls?.length ? execution.calls : inferExecutionCalls(node, execution);
+  const { plannedPrompt, execution, calls, hasActualExecution } = resolveNodeExecutionDisplay({ node, result, state });
 
   return (
     <section className="execution-context">
@@ -862,7 +845,11 @@ function NodeExecutionContext({ node, result, state }) {
           ))}
         </div>
       ) : (
-        <p className="execution-note">Actual execution calls were not recorded for this run.</p>
+        <p className="execution-note">
+          {hasActualExecution
+            ? "Actual execution calls were not recorded for this run."
+            : "Actual execution prompt has not been published for this harness yet."}
+        </p>
       )}
     </section>
   );
@@ -969,27 +956,6 @@ function PromptBlock({ title, prompt }) {
       <pre>{prompt || "No prompt recorded."}</pre>
     </details>
   );
-}
-
-function inferExecutionCalls(node, execution) {
-  if (execution?.executor || execution?.prompt || execution?.operation || execution?.mode) {
-    return [{
-      executor: execution.executor ?? node?.harness ?? "unknown",
-      operation: execution.operation,
-      mode: execution.mode,
-      prompt: execution.prompt,
-      cwd: execution.cwd,
-      model: execution.model,
-    }];
-  }
-  if (!node?.harness || node.id === PLANNING_NODE_ID) {
-    return [];
-  }
-  return [{
-    executor: node.harness,
-    mode: node.kind,
-    prompt: node.prompt,
-  }];
 }
 
 function buildPlanningPayload(state) {

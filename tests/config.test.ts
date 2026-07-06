@@ -336,6 +336,19 @@ directory = "/config/hve-core"
         providerRetryAttempts: 1,
         visualize: false,
       },
+      verificationOptimizer: {
+        mode: "autonomous-pr" as const,
+        externalResearch: false,
+        thresholds: {
+          minConfidence: 0.85,
+          minImpact: 0.6,
+          maxRisk: 0.35,
+          maxImplementationCost: 0.45,
+          minEvidenceReferences: 2,
+          requireNonSpeculative: true,
+          requireProofCommands: true,
+        },
+      },
       plugins: {
         "hve-core": {
           directory: "/plugins/hve-core",
@@ -373,6 +386,19 @@ directory = "/config/hve-core"
       maxResultsPerQuestion: 5,
       providerRetryAttempts: 1,
       visualize: false,
+    });
+    expect(config.verificationOptimizer).toEqual({
+      mode: "autonomous-pr",
+      externalResearch: false,
+      thresholds: {
+        minConfidence: 0.85,
+        minImpact: 0.6,
+        maxRisk: 0.35,
+        maxImplementationCost: 0.45,
+        minEvidenceReferences: 2,
+        requireNonSpeculative: true,
+        requireProofCommands: true,
+      },
     });
     expect(config.flue.model).toBe("anthropic/claude-haiku-4-5");
     expect(config.plugins["hve-core"]?.directory).toBe(join(homedir(), ".copilot/installed-plugins/_direct/hve-core"));

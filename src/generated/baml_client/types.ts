@@ -383,6 +383,53 @@ export interface SourceAnalysis {
   
 }
 
+export interface VerificationAudit {
+  projectId: string
+  summary: string
+  verificationCommands: string[]
+  verificationSurfaces: string[]
+  gaps: string[]
+  evidence: EvidenceReference[]
+  
+}
+
+export interface VerificationOpportunity {
+  id: string
+  title: string
+  currentVerificationGap: string
+  targetChange: string
+  allowedChangeKind: "test" | "lint" | "typecheck" | "format" | "script" | "ci" | "docs"
+  score: VerificationOpportunityScore
+  evidence: EvidenceReference[]
+  proofCommands: string[]
+  speculative: boolean
+  
+}
+
+export interface VerificationOpportunityReview {
+  opportunities: VerificationOpportunity[]
+  nonApplicableGaps: string[]
+  rankingRationale: string
+  
+}
+
+export interface VerificationOpportunityScore {
+  confidence: number
+  impact: number
+  risk: number
+  implementationCost: number
+  
+}
+
+export interface VerificationRecommendationReview {
+  status: "accepted" | "rejected"
+  selectedOpportunity?: VerificationOpportunity | null
+  rationale: string
+  rejectionReason?: string | null
+  proofCommands: string[]
+  
+}
+
 export interface WorkflowNode {
   id: string
   kind: string

@@ -55,6 +55,41 @@ async function runSourceToProjectTask(env: Record<string, string | undefined> = 
   return (await readFile(capturePath, "utf8")).trimEnd().split("\n");
 }
 
+async function runVerificationOptimizerTask(
+  args: string[],
+  env: Record<string, string | undefined> = {},
+): Promise<{ code: number; stderr: string; capturedArgs: string[] }> {
+  const repoRoot = process.cwd();
+  const tempDir = await mkdtemp(join(tmpdir(), "weavekit-mise-verification-"));
+  tempDirs.push(tempDir);
+  const binDir = join(tempDir, "bin");
+  await mkdir(binDir);
+  const capturePath = join(tempDir, "nub-args.txt");
+  await installCommandCapture(binDir, capturePath, "nub");
+  await installCommandCapture(binDir, capturePath, "nubx");
+
+  try {
+    const result = await execFileAsync(join(repoRoot, ".mise/tasks/verification-optimizer"), args, {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...env,
+        CAPTURE_NUB_ARGS: capturePath,
+        PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+      },
+    });
+    const capturedArgs = (await readFile(capturePath, "utf8")).trimEnd().split("\n");
+    return { code: 0, stderr: result.stderr, capturedArgs };
+  } catch (error) {
+    const err = error as { code?: number; stderr?: string };
+    return {
+      code: typeof err.code === "number" ? err.code : 1,
+      stderr: err.stderr ?? "",
+      capturedArgs: [],
+    };
+  }
+}
+
 describe("mise source-to-project task", () => {
   it("defines a doctor task for entity wiring validation", async () => {
     const miseConfig = await readFile(join(process.cwd(), ".mise.toml"), "utf8");
@@ -133,5 +168,43 @@ describe("mise source-to-project task", () => {
     expect(miseConfig).toContain("nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard");
     expect(miseConfig).toContain("--watch-dir runs");
     expect(miseConfig).not.toContain("--port 4321");
+  });
+
+  it("defines a verification-optimizer task", async () => {
+    const miseConfig = await readFile(join(process.cwd(), ".mise.toml"), "utf8");
+
+    expect(miseConfig).toContain('[tasks."verification-optimizer"]');
+    expect(miseConfig).toContain("Run verification-optimizer for a required project");
+    expect(miseConfig).toContain(".mise/tasks/verification-optimizer");
+  });
+
+  it("requires a project for the verification-optimizer task", async () => {
+    const result = await runVerificationOptimizerTask([]);
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("Usage: mise run verification-optimizer -- --project <id> [--mode advisory|autonomous-pr]");
+  });
+
+  it("runs verification-optimizer in advisory mode by default and suggests autonomous PR mode", async () => {
+    const result = await runVerificationOptimizerTask(["--project", "weavekit"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("Advisory mode selected. To let verification-optimizer implement one accepted improvement, rerun with --mode autonomous-pr.");
+    expect(result.capturedArgs.slice(0, 4)).toEqual(["nub", "src/cli.ts", "workflow", "run"]);
+    expect(result.capturedArgs).toContain("--template");
+    expect(result.capturedArgs[result.capturedArgs.indexOf("--template") + 1]).toBe("verification-optimizer");
+    expect(result.capturedArgs).toContain("--project");
+    expect(result.capturedArgs[result.capturedArgs.indexOf("--project") + 1]).toBe("weavekit");
+    expect(result.capturedArgs).toContain("--mode");
+    expect(result.capturedArgs[result.capturedArgs.indexOf("--mode") + 1]).toBe("advisory");
+  });
+
+  it("passes autonomous PR mode through for the verification-optimizer task without the advisory hint", async () => {
+    const result = await runVerificationOptimizerTask(["--project", "weavekit", "--mode", "autonomous-pr"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).not.toContain("Advisory mode selected");
+    expect(result.capturedArgs).toContain("--mode");
+    expect(result.capturedArgs[result.capturedArgs.indexOf("--mode") + 1]).toBe("autonomous-pr");
   });
 });

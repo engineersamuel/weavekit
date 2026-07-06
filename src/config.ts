@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
 
 export type SourceToProjectMode = "advisory" | "autonomous-pr";
+export type VerificationOptimizerMode = "advisory" | "autonomous-pr";
 export type NotificationPolicy = "cli" | "telegram";
 export type KnowledgeExportPolicy = "off" | "sanitized";
 
@@ -51,6 +52,22 @@ export type DeepResearchDefaults = {
   maxResultsPerQuestion: number;
   providerRetryAttempts: number;
   visualize: boolean;
+};
+
+export type VerificationOptimizerThresholds = {
+  minConfidence: number;
+  minImpact: number;
+  maxRisk: number;
+  maxImplementationCost: number;
+  minEvidenceReferences: number;
+  requireNonSpeculative: boolean;
+  requireProofCommands: boolean;
+};
+
+export type VerificationOptimizerDefaults = {
+  mode: VerificationOptimizerMode;
+  externalResearch: boolean;
+  thresholds: VerificationOptimizerThresholds;
 };
 
 export type CopilotDefaults = {
@@ -106,6 +123,7 @@ export type WeavekitConfig = {
   tooling: ToolingDefaults;
   sourceToProject: SourceToProjectDefaults;
   deepResearch: DeepResearchDefaults;
+  verificationOptimizer: VerificationOptimizerDefaults;
   plugins: PluginConfigs;
   projects: Record<string, ProjectCatalogEntry>;
 };
@@ -289,6 +307,7 @@ export function loadTypedWeavekitConfig(configPath = getDefaultWeavekitConfigPat
       tooling: readToolingDefaults(undefined, env),
       sourceToProject: readSourceToProjectDefaults(undefined, env),
       deepResearch: readDeepResearchDefaults(undefined, env),
+      verificationOptimizer: readVerificationOptimizerDefaults(undefined),
       plugins: readPluginConfigs(undefined, env),
       projects: {},
     };
@@ -300,9 +319,10 @@ export function loadTypedWeavekitConfig(configPath = getDefaultWeavekitConfigPat
   const tooling = readToolingDefaults(parsed.tooling, env);
   const sourceToProject = readSourceToProjectDefaults(parsed.source_to_project, env);
   const deepResearch = readDeepResearchDefaults(parsed.deep_research, env);
+  const verificationOptimizer = readVerificationOptimizerDefaults(parsed.verification_optimizer);
   const plugins = readPluginConfigs(parsed.plugins, env);
   const projects = readProjectCatalog(parsed.projects);
-  return { env: loadedEnv, copilot, flue, tooling, sourceToProject, deepResearch, plugins, projects };
+  return { env: loadedEnv, copilot, flue, tooling, sourceToProject, deepResearch, verificationOptimizer, plugins, projects };
 }
 
 export function resolveProjectCatalogEntry(config: WeavekitConfig, projectId: string): ProjectCatalogEntry {
@@ -336,6 +356,22 @@ function defaultDeepResearchDefaults(): DeepResearchDefaults {
     maxResultsPerQuestion: 5,
     providerRetryAttempts: 1,
     visualize: false,
+  };
+}
+
+function defaultVerificationOptimizerDefaults(): VerificationOptimizerDefaults {
+  return {
+    mode: "autonomous-pr",
+    externalResearch: false,
+    thresholds: {
+      minConfidence: 0.85,
+      minImpact: 0.6,
+      maxRisk: 0.35,
+      maxImplementationCost: 0.45,
+      minEvidenceReferences: 2,
+      requireNonSpeculative: true,
+      requireProofCommands: true,
+    },
   };
 }
 
@@ -463,6 +499,25 @@ function normalizeDeepResearchProvider(provider: string): DeepResearchProvider |
 
 function uniqueDeepResearchProviders(providers: DeepResearchProvider[]): DeepResearchProvider[] {
   return [...new Set(providers)];
+}
+
+function readVerificationOptimizerDefaults(value: unknown): VerificationOptimizerDefaults {
+  const defaults = defaultVerificationOptimizerDefaults();
+  const record = asRecord(value);
+  const mode = record.mode === "advisory" ? "advisory" : "autonomous-pr";
+  return {
+    mode,
+    externalResearch: readBoolean(record.external_research, defaults.externalResearch),
+    thresholds: {
+      minConfidence: readNumber(record.min_confidence, defaults.thresholds.minConfidence),
+      minImpact: readNumber(record.min_impact, defaults.thresholds.minImpact),
+      maxRisk: readNumber(record.max_risk, defaults.thresholds.maxRisk),
+      maxImplementationCost: readNumber(record.max_implementation_cost, defaults.thresholds.maxImplementationCost),
+      minEvidenceReferences: Math.max(0, Math.floor(readNumber(record.min_evidence_references, defaults.thresholds.minEvidenceReferences))),
+      requireNonSpeculative: readBoolean(record.require_non_speculative, defaults.thresholds.requireNonSpeculative),
+      requireProofCommands: readBoolean(record.require_proof_commands, defaults.thresholds.requireProofCommands),
+    },
+  };
 }
 
 function readSourceToProjectPrLauncherConfig(

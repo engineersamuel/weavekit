@@ -114,6 +114,12 @@ const templates = {
     description: "Read one Source artifact against one Target project and produce ranked opportunities, plans, and optional PRs.",
     materialize: makeSourceToProjectPlan,
   },
+  "verification-optimizer": {
+    id: "verification-optimizer",
+    title: "Verification Optimizer",
+    description: "Audit one project and implement a strict high-confidence verification-only improvement.",
+    materialize: makeVerificationOptimizerPlan,
+  },
   "x-article-summary": {
     id: "x-article-summary",
     title: "X Article Summary",
@@ -162,6 +168,57 @@ function makeXArticleSummaryPlan(objective: string): RuntimeWorkflowPlan {
         gates: [WorkflowGateKind.OUTPUT_CONTRACT],
         writeMode: "read-only" as WorkflowNodeWriteMode,
         replanPolicy: "never" as WorkflowReplanPolicy,
+      },
+    ],
+  };
+}
+
+function makeVerificationOptimizerPlan(objective: string, input: WorkflowTemplateInput = { objective }): RuntimeWorkflowPlan {
+  const project = input.project ?? input.projectPath ?? "";
+  return {
+    id: workflowPlanId("verification-optimizer", objective),
+    objective,
+    templateId: "verification-optimizer",
+    maxReplans: 2,
+    nodes: [
+      {
+        id: "project-verification-audit",
+        kind: WorkflowNodeKind.RESEARCH,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Audit project verification",
+        description: "Inspect only the target project and summarize its current verification surface.",
+        ...verificationOptimizerNodeMetadata("gpt-5.5", "Verification audit uses a strong repository analysis model."),
+        prompt: `Audit the verification surface for target project: ${project}`,
+        dependsOn: [],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only" as WorkflowNodeWriteMode,
+        replanPolicy: "on-contract-failure" as WorkflowReplanPolicy,
+      },
+      {
+        id: "verification-opportunity-mapping",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Map verification opportunities",
+        description: "Map the audit into at most one strict high-confidence verification-only improvement candidate.",
+        ...verificationOptimizerNodeMetadata("gpt-5.5", "Opportunity mapping uses typed BAML distillation and review."),
+        prompt: "Map the verification audit into strict verification-only opportunities.",
+        dependsOn: ["project-verification-audit"],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only" as WorkflowNodeWriteMode,
+        replanPolicy: "on-contract-failure" as WorkflowReplanPolicy,
+      },
+      {
+        id: "verification-review",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Review verification recommendation",
+        description: "Apply strict gates and select at most one high-confidence verification-only improvement.",
+        ...verificationOptimizerNodeMetadata("deterministic", "Strict review is deterministic after typed opportunity mapping."),
+        prompt: "Review verification opportunities against strict acceptance gates.",
+        dependsOn: ["verification-opportunity-mapping"],
+        gates: [WorkflowGateKind.REVIEW_ACCEPTED],
+        writeMode: "read-only" as WorkflowNodeWriteMode,
+        replanPolicy: "on-review-rejection" as WorkflowReplanPolicy,
       },
     ],
   };
@@ -309,6 +366,13 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
 
 function sourceNodeMetadata(operation: SourceToProjectModelOperation) {
   return sourceToProjectNodeModelMetadata(operation);
+}
+
+function verificationOptimizerNodeMetadata(model: string, rationale: string) {
+  return {
+    model,
+    modelRationale: rationale,
+  };
 }
 
 function workflowPlanId(prefix: WorkflowPlanTemplateId, objective: string): string {

@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo 'Usage: mise run verification-optimizer -- --project <id> [--mode advisory|autonomous-pr]' >&2
+}
+
+project="${PROJECT:-${project:-}}"
+mode="advisory"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project|-p)
+      if [[ $# -lt 2 || -z "$2" ]]; then
+        usage
+        exit 2
+      fi
+      project="$2"
+      shift 2
+      ;;
+    --project=*)
+      project="${1#--project=}"
+      shift
+      ;;
+    project=*)
+      project="${1#project=}"
+      shift
+      ;;
+    --mode|-m)
+      if [[ $# -lt 2 || -z "$2" ]]; then
+        usage
+        exit 2
+      fi
+      mode="$2"
+      shift 2
+      ;;
+    --mode=*)
+      mode="${1#--mode=}"
+      shift
+      ;;
+    mode=*)
+      mode="${1#mode=}"
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$project" ]]; then
+  usage
+  exit 2
+fi
+
+case "$mode" in
+  advisory|autonomous-pr)
+    ;;
+  *)
+    echo 'Mode must be "advisory" or "autonomous-pr".' >&2
+    usage
+    exit 2
+    ;;
+esac
+
+if [[ "$mode" == "advisory" ]]; then
+  echo "Advisory mode selected. To let verification-optimizer implement one accepted improvement, rerun with --mode autonomous-pr." >&2
+fi
+
+nub src/cli.ts workflow run \
+  --template verification-optimizer \
+  --project "$project" \
+  --mode "$mode" \
+  --output runs

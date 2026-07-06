@@ -337,6 +337,77 @@ describe("macro workflow CLI", () => {
     });
   });
 
+  it("parses verification-optimizer project selectors without an explicit prompt", () => {
+    const parsed = parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "verification-optimizer",
+      "--project",
+      "weavekit",
+      "--mode",
+      "advisory",
+      "--config",
+      "config.toml",
+    ]);
+
+    expect(parsed).toMatchObject({
+      command: "run",
+      template: "verification-optimizer",
+      staticTemplate: true,
+      project: "weavekit",
+      mode: "advisory",
+      configPath: "config.toml",
+      dryRun: false,
+    });
+  });
+
+  it("requires verification-optimizer project selectors", () => {
+    expect(() => parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "verification-optimizer",
+    ])).toThrow("Missing required --project <id> or --project-path <path> argument.");
+  });
+
+  it("allows verification-optimizer project-path selectors in advisory plan mode", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-verification-optimizer-path-"));
+    const outputRoot = join(rootDir, "runs");
+
+    try {
+      await expect(runWorkflowCli({
+        command: "plan",
+        outputDir: outputRoot,
+        staticTemplate: true,
+        dryRun: true,
+        template: "verification-optimizer",
+        projectPath: rootDir,
+        mode: "advisory",
+      })).resolves.toContain("Macro workflow plan:");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks verification-optimizer autonomous PR mode for project-path selectors", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-verification-optimizer-path-"));
+
+    try {
+      await expect(runWorkflowCli({
+        command: "run",
+        outputDir: join(rootDir, "runs"),
+        staticTemplate: true,
+        dryRun: false,
+        template: "verification-optimizer",
+        projectPath: rootDir,
+        mode: "autonomous-pr",
+      })).rejects.toThrow("Autonomous PR mode is disabled for project path-override.");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("requires source-to-project project selectors", () => {
     expect(() => parseWorkflowCliArgs([
       "workflow",
