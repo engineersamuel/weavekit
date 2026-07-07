@@ -88,6 +88,21 @@ export async function runEntityCli(_args: EntityCliArgs): Promise<string> {
       ),
     ].join("\n"));
   }
+  const verificationOptimizerPlan = materializeWorkflowPlan("verification-optimizer", {
+    objective: "Validate verification-optimizer workflow metadata",
+    project: "weavekit",
+    mode: "advisory",
+  });
+  const verificationOptimizerValidation = verifyWorkflowPlan(verificationOptimizerPlan);
+  if (!verificationOptimizerValidation.valid) {
+    throw new Error([
+      `Verification optimizer workflow metadata validation failed with ${verificationOptimizerValidation.issues.length} error(s).`,
+      "",
+      ...verificationOptimizerValidation.issues.map((issue, index) =>
+        `${index + 1}. ${issue.nodeId ?? "<plan>"} ${issue.code}: ${issue.message}`
+      ),
+    ].join("\n"));
+  }
   return "Entity catalog valid.\n";
 }
 
@@ -229,7 +244,9 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
 
   const template = templateIndex === -1 ? undefined : argv[templateIndex + 1];
   const isSourceToProject = template === "source-to-project";
-  if (command !== "dashboard" && inputIndex === -1 && promptIndex === -1 && !isSourceToProject) {
+  const isVerificationOptimizer = template === "verification-optimizer";
+  const isProjectScopedTemplate = isSourceToProject || isVerificationOptimizer;
+  if (command !== "dashboard" && inputIndex === -1 && promptIndex === -1 && !isProjectScopedTemplate) {
     throw new Error("Missing required --input <path> or --prompt <text> argument.");
   }
   if (command !== "dashboard" && inputIndex !== -1 && !argv[inputIndex + 1]) {
@@ -238,7 +255,7 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (command !== "dashboard" && inputIndex !== -1 && promptIndex !== -1) {
     throw new Error("Use either --input <path> or --prompt <text>, not both.");
   }
-  if (command !== "dashboard" && isSourceToProject && projectIndex === -1 && projectPathIndex === -1) {
+  if (command !== "dashboard" && isProjectScopedTemplate && projectIndex === -1 && projectPathIndex === -1) {
     throw new Error("Missing required --project <id> or --project-path <path> argument.");
   }
 
@@ -466,7 +483,7 @@ function resolveWorkflowTemplateId(template: string | undefined): WorkflowPlanTe
   if (template === undefined) {
     return undefined;
   }
-  if (template !== "implementation-review" && template !== "source-to-project" && template !== "x-article-summary" && template !== "deep-research") {
+  if (template !== "implementation-review" && template !== "source-to-project" && template !== "verification-optimizer" && template !== "x-article-summary" && template !== "deep-research") {
     throw new Error(`Unknown workflow template: ${template}`);
   }
   return template;
@@ -642,7 +659,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   const { assertValidEntityCatalog } = await import("./entities/index.js");
   assertValidEntityCatalog(process.cwd());
 
-  if (!args.inputPath && !args.prompt && args.template !== "source-to-project") {
+  if (!args.inputPath && !args.prompt && args.template !== "source-to-project" && args.template !== "verification-optimizer") {
     throw new Error("Missing required --input <path> or --prompt <text> argument.");
   }
   if (args.inputPath && args.prompt) {
@@ -664,11 +681,14 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   const objective = prompt.trim() || "Macro workflow";
   const runDescriptor = createWorkflowRunDescriptor(args.outputDir, objective);
   const isSourceToProject = args.template === "source-to-project";
+  const isVerificationOptimizer = args.template === "verification-optimizer";
   const resolvedSource = isSourceToProject
     ? args.source ?? inferSourceReferenceFromPrompt(prompt) ?? (promptWasUserProvided ? prompt.trim() : undefined)
     : args.source;
   let sourceToProjectProject: ProjectCatalogEntry | undefined;
   let sourceToProjectMode: "advisory" | "autonomous-pr" | undefined;
+  let verificationOptimizerProject: ProjectCatalogEntry | undefined;
+  let verificationOptimizerMode: "advisory" | "autonomous-pr" | undefined;
   if (isSourceToProject) {
     if (!resolvedSource) {
       throw new Error("Missing source-to-project source. Provide --source <url-or-path>, include a URL/source:/blog: line in the prompt/input, or pass the source text directly as --prompt/--input.");
@@ -682,6 +702,18 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     sourceToProjectMode = args.mode ?? typedConfig.sourceToProject.mode;
     if (sourceToProjectMode === "autonomous-pr" && !sourceToProjectProject.autonomousPrAllowed) {
       throw new Error(`Autonomous PR mode is disabled for project ${sourceToProjectProject.id}.`);
+    }
+  }
+  if (isVerificationOptimizer) {
+    if (!args.project && !args.projectPath) {
+      throw new Error("Missing required --project <id> or --project-path <path> argument.");
+    }
+    verificationOptimizerProject = args.project
+      ? resolveProjectCatalogEntry(typedConfig, args.project)
+      : createProjectCatalogEntryFromPath(args.projectPath!);
+    verificationOptimizerMode = args.mode ?? typedConfig.verificationOptimizer.mode;
+    if (verificationOptimizerMode === "autonomous-pr" && (!args.project || !verificationOptimizerProject.autonomousPrAllowed)) {
+      throw new Error(`Autonomous PR mode is disabled for project ${verificationOptimizerProject.id}.`);
     }
   }
   const prefetchedSourceContent = isSourceToProject
@@ -700,6 +732,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     workflowDashboardModule,
     workflowSourceToProjectModule,
     workflowDeepResearchModule,
+    workflowVerificationOptimizerModule,
     workflowUsageModule,
     workflowTemplateCandidateModule,
   ] = await Promise.all([
@@ -712,6 +745,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     import("./macro-workflow/dashboardServer.js"),
     import("./macro-workflow/sourceToProject/harnesses.js"),
     import("./macro-workflow/deepResearch/harnesses.js"),
+    import("./macro-workflow/verificationOptimizer/harnesses.js"),
     import("./macro-workflow/usage.js"),
     import("./macro-workflow/templateOptimizer/candidatePlan.js"),
   ]);
@@ -748,7 +782,8 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         source: resolvedSource,
         project: args.project,
         projectPath: args.projectPath,
-        mode: sourceToProjectMode ?? args.mode,
+        mode: sourceToProjectMode ?? verificationOptimizerMode ?? args.mode,
+        externalResearch: isVerificationOptimizer ? typedConfig.verificationOptimizer.externalResearch : undefined,
         providers: isDeepResearch ? deepResearchConfig.providers : undefined,
         maxIterations: isDeepResearch ? deepResearchConfig.maxIterations : undefined,
         questionsPerIteration: isDeepResearch ? deepResearchConfig.questionsPerIteration : undefined,
@@ -815,7 +850,8 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     ? workflowSourceToProjectModule.createDefaultSourceToProjectNotifier()
     : undefined;
 
-  const deepResearchExaMcp = isDeepResearch
+  const needsDeepResearchRuntime = isDeepResearch || (isVerificationOptimizer && typedConfig.verificationOptimizer.externalResearch);
+  const deepResearchExaMcp = needsDeepResearchRuntime
     ? await workflowDeepResearchModule.createDefaultDeepResearchExaMcpConnection()
     : undefined;
 
@@ -892,6 +928,63 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
           }),
           baml: workflowDeepResearchModule.createLiveDeepResearchBamlClient({ usageCollector }),
         })
+        : isVerificationOptimizer
+          ? workflowVerificationOptimizerModule.createVerificationOptimizerHarnessRegistry({
+            project: verificationOptimizerProject!,
+            mode: verificationOptimizerMode!,
+            verificationOptimizer: typedConfig.verificationOptimizer,
+            copilot: typedConfig.sourceToProject.offline
+              ? workflowVerificationOptimizerModule.createOfflineVerificationOptimizerHarnessClient()
+              : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+                copilot: typedConfig.copilot,
+                sourceToProject: typedConfig.sourceToProject,
+                onLog: (event) => {
+                  process.stderr.write(formatWorkflowCopilotLog(event));
+                },
+                onUsage: (event) => {
+                  usageCollector.record({
+                    executor: "copilot-sdk",
+                    operation: event.operation,
+                    mode: event.mode,
+                    model: event.model,
+                    cwd: event.cwd,
+                    nodeId: event.nodeId,
+                    label: event.label,
+                    ...event.usage,
+                  });
+                },
+              }),
+            baml: typedConfig.sourceToProject.offline
+              ? undefined
+              : workflowVerificationOptimizerModule.createLiveVerificationOptimizerBamlClient(),
+            deepResearch: typedConfig.verificationOptimizer.externalResearch
+              ? {
+                config: deepResearchConfig,
+                exaMcp: deepResearchExaMcp?.client,
+                tooling: typedConfig.tooling,
+                copilot: workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+                  model: typedConfig.copilot.model ?? "gpt-5.5",
+                  copilot: typedConfig.copilot,
+                  onLog: (event) => {
+                    process.stderr.write(formatWorkflowCopilotLog(event));
+                  },
+                  onUsage: (event) => {
+                    usageCollector.record({
+                      executor: "copilot-sdk",
+                      operation: event.operation,
+                      mode: event.mode,
+                      model: event.model,
+                      cwd: event.cwd,
+                      nodeId: event.nodeId,
+                      label: event.label,
+                      ...event.usage,
+                    });
+                  },
+                }),
+                baml: workflowDeepResearchModule.createLiveDeepResearchBamlClient({ usageCollector }),
+              }
+              : undefined,
+          })
         : templateId === "x-article-summary"
           ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)
           : workflowHarnessModule.createStaticHarnessRegistry();
@@ -924,6 +1017,12 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
           })
         : isDeepResearch
           ? workflowDeepResearchModule.createDeepResearchDynamicExpander()
+          : isVerificationOptimizer
+            ? workflowVerificationOptimizerModule.createVerificationOptimizerDynamicExpander({
+              project: verificationOptimizerProject!,
+              mode: verificationOptimizerMode!,
+              verificationOptimizer: typedConfig.verificationOptimizer,
+            })
           : undefined,
       logger: workflowLoggerModule.createInMemoryMacroWorkflowLogger(),
       onStateChange: (nextState, event) => {

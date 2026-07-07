@@ -53,4 +53,26 @@ describe("deep-research template", () => {
       visualize: true,
     });
   });
+
+  it("can namespace the seed node for embedded candidate research", () => {
+    const plan = materializeWorkflowPlan("deep-research", {
+      objective: "Research one verification candidate",
+      deepResearchRunId: "verification-research-lint",
+      providers: ["exa"],
+      maxIterations: 1,
+    });
+
+    expect(plan.nodes.map((node) => node.id)).toEqual(["verification-research-lint-questions-1"]);
+    expect(plan.nodes[0]?.input).toMatchObject({
+      deepResearchRunId: "verification-research-lint",
+      objective: "Research one verification candidate",
+      deepResearchStep: "generate-questions",
+      iteration: 1,
+      config: expect.objectContaining({
+        providers: ["exa"],
+        maxIterations: 1,
+      }),
+    });
+    expect(verifyWorkflowPlan(plan).valid).toBe(true);
+  });
 });

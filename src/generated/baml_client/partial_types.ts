@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -129,6 +129,8 @@ export namespace partial_types {
       id?: string | null
       text?: string | null
       rationale?: string | null
+      researchMode?: "local-only" | "official-docs" | "web-lookup" | "recency-social" | "deep-research" | null
+      researchModeRationale?: string | null
       priority?: number | null
       providerHints: string[]
       searchQueries: string[]
@@ -381,6 +383,48 @@ export namespace partial_types {
       idealFeatures: string[]
       mustPreserve: string[]
       failureModes: string[]
+    }
+    export interface VerificationAudit {
+      projectId?: string | null
+      summary?: string | null
+      verificationCommands: string[]
+      verificationSurfaces: string[]
+      gaps: string[]
+      evidence: EvidenceReference[]
+    }
+    export interface VerificationOpportunity {
+      id?: string | null
+      title?: string | null
+      currentVerificationGap?: string | null
+      targetChange?: string | null
+      allowedChangeKind?: "test" | "lint" | "typecheck" | "format" | "script" | "ci" | "docs" | null
+      score?: VerificationOpportunityScore | null
+      evidence: EvidenceReference[]
+      proofCommands: string[]
+      speculative?: boolean | null
+    }
+    export interface VerificationOpportunityResearchReport {
+      opportunityId?: string | null
+      objective?: string | null
+      report?: DeepResearchReport | null
+    }
+    export interface VerificationOpportunityReview {
+      opportunities: VerificationOpportunity[]
+      nonApplicableGaps: string[]
+      rankingRationale?: string | null
+    }
+    export interface VerificationOpportunityScore {
+      confidence?: number | null
+      impact?: number | null
+      risk?: number | null
+      implementationCost?: number | null
+    }
+    export interface VerificationRecommendationReview {
+      status?: "accepted" | "rejected" | null
+      selectedOpportunity?: VerificationOpportunity | null
+      rationale?: string | null
+      rejectionReason?: string | null
+      proofCommands: string[]
     }
     export interface WorkflowNode {
       id?: string | null

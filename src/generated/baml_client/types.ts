@@ -164,6 +164,8 @@ export interface DeepResearchQuestion {
   id: string
   text: string
   rationale: string
+  researchMode: "local-only" | "official-docs" | "web-lookup" | "recency-social" | "deep-research"
+  researchModeRationale: string
   priority: number
   providerHints: string[]
   searchQueries: string[]
@@ -474,6 +476,60 @@ export interface TemplateOptimizationFixture {
   idealFeatures: string[]
   mustPreserve: string[]
   failureModes: string[]
+  
+}
+
+export interface VerificationAudit {
+  projectId: string
+  summary: string
+  verificationCommands: string[]
+  verificationSurfaces: string[]
+  gaps: string[]
+  evidence: EvidenceReference[]
+  
+}
+
+export interface VerificationOpportunity {
+  id: string
+  title: string
+  currentVerificationGap: string
+  targetChange: string
+  allowedChangeKind: "test" | "lint" | "typecheck" | "format" | "script" | "ci" | "docs"
+  score: VerificationOpportunityScore
+  evidence: EvidenceReference[]
+  proofCommands: string[]
+  speculative: boolean
+  
+}
+
+export interface VerificationOpportunityResearchReport {
+  opportunityId: string
+  objective: string
+  report: DeepResearchReport
+  
+}
+
+export interface VerificationOpportunityReview {
+  opportunities: VerificationOpportunity[]
+  nonApplicableGaps: string[]
+  rankingRationale: string
+  
+}
+
+export interface VerificationOpportunityScore {
+  confidence: number
+  impact: number
+  risk: number
+  implementationCost: number
+  
+}
+
+export interface VerificationRecommendationReview {
+  status: "accepted" | "rejected"
+  selectedOpportunity?: VerificationOpportunity | null
+  rationale: string
+  rejectionReason?: string | null
+  proofCommands: string[]
   
 }
 

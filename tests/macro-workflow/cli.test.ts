@@ -13,10 +13,16 @@ const entityValidation = vi.hoisted(() => ({
 const deepResearchHarnesses = vi.hoisted(() => ({
   createDefaultDeepResearchExaMcpConnection: vi.fn(),
   createDeepResearchHarnessRegistry: vi.fn(),
+  createBoundedDeepResearchRunner: vi.fn(),
 }));
 
 const sourceToProjectHarnesses = vi.hoisted(() => ({
   createCopilotSdkHarnessClient: vi.fn(),
+}));
+
+const verificationOptimizerHarnesses = vi.hoisted(() => ({
+  createVerificationOptimizerHarnessRegistry: vi.fn(),
+  createVerificationOptimizerDynamicExpander: vi.fn(),
 }));
 
 const workflowPlanner = vi.hoisted(() => ({
@@ -49,6 +55,7 @@ vi.mock("../../src/macro-workflow/deepResearch/harnesses.js", async () => {
     ...actual,
     createDefaultDeepResearchExaMcpConnection: deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection,
     createDeepResearchHarnessRegistry: deepResearchHarnesses.createDeepResearchHarnessRegistry,
+    createBoundedDeepResearchRunner: deepResearchHarnesses.createBoundedDeepResearchRunner,
   };
 });
 
@@ -60,17 +67,49 @@ vi.mock("../../src/macro-workflow/sourceToProject/harnesses.js", async () => {
   };
 });
 
+vi.mock("../../src/macro-workflow/verificationOptimizer/harnesses.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/macro-workflow/verificationOptimizer/harnesses.js")>("../../src/macro-workflow/verificationOptimizer/harnesses.js");
+  return {
+    ...actual,
+    createVerificationOptimizerHarnessRegistry: verificationOptimizerHarnesses.createVerificationOptimizerHarnessRegistry,
+    createVerificationOptimizerDynamicExpander: verificationOptimizerHarnesses.createVerificationOptimizerDynamicExpander,
+  };
+});
+
 beforeEach(() => {
   entityValidation.assertValidEntityCatalog.mockReset();
   entityValidation.assertValidEntityCatalog.mockImplementation(() => {});
   workflowPlanner.planWorkflow.mockClear();
   deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockReset();
   deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReset();
+  deepResearchHarnesses.createBoundedDeepResearchRunner.mockReset();
+  deepResearchHarnesses.createBoundedDeepResearchRunner.mockReturnValue({
+    run: vi.fn(async () => ({
+      objective: "mock",
+      methodology: "mock",
+      findings: [],
+      evidenceMatrix: [],
+      contradictions: [],
+      gaps: [],
+      confidence: "low",
+      sources: [],
+      markdown: "# Deep Research Report\n\nMock.",
+    })),
+  });
   sourceToProjectHarnesses.createCopilotSdkHarnessClient.mockReset();
   sourceToProjectHarnesses.createCopilotSdkHarnessClient.mockImplementation(() => ({
     model: "fake-copilot",
     run: vi.fn(async () => "fake copilot output"),
   }));
+  verificationOptimizerHarnesses.createVerificationOptimizerHarnessRegistry.mockReset();
+  verificationOptimizerHarnesses.createVerificationOptimizerHarnessRegistry.mockReturnValue(createStaticHarnessRegistry({
+    [WorkflowHarnessKind.COPILOT_SDK]: async () => ({ status: "passed", output: "mock copilot" }),
+    [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "mock research" }),
+    [WorkflowHarnessKind.DECISION_COUNCIL]: async () => ({ status: "passed", output: "mock council" }),
+    [WorkflowHarnessKind.REPORTER]: async () => ({ status: "passed", output: "mock report" }),
+  }));
+  verificationOptimizerHarnesses.createVerificationOptimizerDynamicExpander.mockReset();
+  verificationOptimizerHarnesses.createVerificationOptimizerDynamicExpander.mockReturnValue(undefined);
 });
 
 afterEach(() => {
@@ -320,6 +359,65 @@ describe("macro workflow CLI", () => {
     }
   });
 
+  it("wires deep research dependencies into verification-optimizer when external research is enabled", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-verification-research-"));
+    const outputRoot = join(rootDir, "runs");
+    const projectDir = join(rootDir, "project");
+    const configPath = join(rootDir, "config.toml");
+    const exaMcp = {
+      web_search_exa: vi.fn(),
+    };
+    const close = vi.fn(async () => {});
+    deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockResolvedValueOnce({ client: exaMcp, close });
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(configPath, `
+[verification_optimizer]
+external_research = true
+mode = "advisory"
+
+[projects.weavekit]
+display_name = "Weavekit"
+working_tree = "${projectDir}"
+mainline = "origin main"
+remote = "origin"
+context_docs = ["CONTEXT.md"]
+validation_commands = ["nub run typecheck"]
+autonomous_pr_allowed = false
+`, "utf8");
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        prompt: "Optimize verification",
+        outputDir: outputRoot,
+        configPath,
+        staticTemplate: true,
+        dryRun: false,
+        template: "verification-optimizer",
+        project: "weavekit",
+        mode: "advisory",
+      });
+
+      expect(deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection).toHaveBeenCalledTimes(1);
+      expect(deepResearchHarnesses.createBoundedDeepResearchRunner).not.toHaveBeenCalled();
+      expect(verificationOptimizerHarnesses.createVerificationOptimizerHarnessRegistry).toHaveBeenCalledWith(expect.objectContaining({
+        verificationOptimizer: expect.objectContaining({ externalResearch: true }),
+        deepResearch: expect.objectContaining({
+          config: expect.objectContaining({
+            providers: ["grok", "exa", "copilot-last30days"],
+          }),
+          exaMcp,
+          copilot: expect.any(Object),
+          baml: expect.any(Object),
+        }),
+      }));
+      expect(sourceToProjectHarnesses.createCopilotSdkHarnessClient).toHaveBeenCalledTimes(2);
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("parses source-to-project workflow selectors", () => {
     const parsed = parseWorkflowCliArgs([
       "workflow",
@@ -349,6 +447,77 @@ describe("macro workflow CLI", () => {
       configPath: "config.toml",
       dryRun: false,
     });
+  });
+
+  it("parses verification-optimizer project selectors without an explicit prompt", () => {
+    const parsed = parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "verification-optimizer",
+      "--project",
+      "weavekit",
+      "--mode",
+      "advisory",
+      "--config",
+      "config.toml",
+    ]);
+
+    expect(parsed).toMatchObject({
+      command: "run",
+      template: "verification-optimizer",
+      staticTemplate: true,
+      project: "weavekit",
+      mode: "advisory",
+      configPath: "config.toml",
+      dryRun: false,
+    });
+  });
+
+  it("requires verification-optimizer project selectors", () => {
+    expect(() => parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--template",
+      "verification-optimizer",
+    ])).toThrow("Missing required --project <id> or --project-path <path> argument.");
+  });
+
+  it("allows verification-optimizer project-path selectors in advisory plan mode", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-verification-optimizer-path-"));
+    const outputRoot = join(rootDir, "runs");
+
+    try {
+      await expect(runWorkflowCli({
+        command: "plan",
+        outputDir: outputRoot,
+        staticTemplate: true,
+        dryRun: true,
+        template: "verification-optimizer",
+        projectPath: rootDir,
+        mode: "advisory",
+      })).resolves.toContain("Macro workflow plan:");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks verification-optimizer autonomous PR mode for project-path selectors", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-verification-optimizer-path-"));
+
+    try {
+      await expect(runWorkflowCli({
+        command: "run",
+        outputDir: join(rootDir, "runs"),
+        staticTemplate: true,
+        dryRun: false,
+        template: "verification-optimizer",
+        projectPath: rootDir,
+        mode: "autonomous-pr",
+      })).rejects.toThrow("Autonomous PR mode is disabled for project path-override.");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 
   it("requires source-to-project project selectors", () => {

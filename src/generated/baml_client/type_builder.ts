@@ -51,7 +51,7 @@ export default class TypeBuilder {
     
     DeepResearchPriorState: ClassViewer<'DeepResearchPriorState', "iteration" | "completedQuestionIds" | "evidence" | "assessments">;
     
-    DeepResearchQuestion: ClassViewer<'DeepResearchQuestion', "id" | "text" | "rationale" | "priority" | "providerHints" | "searchQueries" | "completionCriteria" | "status" | "dependencies">;
+    DeepResearchQuestion: ClassViewer<'DeepResearchQuestion', "id" | "text" | "rationale" | "researchMode" | "researchModeRationale" | "priority" | "providerHints" | "searchQueries" | "completionCriteria" | "status" | "dependencies">;
     
     DeepResearchReport: ClassViewer<'DeepResearchReport', "objective" | "methodology" | "findings" | "evidenceMatrix" | "contradictions" | "gaps" | "confidence" | "sources" | "markdown">;
     
@@ -111,6 +111,18 @@ export default class TypeBuilder {
     
     TemplateOptimizationFixture: ClassViewer<'TemplateOptimizationFixture', "id" | "mode" | "scenarioSummary" | "sourceLessons" | "projectConstraints" | "opportunities" | "idealFeatures" | "mustPreserve" | "failureModes">;
     
+    VerificationAudit: ClassViewer<'VerificationAudit', "projectId" | "summary" | "verificationCommands" | "verificationSurfaces" | "gaps" | "evidence">;
+    
+    VerificationOpportunity: ClassViewer<'VerificationOpportunity', "id" | "title" | "currentVerificationGap" | "targetChange" | "allowedChangeKind" | "score" | "evidence" | "proofCommands" | "speculative">;
+    
+    VerificationOpportunityResearchReport: ClassViewer<'VerificationOpportunityResearchReport', "opportunityId" | "objective" | "report">;
+    
+    VerificationOpportunityReview: ClassViewer<'VerificationOpportunityReview', "opportunities" | "nonApplicableGaps" | "rankingRationale">;
+    
+    VerificationOpportunityScore: ClassViewer<'VerificationOpportunityScore', "confidence" | "impact" | "risk" | "implementationCost">;
+    
+    VerificationRecommendationReview: ClassViewer<'VerificationRecommendationReview', "status" | "selectedOpportunity" | "rationale" | "rejectionReason" | "proofCommands">;
+    
     WorkflowNode: ClassViewer<'WorkflowNode', "id" | "kind" | "harness" | "title" | "description" | "model" | "modelRationale" | "prompt" | "dependsOn" | "gates" | "writeMode" | "replanPolicy">;
     
     WorkflowPlan: ClassViewer<'WorkflowPlan', "id" | "objective" | "templateId" | "maxReplans" | "nodes">;
@@ -122,7 +134,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             
@@ -179,7 +191,7 @@ export default class TypeBuilder {
         ]);
         
         this.DeepResearchQuestion = this.tb.classViewer("DeepResearchQuestion", [
-          "id","text","rationale","priority","providerHints","searchQueries","completionCriteria","status","dependencies",
+          "id","text","rationale","researchMode","researchModeRationale","priority","providerHints","searchQueries","completionCriteria","status","dependencies",
         ]);
         
         this.DeepResearchReport = this.tb.classViewer("DeepResearchReport", [
@@ -296,6 +308,30 @@ export default class TypeBuilder {
         
         this.TemplateOptimizationFixture = this.tb.classViewer("TemplateOptimizationFixture", [
           "id","mode","scenarioSummary","sourceLessons","projectConstraints","opportunities","idealFeatures","mustPreserve","failureModes",
+        ]);
+        
+        this.VerificationAudit = this.tb.classViewer("VerificationAudit", [
+          "projectId","summary","verificationCommands","verificationSurfaces","gaps","evidence",
+        ]);
+        
+        this.VerificationOpportunity = this.tb.classViewer("VerificationOpportunity", [
+          "id","title","currentVerificationGap","targetChange","allowedChangeKind","score","evidence","proofCommands","speculative",
+        ]);
+        
+        this.VerificationOpportunityResearchReport = this.tb.classViewer("VerificationOpportunityResearchReport", [
+          "opportunityId","objective","report",
+        ]);
+        
+        this.VerificationOpportunityReview = this.tb.classViewer("VerificationOpportunityReview", [
+          "opportunities","nonApplicableGaps","rankingRationale",
+        ]);
+        
+        this.VerificationOpportunityScore = this.tb.classViewer("VerificationOpportunityScore", [
+          "confidence","impact","risk","implementationCost",
+        ]);
+        
+        this.VerificationRecommendationReview = this.tb.classViewer("VerificationRecommendationReview", [
+          "status","selectedOpportunity","rationale","rejectionReason","proofCommands",
         ]);
         
         this.WorkflowNode = this.tb.classViewer("WorkflowNode", [

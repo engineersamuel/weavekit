@@ -118,6 +118,17 @@ max_results_per_question = 7
 provider_retry_attempts = 2
 visualize = true
 
+[verification_optimizer]
+mode = "advisory"
+external_research = true
+min_confidence = 0.9
+min_impact = 0.7
+max_risk = 0.25
+max_implementation_cost = 0.4
+min_evidence_references = 3
+require_non_speculative = false
+require_proof_commands = false
+
 [projects.weavekit]
 display_name = "Weavekit"
 working_tree = "/tmp/weavekit"
@@ -157,6 +168,19 @@ knowledge_export = "off"
       maxResultsPerQuestion: 7,
       providerRetryAttempts: 2,
       visualize: true,
+    });
+    expect(config.verificationOptimizer).toEqual({
+      mode: "advisory",
+      externalResearch: true,
+      thresholds: {
+        minConfidence: 0.9,
+        minImpact: 0.7,
+        maxRisk: 0.25,
+        maxImplementationCost: 0.4,
+        minEvidenceReferences: 3,
+        requireNonSpeculative: false,
+        requireProofCommands: false,
+      },
     });
     expect(config.sourceToProject.prLauncher).toEqual({
       provider: "herdr",
@@ -336,6 +360,19 @@ directory = "/config/hve-core"
         providerRetryAttempts: 1,
         visualize: false,
       },
+      verificationOptimizer: {
+        mode: "autonomous-pr" as const,
+        externalResearch: false,
+        thresholds: {
+          minConfidence: 0.85,
+          minImpact: 0.6,
+          maxRisk: 0.35,
+          maxImplementationCost: 0.45,
+          minEvidenceReferences: 2,
+          requireNonSpeculative: true,
+          requireProofCommands: true,
+        },
+      },
       plugins: {
         "hve-core": {
           directory: "/plugins/hve-core",
@@ -373,6 +410,19 @@ directory = "/config/hve-core"
       maxResultsPerQuestion: 5,
       providerRetryAttempts: 1,
       visualize: false,
+    });
+    expect(config.verificationOptimizer).toEqual({
+      mode: "autonomous-pr",
+      externalResearch: false,
+      thresholds: {
+        minConfidence: 0.85,
+        minImpact: 0.6,
+        maxRisk: 0.35,
+        maxImplementationCost: 0.45,
+        minEvidenceReferences: 2,
+        requireNonSpeculative: true,
+        requireProofCommands: true,
+      },
     });
     expect(config.flue.model).toBe("anthropic/claude-haiku-4-5");
     expect(config.plugins["hve-core"]?.directory).toBe(join(homedir(), ".copilot/installed-plugins/_direct/hve-core"));
