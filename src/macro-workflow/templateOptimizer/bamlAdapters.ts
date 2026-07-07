@@ -74,11 +74,19 @@ async function generateTemplateChallenger(
     args.objective,
     args.constraintsSummary,
     args.incumbent,
-    args.compactTraceSummary,
+    renderGenerationTrace(args),
     args.strategy,
     args.fixtures,
     STREAMING_GENERATION_OPTIONS,
   );
+}
+
+function renderGenerationTrace(args: GenerateChallengerArgs): string {
+  const liveTrace = args.compactLiveTrialTraceSummary?.trim();
+  if (!liveTrace) {
+    return args.compactTraceSummary;
+  }
+  return `${args.compactTraceSummary}\n\nLive trial rejection trace:\n${liveTrace}`;
 }
 
 async function judgeTemplateFixture(

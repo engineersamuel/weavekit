@@ -307,10 +307,14 @@ describe("mise source-to-project task", () => {
     expect(miseConfig).toContain('[tasks."optimize-template:apply"]');
     expect(miseConfig).toContain('[tasks."source-to-project:optimize-template"]');
     expect(miseConfig).toContain('[tasks."source-to-project:optimize-template:open"]');
+    expect(miseConfig).toContain('[tasks."source-to-project:optimize-template:ui"]');
+    expect(miseConfig).toContain('[tasks."source-to-project:try-optimized-template"]');
     expect(miseConfig).toContain(".mise/tasks/optimize-template");
     expect(miseConfig).toContain(".mise/tasks/optimize-template-apply");
     expect(miseConfig).toContain(".mise/tasks/source-to-project-optimize-template");
     expect(miseConfig).toContain(".mise/tasks/source-to-project-optimize-template-open");
+    expect(miseConfig).toContain(".mise/tasks/source-to-project-optimize-template-ui");
+    expect(miseConfig).toContain(".mise/tasks/source-to-project-try-optimized-template");
   });
 
   it("routes optimize-template through the TypeScript optimizer script", async () => {
@@ -371,6 +375,37 @@ describe("mise source-to-project task", () => {
     expect(openArgs).toEqual([
       "evals/template-optimizer/runs/run-123/summary.md",
       "evals/template-optimizer/runs/run-123/apply-dry-run.md",
+    ]);
+  });
+
+  it("routes source-to-project template optimizer UI through the TypeScript UI script", async () => {
+    const args = await runMiseTaskScript(".mise/tasks/source-to-project-optimize-template-ui", ["--port", "4323"]);
+
+    expect(args).toEqual([
+      "nub",
+      "scripts/source-to-project-template-optimizer-ui.ts",
+      "--port",
+      "4323",
+    ]);
+  });
+
+  it("routes source-to-project optimized-template trial through the TypeScript trial script", async () => {
+    const args = await runMiseTaskScript(".mise/tasks/source-to-project-try-optimized-template", [
+      "run-123",
+      "--candidate",
+      "candidate-a",
+      "--",
+      "Adapt https://example.com/source",
+    ]);
+
+    expect(args).toEqual([
+      "nub",
+      "scripts/source-to-project-try-optimized-template.ts",
+      "run-123",
+      "--candidate",
+      "candidate-a",
+      "--",
+      "Adapt https://example.com/source",
     ]);
   });
 

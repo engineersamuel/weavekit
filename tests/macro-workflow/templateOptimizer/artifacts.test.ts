@@ -8,6 +8,7 @@ import type {
 } from "../../../src/generated/baml_client/index.js";
 import { writeTemplateOptimizerArtifacts } from "../../../src/macro-workflow/templateOptimizer/artifacts.js";
 import type { TemplateOptimizerResult } from "../../../src/macro-workflow/templateOptimizer/engine.js";
+import type { TemplateOptimizerWithLiveGateResult } from "../../../src/macro-workflow/templateOptimizer/liveGate.js";
 
 const tempDirs: string[] = [];
 
@@ -57,6 +58,52 @@ describe("template optimizer artifacts", () => {
     expect(summary).toContain("# Template Optimizer Run");
     expect(summary).toContain("```mermaid");
   });
+
+  it("writes live gate rejection details without promoting a fixture winner", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "template-optimizer-live-artifacts-"));
+    tempDirs.push(outputDir);
+
+    await writeTemplateOptimizerArtifacts({
+      outputDir,
+      runId: "template-optimizer-live-test-run",
+      args: {
+        template: "source-to-project",
+        mode: "advisory",
+        iterations: 1,
+        candidatesPerIteration: 1,
+        judgeModel: "gpt-5.5",
+        generatorModel: "gpt-5.5",
+        minDecisionConfidence: 0,
+        maxLiveTrials: 1,
+        minLiveDelta: 0.1,
+        minLiveDecisionConfidence: 0.6,
+        outputRoot: "runs",
+      },
+      constraintsSummary: "constraints",
+      fixtures: [fixture],
+      result: liveRejectedResult,
+    });
+
+    const optimizerRunJson = await readFile(join(outputDir, "optimizer-run.json"), "utf8");
+    const optimizerRun = JSON.parse(optimizerRunJson) as {
+      status?: unknown;
+      finalIncumbent?: { id?: unknown };
+      liveDecision?: { incumbentScore?: unknown; challengerScore?: unknown; adoptionDecision?: unknown };
+      liveRejectedMoves?: unknown[];
+    };
+    expect(optimizerRun.status).toBe("live-candidate-rejected");
+    expect(optimizerRun.finalIncumbent?.id).toBe("checked-in-baseline");
+    expect(optimizerRun.liveDecision).toMatchObject({
+      incumbentScore: 8.0,
+      challengerScore: 6.6,
+      adoptionDecision: "keep-incumbent",
+    });
+    expect(optimizerRun.liveRejectedMoves?.[0]).toContain("missed static DAG coverage");
+
+    const summary = await readFile(join(outputDir, "summary.md"), "utf8");
+    expect(summary).toContain("## Live Gate");
+    expect(summary).toContain("Adoption decision: keep-incumbent");
+  });
 });
 
 const baseline: TemplateCandidate = {
@@ -92,4 +139,49 @@ const result: TemplateOptimizerResult = {
   iterations: [],
   rejectedMoves: [],
   leaderboard: [baseline],
+};
+
+const liveRejectedResult: TemplateOptimizerWithLiveGateResult = {
+  baseline,
+  finalIncumbent: baseline,
+  iterations: [],
+  rejectedMoves: [],
+  leaderboard: [baseline, { ...baseline, id: "source-to-project-advisory-coverage-challenger" }],
+  status: "live-candidate-rejected",
+  fixtureDecision: {
+    candidateId: "source-to-project-advisory-coverage-challenger",
+    replacementDecision: "replace-with-challenger",
+    incumbentAggregateScore: 0.5,
+    challengerAggregateScore: 0.7,
+    scoreDelta: 0.2,
+    decisionConfidence: 0.8,
+  },
+  liveDecision: {
+    incumbentCandidateId: "checked-in-baseline",
+    challengerCandidateId: "source-to-project-advisory-coverage-challenger",
+    incumbentRunId: "baseline-live-run",
+    challengerRunId: "challenger-live-run",
+    winner: "incumbent",
+    incumbentScore: 8.0,
+    challengerScore: 6.6,
+    scoreDelta: -1.4,
+    decisionConfidence: 0.85,
+    threshold: {
+      minimumLiveDelta: 0.1,
+      minimumLiveDecisionConfidence: 0.6,
+    },
+    adoptionDecision: "keep-incumbent",
+    rationale: "The optimized live run missed static DAG coverage.",
+    critiqueForNextChallenger: "Recover static DAG and dynamic workflow coverage.",
+  },
+  liveRejectedMoves: [
+    "Rejected source-to-project-advisory-coverage-challenger: missed static DAG coverage",
+  ],
+  liveGate: {
+    enabled: true,
+    maxLiveTrials: 1,
+    attemptedLiveTrials: 1,
+    minimumLiveDelta: 0.1,
+    minimumLiveDecisionConfidence: 0.6,
+  },
 };

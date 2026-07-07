@@ -6,6 +6,11 @@ import type {
   WorkflowNode,
 } from "../../generated/baml_client/index.js";
 import type { TemplateOptimizerResult } from "./engine.js";
+import type {
+  TemplateOptimizerLiveDecision,
+  TemplateOptimizerLiveGateStatus,
+  TemplateOptimizerWithLiveGateResult,
+} from "./liveGate.js";
 
 export type TemplateOptimizerArtifactsArgsSnapshot = {
   template?: string;
@@ -15,11 +20,16 @@ export type TemplateOptimizerArtifactsArgsSnapshot = {
   judgeModel: string;
   generatorModel: string;
   minDecisionConfidence: number;
+  maxLiveTrials?: number;
+  minLiveDelta?: number;
+  minLiveDecisionConfidence?: number;
   outputRoot: string;
 };
 
+type TemplateOptimizerArtifactResult = TemplateOptimizerResult | TemplateOptimizerWithLiveGateResult;
+
 export type TemplateOptimizerRunArtifact = {
-  status: "keep-current-template" | "candidate-ready";
+  status: "keep-current-template" | "candidate-ready" | TemplateOptimizerLiveGateStatus;
   note: string;
   runId?: string;
   templateId?: string;
@@ -30,6 +40,9 @@ export type TemplateOptimizerRunArtifact = {
     judgeModel: string;
     generatorModel: string;
     minDecisionConfidence: number;
+    maxLiveTrials?: number;
+    minLiveDelta?: number;
+    minLiveDecisionConfidence?: number;
   };
   effectiveModels: {
     judge: string;
@@ -49,8 +62,11 @@ export type TemplateOptimizerRunArtifact = {
     summary: string;
   };
   finalIncumbent: TemplateCandidate;
+  fixtureDecision?: TemplateOptimizerWithLiveGateResult["fixtureDecision"];
+  liveDecision?: TemplateOptimizerLiveDecision;
   leaderboardIds: string[];
   rejectedMoves: string[];
+  liveRejectedMoves: string[];
   iterations: Array<{
     index: number;
     candidateIndex: number;
@@ -73,7 +89,7 @@ export async function writeTemplateOptimizerArtifacts(args: {
   outputDir: string;
   runId?: string;
   args: TemplateOptimizerArtifactsArgsSnapshot;
-  result: TemplateOptimizerResult;
+  result: TemplateOptimizerArtifactResult;
   constraintsSummary: string;
   fixtures: TemplateOptimizationFixture[];
 }): Promise<TemplateOptimizerRunArtifact> {
@@ -91,7 +107,7 @@ export async function writeTemplateOptimizerArtifacts(args: {
 function buildTemplateOptimizerRunArtifact(args: {
   runId?: string;
   args: TemplateOptimizerArtifactsArgsSnapshot;
-  result: TemplateOptimizerResult;
+  result: TemplateOptimizerArtifactResult;
   constraintsSummary: string;
   fixtures: TemplateOptimizationFixture[];
 }): TemplateOptimizerRunArtifact {
@@ -99,9 +115,12 @@ function buildTemplateOptimizerRunArtifact(args: {
     args.result.finalIncumbent.id === args.result.baseline.id
       ? "keep-current-template"
       : "adopt-candidate";
+  const liveResult = isLiveGateResult(args.result) ? args.result : undefined;
   return {
-    status: recommendation === "keep-current-template" ? "keep-current-template" : "candidate-ready",
-    note: "Template optimizer completed with live BAML candidate generation and judging.",
+    status: liveResult?.status ?? (recommendation === "keep-current-template" ? "keep-current-template" : "candidate-ready"),
+    note: liveResult
+      ? "Template optimizer completed with fixture judging and live source-to-project acceptance gating."
+      : "Template optimizer completed with live BAML candidate generation and judging.",
     runId: args.runId,
     templateId: args.args.template,
     mode: args.args.mode,
@@ -111,6 +130,9 @@ function buildTemplateOptimizerRunArtifact(args: {
       judgeModel: args.args.judgeModel,
       generatorModel: args.args.generatorModel,
       minDecisionConfidence: args.args.minDecisionConfidence,
+      maxLiveTrials: args.args.maxLiveTrials,
+      minLiveDelta: args.args.minLiveDelta,
+      minLiveDecisionConfidence: args.args.minLiveDecisionConfidence,
     },
     effectiveModels: {
       judge: args.args.judgeModel,
@@ -130,8 +152,11 @@ function buildTemplateOptimizerRunArtifact(args: {
       summary: args.result.baseline.summary,
     },
     finalIncumbent: args.result.finalIncumbent,
+    fixtureDecision: liveResult?.fixtureDecision,
+    liveDecision: liveResult?.liveDecision,
     leaderboardIds: args.result.leaderboard.map((candidate) => candidate.id),
     rejectedMoves: args.result.rejectedMoves,
+    liveRejectedMoves: liveResult?.liveRejectedMoves ?? [],
     iterations: args.result.iterations.map((iteration) => ({
       index: iteration.index,
       candidateIndex: iteration.candidateIndex,
@@ -184,6 +209,10 @@ function renderTemplateOptimizerSummary(run: TemplateOptimizerRunArtifact): stri
     "",
     ...renderRejectedMoves(run.rejectedMoves),
     "",
+    "## Live Gate",
+    "",
+    ...renderLiveGateSummary(run),
+    "",
     "## Shared Initial DAG",
     "",
     "```mermaid",
@@ -191,6 +220,10 @@ function renderTemplateOptimizerSummary(run: TemplateOptimizerRunArtifact): stri
     "```",
     "",
   ].join("\n");
+}
+
+function isLiveGateResult(result: TemplateOptimizerArtifactResult): result is TemplateOptimizerWithLiveGateResult {
+  return "liveGate" in result;
 }
 
 function renderFinalRecommendationRationale(result: TemplateOptimizerResult): string {
@@ -231,6 +264,28 @@ function renderRejectedMoves(rejectedMoves: string[]): string[] {
     return ["No rejected moves recorded."];
   }
   return rejectedMoves.map((move) => `- ${move}`);
+}
+
+function renderLiveGateSummary(run: TemplateOptimizerRunArtifact): string[] {
+  if (!run.liveDecision && run.liveRejectedMoves.length === 0) {
+    return ["No live gate decision recorded."];
+  }
+  const lines: string[] = [];
+  if (run.liveDecision) {
+    lines.push(
+      `- Winner: ${run.liveDecision.winner}`,
+      `- Adoption decision: ${run.liveDecision.adoptionDecision}`,
+      `- Incumbent score: ${run.liveDecision.incumbentScore}`,
+      `- Challenger score: ${run.liveDecision.challengerScore}`,
+      `- Score delta: ${run.liveDecision.scoreDelta}`,
+      `- Decision confidence: ${run.liveDecision.decisionConfidence}`,
+      `- Rationale: ${run.liveDecision.rationale}`,
+    );
+  }
+  if (run.liveRejectedMoves.length > 0) {
+    lines.push("", "### Live Rejected Moves", "", ...run.liveRejectedMoves.map((move) => `- ${move}`));
+  }
+  return lines;
 }
 
 function renderSharedInitialNodesMermaid(nodes: WorkflowNode[]): string {

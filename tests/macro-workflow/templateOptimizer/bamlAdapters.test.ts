@@ -72,6 +72,7 @@ describe("template optimizer BAML adapter seam", () => {
         candidateIndex: 1,
         strategy: "coverage-focused",
         compactTraceSummary: "No rejected moves yet.",
+        compactLiveTrialTraceSummary: "Rejected challenger-a: live score delta -1.4.",
         leaderboard: [incumbent],
       }),
     ).resolves.toBe(challenger);
@@ -108,7 +109,7 @@ describe("template optimizer BAML adapter seam", () => {
           "Optimize source-to-project advisory Static template quality.",
           "mode: advisory",
           incumbent,
-          "No rejected moves yet.",
+          "No rejected moves yet.\n\nLive trial rejection trace:\nRejected challenger-a: live score delta -1.4.",
           "coverage-focused",
           [fixture],
           { client: "CopilotProxyGpt55", onTick: expect.any(Function) },

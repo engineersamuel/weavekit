@@ -21,6 +21,7 @@ export interface TemplateOptimizerArgs {
   strategies: string[];
   minimumDelta: number;
   minimumDecisionConfidence: number;
+  compactLiveTrialTraceSummary?: string;
   deps: TemplateOptimizerDeps;
 }
 
@@ -34,6 +35,7 @@ export interface GenerateChallengerArgs {
   candidateIndex: number;
   strategy: string;
   compactTraceSummary: string;
+  compactLiveTrialTraceSummary?: string;
   leaderboard: TemplateCandidate[];
 }
 
@@ -102,6 +104,7 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
         candidateIndex,
         strategy,
         compactTraceSummary: compactRejectedMoveTrace(rejectedMoves),
+        compactLiveTrialTraceSummary: args.compactLiveTrialTraceSummary,
         leaderboard,
       });
       const fixtureJudgments = await Promise.all(

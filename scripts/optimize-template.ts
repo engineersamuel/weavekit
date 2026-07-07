@@ -24,6 +24,9 @@ type OptimizeTemplateArgs = {
   judgeModel: string;
   generatorModel: string;
   minDecisionConfidence: number;
+  maxLiveTrials: number;
+  minLiveDelta: number;
+  minLiveDecisionConfidence: number;
   outputRoot: string;
 };
 
@@ -33,6 +36,10 @@ const DEFAULT_CANDIDATES_PER_ITERATION = 1;
 const MAX_CANDIDATES_PER_ITERATION = 3;
 const DEFAULT_JUDGE_MODEL = "gpt-5.5";
 const DEFAULT_GENERATOR_MODEL = "gpt-5.5";
+const DEFAULT_MAX_LIVE_TRIALS = 1;
+const MAX_LIVE_TRIALS = 5;
+const DEFAULT_MIN_LIVE_DELTA = 0.1;
+const DEFAULT_MIN_LIVE_DECISION_CONFIDENCE = 0.6;
 
 export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs {
   const parsed: OptimizeTemplateArgs = {
@@ -41,6 +48,9 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
     judgeModel: DEFAULT_JUDGE_MODEL,
     generatorModel: DEFAULT_GENERATOR_MODEL,
     minDecisionConfidence: 0,
+    maxLiveTrials: DEFAULT_MAX_LIVE_TRIALS,
+    minLiveDelta: DEFAULT_MIN_LIVE_DELTA,
+    minLiveDecisionConfidence: DEFAULT_MIN_LIVE_DECISION_CONFIDENCE,
     outputRoot: join("evals", "template-optimizer", "runs"),
   };
 
@@ -84,6 +94,18 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
     }
     if (arg === "--min-decision-confidence") {
       parsed.minDecisionConfidence = readNumber(readNext(argv, ++index, arg), "--min-decision-confidence", 0, 1);
+      continue;
+    }
+    if (arg === "--max-live-trials") {
+      parsed.maxLiveTrials = readBoundedInteger(readNext(argv, ++index, arg), "--max-live-trials", 0, MAX_LIVE_TRIALS);
+      continue;
+    }
+    if (arg === "--min-live-delta") {
+      parsed.minLiveDelta = readNumber(readNext(argv, ++index, arg), "--min-live-delta", -1, 1);
+      continue;
+    }
+    if (arg === "--min-live-decision-confidence") {
+      parsed.minLiveDecisionConfidence = readNumber(readNext(argv, ++index, arg), "--min-live-decision-confidence", 0, 1);
       continue;
     }
     if (arg === "--output-root") {
@@ -210,7 +232,7 @@ function readNumber(value: string, flag: string, min: number, max: number): numb
 }
 
 function usage(message: string): string {
-  return `${message}\nUsage: nub scripts/optimize-template.ts --template source-to-project --mode advisory [--iterations <1-10>] [--candidates-per-iteration <1-3>]`;
+  return `${message}\nUsage: nub scripts/optimize-template.ts --template source-to-project --mode advisory [--iterations <1-10>] [--candidates-per-iteration <1-3>] [--max-live-trials <0-5>]`;
 }
 
 const isMain = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;

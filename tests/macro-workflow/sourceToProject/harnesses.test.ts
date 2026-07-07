@@ -1457,6 +1457,7 @@ describe("source-to-project harness registry", () => {
         },
       },
     });
+
     const reportNode = {
       id: "report-opportunity-opp-1",
       kind: WorkflowNodeKind.REPORT,
@@ -1545,6 +1546,126 @@ describe("source-to-project harness registry", () => {
       rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
       hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
     });
+  });
+
+  it("executes optimized candidate multiple-opportunity branch nodes without unsupported fallbacks", async () => {
+    const rawPlan = "# Plan\n\nAdapt the accepted loop-engineering opportunities.";
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      originalPrompt: "Adapt loops to weavekit",
+      project: projectFixture(),
+      mode: "advisory",
+      copilot: {
+        async run() {
+          return rawPlan;
+        },
+      },
+      baml: {
+        async DistillPlanArtifact(_opportunityJson, _rawPlan, rawPlanArtifactPath) {
+          return { ...planSummaryFixture("Candidate branch plan"), rawPlanArtifactPath };
+        },
+        async ReviewFinalRecommendation() {
+          return acceptedFinalRecommendationReviewFixture();
+        },
+      },
+    });
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).filter((candidate) => candidate.accepted)[0]!;
+    const sharedInput = {
+      opportunity: acceptance.opportunity,
+      opportunityAcceptance: acceptance,
+      opportunityAcceptances: [acceptance],
+      acceptedOpportunityCount: 1,
+      rejectedOpportunityCount: 0,
+    };
+    const payloads = new Map<string, Record<string, unknown>>([
+      ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
+      ["source-corroboration", { corroboration: corroborationFixture() }],
+      ["project-research", { projectBrief: projectBriefFixture() }],
+      ["council-review", { councilReview: latestRunCouncilReviewFixture(), opportunityAcceptances: [acceptance] }],
+    ]);
+    const artifacts = new Map();
+
+    const planResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "plan-opportunity-branch-accepted-opportunity",
+      kind: WorkflowNodeKind.PLANNING,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Plan candidate branch",
+      prompt: "Plan",
+      input: sharedInput,
+      dependsOn: ["council-review"],
+      gates: ["verification"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads, artifacts });
+    payloads.set("plan-opportunity-branch-accepted-opportunity", planResult.payload ?? {});
+
+    const fanInResult = await registry.get(WorkflowHarnessKind.DECISION_COUNCIL)!({
+      id: "fan-in-opportunity-selection",
+      kind: WorkflowNodeKind.DELIBERATION,
+      harness: WorkflowHarnessKind.DECISION_COUNCIL,
+      title: "Fan in",
+      prompt: "Fan in",
+      dependsOn: ["plan-opportunity-branch-accepted-opportunity"],
+      gates: ["review-accepted"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads, artifacts });
+    payloads.set("fan-in-opportunity-selection", fanInResult.payload ?? {});
+
+    const packageResult = await registry.get(WorkflowHarnessKind.RESEARCH)!({
+      id: "recommended-advisory-package",
+      kind: WorkflowNodeKind.PLANNING,
+      harness: WorkflowHarnessKind.RESEARCH,
+      title: "Package",
+      prompt: "Package",
+      dependsOn: ["fan-in-opportunity-selection"],
+      gates: ["output-contract"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads, artifacts });
+    payloads.set("recommended-advisory-package", packageResult.payload ?? {});
+
+    const finalReviewResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
+      id: "final-recommendation-review-multiple-opportunities",
+      kind: WorkflowNodeKind.DELIBERATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Final review",
+      prompt: "Review",
+      dependsOn: ["recommended-advisory-package"],
+      gates: ["review-accepted"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads, artifacts });
+    payloads.set("final-recommendation-review-multiple-opportunities", finalReviewResult.payload ?? {});
+
+    const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!({
+      id: "report-multiple-opportunities",
+      kind: WorkflowNodeKind.REPORT,
+      harness: WorkflowHarnessKind.REPORTER,
+      title: "Report multiple",
+      prompt: "Report",
+      dependsOn: ["final-recommendation-review-multiple-opportunities"],
+      gates: ["output-contract"],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    }, { payloads, artifacts });
+
+    expect(planResult.output).not.toContain("skipped unsupported node");
+    expect(fanInResult.output).not.toContain("skipped unsupported node");
+    expect(packageResult.output).not.toContain("skipped unsupported node");
+    expect(finalReviewResult.output).not.toContain("skipped unsupported node");
+    expect(reportResult.output).toContain("# Source-to-Project Report");
+    expect(planResult.payload?.plan).toMatchObject({ title: "Candidate branch plan" });
+    expect(fanInResult.payload?.plans).toHaveLength(1);
+    expect(packageResult.payload?.plans).toHaveLength(1);
+    expect(finalReviewResult.payload?.finalRecommendationReview).toMatchObject({ status: "accepted" });
+    expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain("Candidate branch plan");
   });
 
   it("reuses the visual-plan preflight install for the final visual design node", async () => {
