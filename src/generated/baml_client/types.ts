@@ -133,6 +133,8 @@ export interface DeepResearchQuestion {
   id: string
   text: string
   rationale: string
+  researchMode: "local-only" | "official-docs" | "web-lookup" | "recency-social" | "deep-research"
+  researchModeRationale: string
   priority: number
   providerHints: string[]
   searchQueries: string[]
@@ -403,6 +405,13 @@ export interface VerificationOpportunity {
   evidence: EvidenceReference[]
   proofCommands: string[]
   speculative: boolean
+  
+}
+
+export interface VerificationOpportunityResearchReport {
+  opportunityId: string
+  objective: string
+  report: DeepResearchReport
   
 }
 

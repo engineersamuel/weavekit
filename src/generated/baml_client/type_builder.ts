@@ -45,7 +45,7 @@ export default class TypeBuilder {
     
     DeepResearchPriorState: ClassViewer<'DeepResearchPriorState', "iteration" | "completedQuestionIds" | "evidence" | "assessments">;
     
-    DeepResearchQuestion: ClassViewer<'DeepResearchQuestion', "id" | "text" | "rationale" | "priority" | "providerHints" | "searchQueries" | "completionCriteria" | "status" | "dependencies">;
+    DeepResearchQuestion: ClassViewer<'DeepResearchQuestion', "id" | "text" | "rationale" | "researchMode" | "researchModeRationale" | "priority" | "providerHints" | "searchQueries" | "completionCriteria" | "status" | "dependencies">;
     
     DeepResearchReport: ClassViewer<'DeepResearchReport', "objective" | "methodology" | "findings" | "evidenceMatrix" | "contradictions" | "gaps" | "confidence" | "sources" | "markdown">;
     
@@ -99,6 +99,8 @@ export default class TypeBuilder {
     
     VerificationOpportunity: ClassViewer<'VerificationOpportunity', "id" | "title" | "currentVerificationGap" | "targetChange" | "allowedChangeKind" | "score" | "evidence" | "proofCommands" | "speculative">;
     
+    VerificationOpportunityResearchReport: ClassViewer<'VerificationOpportunityResearchReport', "opportunityId" | "objective" | "report">;
+    
     VerificationOpportunityReview: ClassViewer<'VerificationOpportunityReview', "opportunities" | "nonApplicableGaps" | "rankingRationale">;
     
     VerificationOpportunityScore: ClassViewer<'VerificationOpportunityScore', "confidence" | "impact" | "risk" | "implementationCost">;
@@ -116,7 +118,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ClarifyingQuestion","CorroborationReport","CouncilReport","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","VerificationAudit","VerificationOpportunity","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "ClarifyingQuestion","CorroborationReport","CouncilReport","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             
@@ -161,7 +163,7 @@ export default class TypeBuilder {
         ]);
         
         this.DeepResearchQuestion = this.tb.classViewer("DeepResearchQuestion", [
-          "id","text","rationale","priority","providerHints","searchQueries","completionCriteria","status","dependencies",
+          "id","text","rationale","researchMode","researchModeRationale","priority","providerHints","searchQueries","completionCriteria","status","dependencies",
         ]);
         
         this.DeepResearchReport = this.tb.classViewer("DeepResearchReport", [
@@ -266,6 +268,10 @@ export default class TypeBuilder {
         
         this.VerificationOpportunity = this.tb.classViewer("VerificationOpportunity", [
           "id","title","currentVerificationGap","targetChange","allowedChangeKind","score","evidence","proofCommands","speculative",
+        ]);
+        
+        this.VerificationOpportunityResearchReport = this.tb.classViewer("VerificationOpportunityResearchReport", [
+          "opportunityId","objective","report",
         ]);
         
         this.VerificationOpportunityReview = this.tb.classViewer("VerificationOpportunityReview", [

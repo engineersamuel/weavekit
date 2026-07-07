@@ -22,6 +22,8 @@ export type WorkflowTemplateInput = {
   maxResultsPerQuestion?: number;
   providerRetryAttempts?: number;
   visualize?: boolean;
+  externalResearch?: boolean;
+  deepResearchRunId?: string;
 };
 
 const templates = {
@@ -175,52 +177,60 @@ function makeXArticleSummaryPlan(objective: string): RuntimeWorkflowPlan {
 
 function makeVerificationOptimizerPlan(objective: string, input: WorkflowTemplateInput = { objective }): RuntimeWorkflowPlan {
   const project = input.project ?? input.projectPath ?? "";
+  const includeInitialReview = !input.externalResearch;
+  const nodes: RuntimeWorkflowPlan["nodes"] = [
+    {
+      id: "project-verification-audit",
+      kind: WorkflowNodeKind.RESEARCH,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Audit project verification",
+      description: "Inspect only the target project and summarize its current verification surface.",
+      ...verificationOptimizerNodeMetadata("gpt-5.5", "Verification audit uses a strong repository analysis model."),
+      prompt: `Audit the verification surface for target project: ${project}`,
+      dependsOn: [],
+      gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+      writeMode: "read-only" as WorkflowNodeWriteMode,
+      replanPolicy: "on-contract-failure" as WorkflowReplanPolicy,
+    },
+    {
+      id: "verification-opportunity-mapping",
+      kind: WorkflowNodeKind.PLANNING,
+      harness: WorkflowHarnessKind.RESEARCH,
+      title: "Map verification opportunities",
+      description: "Map the audit into at most one strict high-confidence verification-only improvement candidate.",
+      ...verificationOptimizerNodeMetadata("gpt-5.5", "Opportunity mapping uses typed BAML distillation and review."),
+      prompt: "Map the verification audit into strict verification-only opportunities.",
+      dependsOn: ["project-verification-audit"],
+      gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+      writeMode: "read-only" as WorkflowNodeWriteMode,
+      replanPolicy: "on-contract-failure" as WorkflowReplanPolicy,
+    },
+  ];
+  if (includeInitialReview) {
+    nodes.push(buildVerificationReviewNode("verification-opportunity-mapping"));
+  }
   return {
     id: workflowPlanId("verification-optimizer", objective),
     objective,
     templateId: "verification-optimizer",
     maxReplans: 2,
-    nodes: [
-      {
-        id: "project-verification-audit",
-        kind: WorkflowNodeKind.RESEARCH,
-        harness: WorkflowHarnessKind.COPILOT_SDK,
-        title: "Audit project verification",
-        description: "Inspect only the target project and summarize its current verification surface.",
-        ...verificationOptimizerNodeMetadata("gpt-5.5", "Verification audit uses a strong repository analysis model."),
-        prompt: `Audit the verification surface for target project: ${project}`,
-        dependsOn: [],
-        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
-        writeMode: "read-only" as WorkflowNodeWriteMode,
-        replanPolicy: "on-contract-failure" as WorkflowReplanPolicy,
-      },
-      {
-        id: "verification-opportunity-mapping",
-        kind: WorkflowNodeKind.PLANNING,
-        harness: WorkflowHarnessKind.RESEARCH,
-        title: "Map verification opportunities",
-        description: "Map the audit into at most one strict high-confidence verification-only improvement candidate.",
-        ...verificationOptimizerNodeMetadata("gpt-5.5", "Opportunity mapping uses typed BAML distillation and review."),
-        prompt: "Map the verification audit into strict verification-only opportunities.",
-        dependsOn: ["project-verification-audit"],
-        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
-        writeMode: "read-only" as WorkflowNodeWriteMode,
-        replanPolicy: "on-contract-failure" as WorkflowReplanPolicy,
-      },
-      {
-        id: "verification-review",
-        kind: WorkflowNodeKind.DELIBERATION,
-        harness: WorkflowHarnessKind.DECISION_COUNCIL,
-        title: "Review verification recommendation",
-        description: "Apply strict gates and select at most one high-confidence verification-only improvement.",
-        ...verificationOptimizerNodeMetadata("deterministic", "Strict review is deterministic after typed opportunity mapping."),
-        prompt: "Review verification opportunities against strict acceptance gates.",
-        dependsOn: ["verification-opportunity-mapping"],
-        gates: [WorkflowGateKind.REVIEW_ACCEPTED],
-        writeMode: "read-only" as WorkflowNodeWriteMode,
-        replanPolicy: "on-review-rejection" as WorkflowReplanPolicy,
-      },
-    ],
+    nodes,
+  };
+}
+
+function buildVerificationReviewNode(dependency: string): RuntimeWorkflowPlan["nodes"][number] {
+  return {
+    id: "verification-review",
+    kind: WorkflowNodeKind.DELIBERATION,
+    harness: WorkflowHarnessKind.DECISION_COUNCIL,
+    title: "Review verification recommendation",
+    description: "Apply strict gates and select at most one high-confidence verification-only improvement.",
+    ...verificationOptimizerNodeMetadata("deterministic", "Strict review is deterministic after typed opportunity mapping."),
+    prompt: "Review verification opportunities against strict acceptance gates.",
+    dependsOn: [dependency],
+    gates: [WorkflowGateKind.REVIEW_ACCEPTED],
+    writeMode: "read-only" as WorkflowNodeWriteMode,
+    replanPolicy: "on-review-rejection" as WorkflowReplanPolicy,
   };
 }
 
@@ -233,6 +243,7 @@ function makeDeepResearchPlan(objective: string, input: WorkflowTemplateInput = 
     providerRetryAttempts: readNonNegativeInteger(input.providerRetryAttempts, DEFAULT_DEEP_RESEARCH_CONFIG.providerRetryAttempts),
     visualize: input.visualize ?? DEFAULT_DEEP_RESEARCH_CONFIG.visualize,
   };
+  const runId = normalizeOptionalNodeId(input.deepResearchRunId);
   return {
     id: workflowPlanId("deep-research", objective),
     objective,
@@ -240,7 +251,7 @@ function makeDeepResearchPlan(objective: string, input: WorkflowTemplateInput = 
     maxReplans: 0,
     nodes: [
       {
-        id: "deep-research-questions-1",
+        id: deepResearchNodeId(runId, "questions-1"),
         kind: WorkflowNodeKind.RESEARCH,
         harness: WorkflowHarnessKind.RESEARCH,
         title: "Generate research questions",
@@ -250,6 +261,7 @@ function makeDeepResearchPlan(objective: string, input: WorkflowTemplateInput = 
         prompt: "Generate the first research question set for the objective.",
         input: {
           deepResearchStep: "generate-questions",
+          ...(runId ? { deepResearchRunId: runId, objective } : {}),
           iteration: 1,
           config,
         },
@@ -373,6 +385,15 @@ function verificationOptimizerNodeMetadata(model: string, rationale: string) {
     model,
     modelRationale: rationale,
   };
+}
+
+function deepResearchNodeId(runId: string | undefined, suffix: string): string {
+  return runId ? `${runId}-${suffix}` : `deep-research-${suffix}`;
+}
+
+function normalizeOptionalNodeId(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/(^-|-$)/gu, "");
+  return normalized || undefined;
 }
 
 function workflowPlanId(prefix: WorkflowPlanTemplateId, objective: string): string {

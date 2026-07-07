@@ -32,6 +32,12 @@ class VerificationOpportunityReview {
   rankingRationale string
 }
 
+class VerificationOpportunityResearchReport {
+  opportunityId string
+  objective string
+  report DeepResearchReport
+}
+
 class VerificationRecommendationReview {
   status "accepted" | "rejected"
   selectedOpportunity VerificationOpportunity?
@@ -73,6 +79,37 @@ function MapVerificationOpportunities(audit: VerificationAudit) -> VerificationO
     {{ _.role("user") }}
     Verification audit:
     {{ audit }}
+
+    {{ ctx.output_format }}
+  "#
+}
+
+function RefineVerificationOpportunitiesWithResearch(
+  audit: VerificationAudit,
+  initialReview: VerificationOpportunityReview,
+  researchReports: VerificationOpportunityResearchReport[]
+) -> VerificationOpportunityReview {
+  client CopilotProxyGpt55
+  prompt #"
+    {{ _.role("system") }}
+    Refine the initial verification-only opportunity ranking using external deep research about tools, libraries, frameworks, and proof approaches.
+
+    Repository evidence remains the source of truth for whether each gap exists.
+    You may update targetChange, allowedChangeKind, score, proofCommands, speculative, title, currentVerificationGap wording, nonApplicableGaps, and rankingRationale when external research improves the implementation approach.
+    Do not create opportunities for gaps that were not present in the initial review.
+    Do not add external sources as repository evidence proving the gap exists.
+    Keep each opportunity verification-only: tests, lint/typecheck/format config, scripts, CI checks, or docs for verification commands.
+    Lower confidence or mark speculative when external research suggests the approach is immature, risky, stale, or mismatched.
+
+    {{ _.role("user") }}
+    Repository-only verification audit:
+    {{ audit }}
+
+    Initial repository-evidenced opportunity review:
+    {{ initialReview }}
+
+    External deep research reports keyed by opportunity:
+    {{ researchReports }}
 
     {{ ctx.output_format }}
   "#

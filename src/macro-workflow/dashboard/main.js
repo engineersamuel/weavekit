@@ -3,7 +3,13 @@ import { createRoot } from "react-dom/client";
 import { Background, ConnectionLineType, Controls, MiniMap, ReactFlow, Handle, Position } from "@xyflow/react";
 import { layoutWorkflowGraph } from "./layout.ts";
 import { createWorkflowViewportFitKey, shouldFitWorkflowViewport } from "./viewport.ts";
-import { resolveNodeExecutionDisplay, resolveNodeModelDisplay } from "./executionContext.ts";
+import { resolveBlockedNodeDisplay, resolveNodeExecutionDisplay, resolveNodeModelDisplay } from "./executionContext.ts";
+import { buildNodeArtifactLinks } from "./artifactLinks.ts";
+import {
+  buildDeepResearchQuestionBatchSummary,
+  buildDeepResearchProviderFailureSummary,
+  buildVerificationOpportunityAdvancementSummary,
+} from "./payloadHighlights.ts";
 
 const DEFAULT_STATUS = "pending";
 const STATUS_COLORS = {
@@ -660,6 +666,21 @@ function RichNodeOutput({ result }) {
 }
 
 function PayloadHighlights({ payload }) {
+  const verificationAdvancement = buildVerificationOpportunityAdvancementSummary(payload);
+  if (verificationAdvancement) {
+    return <VerificationOpportunityAdvancementHighlights summary={verificationAdvancement} />;
+  }
+
+  const providerFailure = buildDeepResearchProviderFailureSummary(payload);
+  if (providerFailure) {
+    return <DeepResearchProviderFailureHighlights summary={providerFailure} />;
+  }
+
+  const questionBatch = buildDeepResearchQuestionBatchSummary(payload);
+  if (questionBatch) {
+    return <DeepResearchQuestionBatchHighlights summary={questionBatch} />;
+  }
+
   const plans = Array.isArray(payload?.plans) ? payload.plans : [];
   if (plans.length > 0) {
     return <PlanHighlights plans={plans} />;
@@ -726,6 +747,172 @@ function PlanHighlights({ plans }) {
       </div>
     </section>
   );
+}
+
+function VerificationOpportunityAdvancementHighlights({ summary }) {
+  return (
+    <section className="payload-highlights verification-advancement-highlights">
+      <div className="highlight-header">
+        <h3>Verification Opportunities</h3>
+        <div className="highlight-badge-row">
+          <span className="workflow-badge advanced">{summary.capLabel}</span>
+          {summary.notAdvancedCount > 0 ? <span className="workflow-badge muted">{summary.notAdvancedCount} not advanced</span> : null}
+        </div>
+      </div>
+      {summary.rankingRationale ? <p className="highlight-rationale">{summary.rankingRationale}</p> : null}
+      <div className="highlight-grid">
+        {summary.opportunities.map((opportunity, index) => (
+          <article className={`highlight-card compact opportunity-card ${opportunity.status}`} key={opportunity.id}>
+            <div className="highlight-card-topline">
+              <div className="highlight-kicker">#{index + 1} · {opportunity.id}</div>
+              <span className={`workflow-badge ${opportunity.status === "advanced" ? "advanced" : "muted"}`}>
+                {opportunity.badgeLabel}
+              </span>
+            </div>
+            <h4>{opportunity.title}</h4>
+            {opportunity.currentVerificationGap ? (
+              <div className="highlight-field">
+                <span>Gap</span>
+                <p>{opportunity.currentVerificationGap}</p>
+              </div>
+            ) : null}
+            {opportunity.targetChange ? (
+              <div className="highlight-field">
+                <span>Target Change</span>
+                <p>{opportunity.targetChange}</p>
+              </div>
+            ) : null}
+            {opportunity.runId ? (
+              <div className="highlight-field">
+                <span>Research Run</span>
+                <code className="inline-code">{opportunity.runId}</code>
+              </div>
+            ) : null}
+            {opportunity.score ? (
+              <div className="score-row">
+                <span>Confidence {formatScoreValue(opportunity.score.confidence)}</span>
+                <span>Impact {formatScoreValue(opportunity.score.impact)}</span>
+                <span>Risk {formatScoreValue(opportunity.score.risk)}</span>
+                <span>Cost {formatScoreValue(opportunity.score.implementationCost)}</span>
+              </div>
+            ) : null}
+            {opportunity.proofCommands.length > 0 ? (
+              <div className="highlight-field">
+                <span>Proof Commands</span>
+                <ul className="compact-code-list">
+                  {opportunity.proofCommands.map((command) => <li key={command}><code>{command}</code></li>)}
+                </ul>
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DeepResearchProviderFailureHighlights({ summary }) {
+  return (
+    <section className="payload-highlights provider-failure-highlights">
+      <div className="highlight-header">
+        <h3>Provider Research Degraded</h3>
+        <div className="highlight-badge-row">
+          <span className="workflow-badge degraded">{summary.failureCount} provider {summary.failureCount === 1 ? "failure" : "failures"}</span>
+          <span className="workflow-badge neutral">{summary.evidenceCount} evidence items from this node</span>
+        </div>
+      </div>
+      {summary.runId ? (
+        <div className="highlight-field">
+          <span>Research Run</span>
+          <code className="inline-code">{summary.runId}</code>
+        </div>
+      ) : null}
+      <div className="highlight-grid">
+        {summary.failures.map((failure) => (
+          <article className="highlight-card compact provider-failure-card" key={`${failure.provider}-${failure.iteration}`}>
+            <div className="highlight-card-topline">
+              <div className="highlight-kicker">{failure.provider} · iteration {failure.iteration}</div>
+              <span className="workflow-badge degraded">{failure.retryCount} {failure.retryCount === 1 ? "retry" : "retries"}</span>
+            </div>
+            <p>{failure.message}</p>
+            <div className="highlight-badge-row">
+              <span className="workflow-badge muted">{failure.questionCount} {failure.questionCount === 1 ? "question" : "questions"} affected</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DeepResearchQuestionBatchHighlights({ summary }) {
+  return (
+    <section className="payload-highlights question-batch-highlights">
+      <div className="highlight-header">
+        <h3>Research Question Batch</h3>
+        <div className="highlight-badge-row">
+          <span className="workflow-badge advanced">{summary.questionCount} questions</span>
+          <span className="workflow-badge neutral">iteration {summary.iteration}</span>
+          {summary.providerCount > 0 ? <span className="workflow-badge neutral">{summary.providerCount} providers</span> : null}
+        </div>
+      </div>
+      {summary.runId ? (
+        <div className="highlight-field">
+          <span>Research Run</span>
+          <code className="inline-code">{summary.runId}</code>
+        </div>
+      ) : null}
+      {summary.providerStrategy.length > 0 ? (
+        <div className="provider-strategy-list">
+          {summary.providerStrategy.map((strategy) => <span className="workflow-badge strategy" key={strategy}>{strategy}</span>)}
+        </div>
+      ) : null}
+      <div className="highlight-grid question-grid">
+        {summary.questions.map((question, index) => (
+          <article className="highlight-card compact question-card" key={question.id}>
+            <div className="highlight-card-topline">
+              <div className="highlight-kicker">Question {index + 1} · {question.id}</div>
+              <div className="highlight-badge-row">
+                {question.researchModeLabel ? <span className={`workflow-badge mode ${modeBadgeClass(question.researchMode)}`}>{question.researchModeLabel}</span> : null}
+                <span className="workflow-badge neutral">{question.queryCount} {question.queryCount === 1 ? "query" : "queries"}</span>
+              </div>
+            </div>
+            <p>{question.text}</p>
+            {question.researchModeRationale ? <p className="question-routing-rationale">{question.researchModeRationale}</p> : null}
+            <div className="highlight-field">
+              <span>Advances To</span>
+              <div className="highlight-badge-row">
+                {question.routedProviders.length > 0
+                  ? question.routedProviders.map((provider) => <span className="workflow-badge advanced" key={provider}>{provider}</span>)
+                  : <span className="workflow-badge muted">No external provider</span>}
+              </div>
+            </div>
+            {question.providerHints.length > 0 ? (
+              <div className="highlight-badge-row">
+                {question.providerHints.map((hint) => <span className="workflow-badge muted" key={hint}>{hint}</span>)}
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function modeBadgeClass(mode) {
+  if (mode === "local-only") {
+    return "local-only";
+  }
+  if (mode === "official-docs" || mode === "web-lookup") {
+    return "docs";
+  }
+  if (mode === "recency-social") {
+    return "recency";
+  }
+  if (mode === "deep-research") {
+    return "deep";
+  }
+  return "neutral";
 }
 
 function OpportunityHighlights({ review, acceptances }) {
@@ -855,8 +1042,28 @@ function NodeExecutionContext({ node, result, state }) {
   );
 }
 
+function BlockedNodeNotice({ display }) {
+  return (
+    <section className="blocked-node-notice">
+      <h3>Blocked</h3>
+      <p>{display.message}</p>
+      {display.failedDependencies.length > 0 ? (
+        <div className="highlight-grid">
+          {display.failedDependencies.map((dependency) => (
+            <article className="highlight-card compact provider-failure-card" key={dependency.nodeId}>
+              <div className="highlight-kicker">{dependency.nodeId}</div>
+              <h4>{dependency.title}</h4>
+              {dependency.error ? <p>{dependency.error}</p> : null}
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function NodeArtifactLinks({ node, result, snapshot, onOpenArtifact }) {
-  const links = buildArtifactLinks(node, result, snapshot);
+  const links = buildNodeArtifactLinks({ node, result, snapshot });
   if (links.length === 0) {
     return null;
   }
@@ -881,36 +1088,6 @@ function NodeArtifactLinks({ node, result, snapshot, onOpenArtifact }) {
       </div>
     </section>
   );
-}
-
-function buildArtifactLinks(node, result, snapshot) {
-  const runId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
-  if (!runId || !node) {
-    return [];
-  }
-
-  const links = [];
-  const isReportNode = node.id === "report" || node.harness === "reporter" || node.kind === "visualization";
-  if (isReportNode) {
-    links.push({
-      label: "Open workflow report",
-      file: "workflow-report.md",
-      href: artifactHref(runId, "workflow-report.md"),
-    });
-  }
-  if (result?.payload) {
-    const file = `${result.nodeId}.payload.json`;
-    links.push({
-      label: "Open typed payload JSON",
-      file,
-      href: artifactHref(runId, file),
-    });
-  }
-  return links;
-}
-
-function artifactHref(runId, file) {
-  return `/api/artifact?runId=${encodeURIComponent(runId)}&file=${encodeURIComponent(file)}`;
 }
 
 function ArtifactModal({ artifact, onClose }) {
@@ -1408,6 +1585,9 @@ function App() {
   const selectedNodeStatus = selectedGraphNode?.data?.status
     ?? selectedResult?.status
     ?? (selectedNode ? resolveNodeStatus(selectedNode, snapshot?.state ?? { nodeResults: [] }) : DEFAULT_STATUS);
+  const selectedBlockedDisplay = useMemo(() => {
+    return resolveBlockedNodeDisplay(selectedNode, snapshot?.state);
+  }, [selectedNode, snapshot]);
 
   const workflowStatus = snapshot?.state?.status ?? "idle";
   const objective = snapshot?.state?.objective ?? "Waiting for workflow to start";
@@ -1569,6 +1749,8 @@ function App() {
               <RichNodeOutput result={selectedResult} />
             ) : selectedResult?.error ? (
               <pre className="output-error">Error: {selectedResult.error}</pre>
+            ) : selectedBlockedDisplay.blocked ? (
+              <BlockedNodeNotice display={selectedBlockedDisplay} />
             ) : selectedNodeStatus !== "passed" ? (
               <p className="output-empty">Output will render after this node passes.</p>
             ) : (

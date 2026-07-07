@@ -15,10 +15,10 @@ export const defaultWorkflowGrammar: WorkflowGrammar = {
   allowedTransitions: new Map<WorkflowNodeKind, Set<WorkflowNodeKind>>([
     [WorkflowNodeKind.RESEARCH, new Set([WorkflowNodeKind.RESEARCH, WorkflowNodeKind.DELIBERATION, WorkflowNodeKind.PLANNING, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
     [WorkflowNodeKind.DELIBERATION, new Set([WorkflowNodeKind.PLANNING, WorkflowNodeKind.IMPLEMENTATION, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
-    [WorkflowNodeKind.PLANNING, new Set([WorkflowNodeKind.DELIBERATION, WorkflowNodeKind.IMPLEMENTATION, WorkflowNodeKind.VERIFICATION, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
+    [WorkflowNodeKind.PLANNING, new Set([WorkflowNodeKind.RESEARCH, WorkflowNodeKind.DELIBERATION, WorkflowNodeKind.IMPLEMENTATION, WorkflowNodeKind.VERIFICATION, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
     [WorkflowNodeKind.IMPLEMENTATION, new Set([WorkflowNodeKind.VERIFICATION])],
     [WorkflowNodeKind.VERIFICATION, new Set([WorkflowNodeKind.RESEARCH, WorkflowNodeKind.DELIBERATION, WorkflowNodeKind.IMPLEMENTATION, WorkflowNodeKind.REPORT, WorkflowNodeKind.VISUALIZATION])],
-    [WorkflowNodeKind.REPORT, new Set([WorkflowNodeKind.VISUALIZATION])],
+    [WorkflowNodeKind.REPORT, new Set([WorkflowNodeKind.PLANNING, WorkflowNodeKind.VISUALIZATION])],
     [WorkflowNodeKind.VISUALIZATION, new Set([WorkflowNodeKind.VISUALIZATION])],
   ]),
   implementationHarnesses: new Set([WorkflowHarnessKind.COPILOT_SDK]),

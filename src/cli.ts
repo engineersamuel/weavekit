@@ -743,6 +743,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         project: args.project,
         projectPath: args.projectPath,
         mode: sourceToProjectMode ?? verificationOptimizerMode ?? args.mode,
+        externalResearch: isVerificationOptimizer ? typedConfig.verificationOptimizer.externalResearch : undefined,
         providers: isDeepResearch ? deepResearchConfig.providers : undefined,
         maxIterations: isDeepResearch ? deepResearchConfig.maxIterations : undefined,
         questionsPerIteration: isDeepResearch ? deepResearchConfig.questionsPerIteration : undefined,
@@ -809,7 +810,8 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     ? workflowSourceToProjectModule.createDefaultSourceToProjectNotifier()
     : undefined;
 
-  const deepResearchExaMcp = isDeepResearch
+  const needsDeepResearchRuntime = isDeepResearch || (isVerificationOptimizer && typedConfig.verificationOptimizer.externalResearch);
+  const deepResearchExaMcp = needsDeepResearchRuntime
     ? await workflowDeepResearchModule.createDefaultDeepResearchExaMcpConnection()
     : undefined;
 
@@ -915,6 +917,33 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
             baml: typedConfig.sourceToProject.offline
               ? undefined
               : workflowVerificationOptimizerModule.createLiveVerificationOptimizerBamlClient(),
+            deepResearch: typedConfig.verificationOptimizer.externalResearch
+              ? {
+                config: deepResearchConfig,
+                exaMcp: deepResearchExaMcp?.client,
+                tooling: typedConfig.tooling,
+                copilot: workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+                  model: typedConfig.copilot.model ?? "gpt-5.5",
+                  copilot: typedConfig.copilot,
+                  onLog: (event) => {
+                    process.stderr.write(formatWorkflowCopilotLog(event));
+                  },
+                  onUsage: (event) => {
+                    usageCollector.record({
+                      executor: "copilot-sdk",
+                      operation: event.operation,
+                      mode: event.mode,
+                      model: event.model,
+                      cwd: event.cwd,
+                      nodeId: event.nodeId,
+                      label: event.label,
+                      ...event.usage,
+                    });
+                  },
+                }),
+                baml: workflowDeepResearchModule.createLiveDeepResearchBamlClient({ usageCollector }),
+              }
+              : undefined,
           })
         : templateId === "x-article-summary"
           ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)

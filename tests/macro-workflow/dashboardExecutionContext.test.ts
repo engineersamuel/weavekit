@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveBlockedNodeDisplay,
   resolveNodeExecutionDisplay,
   resolveNodeModelDisplay,
 } from "../../src/macro-workflow/dashboard/executionContext.js";
@@ -75,6 +76,51 @@ describe("dashboard execution context helpers", () => {
     expect(display.calls).toEqual([]);
   });
 
+  it("infers concrete deep-research provider prompts for already-running nodes without live metadata", () => {
+    const question = {
+      id: "q1",
+      text: "What CI workflow should this repository use?",
+      rationale: "Need CI evidence.",
+      priority: 1,
+      providerHints: ["grok", "copilot-last30days", "exa"],
+      searchQueries: ["Node TypeScript GitHub Actions CI"],
+      completionCriteria: ["Find CI guidance."],
+      status: "pending",
+      dependencies: [],
+    };
+    const displays = ["grok", "copilot-last30days", "exa"].map((provider) =>
+      resolveNodeExecutionDisplay({
+        node: nodeFixture({
+          id: `verification-research-opp-ci-${provider}-1`,
+          harness: WorkflowHarnessKind.RESEARCH,
+          prompt: `Run ${provider} research for deep research iteration 1.`,
+          input: {
+            deepResearchStep: "provider-research",
+            provider,
+            iteration: 1,
+            objective: "Research CI verification",
+            questions: [question],
+            queries: ["Node TypeScript GitHub Actions CI"],
+            maxResultsPerQuestion: 5,
+          },
+        }),
+        state: stateFixture(),
+      })
+    );
+
+    expect(displays.every((display) => display.hasActualExecution)).toBe(true);
+    expect(displays.map((display) => display.calls[0]?.prompt)).toEqual([
+      expect.stringContaining("Use x_search for each query below"),
+      expect.stringContaining("/last30days"),
+      expect.stringContaining("Run Exa web search for each question/query pair below."),
+    ]);
+    expect(displays.map((display) => display.calls[0]?.prompt)).toEqual([
+      expect.stringContaining("Node TypeScript GitHub Actions CI"),
+      expect.stringContaining("Node TypeScript GitHub Actions CI"),
+      expect.stringContaining("Node TypeScript GitHub Actions CI"),
+    ]);
+  });
+
   it("uses live execution metadata for model display before falling back to the planned node model", () => {
     const state = stateFixture({
       "node-1": {
@@ -85,6 +131,34 @@ describe("dashboard execution context helpers", () => {
     });
 
     expect(resolveNodeModelDisplay(nodeFixture({ model: "gpt-planned" }), state)).toBe("gpt-live");
+  });
+
+  it("explains pending nodes blocked by failed dependencies", () => {
+    const failedProvider = nodeFixture({ id: "deep-research-grok-1", title: "Research with grok" });
+    const assessNode = nodeFixture({
+      id: "deep-research-assess-1",
+      title: "Assess research iteration 1",
+      dependsOn: ["deep-research-grok-1", "deep-research-exa-1"],
+    });
+    const state = stateFixture(undefined, {
+      nodes: [failedProvider, assessNode],
+      nodeResults: [{
+        nodeId: "deep-research-grok-1",
+        status: WorkflowNodeStatus.FAILED,
+        output: "grok failed",
+        error: "Command failed: grok -p ...",
+      }],
+    });
+
+    expect(resolveBlockedNodeDisplay(assessNode, state)).toEqual({
+      blocked: true,
+      failedDependencies: [{
+        nodeId: "deep-research-grok-1",
+        title: "Research with grok",
+        error: "Command failed: grok -p ...",
+      }],
+      message: "This node did not run because 1 dependency failed.",
+    });
   });
 });
 
@@ -113,7 +187,14 @@ function resultFixture(execution: WorkflowExecutionMetadata): WorkflowNodeExecut
   };
 }
 
-function stateFixture(activeNodeExecutions?: MacroWorkflowRunStateLike["activeNodeExecutions"]): MacroWorkflowRunStateLike {
+function stateFixture(
+  activeNodeExecutions?: MacroWorkflowRunStateLike["activeNodeExecutions"],
+  overrides: {
+    nodes?: RuntimeWorkflowNode[];
+    nodeResults?: WorkflowNodeExecutionResult[];
+  } = {},
+): MacroWorkflowRunStateLike {
+  const nodes = overrides.nodes ?? [nodeFixture()];
   return {
     planId: "plan-1",
     objective: "Original request",
@@ -125,9 +206,9 @@ function stateFixture(activeNodeExecutions?: MacroWorkflowRunStateLike["activeNo
       objective: "Original request",
       templateId: "verification-optimizer",
       maxReplans: 0,
-      nodes: [nodeFixture()],
+      nodes,
     },
-    nodeResults: [],
+    nodeResults: overrides.nodeResults ?? [],
     replans: [],
     activeNodeExecutions,
   };

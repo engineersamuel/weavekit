@@ -24,6 +24,8 @@ class DeepResearchQuestion {
   id string @description("Stable id for the question, unique across a run.")
   text string @description("Research question text.")
   rationale string @description("Why this question matters for the objective.")
+  researchMode "local-only" | "official-docs" | "web-lookup" | "recency-social" | "deep-research" @description("Provider routing mode. Use local-only for repository-evidence questions that should not call external providers; official-docs for setup/API syntax/docs questions; web-lookup for lightweight current web lookup; recency-social for recent community/social/issues questions; deep-research for open-ended tradeoff/framework/risk/rollout questions.")
+  researchModeRationale string @description("Brief explanation of why this question uses the selected researchMode.")
   priority int @description("Higher priority questions should be researched first.")
   providerHints string[] @description("Provider names that are likely to work well for this question.")
   searchQueries string[] @description("Concrete search queries providers should run.")
@@ -105,6 +107,13 @@ function GenerateResearchQuestions(prompt: string, priorState: DeepResearchPrior
     {{ _.role("system") }}
     Generate bounded deep-research questions for an iterative, in-process workflow.
     Use stable ids. Prefer concrete search queries that can be sent to Exa, Grok, and Copilot last30days.
+    Set researchMode for every question:
+    - local-only: repository-evidence or gap-existence questions that should not call external providers.
+    - official-docs: setup, API syntax, configuration, install, command semantics, or "how do I use this framework/tool" questions. Prefer exa in providerHints.
+    - web-lookup: lightweight current web/documentation lookup that does not require expensive synthesis. Prefer exa in providerHints.
+    - recency-social: recent issues, recent community sentiment, last-30-days reports, X/social/forum signals. Prefer grok and copilot-last30days in providerHints.
+    - deep-research: open-ended framework choices, tradeoffs, risks, rollout strategy, cost controls, or disputed recommendations that need broader synthesis across providers.
+    Use researchModeRationale to explain the cost/coverage tradeoff in one short sentence.
     Use providerHints to steer web/source lookup to exa, X/community recency lookup to grok, and broad last-30-days community synthesis to copilot-last30days.
     Avoid search operator domain filters such as site:x.com in searchQueries; write plain keyword queries and let providerHints route recency/community lookup.
     Respect questionsPerIteration and provider hints. Do not repeat completed questions.
