@@ -22,7 +22,7 @@ import type { BamlRuntime, FunctionResult, BamlCtxManager, Image, Audio, Pdf, Vi
 import { toBamlError, BamlAbortError, ClientRegistry, type HTTPRequest } from "@boundaryml/baml"
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type * as types from "./types.js"
-import type {ClarifyingQuestion, CorroborationReport, CouncilReport, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RoutingDecision, SourceAnalysis, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
+import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RoutingDecision, SourceAnalysis, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { HttpRequest, HttpStreamRequest } from "./sync_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -96,6 +96,56 @@ export class BamlSyncClient {
     return this.llmStreamParser
   }
 
+  
+  AggregateTemplateJudgments(
+      incumbent: types.TemplateCandidate,challenger: types.TemplateCandidate,fixtureJudgments: types.TemplateFixtureJudgment[],minimumDelta: number,minimumDecisionConfidence: number,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.AggregateTemplateJudgment {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "AggregateTemplateJudgments",
+        {
+          "incumbent": incumbent,"challenger": challenger,"fixtureJudgments": fixtureJudgments,"minimumDelta": minimumDelta,"minimumDecisionConfidence": minimumDecisionConfidence
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.AggregateTemplateJudgment
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
   
   AssessCouncilRound(
       roundNumber: number,critiques: types.PersonaCritique[],failures: types.PersonaFailure[],
@@ -642,6 +692,106 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.ResearchQuestionSet
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  GenerateTemplateChallenger(
+      objective: string,constraintsSummary: string,incumbent: types.TemplateCandidate,compactTraceSummary: string,strategy: string,fixtures: types.TemplateOptimizationFixture[],
+      __baml_options__?: BamlCallOptions<never>
+  ): types.TemplateCandidate {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "GenerateTemplateChallenger",
+        {
+          "objective": objective,"constraintsSummary": constraintsSummary,"incumbent": incumbent,"compactTraceSummary": compactTraceSummary,"strategy": strategy,"fixtures": fixtures
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.TemplateCandidate
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  JudgeTemplateFixture(
+      objective: string,constraintsSummary: string,fixture: types.TemplateOptimizationFixture,incumbent: types.TemplateCandidate,challenger: types.TemplateCandidate,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.TemplateFixtureJudgment {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "JudgeTemplateFixture",
+        {
+          "objective": objective,"constraintsSummary": constraintsSummary,"fixture": fixture,"incumbent": incumbent,"challenger": challenger
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.TemplateFixtureJudgment
     } catch (error: any) {
       throw toBamlError(error);
     }

@@ -1228,10 +1228,57 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       };
     }
 
+    if (node.id === "recommended-advisory-package") {
+      const plans = collectPlansFromDependencies(context, node);
+      return {
+        status: "passed",
+        output: `Recommended advisory package prepared with ${plans.length} plan${plans.length === 1 ? "" : "s"}.`,
+        payload: {
+          plans,
+          recommendedAdvisoryPackage: {
+            planCount: plans.length,
+            titles: plans.map((plan) => plan.title),
+          },
+        },
+        execution: buildExecutionMetadata(WorkflowHarnessKind.RESEARCH, [
+          { executor: WorkflowHarnessKind.RESEARCH, operation: node.id, prompt: node.prompt, model: node.model ?? "deterministic" },
+        ]),
+      };
+    }
+
     return { status: "passed", output: `Research harness skipped unsupported node ${node.id}.` };
   };
 
   const councilAdapter: HarnessAdapter = async (node, context) => {
+    if (node.id === "fan-in-opportunity-selection") {
+      const plans = collectPlansFromDependencies(context, node);
+      return {
+        status: "passed",
+        output: `Fan-in selected ${plans.length} advisory plan${plans.length === 1 ? "" : "s"}.`,
+        payload: {
+          plans,
+          planSelection: {
+            status: plans.length > 0 ? "selected" : "rejected",
+            reason: plans.length > 0
+              ? `Selected ${plans.length} candidate advisory plan${plans.length === 1 ? "" : "s"} for final recommendation review.`
+              : "No candidate advisory plans were available for final recommendation review.",
+            candidatesConsidered: plans.map((plan) => ({
+              kind: "opportunity",
+              id: plan.opportunityIds.join("+") || plan.title,
+              title: plan.title,
+              qualityScore: 1,
+              sourceCoreFit: 1,
+              metaInfrastructurePenalty: 0,
+              opportunityIds: plan.opportunityIds,
+            })),
+          },
+        },
+        execution: buildExecutionMetadata(WorkflowHarnessKind.DECISION_COUNCIL, [
+          { executor: WorkflowHarnessKind.DECISION_COUNCIL, operation: node.id, prompt: node.prompt, model: node.model ?? "deterministic" },
+        ]),
+      };
+    }
+
     if (node.id !== "council-review") {
       return { status: "passed", output: `Council harness skipped unsupported node ${node.id}.` };
     }
@@ -1530,9 +1577,14 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       };
     }
 
-    if (node.id === "final-recommendation-review") {
-      const plans = getPayloadValue<PlanArtifactSummary[]>(context, "plan-selected-opportunities", "plans");
-      const planSelection = getOptionalPayloadValue<PlanSelection>(context, "plan-selected-opportunities", "planSelection");
+    if (isFinalRecommendationReviewNode(node)) {
+      const upstreamNodeId = node.dependsOn[0];
+      const plans = node.id === "final-recommendation-review"
+        ? getPayloadValue<PlanArtifactSummary[]>(context, "plan-selected-opportunities", "plans")
+        : collectPlansFromDependencies(context, node);
+      const planSelection = node.id === "final-recommendation-review"
+        ? getOptionalPayloadValue<PlanSelection>(context, "plan-selected-opportunities", "planSelection")
+        : upstreamNodeId ? getOptionalPayloadValue<PlanSelection>(context, upstreamNodeId, "planSelection") : undefined;
       const sourceAnalysis = getPayloadValue<SourceAnalysis>(context, "source-reading", "sourceAnalysis");
       const corroboration = getPayloadValue<CorroborationReport>(context, "source-corroboration", "corroboration");
       const projectBrief = getPayloadValue<ProjectBrief>(context, "project-research", "projectBrief");
@@ -1564,7 +1616,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         output: finalRecommendationReview.status === "accepted"
           ? "Final recommendation review accepted the plan."
           : `Final recommendation review rejected the plan: ${finalRecommendationReview.rejectionReason ?? finalRecommendationReview.rationale}`,
-        payload: { finalRecommendationReview, notification },
+        payload: { finalRecommendationReview, notification, plans, planSelection },
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, plans.length === 0 ? [] : [
           bamlCall("ReviewFinalRecommendation", bamlModel),
         ]),
@@ -1667,6 +1719,32 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       const prUrl = await openPullRequest(worktreePath, options.shell);
       return { status: "passed", output: "Pull request prepared.", payload: { prUrl }, execution: reporterExecution(node) };
     }
+    if (node.id === "visual-multiple-opportunity-map" || node.id === "visual-nonapplicability-summary") {
+      const reportNodeId = node.dependsOn[0];
+      const reportMarkdown = reportNodeId
+        ? getOptionalPayloadValue<string>(context, reportNodeId, "sourceToProjectReportMarkdown")
+        : undefined;
+      const rawVisualPlan = [
+        `# ${node.title}`,
+        "",
+        "Deterministic source-to-project visualization summary.",
+        "",
+        reportMarkdown ?? "No source-to-project report markdown was available.",
+      ].join("\n");
+      return {
+        status: "passed",
+        output: rawVisualPlan,
+        payload: {
+          sourceToProjectVisualPlan: {
+            title: node.title,
+            sourceReportNodeId: reportNodeId,
+            skill: "deterministic-reporter",
+            rawVisualPlan,
+          },
+        },
+        execution: reporterExecution(node),
+      };
+    }
     if (isOpportunityVisualizationNode(node)) {
       const opportunity = readNodeInput<Opportunity>(node, "opportunity");
       const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
@@ -1761,6 +1839,33 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
           rejectedOpportunityCount,
           opportunityAcceptances: node.input?.opportunityAcceptances,
           sourceToProjectReportMarkdown,
+        },
+        execution: reporterExecution(node),
+      };
+    }
+    if (node.id === "report-multiple-opportunities") {
+      const upstreamNodeId = node.dependsOn[0];
+      const finalRecommendationReview = upstreamNodeId
+        ? getOptionalPayloadValue<FinalRecommendationReview>(context, upstreamNodeId, "finalRecommendationReview")
+        : undefined;
+      const plans = collectPlansFromDependencies(context, node);
+      const sourceToProjectReportMarkdown = buildAggregateReportMarkdown({
+        mode: options.mode,
+        plans,
+        finalRecommendationReview,
+      });
+      return {
+        status: "passed",
+        output: sourceToProjectReportMarkdown,
+        payload: {
+          sourceToProjectReportMarkdown,
+          sourceToProjectReport: {
+            planCount: plans.length,
+            status: finalRecommendationReview?.status ?? "unknown",
+            rationale: finalRecommendationReview?.rationale,
+          },
+          plans,
+          finalRecommendationReview,
         },
         execution: reporterExecution(node),
       };
@@ -2545,6 +2650,46 @@ function buildOpportunityReportMarkdown(args: {
   ].join("\n");
 }
 
+function buildAggregateReportMarkdown(args: {
+  mode: SourceToProjectMode;
+  plans: PlanArtifactSummary[];
+  finalRecommendationReview?: FinalRecommendationReview;
+}): string {
+  return [
+    "# Source-to-Project Report",
+    "",
+    `- Mode: ${args.mode}`,
+    `- Plan count: ${args.plans.length}`,
+    `- Review status: ${args.finalRecommendationReview?.status ?? "unknown"}`,
+    "",
+    "## Recommended Advisory Package",
+    "",
+    ...(args.plans.length > 0
+      ? args.plans.flatMap((plan, index) => [
+        `### ${index + 1}. ${plan.title}`,
+        "",
+        plan.recommendation,
+        "",
+        "**Source lesson applied:**",
+        "",
+        plan.sourceLessonApplied,
+        "",
+        "**Target change:**",
+        "",
+        plan.targetChange,
+        "",
+        "**Implementation outline:**",
+        "",
+        ...plan.implementationOutline.map((step) => `- ${step}`),
+        "",
+      ])
+      : ["No advisory plans were available.", ""]),
+    "## Review",
+    "",
+    args.finalRecommendationReview?.rationale ?? "No final recommendation review rationale was available.",
+  ].join("\n");
+}
+
 function buildVisualPlanPrompt(args: {
   opportunity: Opportunity;
   reportMarkdown: string;
@@ -2696,6 +2841,21 @@ function getOptionalPayloadValue<T>(context: WorkflowExecutionContext, nodeId: s
   return context.payloads.get(nodeId)?.[key] as T | undefined;
 }
 
+function collectPlansFromDependencies(context: WorkflowExecutionContext, node: RuntimeWorkflowNode): PlanArtifactSummary[] {
+  return node.dependsOn.flatMap((dependency) => {
+    const payload = context.payloads.get(dependency);
+    if (!payload) {
+      return [];
+    }
+    const plans = payload.plans;
+    if (Array.isArray(plans)) {
+      return plans as PlanArtifactSummary[];
+    }
+    const plan = payload.plan;
+    return plan ? [plan as PlanArtifactSummary] : [];
+  });
+}
+
 function readNodeInput<T>(node: RuntimeWorkflowNode, key: string): T {
   const value = node.input?.[key];
   if (value === undefined) {
@@ -2722,6 +2882,10 @@ function isOpportunityReportNode(node: RuntimeWorkflowNode): boolean {
 
 function isOpportunityVisualDesignNode(node: RuntimeWorkflowNode): boolean {
   return node.id.startsWith("visual-design-opportunity-");
+}
+
+function isFinalRecommendationReviewNode(node: RuntimeWorkflowNode): boolean {
+  return node.id === "final-recommendation-review" || node.id.startsWith("final-recommendation-review-");
 }
 
 function opportunityAcceptanceAverage(opportunity: Opportunity): number {

@@ -47,6 +47,30 @@ export function all_succeeded<CheckName extends string>(checks: Record<CheckName
 export function get_checks<CheckName extends string>(checks: Record<CheckName, Check>): Check[] {
     return Object.values(checks)
 }
+export interface AdoptionTask {
+  title: string
+  kind: "template" | "expander" | "test" | "docs"
+  filesLikelyTouched: string[]
+  newFiles: string[]
+  description: string
+  acceptanceChecks: string[]
+  
+}
+
+export interface AggregateTemplateJudgment {
+  incumbentId: string
+  challengerId: string
+  incumbentAggregateScore: number
+  challengerAggregateScore: number
+  scoreDelta: number
+  criticalRegressionCount: number
+  replacementDecision: "keep-incumbent" | "replace-with-challenger"
+  rationale: string
+  rejectedMoveSummary?: string | null
+  decisionConfidence: number
+  
+}
+
 export interface ClarifyingQuestion {
   id: string
   text: string
@@ -73,6 +97,13 @@ export interface CouncilReport {
   nextExperiment: string
   finalReportMarkdown: string
   failedPersonas: PersonaFailure[]
+  
+}
+
+export interface CriterionScore {
+  criterion: string
+  score: number
+  rationale: string
   
 }
 
@@ -181,6 +212,14 @@ export interface FinalRecommendationReview {
   rationale: string
   rejectionReason?: string | null
   telegramSummary?: string | null
+  
+}
+
+export interface ModeTemplatePolicy {
+  mode: "advisory" | "autonomous-pr"
+  enabledForOptimization: boolean
+  expansionCases: TemplateExpansionCase[]
+  constraints: string[]
   
 }
 
@@ -380,6 +419,61 @@ export interface SourceAnalysis {
   claims: string[]
   transferableLessons: string[]
   evidence: EvidenceReference[]
+  
+}
+
+export interface TemplateCandidate {
+  id: string
+  templateId: string
+  mode: "advisory" | "autonomous-pr"
+  summary: string
+  sharedInitialNodes: WorkflowNode[]
+  modePolicies: ModeTemplatePolicy[]
+  changedInitialDag: boolean
+  changedExpansionPolicy: boolean
+  requiresAutonomousPrReview: boolean
+  rationale: string
+  suggestedCodeTouchpoints: string[]
+  adoptionTasks: AdoptionTask[]
+  
+}
+
+export interface TemplateExpansionCase {
+  id: string
+  trigger: string
+  conditionSummary: string
+  nodes: WorkflowNode[]
+  expectedPayloads: string[]
+  mustRunBeforeReport: boolean
+  rationale: string
+  
+}
+
+export interface TemplateFixtureJudgment {
+  fixtureId: string
+  incumbentScore: number
+  challengerScore: number
+  criteriaScores: CriterionScore[]
+  criticalRegression: boolean
+  criticalRegressionReason?: string | null
+  winner: "incumbent" | "challenger"
+  rationale: string
+  critiqueForNextChallenger: string
+  fixtureGapNotes: string[]
+  decisionConfidence: number
+  
+}
+
+export interface TemplateOptimizationFixture {
+  id: string
+  mode: "advisory" | "autonomous-pr"
+  scenarioSummary: string
+  sourceLessons: string[]
+  projectConstraints: string[]
+  opportunities: string[]
+  idealFeatures: string[]
+  mustPreserve: string[]
+  failureModes: string[]
   
 }
 

@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -36,6 +36,26 @@ export interface StreamState<T> {
 }
 
 export namespace partial_types {
+    export interface AdoptionTask {
+      title?: string | null
+      kind?: "template" | "expander" | "test" | "docs" | null
+      filesLikelyTouched: string[]
+      newFiles: string[]
+      description?: string | null
+      acceptanceChecks: string[]
+    }
+    export interface AggregateTemplateJudgment {
+      incumbentId?: string | null
+      challengerId?: string | null
+      incumbentAggregateScore?: number | null
+      challengerAggregateScore?: number | null
+      scoreDelta?: number | null
+      criticalRegressionCount?: number | null
+      replacementDecision?: "keep-incumbent" | "replace-with-challenger" | null
+      rationale?: string | null
+      rejectedMoveSummary?: string | null
+      decisionConfidence?: number | null
+    }
     export interface ClarifyingQuestion {
       id?: string | null
       text?: string | null
@@ -58,6 +78,11 @@ export namespace partial_types {
       nextExperiment?: string | null
       finalReportMarkdown?: string | null
       failedPersonas: PersonaFailure[]
+    }
+    export interface CriterionScore {
+      criterion?: string | null
+      score?: number | null
+      rationale?: string | null
     }
     export interface DeepResearchCompiledReport {
       markdown?: string | null
@@ -144,6 +169,12 @@ export namespace partial_types {
       rationale?: string | null
       rejectionReason?: string | null
       telegramSummary?: string | null
+    }
+    export interface ModeTemplatePolicy {
+      mode?: "advisory" | "autonomous-pr" | null
+      enabledForOptimization?: boolean | null
+      expansionCases: TemplateExpansionCase[]
+      constraints: string[]
     }
     export interface NonApplicableLesson {
       lesson?: string | null
@@ -303,6 +334,53 @@ export namespace partial_types {
       claims: string[]
       transferableLessons: string[]
       evidence: EvidenceReference[]
+    }
+    export interface TemplateCandidate {
+      id?: string | null
+      templateId?: string | null
+      mode?: "advisory" | "autonomous-pr" | null
+      summary?: string | null
+      sharedInitialNodes: WorkflowNode[]
+      modePolicies: ModeTemplatePolicy[]
+      changedInitialDag?: boolean | null
+      changedExpansionPolicy?: boolean | null
+      requiresAutonomousPrReview?: boolean | null
+      rationale?: string | null
+      suggestedCodeTouchpoints: string[]
+      adoptionTasks: AdoptionTask[]
+    }
+    export interface TemplateExpansionCase {
+      id?: string | null
+      trigger?: string | null
+      conditionSummary?: string | null
+      nodes: WorkflowNode[]
+      expectedPayloads: string[]
+      mustRunBeforeReport?: boolean | null
+      rationale?: string | null
+    }
+    export interface TemplateFixtureJudgment {
+      fixtureId?: string | null
+      incumbentScore?: number | null
+      challengerScore?: number | null
+      criteriaScores: CriterionScore[]
+      criticalRegression?: boolean | null
+      criticalRegressionReason?: string | null
+      winner?: "incumbent" | "challenger" | null
+      rationale?: string | null
+      critiqueForNextChallenger?: string | null
+      fixtureGapNotes: string[]
+      decisionConfidence?: number | null
+    }
+    export interface TemplateOptimizationFixture {
+      id?: string | null
+      mode?: "advisory" | "autonomous-pr" | null
+      scenarioSummary?: string | null
+      sourceLessons: string[]
+      projectConstraints: string[]
+      opportunities: string[]
+      idealFeatures: string[]
+      mustPreserve: string[]
+      failureModes: string[]
     }
     export interface WorkflowNode {
       id?: string | null

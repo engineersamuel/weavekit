@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+iterations="${SOURCE_TO_PROJECT_OPTIMIZE_TEMPLATE_ITERATIONS:-1}"
+candidates_per_iteration="${SOURCE_TO_PROJECT_OPTIMIZE_TEMPLATE_CANDIDATES_PER_ITERATION:-1}"
+
+optimizer_output="$(
+  nub scripts/optimize-template.ts \
+    --template source-to-project \
+    --mode advisory \
+    --iterations "$iterations" \
+    --candidates-per-iteration "$candidates_per_iteration"
+)"
+printf '%s\n' "$optimizer_output"
+
+run_id="$(printf '%s\n' "$optimizer_output" | sed -n 's/^\[weavekit\] Template optimizer run: //p' | tail -n 1)"
+output_dir="$(printf '%s\n' "$optimizer_output" | sed -n 's/^\[weavekit\] Output: //p' | tail -n 1)"
+
+if [[ -z "$run_id" || -z "$output_dir" ]]; then
+  echo "Could not parse template optimizer run id or output directory." >&2
+  exit 1
+fi
+
+nub scripts/optimize-template-apply.ts "$run_id" --dry-run
+
+printf '[weavekit] Template optimizer artifacts:\n'
+printf '[weavekit] Summary: %s\n' "$output_dir/summary.md"
+printf '[weavekit] Apply dry run: %s\n' "$output_dir/apply-dry-run.md"
+printf '[weavekit] JSON: %s\n' "$output_dir/optimizer-run.json"
+
+".mise/tasks/source-to-project-optimize-template-open" "$run_id"

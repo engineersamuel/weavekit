@@ -27,11 +27,17 @@ export { FieldType, EnumBuilder, ClassBuilder }
 export default class TypeBuilder {
     private tb: _TypeBuilder;
     
+    AdoptionTask: ClassViewer<'AdoptionTask', "title" | "kind" | "filesLikelyTouched" | "newFiles" | "description" | "acceptanceChecks">;
+    
+    AggregateTemplateJudgment: ClassViewer<'AggregateTemplateJudgment', "incumbentId" | "challengerId" | "incumbentAggregateScore" | "challengerAggregateScore" | "scoreDelta" | "criticalRegressionCount" | "replacementDecision" | "rationale" | "rejectedMoveSummary" | "decisionConfidence">;
+    
     ClarifyingQuestion: ClassViewer<'ClarifyingQuestion', "id" | "text" | "choices">;
     
     CorroborationReport: ClassViewer<'CorroborationReport', "sourceId" | "corroboratedClaims" | "disputedClaims" | "competingViews" | "citations">;
     
     CouncilReport: ClassViewer<'CouncilReport', "recommendation" | "rationale" | "strongestObjections" | "unresolvedQuestions" | "confidence" | "convergence" | "nextExperiment" | "finalReportMarkdown" | "failedPersonas">;
+    
+    CriterionScore: ClassViewer<'CriterionScore', "criterion" | "score" | "rationale">;
     
     DeepResearchCompiledReport: ClassViewer<'DeepResearchCompiledReport', "markdown">;
     
@@ -54,6 +60,8 @@ export default class TypeBuilder {
     EvidenceReference: ClassViewer<'EvidenceReference', "id" | "source" | "quote">;
     
     FinalRecommendationReview: ClassViewer<'FinalRecommendationReview', "status" | "actionable" | "improvesProject" | "unnecessaryComplexity" | "benefitOutweighsCost" | "complexityAssessment" | "rationale" | "rejectionReason" | "telegramSummary">;
+    
+    ModeTemplatePolicy: ClassViewer<'ModeTemplatePolicy', "mode" | "enabledForOptimization" | "expansionCases" | "constraints">;
     
     NonApplicableLesson: ClassViewer<'NonApplicableLesson', "lesson" | "reason" | "evidence">;
     
@@ -95,6 +103,14 @@ export default class TypeBuilder {
     
     SourceAnalysis: ClassViewer<'SourceAnalysis', "sourceId" | "title" | "accessLevel" | "summary" | "claims" | "transferableLessons" | "evidence">;
     
+    TemplateCandidate: ClassViewer<'TemplateCandidate', "id" | "templateId" | "mode" | "summary" | "sharedInitialNodes" | "modePolicies" | "changedInitialDag" | "changedExpansionPolicy" | "requiresAutonomousPrReview" | "rationale" | "suggestedCodeTouchpoints" | "adoptionTasks">;
+    
+    TemplateExpansionCase: ClassViewer<'TemplateExpansionCase', "id" | "trigger" | "conditionSummary" | "nodes" | "expectedPayloads" | "mustRunBeforeReport" | "rationale">;
+    
+    TemplateFixtureJudgment: ClassViewer<'TemplateFixtureJudgment', "fixtureId" | "incumbentScore" | "challengerScore" | "criteriaScores" | "criticalRegression" | "criticalRegressionReason" | "winner" | "rationale" | "critiqueForNextChallenger" | "fixtureGapNotes" | "decisionConfidence">;
+    
+    TemplateOptimizationFixture: ClassViewer<'TemplateOptimizationFixture', "id" | "mode" | "scenarioSummary" | "sourceLessons" | "projectConstraints" | "opportunities" | "idealFeatures" | "mustPreserve" | "failureModes">;
+    
     WorkflowNode: ClassViewer<'WorkflowNode', "id" | "kind" | "harness" | "title" | "description" | "model" | "modelRationale" | "prompt" | "dependsOn" | "gates" | "writeMode" | "replanPolicy">;
     
     WorkflowPlan: ClassViewer<'WorkflowPlan', "id" | "objective" | "templateId" | "maxReplans" | "nodes">;
@@ -106,13 +122,21 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ClarifyingQuestion","CorroborationReport","CouncilReport","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
+        
+        this.AdoptionTask = this.tb.classViewer("AdoptionTask", [
+          "title","kind","filesLikelyTouched","newFiles","description","acceptanceChecks",
+        ]);
+        
+        this.AggregateTemplateJudgment = this.tb.classViewer("AggregateTemplateJudgment", [
+          "incumbentId","challengerId","incumbentAggregateScore","challengerAggregateScore","scoreDelta","criticalRegressionCount","replacementDecision","rationale","rejectedMoveSummary","decisionConfidence",
+        ]);
         
         this.ClarifyingQuestion = this.tb.classViewer("ClarifyingQuestion", [
           "id","text","choices",
@@ -124,6 +148,10 @@ export default class TypeBuilder {
         
         this.CouncilReport = this.tb.classViewer("CouncilReport", [
           "recommendation","rationale","strongestObjections","unresolvedQuestions","confidence","convergence","nextExperiment","finalReportMarkdown","failedPersonas",
+        ]);
+        
+        this.CriterionScore = this.tb.classViewer("CriterionScore", [
+          "criterion","score","rationale",
         ]);
         
         this.DeepResearchCompiledReport = this.tb.classViewer("DeepResearchCompiledReport", [
@@ -168,6 +196,10 @@ export default class TypeBuilder {
         
         this.FinalRecommendationReview = this.tb.classViewer("FinalRecommendationReview", [
           "status","actionable","improvesProject","unnecessaryComplexity","benefitOutweighsCost","complexityAssessment","rationale","rejectionReason","telegramSummary",
+        ]);
+        
+        this.ModeTemplatePolicy = this.tb.classViewer("ModeTemplatePolicy", [
+          "mode","enabledForOptimization","expansionCases","constraints",
         ]);
         
         this.NonApplicableLesson = this.tb.classViewer("NonApplicableLesson", [
@@ -248,6 +280,22 @@ export default class TypeBuilder {
         
         this.SourceAnalysis = this.tb.classViewer("SourceAnalysis", [
           "sourceId","title","accessLevel","summary","claims","transferableLessons","evidence",
+        ]);
+        
+        this.TemplateCandidate = this.tb.classViewer("TemplateCandidate", [
+          "id","templateId","mode","summary","sharedInitialNodes","modePolicies","changedInitialDag","changedExpansionPolicy","requiresAutonomousPrReview","rationale","suggestedCodeTouchpoints","adoptionTasks",
+        ]);
+        
+        this.TemplateExpansionCase = this.tb.classViewer("TemplateExpansionCase", [
+          "id","trigger","conditionSummary","nodes","expectedPayloads","mustRunBeforeReport","rationale",
+        ]);
+        
+        this.TemplateFixtureJudgment = this.tb.classViewer("TemplateFixtureJudgment", [
+          "fixtureId","incumbentScore","challengerScore","criteriaScores","criticalRegression","criticalRegressionReason","winner","rationale","critiqueForNextChallenger","fixtureGapNotes","decisionConfidence",
+        ]);
+        
+        this.TemplateOptimizationFixture = this.tb.classViewer("TemplateOptimizationFixture", [
+          "id","mode","scenarioSummary","sourceLessons","projectConstraints","opportunities","idealFeatures","mustPreserve","failureModes",
         ]);
         
         this.WorkflowNode = this.tb.classViewer("WorkflowNode", [
