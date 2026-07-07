@@ -1,0 +1,20 @@
+id: multiple-opportunities
+mode: advisory
+scenarioSummary: Multiple source-grounded opportunities pass thresholds and may need fan-out planning plus fan-in selection.
+sourceLessons:
+  - Multiple independent lessons can map to different project surfaces.
+projectConstraints:
+  - Advisory report should remain coherent and not concatenate unrelated plans.
+opportunities:
+  - Improve planner trace quality.
+  - Improve report review quality.
+  - Improve fixture coverage.
+idealFeatures:
+  - Allows multiple planning branches when justified.
+  - Requires fan-in before final recommendation review if multiple plan branches exist.
+mustPreserve:
+  - Does not report unrelated plans without synthesis.
+  - Keeps review before final report.
+failureModes:
+  - Produces a pile of unrelated plans.
+  - Duplicates bundled and individual opportunities.

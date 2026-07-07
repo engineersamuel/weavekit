@@ -7,7 +7,7 @@ import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
 import type { DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { TelemetryHandle } from "./telemetry/bootstrap.js";
-import { WorkflowHarnessKind, type RuntimeWorkflowNode, type WorkflowArtifactRef, type WorkflowPlanTemplateId, type WorkflowReplayEvent } from "./macro-workflow/types.js";
+import { WorkflowHarnessKind, WorkflowNodeStatus, type MacroWorkflowRunStateLike, type RuntimeWorkflowNode, type WorkflowArtifactRef, type WorkflowPlanTemplateId, type WorkflowReplayEvent } from "./macro-workflow/types.js";
 import { MacroWorkflowEventKind } from "./macro-workflow/logger.js";
 import { extractXPostUrls, preprocessWorkflowPrompt, type XPostFetchResult } from "./macro-workflow/promptPreprocessor.js";
 
@@ -47,6 +47,9 @@ export type WorkflowCliArgs = {
   mode?: "advisory" | "autonomous-pr";
   deepResearch?: Partial<DeepResearchDefaults>;
   configPath?: string;
+  templateCandidateRunId?: string;
+  templateCandidateId?: string;
+  templateCandidateRunsRoot?: string;
 };
 
 export type WorkflowRunDescriptor = {
@@ -180,6 +183,9 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   const maxIterationsIndex = argv.indexOf("--max-iterations");
   const questionsPerIterationIndex = argv.indexOf("--questions-per-iteration");
   const maxResultsPerQuestionIndex = argv.indexOf("--max-results-per-question");
+  const templateCandidateRunIndex = argv.indexOf("--template-candidate-run");
+  const templateCandidateIndex = argv.indexOf("--template-candidate");
+  const templateCandidateRunsRootIndex = argv.indexOf("--template-candidate-runs-root");
 
   if (templateIndex !== -1 && !argv[templateIndex + 1]) {
     throw new Error("Missing value for --template <id>.");
@@ -222,6 +228,15 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   }
   if (maxResultsPerQuestionIndex !== -1 && !argv[maxResultsPerQuestionIndex + 1]) {
     throw new Error("Missing value for --max-results-per-question <n>.");
+  }
+  if (templateCandidateRunIndex !== -1 && !argv[templateCandidateRunIndex + 1]) {
+    throw new Error("Missing value for --template-candidate-run <run-id>.");
+  }
+  if (templateCandidateIndex !== -1 && !argv[templateCandidateIndex + 1]) {
+    throw new Error("Missing value for --template-candidate <candidate-id>.");
+  }
+  if (templateCandidateRunsRootIndex !== -1 && !argv[templateCandidateRunsRootIndex + 1]) {
+    throw new Error("Missing value for --template-candidate-runs-root <path>.");
   }
   if (promptIndex !== -1 && !argv[promptIndex + 1]) {
     throw new Error("Missing value for --prompt <text>.");
@@ -311,6 +326,15 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   });
   if (Object.keys(deepResearch).length > 0) {
     parsed.deepResearch = deepResearch;
+  }
+  if (templateCandidateRunIndex !== -1) {
+    parsed.templateCandidateRunId = argv[templateCandidateRunIndex + 1];
+  }
+  if (templateCandidateIndex !== -1) {
+    parsed.templateCandidateId = argv[templateCandidateIndex + 1];
+  }
+  if (templateCandidateRunsRootIndex !== -1) {
+    parsed.templateCandidateRunsRoot = argv[templateCandidateRunsRootIndex + 1];
   }
   return parsed;
 }
@@ -710,6 +734,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     workflowDeepResearchModule,
     workflowVerificationOptimizerModule,
     workflowUsageModule,
+    workflowTemplateCandidateModule,
   ] = await Promise.all([
     import("./macro-workflow/artifacts.js"),
     import("./macro-workflow/bamlAdapters.js"),
@@ -722,6 +747,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     import("./macro-workflow/deepResearch/harnesses.js"),
     import("./macro-workflow/verificationOptimizer/harnesses.js"),
     import("./macro-workflow/usage.js"),
+    import("./macro-workflow/templateOptimizer/candidatePlan.js"),
   ]);
   const usageCollector = new workflowUsageModule.WorkflowUsageCollector();
   const planner = new workflowBamlAdapterModule.GeneratedWorkflowPlannerAdapter({ usageCollector });
@@ -733,11 +759,25 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   };
   const progress = createWorkflowProgressReporter();
   let plan;
+  let templateCandidate: Awaited<ReturnType<typeof workflowTemplateCandidateModule.loadTemplateOptimizerCandidatePlan>> | undefined;
 
   progress.start("Planning workflow DAG with the BAML planner...");
   try {
-    plan = templateId
-      ? workflowTemplatesModule.materializeWorkflowPlan(templateId, {
+    if (args.templateCandidateRunId) {
+      templateCandidate = await workflowTemplateCandidateModule.loadTemplateOptimizerCandidatePlan({
+          runsRoot: args.templateCandidateRunsRoot ?? join("evals", "template-optimizer", "runs"),
+          runId: args.templateCandidateRunId,
+          candidateId: args.templateCandidateId,
+      });
+    }
+    plan = templateCandidate
+      ? workflowTemplateCandidateModule.materializeTemplateOptimizerCandidatePlan({
+        candidate: templateCandidate,
+        objective,
+        runId: args.templateCandidateRunId!,
+      })
+      : templateId
+        ? workflowTemplatesModule.materializeWorkflowPlan(templateId, {
         objective,
         source: resolvedSource,
         project: args.project,
@@ -751,7 +791,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         providerRetryAttempts: isDeepResearch ? deepResearchConfig.providerRetryAttempts : undefined,
         visualize: isDeepResearch ? deepResearchConfig.visualize : undefined,
       })
-      : await planner.planWorkflow({ objective, prompt, templateId: "implementation-review" });
+        : await planner.planWorkflow({ objective, prompt, templateId: "implementation-review" });
     progress.stop("Workflow plan generated.");
   } catch (error) {
     progress.stop();
@@ -954,18 +994,27 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       outputDir: runDescriptor.outputDir,
       replanner: planner,
       expandAfterNode: isSourceToProject
-        ? workflowSourceToProjectModule.createSourceToProjectDynamicExpander({
-          source: resolvedSource!,
-          originalPrompt: prompt,
-          prefetchedSourceContent,
-          project: sourceToProjectProject!,
-          mode: sourceToProjectMode!,
-          maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
-          thresholds: {
-            ...typedConfig.sourceToProject.thresholds,
-            ...sourceToProjectProject!.thresholds,
-          },
-        })
+        ? templateCandidate
+          ? workflowTemplateCandidateModule.createTemplateOptimizerCandidateDynamicExpander({
+            candidate: templateCandidate,
+            mode: sourceToProjectMode!,
+            thresholds: {
+              ...typedConfig.sourceToProject.thresholds,
+              ...sourceToProjectProject!.thresholds,
+            },
+          })
+          : workflowSourceToProjectModule.createSourceToProjectDynamicExpander({
+            source: resolvedSource!,
+            originalPrompt: prompt,
+            prefetchedSourceContent,
+            project: sourceToProjectProject!,
+            mode: sourceToProjectMode!,
+            maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
+            thresholds: {
+              ...typedConfig.sourceToProject.thresholds,
+              ...sourceToProjectProject!.thresholds,
+            },
+          })
         : isDeepResearch
           ? workflowDeepResearchModule.createDeepResearchDynamicExpander()
           : isVerificationOptimizer
@@ -1055,6 +1104,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     state.usage = usageCollector.summarize();
     await workflowArtifactsModule.writeMacroWorkflowArtifacts({ outputDir: runDescriptor.outputDir, state, replayEvents });
     process.stderr.write(workflowUsageModule.renderWorkflowUsageSummary(state.usage));
+    assertWorkflowRunSucceeded(state);
     return [formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir }), dashboardServer ? `Dashboard: ${dashboardServer.url}` : args.dashboardUrl ? `Dashboard: ${args.dashboardUrl}` : ""].filter(Boolean).join("\n");
   } finally {
     await deepResearchExaMcp?.close();
@@ -1062,6 +1112,17 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       await dashboardServer.stop();
     }
   }
+}
+
+export function assertWorkflowRunSucceeded(state: Pick<MacroWorkflowRunStateLike, "status" | "nodeResults">): void {
+  if (state.status === WorkflowNodeStatus.PASSED) {
+    return;
+  }
+  const failedResult = state.nodeResults.find((result) => result.status !== WorkflowNodeStatus.PASSED && result.status !== WorkflowNodeStatus.SKIPPED);
+  const failureDetail = failedResult
+    ? `${failedResult.nodeId}: ${failedResult.error ?? failedResult.output}`
+    : `status ${state.status}`;
+  throw new Error(`Workflow failed at ${failureDetail}`);
 }
 
 function findPrefetchedXPostContent(fetchedXPosts: XPostFetchResult[], source: string | undefined): string | undefined {

@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowNodeCompletedMessage, formatWorkflowNodeFailureMessage, formatWorkflowNodeStartedMessage, formatWorkflowNodeWarningMessage, formatWorkflowRunCompletedMessage, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
+import { assertWorkflowRunSucceeded, createWorkflowProgressReporter, createWorkflowRunDescriptor, formatWorkflowCliSuccessMessage, formatWorkflowCopilotLog, formatWorkflowNodeCompletedMessage, formatWorkflowNodeFailureMessage, formatWorkflowNodeStartedMessage, formatWorkflowNodeWarningMessage, formatWorkflowRunCompletedMessage, formatWorkflowRunStartedMessage, inferSourceReferenceFromPrompt, parseWorkflowCliArgs, runWorkflowCli } from "../../src/cli.js";
 import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js";
 import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
 
@@ -196,6 +196,20 @@ describe("macro workflow CLI", () => {
       status: "failed",
       error: "visual-plan hosted capability is not usable",
     })).toContain("[weavekit][error] Error: visual-plan hosted capability is not usable");
+  });
+
+  it("throws when a workflow run state finished failed", () => {
+    expect(() => assertWorkflowRunSucceeded({
+      status: "failed",
+      nodeResults: [
+        {
+          nodeId: "source-corroboration",
+          status: "failed",
+          output: "Source corroboration failed.",
+          error: "Timeout after 300000ms waiting for session.idle",
+        },
+      ],
+    })).toThrow("Workflow failed at source-corroboration: Timeout after 300000ms waiting for session.idle");
   });
 
   it("parses workflow plan arguments", () => {

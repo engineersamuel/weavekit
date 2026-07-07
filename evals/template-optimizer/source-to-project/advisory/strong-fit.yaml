@@ -1,0 +1,19 @@
+id: strong-fit
+mode: advisory
+scenarioSummary: A source artifact describes a workflow pattern that clearly maps to source-to-project planning/reporting improvements.
+sourceLessons:
+  - Preserve explicit evidence before mapping opportunities.
+  - Use a final synthesis step before a user-facing report.
+projectConstraints:
+  - Advisory mode must not modify files.
+opportunities:
+  - Improve advisory report usefulness through clearer fan-in after plan generation.
+idealFeatures:
+  - Keeps source reading, corroboration, project research, opportunity mapping, and council review distinct.
+  - Produces a reviewed advisory recommendation before report publication.
+mustPreserve:
+  - Does not add implementation nodes in advisory mode.
+  - Keeps final recommendation review when plans exist.
+failureModes:
+  - Skips final review and reports raw plans.
+  - Collapses source and project research into one vague step.

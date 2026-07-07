@@ -80,6 +80,50 @@ _Avoid_: quality bar, cutoff
 The stored implementation plan produced for a selected Opportunity before any Target project changes are made.
 _Avoid_: plan-mode transcript
 
+**Template candidate**:
+A proposed reusable workflow template shape evaluated outside a live Run. A Template candidate may be compared against other candidates before the project adopts it as a source for future Runs.
+_Avoid_: runtime continuation, run patch
+
+**Static template**:
+A reusable workflow entry point that can be invoked to create an initial DAG for a future Run. It may define fixed initial nodes and rules for later dynamic expansion.
+_Avoid_: one-off run plan, generated run state
+
+**Dynamic DAG expansion**:
+The in-Run addition of workflow nodes after earlier nodes produce evidence or decisions that the Static template could not know upfront.
+_Avoid_: static template generation, template optimization
+
+**Incumbent template**:
+The best Template candidate found so far during bounded self-improvement. A challenger may replace it only when the judge concludes that the challenger is a genuine improvement.
+_Avoid_: current winner, global best
+
+**Challenger template**:
+A revised Template candidate generated from judge critique of the Incumbent template. It is discarded unless it improves on the incumbent under the same judging contract.
+_Avoid_: retry, replan patch
+
+**Template quality**:
+The judged strength of a Template candidate's workflow structure and expected source-to-project reasoning outcome, independent of execution cost. Cost and risk may still be checked by later acceptance gates, but they do not determine whether a Challenger template replaces the Incumbent template.
+_Avoid_: cost-adjusted score, cheapest template
+
+**Adoptable template**:
+A Template candidate that is structurally valid, improves across representative evaluation scenarios, and includes clear implementation touchpoints and tests. Adoption is a separate implementation step after offline optimization.
+_Avoid_: auto-applied template, interesting idea
+
+**Template judge**:
+An LLM-backed judging step that grades Template candidates against explicit criteria and the workflow objective. It decides whether a Challenger template replaces the Incumbent template; deterministic workflow validation only decides whether a candidate is structurally admissible.
+_Avoid_: verifier, acceptance gate
+
+**Template optimizer**:
+A bounded planner loop that improves reusable workflow templates outside live Runs. It may generate, judge, and replace Template candidates, but it does not execute a user's real-world workflow while searching.
+_Avoid_: runtime planner, source analyzer, workflow executor
+
+**Workflow grammar**:
+The caller-supplied structural rules that define which workflow node kinds, harnesses, gates, and transitions are admissible for a generated or optimized plan. The Template optimizer consumes the grammar as a constraint instead of hard-coding today's allowed workflow entities.
+_Avoid_: fixed node list, hidden DSL
+
+**Actionable source-to-project outcome**:
+The intended result of a Source-to-project workflow: a source-grounded, project-specific improvement path whose expected value justifies its cost, risk, and verification burden.
+_Avoid_: best DAG, most complete plan
+
 **Opportunity bundle**:
 One or more tightly related Opportunities that are planned and implemented together because they share the same change surface and review story. A valid bundle has an explicit rationale, shared value, separation risk, and scope statement.
 _Avoid_: batch, task group
@@ -91,6 +135,26 @@ _Avoid_: read-only mode
 **Autonomous PR mode**:
 A Run mode that may modify the Target project and prepare a review-ready pull request after opportunities and plans pass automated Verification gates. It never merges or self-approves the pull request.
 _Avoid_: autonomous mode, auto-implement (too vague)
+
+**Autonomous PR eligibility**:
+The Source-to-project condition that allows an Opportunity or Opportunity bundle to proceed toward Autonomous PR mode: the mode is explicitly enabled and every included Opportunity has confidence of at least 0.95. Eligibility still requires worktree preparation, final recommendation review, and Verification gates before code changes are considered acceptable.
+_Avoid_: auto-merge readiness, high score only
+
+**Eligible autonomous PR candidate**:
+An Opportunity or Opportunity bundle that satisfies Autonomous PR eligibility and may enter the Autonomous PR expansion path. In Autonomous PR mode, all eligible candidates may be pursued, not only the highest-ranked candidate.
+_Avoid_: top pick only, winner
+
+**Parallel autonomous worktrees**:
+Separate Target project worktrees prepared for eligible autonomous PR candidates so candidate implementations can proceed independently. Worktree creation is controlled by configured local tooling rather than hard-coded Git commands.
+_Avoid_: shared implementation worktree, sequential candidate implementation
+
+**Worktree creation provider**:
+The configured local command or integration responsible for creating Target project worktrees for Autonomous PR mode. It is read from Weavekit configuration so projects can use tools such as Herdr instead of Weavekit assuming a fixed worktree mechanism.
+_Avoid_: hard-coded git worktree
+
+**Final recommendation acceptance**:
+An automated BAML review result that accepts a Source-to-project recommendation as actionable, project-improving, and worth its complexity. It is not a human approval or HITL gate.
+_Avoid_: human sign-off, approval
 
 **Worktree preparation**:
 The required preflight that creates or selects an isolated Target project worktree, refreshes it from the configured mainline by rebasing, copies required environment files without recording their contents, and records the baseline before Autonomous PR mode may modify files.

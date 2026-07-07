@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+nub scripts/source-to-project-template-optimizer-ui.ts "$@"

@@ -1,0 +1,18 @@
+id: no-fit
+mode: advisory
+scenarioSummary: A source artifact has weak applicability to the target project and should not force a recommendation.
+sourceLessons:
+  - Some source lessons are non-applicable and should be recorded as such.
+projectConstraints:
+  - The project already solves the relevant behavior.
+opportunities:
+  - No high-confidence opportunity should proceed to planning.
+idealFeatures:
+  - Preserves no-accepted-opportunities reporting.
+  - Makes non-applicability visible in the final report.
+mustPreserve:
+  - Does not force plan generation when opportunities fail thresholds.
+  - Does not mark weak opportunities as autonomous PR eligible.
+failureModes:
+  - Creates a plan for a low-confidence idea.
+  - Hides why the source did not apply.

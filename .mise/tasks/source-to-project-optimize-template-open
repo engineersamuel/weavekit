@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: mise run source-to-project:optimize-template:open -- <run-id>" >&2
+  exit 2
+fi
+
+run_id="$1"
+run_dir="evals/template-optimizer/runs/$run_id"
+summary_path="$run_dir/summary.md"
+apply_path="$run_dir/apply-dry-run.md"
+
+if [[ ! -f "$summary_path" ]]; then
+  echo "Missing optimizer summary: $summary_path" >&2
+  exit 1
+fi
+
+paths=("$summary_path")
+if [[ -f "$apply_path" ]]; then
+  paths+=("$apply_path")
+fi
+
+printf '[weavekit] Opening source-to-project template optimizer artifacts for %s\n' "$run_id"
+printf '[weavekit] Summary: %s\n' "$summary_path"
+if [[ -f "$apply_path" ]]; then
+  printf '[weavekit] Apply dry run: %s\n' "$apply_path"
+fi
+
+if command -v open >/dev/null 2>&1; then
+  open "${paths[@]}"
+else
+  printf '[weavekit] No open command found. Open these files manually:\n'
+  printf '%s\n' "${paths[@]}"
+fi

@@ -1,5 +1,20 @@
 # Repository Instructions
 
+## What weavekit is
+
+weavekit is a **meta harness** — an orchestration layer that sits on top of existing LLM harnesses. It is **not** intended to replace tools like Copilot CLI, Claude Code, or Codex CLI. Those harnesses are purpose-built for LLM-driven coding and agent execution; weavekit defers to them for that work.
+
+**Design principle:** Leverage existing harnesses and SDKs for what they are good at (code generation, agent execution, tool-calling, context management). weavekit owns the **workflow and orchestration layer**: sequencing steps, routing between agents, managing state across runs, and coordinating multi-agent pipelines.
+
+**weavekit does not solve problems that LLMs can solve.** If a step in a workflow requires reasoning, code generation, summarization, classification, or any other LLM-native capability, delegate it to the LLM or harness — do not implement it in weavekit workflow code. weavekit's job is to orchestrate, not to be the intelligence.
+
+When building workflows:
+- Use Copilot SDK, Claude Code, Codex CLI, or other harnesses as execution engines for agent tasks.
+- Use **BAML** to define structured output schemas and context contracts between workflow steps. BAML is the boundary layer between weavekit orchestration and LLM execution — use it to declare what you expect back, not to implement the logic yourself.
+- Let the LLM solve what the LLM is good at. Let the harness manage agent execution, tool-calling, and context. weavekit connects and sequences those pieces.
+- Use weavekit to define the workflow graph, manage inter-step data flow, and handle observability (Langfuse traces).
+- Do not re-implement capabilities that existing harnesses or LLMs already provide well.
+
 Use Nub for Node.js package and script management in this repository.
 
 - Run files and scripts with `nub <file>`.
@@ -84,6 +99,16 @@ type PreToolUseInput = Parameters<PreToolUseHandler>[0];
 
 - When writing new workflows, consider Langfuse/OpenTelemetry observability from the start: spans, trace metadata, and useful workflow inputs/outputs should be part of the design.
 - Do not add a durable work queue (e.g. Beads) for workflow orchestration. Workflows are isolated single-machine runs that complete all work in-process; orchestrate dynamic action graphs in-process, record the execution DAG in Langfuse, and snapshot run state to disk for resume. See `CONTEXT.md` and `docs/adr/0001-no-durable-work-queue.md`.
+
+## Langfuse debugging
+
+Langfuse project traces are available at:
+
+```
+http://localhost:3000/project/cmqwb90vu0006t307hrbgpj74/traces
+```
+
+When debugging workflow execution, use the **playwright MCP** to navigate to this URL and inspect traces. Use `browser_navigate` to open the traces page, `browser_snapshot` to read the UI, and `browser_click`/`browser_fill_form` to filter or drill into specific traces.
 
 ## Model proxy
 
