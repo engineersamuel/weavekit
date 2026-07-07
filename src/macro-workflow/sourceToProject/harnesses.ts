@@ -1394,7 +1394,8 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
     if (isOpportunityPlanNode(node)) {
       const opportunity = readNodeInput<Opportunity>(node, "opportunity");
       const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
-      const resolvedPlan = resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject);
+      const projectBrief = getPayloadValue<ProjectBrief>(context, "project-research", "projectBrief");
+      const resolvedPlan = resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject, projectBrief);
       const { prompt, selectedCandidateJson, copilotModel, rawPlanArtifactPath } = resolvedPlan;
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
       const rawPlan = await copilot.run({
@@ -1446,7 +1447,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
 
       const selectedCandidateJson = JSON.stringify(selection.selectedCandidate);
       const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
-      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(options.project), rawPlanArtifactPath);
+      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(projectBrief), rawPlanArtifactPath);
       const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
       const rawPlan = await copilot.run({
@@ -1903,8 +1904,8 @@ export function createSourceToProjectDynamicExpander(options: SourceToProjectHar
 
     const thresholds = mergeThresholds(DEFAULT_SOURCE_TO_PROJECT_THRESHOLDS, options.thresholds, options.project.thresholds);
     const opportunityAcceptances = selectAcceptedOpportunities(councilReview, thresholds);
-    const accepted = opportunityAcceptances.filter((acceptance) => acceptance.accepted);
-    if (accepted.length === 0) {
+    const allAccepted = opportunityAcceptances.filter((acceptance) => acceptance.accepted);
+    if (allAccepted.length === 0) {
       return [{
         id: "report-no-accepted-opportunities",
         kind: WorkflowNodeKind.REPORT,
@@ -1924,6 +1925,11 @@ export function createSourceToProjectDynamicExpander(options: SourceToProjectHar
         replanPolicy: "never",
       }];
     }
+
+    const maxOpportunities = options.maxOpportunities ?? options.project.maxOpportunities ?? 1;
+    const accepted = allAccepted
+      .sort((a, b) => b.acceptanceAverage - a.acceptanceAverage)
+      .slice(0, maxOpportunities);
 
     const opportunityNodes = accepted.flatMap((acceptance) => buildOpportunityFanOutNodes(acceptance));
     return options.mode === "autonomous-pr"
@@ -2165,6 +2171,7 @@ function resolveOpportunityPlanExecution(
   context: WorkflowExecutionContext,
   project: ProjectCatalogEntry,
   sourceToProject?: SourceToProjectDefaults,
+  projectBrief?: ProjectBrief,
 ): { selectedCandidateJson: string; prompt: string; copilotModel?: string; rawPlanArtifactPath: string; execution: WorkflowExecutionMetadata } {
   const opportunity = readNodeInput<Opportunity>(node, "opportunity");
   const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
@@ -2184,7 +2191,8 @@ function resolveOpportunityPlanExecution(
     raw: opportunity,
   });
   const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
-  const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(project), rawPlanArtifactPath);
+  const projectJson = projectBrief ? JSON.stringify(projectBrief) : JSON.stringify(project);
+  const prompt = buildPlanPrompt(selectedCandidateJson, projectJson, rawPlanArtifactPath);
   const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.PLAN_GENERATION, sourceToProject);
   return {
     selectedCandidateJson,
