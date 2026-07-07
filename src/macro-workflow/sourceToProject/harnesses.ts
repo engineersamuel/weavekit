@@ -1297,9 +1297,11 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
 
   const copilotAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
     if (node.id === "visual-plan-preflight") {
+      // Use the workflow runner's CWD (not the target project) so npm config (.npmrc trust policy etc.)
+      // from the weavekit repo is respected when installing the visual-plan skill.
       const install = await ensureAgentNativeSkillInstalledForAdvisoryWorkflow({
         skill: "visual-plan",
-        cwd: options.project.workingTree,
+        cwd: process.cwd(),
         shell: options.shell,
         offline: options.sourceToProject?.offline,
         tooling: options.tooling,
@@ -2324,9 +2326,12 @@ async function ensureAgentNativeSkillInstalledForAdvisoryWorkflow(args: Paramete
     const install = await ensureAgentNativeSkillInstalled(args);
     return { ...install, usable: install.usable ?? true };
   } catch (error) {
-    if (!isAgentNativeHostedAuthPendingError(error)) {
+    if (!isAgentNativeHostedAuthPendingError(error) && !isNubTrustDowngradeError(error)) {
       throw error;
     }
+    const warning = isNubTrustDowngradeError(error)
+      ? "visual-plan skill install was blocked by a dependency trust-downgrade (ERR_NUB_TRUST_DOWNGRADE); visual-plan is unavailable for this run. To fix, add the flagged package to trustPolicyExclude in your .npmrc."
+      : "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.";
     return {
       skill: args.skill,
       command: args.tooling?.agentNativeSkillsInstaller ?? "nub",
@@ -2340,7 +2345,7 @@ async function ensureAgentNativeSkillInstalledForAdvisoryWorkflow(args: Paramete
       output: error instanceof Error ? error.message : String(error),
       skipped: true,
       usable: false,
-      warning: "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
+      warning,
     };
   }
 }
@@ -2400,6 +2405,11 @@ function isAgentNativeHostedAuthPendingError(error: unknown): boolean {
     || /Authentication pending/i.test(message)
     || /Authentication skipped/i.test(message)
     || /Skipped URL-only hosted MCP config/i.test(message);
+}
+
+function isNubTrustDowngradeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /ERR_NUB_TRUST_DOWNGRADE/i.test(message) || /trust downgrade/i.test(message);
 }
 
 function validateAgentNativeSkillInstallOutput(skill: AgentNativeSkillInstallResult["skill"], output: string): void {
