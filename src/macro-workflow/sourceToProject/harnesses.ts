@@ -1341,7 +1341,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       return {
         status: "passed",
         output: `Source analysis complete: ${sourceAnalysis.title}`,
-        payload: { sourceAnalysis },
+        payload: { sourceAnalysis, rawSourceReading: raw },
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
           copilotCall({ mode: "research", prompt, model: copilotModel }),
           bamlCall("DistillSourceAnalysis", bamlModel),
@@ -1379,7 +1379,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       return {
         status: "passed",
         output: `Project brief complete: ${projectBrief.displayName}`,
-        payload: { projectBrief },
+        payload: { projectBrief, rawProjectResearch: raw },
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
           copilotCall({
             mode: "research",
@@ -1397,7 +1397,9 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       const opportunity = readNodeInput<Opportunity>(node, "opportunity");
       const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
       const projectBrief = getPayloadValue<ProjectBrief>(context, "project-research", "projectBrief");
-      const resolvedPlan = resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject, projectBrief);
+      const rawSourceReading = getOptionalPayloadValue<string>(context, "source-reading", "rawSourceReading");
+      const rawProjectResearch = getOptionalPayloadValue<string>(context, "project-research", "rawProjectResearch");
+      const resolvedPlan = resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject, projectBrief, { rawSourceReading: rawSourceReading ?? undefined, rawProjectResearch: rawProjectResearch ?? undefined });
       const { prompt, selectedCandidateJson, copilotModel, rawPlanArtifactPath } = resolvedPlan;
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
       const rawPlan = await copilot.run({
@@ -1449,7 +1451,9 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
 
       const selectedCandidateJson = JSON.stringify(selection.selectedCandidate);
       const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
-      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(projectBrief), rawPlanArtifactPath);
+      const rawSourceReadingSel = getOptionalPayloadValue<string>(context, "source-reading", "rawSourceReading");
+      const rawProjectResearchSel = getOptionalPayloadValue<string>(context, "project-research", "rawProjectResearch");
+      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(projectBrief), rawPlanArtifactPath, { rawSourceReading: rawSourceReadingSel ?? undefined, rawProjectResearch: rawProjectResearchSel ?? undefined });
       const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
       const rawPlan = await copilot.run({
@@ -2174,6 +2178,7 @@ function resolveOpportunityPlanExecution(
   project: ProjectCatalogEntry,
   sourceToProject?: SourceToProjectDefaults,
   projectBrief?: ProjectBrief,
+  rawTranscripts?: { rawSourceReading?: string; rawProjectResearch?: string },
 ): { selectedCandidateJson: string; prompt: string; copilotModel?: string; rawPlanArtifactPath: string; execution: WorkflowExecutionMetadata } {
   const opportunity = readNodeInput<Opportunity>(node, "opportunity");
   const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
@@ -2194,7 +2199,7 @@ function resolveOpportunityPlanExecution(
   });
   const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
   const projectJson = projectBrief ? JSON.stringify(projectBrief) : JSON.stringify(project);
-  const prompt = buildPlanPrompt(selectedCandidateJson, projectJson, rawPlanArtifactPath);
+  const prompt = buildPlanPrompt(selectedCandidateJson, projectJson, rawPlanArtifactPath, rawTranscripts);
   const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.PLAN_GENERATION, sourceToProject);
   return {
     selectedCandidateJson,

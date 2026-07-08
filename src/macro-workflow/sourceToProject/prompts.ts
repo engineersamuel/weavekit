@@ -52,7 +52,27 @@ export function buildProjectResearchPrompt(args: {
   ].filter((part): part is string => Boolean(part)).join("\n\n");
 }
 
-export function buildPlanPrompt(opportunityJson: string, projectJson: string, rawPlanArtifactPath?: string): string {
+// Max chars of each raw transcript to include in the plan prompt.
+// Large enough to capture the key source README content and project file reads,
+// small enough to avoid blowing up the plan session context window.
+const RAW_TRANSCRIPT_MAX_CHARS = 12_000;
+
+function truncateTranscript(raw: string | undefined, maxChars: number): string | undefined {
+  if (!raw?.trim()) return undefined;
+  if (raw.length <= maxChars) return raw;
+  return raw.slice(0, maxChars) + `
+
+[... transcript truncated at ${maxChars} chars ...]`;
+}
+
+export function buildPlanPrompt(
+  opportunityJson: string,
+  projectJson: string,
+  rawPlanArtifactPath?: string,
+  rawTranscripts?: { rawSourceReading?: string; rawProjectResearch?: string },
+): string {
+  const sourceEvidence = truncateTranscript(rawTranscripts?.rawSourceReading, RAW_TRANSCRIPT_MAX_CHARS);
+  const projectEvidence = truncateTranscript(rawTranscripts?.rawProjectResearch, RAW_TRANSCRIPT_MAX_CHARS);
   return [
     "/plan",
     "Create an implementation plan for this single selected source-to-project candidate.",
@@ -88,5 +108,9 @@ export function buildPlanPrompt(opportunityJson: string, projectJson: string, ra
     "The plan must explain the user-visible/project improvement before listing files, tests, or infrastructure chores.",
     `Selected candidate JSON:\n${opportunityJson}`,
     `Project JSON:\n${projectJson}`,
+    // Raw research transcripts — these give the plan agent the same grounded evidence
+    // that a raw /plan run would have from reading the source and project directly.
+    sourceEvidence ? `Source reading transcript (raw research evidence — use this for concrete tool syntax, config format, and field names):\n${sourceEvidence}` : undefined,
+    projectEvidence ? `Project research transcript (raw research evidence — use this for actual file contents, validation scripts, and project structure):\n${projectEvidence}` : undefined,
   ].filter((part): part is string => Boolean(part)).join("\n\n");
 }
