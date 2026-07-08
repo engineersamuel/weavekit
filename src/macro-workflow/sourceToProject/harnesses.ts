@@ -1812,6 +1812,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         : undefined;
       const plan = upstreamNodeId ? getOptionalPayloadValue<PlanArtifactSummary>(context, upstreamNodeId, "plan") : undefined;
       const status = finalRecommendationReview?.status ?? (typeof visualization?.status === "string" ? visualization.status : "rejected");
+      const rawPlanMarkdown = await readRawPlanMarkdownForReport(context.outputDir, plan?.rawPlanArtifactPath);
       const sourceToProjectReportMarkdown = buildOpportunityReportMarkdown({
         mode: options.mode,
         opportunity,
@@ -1819,6 +1820,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         status,
         plan,
         finalRecommendationReview,
+        rawPlanMarkdown,
       });
       return {
         status: "passed",
@@ -1871,10 +1873,14 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         ? getOptionalPayloadValue<FinalRecommendationReview>(context, upstreamNodeId, "finalRecommendationReview")
         : undefined;
       const plans = collectPlansFromDependencies(context, node);
+      const rawPlanMarkdownByPlanIndex = await Promise.all(
+        plans.map((plan) => readRawPlanMarkdownForReport(context.outputDir, plan.rawPlanArtifactPath)),
+      );
       const sourceToProjectReportMarkdown = buildAggregateReportMarkdown({
         mode: options.mode,
         plans,
         finalRecommendationReview,
+        rawPlanMarkdownByPlanIndex,
       });
       return {
         status: "passed",
@@ -2266,6 +2272,17 @@ function withRawPlanArtifactPath(plan: PlanArtifactSummary, rawPlanArtifactPath:
     rawPlanArtifactPath,
     ...(planFilePath ? { planFilePath } : {}),
   };
+}
+
+async function readRawPlanMarkdownForReport(outputDir: string | undefined, rawPlanArtifactPath: string | undefined | null): Promise<string | undefined> {
+  if (!outputDir || !rawPlanArtifactPath) {
+    return undefined;
+  }
+  try {
+    return await readFile(join(outputDir, rawPlanArtifactPath), "utf8");
+  } catch {
+    return undefined;
+  }
 }
 
 async function readCopilotSessionPlan(sessionId: string): Promise<string | undefined> {
@@ -2666,6 +2683,7 @@ function buildOpportunityReportMarkdown(args: {
   status: string;
   plan?: PlanArtifactSummary;
   finalRecommendationReview?: FinalRecommendationReview;
+  rawPlanMarkdown?: string;
 }): string {
   return [
     `# Source-to-Project Report: ${args.opportunity.id} ${args.opportunity.title}`,
@@ -2708,6 +2726,12 @@ function buildOpportunityReportMarkdown(args: {
     "## Review",
     "",
     args.finalRecommendationReview?.rationale ?? "No final recommendation review rationale was available.",
+    ...(args.rawPlanMarkdown ? [
+      "",
+      "## Full Plan (as written by the planning agent)",
+      "",
+      args.rawPlanMarkdown,
+    ] : []),
   ].join("\n");
 }
 
@@ -2715,6 +2739,7 @@ function buildAggregateReportMarkdown(args: {
   mode: SourceToProjectMode;
   plans: PlanArtifactSummary[];
   finalRecommendationReview?: FinalRecommendationReview;
+  rawPlanMarkdownByPlanIndex?: (string | undefined)[];
 }): string {
   return [
     "# Source-to-Project Report",
@@ -2743,6 +2768,12 @@ function buildAggregateReportMarkdown(args: {
         "",
         ...plan.implementationOutline.map((step) => `- ${step}`),
         "",
+        ...(args.rawPlanMarkdownByPlanIndex?.[index] ? [
+          `**Full Plan ${index + 1} (as written by the planning agent):**`,
+          "",
+          args.rawPlanMarkdownByPlanIndex[index]!,
+          "",
+        ] : []),
       ])
       : ["No advisory plans were available.", ""]),
     "## Review",
