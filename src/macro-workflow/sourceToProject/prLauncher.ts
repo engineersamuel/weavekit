@@ -1,5 +1,9 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
+import { parse as parseToml } from "smol-toml";
 import type { ProjectCatalogEntry, SourceToProjectPrLauncherConfig } from "../../config.js";
 import type { ProjectBrief } from "../../generated/baml_client/index.js";
 
@@ -46,6 +50,13 @@ export type SourceToProjectPrLaunchArgs = {
   config: SourceToProjectPrLauncherConfig;
   context: SourceToProjectPrLaunchContext;
   shell?: SourceToProjectPrLauncherShell;
+  /**
+   * Detects whether the "superpowers" Codex plugin (which provides the subagent-driven-development
+   * skill) is installed and enabled for the *local machine* running the agent -- this is a global
+   * Codex plugin, not a per-target-project install. Defaults to reading `~/.codex/config.toml`.
+   * Overridable for tests so assertions don't depend on the developer's local Codex config.
+   */
+  isSuperpowersInstalled?: () => boolean;
 };
 
 export type SourceToProjectPrLauncherShell = {
@@ -80,8 +91,9 @@ export async function launchSourceToProjectPrAgent(args: SourceToProjectPrLaunch
   const createResult = parseHerdrWorktreeCreateOutput(createOutput);
   const worktreePath = createResult.worktreePath;
   const agentCommand = await resolveAgentCommandPath(args.config.agentCommand, shell, args.context.project.workingTree);
+  const isSuperpowersInstalled = args.isSuperpowersInstalled ?? isSuperpowersInstalledForCodex;
   const prompt = args.context.initialPromptMode === "implement"
-    ? buildSourceToProjectPrAgentAutoImplementInitialPrompt(args.context)
+    ? buildSourceToProjectPrAgentAutoImplementInitialPrompt(args.context, agentCommand, isSuperpowersInstalled)
     : buildSourceToProjectPrAgentInitialPrompt(args.context);
   const agentArgs = buildAgentCommandArgs({
     agentCommand,
@@ -183,6 +195,28 @@ function isCodexCommand(command: string): boolean {
 
 function isCopilotCommand(command: string): boolean {
   return command.split(/[\\/]/).pop() === "copilot";
+}
+
+/**
+ * Checks the local machine's Codex config for an enabled "superpowers" plugin (e.g.
+ * `superpowers@openai-curated`), which provides the subagent-driven-development skill. This is a
+ * global, per-machine Codex plugin install -- unrelated to the target project's working tree.
+ */
+function isSuperpowersInstalledForCodex(): boolean {
+  try {
+    const configPath = join(homedir(), ".codex", "config.toml");
+    const parsed = parseToml(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    const plugins = parsed.plugins;
+    if (!plugins || typeof plugins !== "object") {
+      return false;
+    }
+    return Object.entries(plugins as Record<string, unknown>).some(([name, value]) => {
+      const enabled = value && typeof value === "object" ? (value as Record<string, unknown>).enabled : undefined;
+      return name.split("@")[0] === "superpowers" && enabled === true;
+    });
+  } catch {
+    return false;
+  }
 }
 
 function hasCopilotPermissionOverride(args: string[]): boolean {
@@ -327,10 +361,26 @@ export function buildSourceToProjectPrAgentInitialPrompt(context: SourceToProjec
  * Skips plan mode entirely: the opportunity was already planned and reviewed earlier in the
  * source-to-project workflow, so this asks the agent to implement it directly in the freshly
  * created worktree rather than re-planning and waiting for a separate approval step.
+ *
+ * The opening line is tailored per agent:
+ * - Copilot (and anything else): keeps the "no plan-mode approval step" explanation, since
+ *   Copilot has no equivalent concept of an installed skill library to defer to.
+ * - Codex: drops that parenthetical (Codex doesn't have a "plan mode" to explain away) and, when
+ *   the superpowers plugin is installed locally, asks the agent to use its
+ *   subagent-driven-development skill instead of a bare "implement this" instruction.
  */
-export function buildSourceToProjectPrAgentAutoImplementInitialPrompt(context: SourceToProjectPrLaunchContext): string {
+export function buildSourceToProjectPrAgentAutoImplementInitialPrompt(
+  context: SourceToProjectPrLaunchContext,
+  agentCommand: string,
+  isSuperpowersInstalled: () => boolean = isSuperpowersInstalledForCodex,
+): string {
+  const openingLine = isCodexCommand(agentCommand)
+    ? isSuperpowersInstalled()
+      ? "Use subagent-driven development to implement this reviewed source-to-project opportunity directly."
+      : "Implement this reviewed source-to-project opportunity directly."
+    : "Implement this reviewed source-to-project opportunity directly (no plan-mode approval step; it was already planned and reviewed upstream in the workflow).";
   return [
-    "Implement this reviewed source-to-project opportunity directly (no plan-mode approval step; it was already planned and reviewed upstream in the workflow).",
+    openingLine,
     "",
     buildSourceToProjectPrAgentPrompt(context),
   ].join("\n");

@@ -338,6 +338,7 @@ autonomous_pr_allowed = true
           opportunityTitle: "Add manual PR launch",
           reportMarkdown: "# Source-to-Project Report: opp-1\n\nImplement this reviewed opportunity.",
           recommendation: "Add a manual dashboard PR action.",
+          initialPromptMode: "implement",
           projectBrief: {
             architecture: "Keep workflow runs in-process with single-writer handoffs.",
             constraints: ["No durable work queues."],

@@ -127,6 +127,7 @@ describe("source-to-project manual PR launcher", () => {
         agentOptions: [],
       },
       context: { ...launchContextFixture(), initialPromptMode: "implement" },
+      isSuperpowersInstalled: () => false,
       shell: {
         async run(command, args, options) {
           commands.push({ command, args, cwd: options.cwd });
@@ -154,8 +155,96 @@ describe("source-to-project manual PR launcher", () => {
     expect(paneRunCommand?.args[2]).toBe("wP:p1");
     expect(paneRunCommand?.args[3]).not.toContain("/plan\n");
     expect(paneRunCommand?.args[3]).not.toContain("Start agents from the CLI context");
-    expect(paneRunCommand?.args[3]).toContain("Implement this reviewed source-to-project opportunity directly");
+    expect(paneRunCommand?.args[3]).toContain("Implement this reviewed source-to-project opportunity directly.");
+    expect(paneRunCommand?.args[3]).not.toContain("no plan-mode approval step");
+    expect(paneRunCommand?.args[3]).not.toContain("subagent-driven development");
     expect(paneRunCommand?.args[3]).toContain("Requirements:");
+  });
+
+  it("asks Codex to use subagent-driven development when the superpowers plugin is installed", async () => {
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+    await launchSourceToProjectPrAgent({
+      config: {
+        provider: "herdr",
+        agentCommand: "codex",
+        agentArgs: [],
+        split: "right",
+        agentOptions: [],
+      },
+      context: { ...launchContextFixture(), initialPromptMode: "implement" },
+      isSuperpowersInstalled: () => true,
+      shell: {
+        async run(command, args, options) {
+          commands.push({ command, args, cwd: options.cwd });
+          if (command === "sh") {
+            return "/Users/smendenhall/.local/bin/codex\n";
+          }
+          if (command === "herdr" && args[0] === "worktree") {
+            return JSON.stringify({
+              result: {
+                worktree: {
+                  path: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
+                  branch: "source-to-project/opp-1-run-1",
+                },
+                workspace_id: "wP",
+                root_pane: { pane_id: "wP:p1", tab_id: "wP:t1" },
+              },
+            });
+          }
+          return "";
+        },
+      },
+    });
+
+    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    expect(paneRunCommand?.args[3]).toContain(
+      "Use subagent-driven development to implement this reviewed source-to-project opportunity directly.",
+    );
+    expect(paneRunCommand?.args[3]).not.toContain("no plan-mode approval step");
+  });
+
+  it("keeps the plan-mode explanation for Copilot's implement-mode prompt regardless of superpowers", async () => {
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+    await launchSourceToProjectPrAgent({
+      config: {
+        provider: "herdr",
+        agentCommand: "copilot",
+        agentArgs: [],
+        split: "right",
+        agentOptions: [],
+      },
+      context: { ...launchContextFixture(), initialPromptMode: "implement" },
+      isSuperpowersInstalled: () => true,
+      shell: {
+        async run(command, args, options) {
+          commands.push({ command, args, cwd: options.cwd });
+          if (command === "sh") {
+            return "/Users/smendenhall/.local/bin/copilot\n";
+          }
+          if (command === "herdr" && args[0] === "worktree") {
+            return JSON.stringify({
+              result: {
+                worktree: {
+                  path: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
+                  branch: "source-to-project/opp-1-run-1",
+                },
+                workspace_id: "wP",
+                root_pane: { pane_id: "wP:p1", tab_id: "wP:t1" },
+              },
+            });
+          }
+          return "";
+        },
+      },
+    });
+
+    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    expect(paneRunCommand?.args[3]).toContain(
+      "Implement this reviewed source-to-project opportunity directly (no plan-mode approval step; it was already planned and reviewed upstream in the workflow).",
+    );
+    expect(paneRunCommand?.args[3]).not.toContain("subagent-driven development");
   });
 
   it("resolves bare agent commands before passing them to Herdr", async () => {

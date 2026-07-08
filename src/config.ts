@@ -33,6 +33,7 @@ export type SourceToProjectPrLauncherConfig = {
 };
 
 export type SourceToProjectDefaults = {
+  /** Cap on accepted opportunities promoted per run. 0 means unlimited: promote every opportunity that clears the acceptance thresholds. */
   maxOpportunities: number;
   thresholds: SourceToProjectThresholds;
   mode: SourceToProjectMode;
@@ -125,6 +126,7 @@ export type ProjectCatalogEntry = {
   contextDocs: string[];
   validationCommands: string[];
   autonomousPrAllowed: boolean;
+  /** Cap on accepted opportunities promoted per run. 0 or undefined means unlimited (falls back to the global default, which also defaults to unlimited). */
   maxOpportunities?: number;
   thresholds?: Partial<SourceToProjectThresholds>;
   notification: NotificationPolicy;
@@ -350,7 +352,7 @@ export function resolveProjectCatalogEntry(config: WeavekitConfig, projectId: st
 
 function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
   return {
-    maxOpportunities: 1,
+    maxOpportunities: 0,
     thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
     mode: "advisory",
     offline: false,
@@ -464,7 +466,7 @@ function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): So
   const record = asRecord(value);
   const mode = record.mode === "autonomous-pr" ? "autonomous-pr" : "advisory";
   return {
-    maxOpportunities: Math.max(1, Math.floor(readNumber(record.max_opportunities, defaults.maxOpportunities))),
+    maxOpportunities: Math.max(0, Math.floor(readNumber(record.max_opportunities, defaults.maxOpportunities))),
     mode,
     offline: readBoolean(record.offline, readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE") ?? defaults.offline),
     copilotModel: (readOptionalString(record.copilot_model) ?? env.WEAVEKIT_SOURCE_TO_PROJECT_MODEL?.trim()) || undefined,
@@ -648,7 +650,7 @@ function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry>
       contextDocs: readStringArray(record.context_docs),
       validationCommands: readStringArray(record.validation_commands),
       autonomousPrAllowed: readBoolean(record.autonomous_pr_allowed, false),
-      maxOpportunities: typeof record.max_opportunities === "number" ? Math.max(1, Math.floor(record.max_opportunities)) : undefined,
+      maxOpportunities: typeof record.max_opportunities === "number" ? Math.max(0, Math.floor(record.max_opportunities)) : undefined,
       thresholds: {
         minApplicability: typeof record.min_applicability === "number" ? record.min_applicability : undefined,
         minConfidence: typeof record.min_confidence === "number" ? record.min_confidence : undefined,

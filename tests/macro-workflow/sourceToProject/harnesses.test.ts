@@ -13,6 +13,7 @@ import {
   createSourceToProjectHarnessRegistry,
   resolveCopilotCliPathFromSdkModuleUrl,
   selectAcceptedOpportunities,
+  stripPlanningAgentPreamble,
 } from "../../../src/macro-workflow/sourceToProject/harnesses.js";
 
 const HOSTED_VISUAL_PLAN_ARTIFACT = "Published visual-plan MDX artifact: https://plan.agent-native.com/builder/o5-visual-plan";
@@ -2697,6 +2698,106 @@ describe("source-to-project harness registry", () => {
       status: "rejected",
       rejectionReason: "No opportunity met the quality gate.",
     });
+  });
+});
+
+describe("stripPlanningAgentPreamble", () => {
+  it("strips the harness's persisted-path preamble and separator before the real plan heading", () => {
+    const raw = [
+      "Plan saved and todos tracked. Here is the final plan markdown (the harness will persist it to `raw-plans/plan-opportunity-opp-1.md`):",
+      "",
+      "---",
+      "",
+      "# Plan — opp-1: do the thing",
+      "",
+      "Body content.",
+    ].join("\n");
+
+    expect(stripPlanningAgentPreamble(raw)).toBe("# Plan — opp-1: do the thing\n\nBody content.");
+  });
+
+  it("strips a preamble variant with no explicit persisted path", () => {
+    const raw = "Plan saved and todos tracked. Here is the final implementation plan.\n\n---\n\n# Implementation Plan — O1\n";
+
+    expect(stripPlanningAgentPreamble(raw)).toBe("# Implementation Plan — O1\n");
+  });
+
+  it("leaves markdown untouched when there is no known preamble", () => {
+    const raw = "# Plan — opp-1: do the thing\n\nBody content.";
+
+    expect(stripPlanningAgentPreamble(raw)).toBe(raw);
+  });
+});
+
+describe("report node exposes the exact plan markdown embedded in the herdr launch prompt", () => {
+  it("includes the cleaned raw plan verbatim inside sourceToProjectReportMarkdown (the string sent to herdr)", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-report-plan-"));
+    try {
+      const rawPlanArtifactPath = "raw-plans/plan-opportunity-opp-1.md";
+      const persistedRawPlan = [
+        "Plan saved and todos tracked. Here is the final plan markdown (the harness will persist it to `raw-plans/plan-opportunity-opp-1.md`):",
+        "",
+        "---",
+        "",
+        "# Plan — opp-1: do the thing",
+        "",
+        "Body content describing the change.",
+      ].join("\n");
+      await mkdir(join(outputDir, "raw-plans"), { recursive: true });
+      await writeFile(join(outputDir, rawPlanArtifactPath), persistedRawPlan, "utf8");
+
+      const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+        minApplicability: 0.7,
+        minConfidence: 0.65,
+        minImpact: 0.5,
+        minAcceptanceAverage: 0.85,
+        maxRisk: 0.8,
+      }).find((candidate) => candidate.id === "opp-1")!;
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/loops",
+        project: projectFixture(),
+        mode: "advisory",
+      });
+      const reportNode = {
+        id: "report-opportunity-opp-1",
+        kind: WorkflowNodeKind.REPORT,
+        harness: WorkflowHarnessKind.REPORTER,
+        title: "Report opp-1",
+        prompt: "Report",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["review-opportunity-opp-1"],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
+      };
+
+      const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
+        payloads: new Map([
+          ["review-opportunity-opp-1", {
+            finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+            plan: { ...planSummaryFixture("Loop init plan"), rawPlanArtifactPath },
+          }],
+        ]),
+        artifacts: new Map(),
+        outputDir,
+      });
+
+      expect(reportResult.status).toBe("passed");
+      // The UI's plan card renders payload.rawPlanMarkdown. Confirm it is the harness-preamble-free
+      // plan text...
+      expect(reportResult.payload?.rawPlanMarkdown).toBe("# Plan — opp-1: do the thing\n\nBody content describing the change.");
+      // ...and that this exact string is embedded verbatim inside sourceToProjectReportMarkdown, which
+      // is byte-identical to the report text a manual/auto PR launch sends to herdr as context.reportMarkdown
+      // (see "auto-launches an implementation agent..." test asserting launchCalls[0].context.reportMarkdown
+      // === reportResult.payload.sourceToProjectReportMarkdown).
+      expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain(reportResult.payload!.rawPlanMarkdown as string);
+      expect(reportResult.output).toBe(reportResult.payload?.sourceToProjectReportMarkdown);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
   });
 });
 

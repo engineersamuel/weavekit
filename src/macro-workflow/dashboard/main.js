@@ -673,17 +673,111 @@ function renderInlineMarkdown(text) {
   return parts;
 }
 
+const FULL_PLAN_HEADING_MARKER = "## Full Plan (as written by the planning agent)";
+
+function stripFullPlanSection(markdown) {
+  const text = String(markdown ?? "");
+  const index = text.indexOf(FULL_PLAN_HEADING_MARKER);
+  if (index === -1) {
+    return text;
+  }
+  return text.slice(0, index).replace(/\n+$/, "\n");
+}
+
+// Mirrors the backend's stripPlanningAgentPreamble (src/macro-workflow/sourceToProject/harnesses.ts)
+// so plan text embedded in older, already-persisted reports also renders/copies cleanly.
+function stripPlanningAgentPreamble(markdown) {
+  const lines = String(markdown ?? "").split("\n");
+  if (!/^Plan saved and todos tracked\b/i.test(lines[0] ?? "")) {
+    return markdown;
+  }
+  let index = 1;
+  while (index < lines.length && lines[index].trim() === "") index++;
+  if (lines[index]?.trim() === "---") {
+    index++;
+    while (index < lines.length && lines[index].trim() === "") index++;
+  }
+  return lines.slice(index).join("\n");
+}
+
+function extractFullPlanSection(markdown) {
+  const text = String(markdown ?? "");
+  const index = text.indexOf(FULL_PLAN_HEADING_MARKER);
+  if (index === -1) {
+    return undefined;
+  }
+  const after = text.slice(index + FULL_PLAN_HEADING_MARKER.length).replace(/^\s*\n+/, "").trimEnd();
+  return after ? stripPlanningAgentPreamble(after) : undefined;
+}
+
+function buildRawPlanEntries(payload, output) {
+  if (!payload) {
+    return [];
+  }
+  if (typeof payload.rawPlanMarkdown === "string" && payload.rawPlanMarkdown.trim()) {
+    return [{ title: payload.plan?.title, markdown: stripPlanningAgentPreamble(payload.rawPlanMarkdown) }];
+  }
+  if (Array.isArray(payload.rawPlanMarkdownByPlanIndex)) {
+    const plans = Array.isArray(payload.plans) ? payload.plans : [];
+    const entries = payload.rawPlanMarkdownByPlanIndex
+      .map((markdown, index) => ({ title: plans[index]?.title, markdown: stripPlanningAgentPreamble(markdown) }))
+      .filter((entry) => typeof entry.markdown === "string" && entry.markdown.trim());
+    if (entries.length > 0) {
+      return entries;
+    }
+  }
+  const fallback = extractFullPlanSection(output ?? payload.sourceToProjectReportMarkdown);
+  return fallback ? [{ title: payload.plan?.title, markdown: fallback }] : [];
+}
+
+function RawPlanCard({ title, markdown }) {
+  const [copyState, setCopyState] = useState("idle");
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    setTimeout(() => setCopyState("idle"), 1800);
+  };
+
+  return (
+    <section className="raw-plan-card">
+      <div className="raw-plan-card-header">
+        <div>
+          <div className="output-panel-eyebrow">Plan sent to herdr</div>
+          <h3>{title || "Full plan (as written by the planning agent)"}</h3>
+        </div>
+        <button type="button" className="node-action-button raw-plan-copy-button" onClick={handleCopy}>
+          {copyState === "copied" ? "Copied!" : copyState === "failed" ? "Copy failed" : "Copy plan"}
+        </button>
+      </div>
+      <div className="raw-plan-card-body">
+        <MarkdownOutput markdown={markdown} />
+      </div>
+    </section>
+  );
+}
+
 function RichNodeOutput({ result }) {
+  const rawPlanEntries = useMemo(() => buildRawPlanEntries(result?.payload, result?.output), [result?.payload, result?.output]);
+  const summaryMarkdown = rawPlanEntries.length > 0 ? stripFullPlanSection(result?.output) : (result?.output ?? "");
+
   if (result?.payload && Object.keys(result.payload).length > 0) {
     return (
       <section className="node-output-section">
         <h3>Node Output</h3>
         <div className="rich-output">
           <PayloadHighlights payload={result.payload} />
-          {result.output?.trim() ? (
+          {rawPlanEntries.map((entry, index) => (
+            <RawPlanCard key={index} title={entry.title} markdown={entry.markdown} />
+          ))}
+          {summaryMarkdown?.trim() ? (
             <section className="structured-section">
               <h3>Output Summary</h3>
-              <MarkdownOutput markdown={result.output} />
+              <MarkdownOutput markdown={summaryMarkdown} />
             </section>
           ) : null}
           <StructuredValue value={result.payload} title="Typed Output Payload" path="payload" />
@@ -719,7 +813,11 @@ function PayloadHighlights({ payload }) {
     return <DeepResearchQuestionBatchHighlights summary={questionBatch} />;
   }
 
-  const plans = Array.isArray(payload?.plans) ? payload.plans : [];
+  const plans = Array.isArray(payload?.plans)
+    ? payload.plans
+    : payload?.plan
+      ? [payload.plan]
+      : [];
   if (plans.length > 0) {
     return <PlanHighlights plans={plans} />;
   }

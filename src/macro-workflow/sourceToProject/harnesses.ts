@@ -380,6 +380,7 @@ export type SourceToProjectHarnessOptions = {
   prefetchedSourceContent?: string;
   project: ProjectCatalogEntry;
   mode: SourceToProjectMode;
+  /** Cap on accepted opportunities promoted per run. 0 or undefined means unlimited: every opportunity that clears the acceptance thresholds is promoted. */
   maxOpportunities?: number;
   thresholds?: SourceToProjectThresholds;
   copilot?: CopilotHarnessClient;
@@ -1853,6 +1854,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
           },
           sourceToProjectReportMarkdown,
           ...(autoImplementLaunch ? { autoImplementLaunch } : {}),
+          ...(rawPlanMarkdown ? { rawPlanMarkdown } : {}),
           opportunityAcceptance: acceptance,
           opportunityVisualization: visualization,
           plan,
@@ -1911,6 +1913,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
             rationale: finalRecommendationReview?.rationale,
           },
           plans,
+          ...(rawPlanMarkdownByPlanIndex.some(Boolean) ? { rawPlanMarkdownByPlanIndex } : {}),
           finalRecommendationReview,
         },
         execution: reporterExecution(node),
@@ -1971,10 +1974,11 @@ export function createSourceToProjectDynamicExpander(options: SourceToProjectHar
       }];
     }
 
-    const maxOpportunities = options.maxOpportunities ?? options.project.maxOpportunities ?? 1;
-    const accepted = allAccepted
-      .sort((a, b) => b.acceptanceAverage - a.acceptanceAverage)
-      .slice(0, maxOpportunities);
+    // 0 or undefined means unlimited: promote every opportunity that clears the acceptance
+    // thresholds instead of arbitrarily capping how many high-confidence opportunities proceed.
+    const maxOpportunities = options.maxOpportunities ?? options.project.maxOpportunities ?? 0;
+    const sortedAccepted = allAccepted.sort((a, b) => b.acceptanceAverage - a.acceptanceAverage);
+    const accepted = maxOpportunities > 0 ? sortedAccepted.slice(0, maxOpportunities) : sortedAccepted;
 
     const opportunityNodes = accepted.flatMap((acceptance) => buildOpportunityFanOutNodes(acceptance));
     return options.mode === "autonomous-pr"
@@ -2297,10 +2301,33 @@ async function readRawPlanMarkdownForReport(outputDir: string | undefined, rawPl
     return undefined;
   }
   try {
-    return await readFile(join(outputDir, rawPlanArtifactPath), "utf8");
+    const rawPlanMarkdown = await readFile(join(outputDir, rawPlanArtifactPath), "utf8");
+    return stripPlanningAgentPreamble(rawPlanMarkdown);
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Planning agents (e.g. the task-plan skill) commonly prefix their final plan markdown with a
+ * conversational status line like "Plan saved and todos tracked. Here is the final plan markdown
+ * (the harness will persist it to `raw-plans/<file>.md`):" followed by a `---` separator. That
+ * path is only meaningful in the run's `outputDir` and does not exist once this markdown is
+ * embedded into a report/prompt handed to a fresh agent in a different worktree, so strip it
+ * before the raw plan content is reused downstream.
+ */
+export function stripPlanningAgentPreamble(markdown: string): string {
+  const lines = markdown.split("\n");
+  if (!/^Plan saved and todos tracked\b/i.test(lines[0] ?? "")) {
+    return markdown;
+  }
+  let index = 1;
+  while (index < lines.length && lines[index].trim() === "") index++;
+  if (lines[index]?.trim() === "---") {
+    index++;
+    while (index < lines.length && lines[index].trim() === "") index++;
+  }
+  return lines.slice(index).join("\n");
 }
 
 export type AutoImplementLaunchOutcome =

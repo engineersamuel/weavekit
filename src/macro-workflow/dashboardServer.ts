@@ -506,6 +506,10 @@ async function buildSourceToProjectPrLaunchArgs(args: {
     planTitle: readString(plan?.title),
     recommendation: readString(plan?.recommendation),
     projectBrief,
+    // The report node's plan was already produced and reviewed earlier in the workflow (see
+    // reportMarkdown's embedded "Full Plan" section), so the manually-launched agent should
+    // implement it directly rather than re-running /plan mode from scratch in the new worktree.
+    initialPromptMode: "implement",
   };
   return {
     config: resolveSourceToProjectPrLauncherConfig(args.config.sourceToProject.prLauncher, args.agentId),
