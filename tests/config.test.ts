@@ -350,7 +350,7 @@ directory = "/config/hve-core"
         thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
         mode: "advisory" as const,
         offline: false,
-        prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"], split: "right" as const },
+        prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"], split: "right" as const }, autoImplementOnReport: false,
       },
       deepResearch: {
         providers: [DeepResearchProvider.GROK, DeepResearchProvider.EXA, DeepResearchProvider.COPILOT_LAST30DAYS],

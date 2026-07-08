@@ -35,6 +35,12 @@ import {
   type SourceToProjectBamlFunctionName,
 } from "./modelPolicy.js";
 import { buildCorroborationPrompt, buildPlanPrompt, buildProjectResearchPrompt, buildSourceReadingPrompt } from "./prompts.js";
+import {
+  launchSourceToProjectPrAgent,
+  type SourceToProjectPrLaunchContext,
+  type SourceToProjectPrLaunchResult,
+  type SourceToProjectPrLauncher,
+} from "./prLauncher.js";
 import { prepareAutonomousWorktree, type WorktreePreparationResult } from "./worktree.js";
 
 const execFileAsync = promisify(execFile);
@@ -389,6 +395,8 @@ export type SourceToProjectHarnessOptions = {
   usageCollector?: WorkflowUsageCollector;
   visualPlanBridgeCleanup?: VisualPlanBridgeCleanupScheduler;
   visualPlanBridgeCleanupTtlMs?: number;
+  /** Overridable for tests; defaults to the real Herdr-based launcher. */
+  prLauncher?: SourceToProjectPrLauncher;
 };
 
 export function createOfflineSourceToProjectHarnessClient(): CopilotHarnessClient {
@@ -1822,6 +1830,15 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         finalRecommendationReview,
         rawPlanMarkdown,
       });
+      const autoImplementLaunch = await maybeAutoImplementOpportunity({
+        options,
+        context,
+        node,
+        opportunity,
+        plan,
+        status,
+        reportMarkdown: sourceToProjectReportMarkdown,
+      });
       return {
         status: "passed",
         output: sourceToProjectReportMarkdown,
@@ -1835,6 +1852,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
             rationale: finalRecommendationReview?.rationale,
           },
           sourceToProjectReportMarkdown,
+          ...(autoImplementLaunch ? { autoImplementLaunch } : {}),
           opportunityAcceptance: acceptance,
           opportunityVisualization: visualization,
           plan,
@@ -2282,6 +2300,67 @@ async function readRawPlanMarkdownForReport(outputDir: string | undefined, rawPl
     return await readFile(join(outputDir, rawPlanArtifactPath), "utf8");
   } catch {
     return undefined;
+  }
+}
+
+export type AutoImplementLaunchOutcome =
+  | { status: "launched"; worktreePath: string; branchName: string; agentName: string; startedCommand: string }
+  | { status: "failed"; error: string };
+
+/**
+ * Best-effort automation: when enabled, immediately hands an accepted opportunity's reviewed
+ * report to a Herdr-managed worktree + agent for direct implementation, instead of requiring a
+ * manual "Create PR" click. Never fails the report node -- launch errors are captured in the
+ * returned outcome so they can be surfaced in the dashboard/report without blocking the run.
+ */
+async function maybeAutoImplementOpportunity(args: {
+  options: SourceToProjectHarnessOptions;
+  context: WorkflowExecutionContext;
+  node: RuntimeWorkflowNode;
+  opportunity: Opportunity;
+  plan: PlanArtifactSummary | undefined;
+  status: string;
+  reportMarkdown: string;
+}): Promise<AutoImplementLaunchOutcome | undefined> {
+  const { options, context, node, opportunity, plan, status, reportMarkdown } = args;
+  if (status !== "accepted") {
+    return undefined;
+  }
+  if (!options.sourceToProject?.autoImplementOnReport) {
+    return undefined;
+  }
+  if (!options.project.autonomousPrAllowed) {
+    return undefined;
+  }
+  const runId = context.outputDir ? basename(context.outputDir) : node.id;
+  const launcher = options.prLauncher ?? { launch: launchSourceToProjectPrAgent };
+  const launchContext: SourceToProjectPrLaunchContext = {
+    runId,
+    nodeId: node.id,
+    objective: context.objective ?? options.originalPrompt ?? "",
+    source: options.source,
+    project: options.project,
+    opportunityId: opportunity.id,
+    opportunityTitle: opportunity.title,
+    reportMarkdown,
+    planTitle: plan?.title,
+    recommendation: plan?.recommendation,
+    initialPromptMode: "implement",
+  };
+  try {
+    const launch: SourceToProjectPrLaunchResult = await launcher.launch({
+      config: options.sourceToProject.prLauncher,
+      context: launchContext,
+    });
+    return {
+      status: "launched",
+      worktreePath: launch.worktreePath,
+      branchName: launch.branchName,
+      agentName: launch.agentName,
+      startedCommand: launch.startedCommand,
+    };
+  } catch (error) {
+    return { status: "failed", error: error instanceof Error ? error.message : String(error) };
   }
 }
 

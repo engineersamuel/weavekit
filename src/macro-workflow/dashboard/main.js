@@ -65,7 +65,18 @@ const WorkflowNode = memo(({ data }) => {
       <div className="custom-node-title">{data.label}</div>
       <div className="node-harness-line">{data.harness}</div>
       <div className="node-model-line">model {data.model}</div>
-      {data.canCreatePr ? (
+      {data.autoImplementLaunch?.status === "launched" ? (
+        <div className="node-inline-actions nodrag">
+          <span className="node-action-badge node-action-badge-success">
+            Auto-implement started: {data.autoImplementLaunch.agentName}
+          </span>
+        </div>
+      ) : data.autoImplementLaunch?.status === "failed" ? (
+        <div className="node-inline-actions nodrag">
+          <span className="node-action-error">Auto-implement launch failed: {data.autoImplementLaunch.error}</span>
+        </div>
+      ) : null}
+      {data.canCreatePr && data.autoImplementLaunch?.status !== "launched" ? (
         <div className="node-inline-actions nodrag">
           <button
             type="button"
@@ -1538,6 +1549,7 @@ function App() {
           canCreatePr,
           prLaunchState: prLaunches[launchKey],
           onCreatePr: createPrForNode,
+          autoImplementLaunch: nodeResult?.payload?.autoImplementLaunch,
         },
       };
     }),

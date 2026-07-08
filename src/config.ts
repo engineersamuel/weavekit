@@ -34,6 +34,12 @@ export type SourceToProjectDefaults = {
   sourceReadingMaxToolCalls?: number;
   projectResearchMaxToolCalls?: number;
   prLauncher: SourceToProjectPrLauncherConfig;
+  /**
+   * When true, automatically create a Herdr worktree and start the configured agent to
+   * implement an accepted opportunity as soon as its report node passes, instead of waiting
+   * for a manual "Create PR" click. Still gated per-project by `autonomousPrAllowed`.
+   */
+  autoImplementOnReport: boolean;
 };
 
 export const DeepResearchProvider = {
@@ -345,6 +351,7 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
       agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
       split: "right",
     },
+    autoImplementOnReport: false,
   };
 }
 
@@ -453,6 +460,10 @@ function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): So
     sourceReadingMaxToolCalls: readOptionalInteger(record.source_reading_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS"),
     projectResearchMaxToolCalls: readOptionalInteger(record.project_research_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS"),
     prLauncher: readSourceToProjectPrLauncherConfig(record.pr_launcher, defaults.prLauncher),
+    autoImplementOnReport: readBoolean(
+      record.auto_implement_on_report,
+      readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_AUTO_IMPLEMENT_ON_REPORT") ?? defaults.autoImplementOnReport,
+    ),
     thresholds: {
       minApplicability: readNumber(record.min_applicability, defaults.thresholds.minApplicability),
       minConfidence: readNumber(record.min_confidence, defaults.thresholds.minConfidence),

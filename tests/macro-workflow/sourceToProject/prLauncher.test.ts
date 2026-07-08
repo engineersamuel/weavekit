@@ -112,6 +112,48 @@ describe("source-to-project manual PR launcher", () => {
     expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(false);
   });
 
+  it("skips plan mode and asks the agent to implement directly when initialPromptMode is 'implement'", async () => {
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+    await launchSourceToProjectPrAgent({
+      config: {
+        provider: "herdr",
+        agentCommand: "codex",
+        agentArgs: [],
+        split: "right",
+      },
+      context: { ...launchContextFixture(), initialPromptMode: "implement" },
+      shell: {
+        async run(command, args, options) {
+          commands.push({ command, args, cwd: options.cwd });
+          if (command === "sh") {
+            return "/Users/smendenhall/.local/bin/codex\n";
+          }
+          if (command === "herdr" && args[0] === "worktree") {
+            return JSON.stringify({
+              result: {
+                worktree: {
+                  path: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
+                  branch: "source-to-project/opp-1-run-1",
+                },
+                workspace_id: "wP",
+                root_pane: { pane_id: "wP:p1", tab_id: "wP:t1" },
+              },
+            });
+          }
+          return "";
+        },
+      },
+    });
+
+    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    expect(paneRunCommand?.args[2]).toBe("wP:p1");
+    expect(paneRunCommand?.args[3]).not.toContain("/plan\n");
+    expect(paneRunCommand?.args[3]).not.toContain("Start in plan mode for this PR handoff");
+    expect(paneRunCommand?.args[3]).toContain("Implement this reviewed source-to-project opportunity directly");
+    expect(paneRunCommand?.args[3]).toContain("Implement the reviewed source-to-project opportunity");
+  });
+
   it("resolves bare agent commands before passing them to Herdr", async () => {
     const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
 

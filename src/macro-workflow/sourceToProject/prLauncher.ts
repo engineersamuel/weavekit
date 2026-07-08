@@ -18,6 +18,13 @@ export type SourceToProjectPrLaunchContext = {
   planTitle?: string;
   recommendation?: string;
   projectBrief?: ProjectBrief;
+  /**
+   * "plan" (default) starts the agent in Copilot plan mode and waits for human approval
+   * before editing files -- this is the manual "Create PR" button behavior.
+   * "implement" skips plan mode and asks the agent to implement the reviewed opportunity
+   * directly, since the plan was already produced and reviewed earlier in the workflow.
+   */
+  initialPromptMode?: "plan" | "implement";
 };
 
 export type SourceToProjectPrLaunchResult = {
@@ -73,7 +80,9 @@ export async function launchSourceToProjectPrAgent(args: SourceToProjectPrLaunch
   const createResult = parseHerdrWorktreeCreateOutput(createOutput);
   const worktreePath = createResult.worktreePath;
   const agentCommand = await resolveAgentCommandPath(args.config.agentCommand, shell, args.context.project.workingTree);
-  const prompt = buildSourceToProjectPrAgentInitialPrompt(args.context);
+  const prompt = args.context.initialPromptMode === "implement"
+    ? buildSourceToProjectPrAgentAutoImplementInitialPrompt(args.context)
+    : buildSourceToProjectPrAgentInitialPrompt(args.context);
   const agentArgs = buildAgentCommandArgs({
     agentCommand,
     configuredArgs: args.config.agentArgs,
@@ -301,6 +310,19 @@ export function buildSourceToProjectPrAgentInitialPrompt(context: SourceToProjec
   return [
     "/plan",
     "Start in plan mode for this PR handoff. First produce a concise implementation plan for the reviewed opportunity, then wait for human approval before editing files.",
+    "",
+    buildSourceToProjectPrAgentPrompt(context),
+  ].join("\n");
+}
+
+/**
+ * Skips plan mode entirely: the opportunity was already planned and reviewed earlier in the
+ * source-to-project workflow, so this asks the agent to implement it directly in the freshly
+ * created worktree rather than re-planning and waiting for a separate approval step.
+ */
+export function buildSourceToProjectPrAgentAutoImplementInitialPrompt(context: SourceToProjectPrLaunchContext): string {
+  return [
+    "Implement this reviewed source-to-project opportunity directly (no plan-mode approval step; it was already planned and reviewed upstream in the workflow).",
     "",
     buildSourceToProjectPrAgentPrompt(context),
   ].join("\n");

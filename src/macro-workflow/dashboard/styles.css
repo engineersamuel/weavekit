@@ -1133,6 +1133,25 @@ body {
   white-space: nowrap;
 }
 
+.node-action-badge {
+  border-radius: 8px;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.25;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 6px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-action-badge-success {
+  background: rgba(6, 78, 59, 0.92);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  color: #a7f3d0;
+}
+
 .node-inline-actions {
   display: flex;
   flex-direction: column;
