@@ -13,6 +13,7 @@ import {
   createSourceToProjectHarnessRegistry,
   resolveCopilotCliPathFromSdkModuleUrl,
   selectAcceptedOpportunities,
+  stripPlanningAgentPreamble,
 } from "../../../src/macro-workflow/sourceToProject/harnesses.js";
 
 const HOSTED_VISUAL_PLAN_ARTIFACT = "Published visual-plan MDX artifact: https://plan.agent-native.com/builder/o5-visual-plan";
@@ -47,7 +48,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         copilotModel: "copilot-research-model",
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" },
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -570,7 +571,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         timeoutMs: 600000,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" },
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
       },
     });
 
@@ -591,7 +592,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         sourceReadingMaxToolCalls: 12,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" },
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -670,7 +671,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         projectResearchMaxToolCalls: 24,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" },
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -1546,6 +1547,158 @@ describe("source-to-project harness registry", () => {
       rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
       hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
     });
+  });
+
+  it("auto-launches a Herdr implement agent when an opportunity report is accepted and auto-implement is enabled", async () => {
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).find((candidate) => candidate.id === "opp-1")!;
+    const launchCalls: Array<Parameters<NonNullable<Parameters<typeof createSourceToProjectHarnessRegistry>[0]["prLauncher"]>["launch"]>[0]> = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: { ...projectFixture(), autonomousPrAllowed: true },
+      mode: "advisory",
+      sourceToProject: {
+        ...defaultSourceToProjectDefaultsFixture(),
+        autoImplementOnReport: true,
+      },
+      prLauncher: {
+        async launch(args) {
+          launchCalls.push(args);
+          return {
+            provider: "herdr",
+            worktreePath: "/Users/smendenhall/.herdr/worktrees/secondbrain/worktree-opp-1",
+            branchName: "source-to-project/opp-1-run-1",
+            agentName: "source-to-project-opp-1-run-1",
+            startedCommand: "herdr agent start source-to-project-opp-1-run-1",
+          };
+        },
+      },
+    });
+
+    const reportNode = {
+      id: "report-opportunity-opp-1",
+      kind: WorkflowNodeKind.REPORT,
+      harness: WorkflowHarnessKind.REPORTER,
+      title: "Report opp-1",
+      prompt: "Report",
+      input: {
+        opportunity: acceptance.opportunity,
+        opportunityAcceptance: acceptance,
+      },
+      dependsOn: ["review-opportunity-opp-1"],
+      gates: ["output-contract" as const],
+      writeMode: "read-only" as const,
+      replanPolicy: "never" as const,
+    };
+
+    const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
+      payloads: new Map([
+        ["review-opportunity-opp-1", {
+          finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+          plan: planSummaryFixture("Loop init plan"),
+        }],
+      ]),
+      artifacts: new Map(),
+      outputDir: "/tmp/runs/run-1",
+    });
+
+    expect(reportResult.status).toBe("passed");
+    expect(launchCalls).toHaveLength(1);
+    expect(launchCalls[0]?.context).toMatchObject({
+      runId: "run-1",
+      nodeId: "report-opportunity-opp-1",
+      opportunityId: "opp-1",
+      initialPromptMode: "implement",
+    });
+    expect(launchCalls[0]?.context.reportMarkdown).toBe(reportResult.payload?.sourceToProjectReportMarkdown);
+    expect(reportResult.payload?.autoImplementLaunch).toEqual({
+      status: "launched",
+      worktreePath: "/Users/smendenhall/.herdr/worktrees/secondbrain/worktree-opp-1",
+      branchName: "source-to-project/opp-1-run-1",
+      agentName: "source-to-project-opp-1-run-1",
+      startedCommand: "herdr agent start source-to-project-opp-1-run-1",
+    });
+  });
+
+  it("does not auto-launch when auto-implement is disabled, the project disallows autonomous PRs, or the opportunity was rejected", async () => {
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).find((candidate) => candidate.id === "opp-1")!;
+    const reportNode = {
+      id: "report-opportunity-opp-1",
+      kind: WorkflowNodeKind.REPORT,
+      harness: WorkflowHarnessKind.REPORTER,
+      title: "Report opp-1",
+      prompt: "Report",
+      input: {
+        opportunity: acceptance.opportunity,
+        opportunityAcceptance: acceptance,
+      },
+      dependsOn: ["review-opportunity-opp-1"],
+      gates: ["output-contract" as const],
+      writeMode: "read-only" as const,
+      replanPolicy: "never" as const,
+    };
+    const payloads = new Map([
+      ["review-opportunity-opp-1", {
+        finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+        plan: planSummaryFixture("Loop init plan"),
+      }],
+    ]);
+
+    // auto-implement disabled (default)
+    let launched = false;
+    let registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: { ...projectFixture(), autonomousPrAllowed: true },
+      mode: "advisory",
+      prLauncher: { async launch() { launched = true; return {} as never; } },
+    });
+    let reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, { payloads, artifacts: new Map(), outputDir: "/tmp/runs/run-1" });
+    expect(launched).toBe(false);
+    expect(reportResult.payload?.autoImplementLaunch).toBeUndefined();
+
+    // project disallows autonomous PRs
+    registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: { ...projectFixture(), autonomousPrAllowed: false },
+      mode: "advisory",
+      sourceToProject: { ...defaultSourceToProjectDefaultsFixture(), autoImplementOnReport: true },
+      prLauncher: { async launch() { launched = true; return {} as never; } },
+    });
+    reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, { payloads, artifacts: new Map(), outputDir: "/tmp/runs/run-1" });
+    expect(launched).toBe(false);
+    expect(reportResult.payload?.autoImplementLaunch).toBeUndefined();
+
+    // rejected opportunity
+    registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: { ...projectFixture(), autonomousPrAllowed: true },
+      mode: "advisory",
+      sourceToProject: { ...defaultSourceToProjectDefaultsFixture(), autoImplementOnReport: true },
+      prLauncher: { async launch() { launched = true; return {} as never; } },
+    });
+    reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
+      payloads: new Map([
+        ["review-opportunity-opp-1", {
+          finalRecommendationReview: { ...acceptedFinalRecommendationReviewFixture(), status: "rejected" as const },
+          plan: planSummaryFixture("Loop init plan"),
+        }],
+      ]),
+      artifacts: new Map(),
+      outputDir: "/tmp/runs/run-1",
+    });
+    expect(launched).toBe(false);
+    expect(reportResult.payload?.autoImplementLaunch).toBeUndefined();
   });
 
   it("executes optimized candidate multiple-opportunity branch nodes without unsupported fallbacks", async () => {
@@ -2548,6 +2701,106 @@ describe("source-to-project harness registry", () => {
   });
 });
 
+describe("stripPlanningAgentPreamble", () => {
+  it("strips the harness's persisted-path preamble and separator before the real plan heading", () => {
+    const raw = [
+      "Plan saved and todos tracked. Here is the final plan markdown (the harness will persist it to `raw-plans/plan-opportunity-opp-1.md`):",
+      "",
+      "---",
+      "",
+      "# Plan — opp-1: do the thing",
+      "",
+      "Body content.",
+    ].join("\n");
+
+    expect(stripPlanningAgentPreamble(raw)).toBe("# Plan — opp-1: do the thing\n\nBody content.");
+  });
+
+  it("strips a preamble variant with no explicit persisted path", () => {
+    const raw = "Plan saved and todos tracked. Here is the final implementation plan.\n\n---\n\n# Implementation Plan — O1\n";
+
+    expect(stripPlanningAgentPreamble(raw)).toBe("# Implementation Plan — O1\n");
+  });
+
+  it("leaves markdown untouched when there is no known preamble", () => {
+    const raw = "# Plan — opp-1: do the thing\n\nBody content.";
+
+    expect(stripPlanningAgentPreamble(raw)).toBe(raw);
+  });
+});
+
+describe("report node exposes the exact plan markdown embedded in the herdr launch prompt", () => {
+  it("includes the cleaned raw plan verbatim inside sourceToProjectReportMarkdown (the string sent to herdr)", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-report-plan-"));
+    try {
+      const rawPlanArtifactPath = "raw-plans/plan-opportunity-opp-1.md";
+      const persistedRawPlan = [
+        "Plan saved and todos tracked. Here is the final plan markdown (the harness will persist it to `raw-plans/plan-opportunity-opp-1.md`):",
+        "",
+        "---",
+        "",
+        "# Plan — opp-1: do the thing",
+        "",
+        "Body content describing the change.",
+      ].join("\n");
+      await mkdir(join(outputDir, "raw-plans"), { recursive: true });
+      await writeFile(join(outputDir, rawPlanArtifactPath), persistedRawPlan, "utf8");
+
+      const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+        minApplicability: 0.7,
+        minConfidence: 0.65,
+        minImpact: 0.5,
+        minAcceptanceAverage: 0.85,
+        maxRisk: 0.8,
+      }).find((candidate) => candidate.id === "opp-1")!;
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/loops",
+        project: projectFixture(),
+        mode: "advisory",
+      });
+      const reportNode = {
+        id: "report-opportunity-opp-1",
+        kind: WorkflowNodeKind.REPORT,
+        harness: WorkflowHarnessKind.REPORTER,
+        title: "Report opp-1",
+        prompt: "Report",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["review-opportunity-opp-1"],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
+      };
+
+      const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
+        payloads: new Map([
+          ["review-opportunity-opp-1", {
+            finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+            plan: { ...planSummaryFixture("Loop init plan"), rawPlanArtifactPath },
+          }],
+        ]),
+        artifacts: new Map(),
+        outputDir,
+      });
+
+      expect(reportResult.status).toBe("passed");
+      // The UI's plan card renders payload.rawPlanMarkdown. Confirm it is the harness-preamble-free
+      // plan text...
+      expect(reportResult.payload?.rawPlanMarkdown).toBe("# Plan — opp-1: do the thing\n\nBody content describing the change.");
+      // ...and that this exact string is embedded verbatim inside sourceToProjectReportMarkdown, which
+      // is byte-identical to the report text a manual/auto PR launch sends to herdr as context.reportMarkdown
+      // (see "auto-launches an implementation agent..." test asserting launchCalls[0].context.reportMarkdown
+      // === reportResult.payload.sourceToProjectReportMarkdown).
+      expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain(reportResult.payload!.rawPlanMarkdown as string);
+      expect(reportResult.output).toBe(reportResult.payload?.sourceToProjectReportMarkdown);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+});
+
 function projectFixture() {
   return {
     id: "secondbrain",
@@ -2560,6 +2813,17 @@ function projectFixture() {
     autonomousPrAllowed: false,
     notification: "cli" as const,
     knowledgeExport: "off" as const,
+  };
+}
+
+function defaultSourceToProjectDefaultsFixture() {
+  return {
+    maxOpportunities: 1,
+    thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+    mode: "advisory" as const,
+    offline: false,
+    prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: [], split: "right" as const, agentOptions: [] },
+    autoImplementOnReport: false,
   };
 }
 

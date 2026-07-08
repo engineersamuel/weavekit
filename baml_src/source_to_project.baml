@@ -90,6 +90,7 @@ class PlanArtifactSummary {
   validationCommands string[] @description("Commands or checks that should prove the plan worked.")
   risks string[] @description("Material implementation or product risks.")
   rawPlanArtifactPath string?
+  planFilePath string? @description("Absolute path to the full Copilot plan.md copied from the plan-mode session into the run output directory. Set by the workflow harness; always null here.")
 }
 
 class FinalRecommendationReview {
@@ -146,6 +147,8 @@ function DistillProjectBrief(projectJson: string, rawResearch: string) -> Projec
     Distill repository/project research into a compact ProjectBrief focused on the current source-to-project objective.
     Preserve project evidence that proves where the source findings can apply, where they cannot apply, validation commands, constraints, and risks.
     Do not turn source-specific research back into a generic project overview.
+    CRITICAL: The project's canonical id and displayName are provided in the Project JSON below. Use those exact values as the projectId and displayName fields in the ProjectBrief. Do not infer or override them from anything mentioned in the research transcript — the transcript may reference other tools or repositories that are not the target project.
+    The changeSurfaces must describe locations within the target project's workingTree (from the Project JSON), not locations in any workflow runner, orchestration tool, or other repository.
 
     {{ _.role("user") }}
     Project JSON:
@@ -172,6 +175,7 @@ function MapSourceToProject(
     Do not promote implementation plumbing, endpoint abstraction, adapter layers, logging, or safety controls unless the ProjectBrief evidence shows the target project currently has that exact problem.
     If a source lesson is only an implementation detail of the source and does not improve the target project's user workflow, put it in nonApplicableLessons.
     If no high-quality source-to-project improvement exists, return low scores or nonApplicableLessons instead of forcing a recommendation.
+    CRITICAL: Opportunities must propose changes exclusively within the target project's working tree (identified by projectBrief.projectId and projectBrief.displayName). Never propose changes to the workflow automation tool that ran this analysis (e.g., weakekit), its orchestration scripts, its plans/ directory, its src/ code, its CI configuration, or any validation plan documents stored in the workflow runner's repository. Those are the runner, not the target project. If a lesson only reveals a problem with how the workflow runner processes or identifies the target project, put it in nonApplicableLessons rather than creating an opportunity.
 
     {{ _.role("user") }}
     Source analysis:
@@ -196,6 +200,7 @@ function DistillPlanArtifact(opportunityJson: string, rawPlan: string, rawPlanAr
     Do not make the UI reader infer the recommendation from a long scope paragraph.
     Use scope for detailed implementation boundaries only.
     Set rawPlanArtifactPath exactly to the supplied raw plan artifact path. Do not invent or rewrite it.
+    Set planFilePath to null. The workflow harness populates it from the session context.
 
     {{ _.role("user") }}
     Opportunity or bundle JSON:

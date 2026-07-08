@@ -16,14 +16,24 @@ export type SourceToProjectThresholds = {
   maxRisk: number;
 };
 
+export type SourceToProjectPrLauncherAgentOption = {
+  id: string;
+  label: string;
+  agentCommand: string;
+  agentArgs: string[];
+};
+
 export type SourceToProjectPrLauncherConfig = {
   provider: "herdr";
   agentCommand: string;
   agentArgs: string[];
   split: "right" | "down";
+  /** Selectable agents for the dashboard's Create PR agent dropdown. First entry is the default. */
+  agentOptions: SourceToProjectPrLauncherAgentOption[];
 };
 
 export type SourceToProjectDefaults = {
+  /** Cap on accepted opportunities promoted per run. 0 means unlimited: promote every opportunity that clears the acceptance thresholds. */
   maxOpportunities: number;
   thresholds: SourceToProjectThresholds;
   mode: SourceToProjectMode;
@@ -34,6 +44,12 @@ export type SourceToProjectDefaults = {
   sourceReadingMaxToolCalls?: number;
   projectResearchMaxToolCalls?: number;
   prLauncher: SourceToProjectPrLauncherConfig;
+  /**
+   * When true, automatically create a Herdr worktree and start the configured agent to
+   * implement an accepted opportunity as soon as its report node passes, instead of waiting
+   * for a manual "Create PR" click. Still gated per-project by `autonomousPrAllowed`.
+   */
+  autoImplementOnReport: boolean;
 };
 
 export const DeepResearchProvider = {
@@ -110,6 +126,7 @@ export type ProjectCatalogEntry = {
   contextDocs: string[];
   validationCommands: string[];
   autonomousPrAllowed: boolean;
+  /** Cap on accepted opportunities promoted per run. 0 or undefined means unlimited (falls back to the global default, which also defaults to unlimited). */
   maxOpportunities?: number;
   thresholds?: Partial<SourceToProjectThresholds>;
   notification: NotificationPolicy;
@@ -335,7 +352,7 @@ export function resolveProjectCatalogEntry(config: WeavekitConfig, projectId: st
 
 function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
   return {
-    maxOpportunities: 1,
+    maxOpportunities: 0,
     thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
     mode: "advisory",
     offline: false,
@@ -344,7 +361,12 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
       agentCommand: "codex",
       agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
       split: "right",
+      agentOptions: [
+        { id: "codex", label: "Codex", agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"] },
+        { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
+      ],
     },
+    autoImplementOnReport: false,
   };
 }
 
@@ -444,7 +466,7 @@ function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): So
   const record = asRecord(value);
   const mode = record.mode === "autonomous-pr" ? "autonomous-pr" : "advisory";
   return {
-    maxOpportunities: Math.max(1, Math.floor(readNumber(record.max_opportunities, defaults.maxOpportunities))),
+    maxOpportunities: Math.max(0, Math.floor(readNumber(record.max_opportunities, defaults.maxOpportunities))),
     mode,
     offline: readBoolean(record.offline, readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE") ?? defaults.offline),
     copilotModel: (readOptionalString(record.copilot_model) ?? env.WEAVEKIT_SOURCE_TO_PROJECT_MODEL?.trim()) || undefined,
@@ -453,6 +475,10 @@ function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): So
     sourceReadingMaxToolCalls: readOptionalInteger(record.source_reading_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS"),
     projectResearchMaxToolCalls: readOptionalInteger(record.project_research_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS"),
     prLauncher: readSourceToProjectPrLauncherConfig(record.pr_launcher, defaults.prLauncher),
+    autoImplementOnReport: readBoolean(
+      record.auto_implement_on_report,
+      readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_AUTO_IMPLEMENT_ON_REPORT") ?? defaults.autoImplementOnReport,
+    ),
     thresholds: {
       minApplicability: readNumber(record.min_applicability, defaults.thresholds.minApplicability),
       minConfidence: readNumber(record.min_confidence, defaults.thresholds.minConfidence),
@@ -530,7 +556,34 @@ function readSourceToProjectPrLauncherConfig(
     agentCommand: readString(record.agent_command, defaults.agentCommand),
     agentArgs: Array.isArray(record.agent_args) ? readStringArray(record.agent_args) : defaults.agentArgs,
     split: record.split === "down" ? "down" : "right",
+    agentOptions: readSourceToProjectPrLauncherAgentOptions(record.agent_options, defaults.agentOptions),
   };
+}
+
+function readSourceToProjectPrLauncherAgentOptions(
+  value: unknown,
+  defaults: SourceToProjectPrLauncherAgentOption[],
+): SourceToProjectPrLauncherAgentOption[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return defaults;
+  }
+  const options = value
+    .map((entry): SourceToProjectPrLauncherAgentOption | undefined => {
+      const record = asRecord(entry);
+      const id = readOptionalString(record.id);
+      const agentCommand = readOptionalString(record.agent_command);
+      if (!id || !agentCommand) {
+        return undefined;
+      }
+      return {
+        id,
+        label: readString(record.label, id),
+        agentCommand,
+        agentArgs: readStringArray(record.agent_args),
+      };
+    })
+    .filter((option): option is SourceToProjectPrLauncherAgentOption => option !== undefined);
+  return options.length > 0 ? options : defaults;
 }
 
 function readCopilotDefaults(value: unknown, env: NodeJS.ProcessEnv = process.env): CopilotDefaults {
@@ -597,7 +650,7 @@ function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry>
       contextDocs: readStringArray(record.context_docs),
       validationCommands: readStringArray(record.validation_commands),
       autonomousPrAllowed: readBoolean(record.autonomous_pr_allowed, false),
-      maxOpportunities: typeof record.max_opportunities === "number" ? Math.max(1, Math.floor(record.max_opportunities)) : undefined,
+      maxOpportunities: typeof record.max_opportunities === "number" ? Math.max(0, Math.floor(record.max_opportunities)) : undefined,
       thresholds: {
         minApplicability: typeof record.min_applicability === "number" ? record.min_applicability : undefined,
         minConfidence: typeof record.min_confidence === "number" ? record.min_confidence : undefined,

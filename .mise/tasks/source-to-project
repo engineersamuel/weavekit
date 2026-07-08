@@ -1,14 +1,75 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  echo 'Usage: mise run source-to-project [--project <id>] "<prompt>"' >&2
+  echo '       WEAKEKIT_PROJECT=<id> mise run source-to-project "<prompt>"' >&2
+  echo '' >&2
+  echo 'Project selection priority:' >&2
+  echo '  1. --project <id> / -p <id> flag' >&2
+  echo '  2. WEAKEKIT_PROJECT env var' >&2
+  echo '  3. "project: <id>" parsed from the prompt text' >&2
+  echo '  4. Default: weakekit' >&2
+}
+
 if [[ $# -eq 0 ]]; then
-  echo 'Usage: mise run source-to-project "<prompt>"' >&2
+  usage
   exit 2
 fi
 
-prompt="$*"
-dashboard_mode="${WEAVEKIT_DASHBOARD:-embedded}"
-dashboard_url="${WEAVEKIT_DASHBOARD_URL:-}"
+# Parse optional --project / -p flag before the prompt
+project="${WEAKEKIT_PROJECT:-}"
+prompt_args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project|-p)
+      if [[ $# -lt 2 || -z "$2" ]]; then
+        usage
+        exit 2
+      fi
+      project="$2"
+      shift 2
+      ;;
+    --project=*)
+      project="${1#--project=}"
+      shift
+      ;;
+    project=*)
+      project="${1#project=}"
+      shift
+      ;;
+    --)
+      shift
+      prompt_args+=("$@")
+      break
+      ;;
+    *)
+      prompt_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ ${#prompt_args[@]} -eq 0 ]]; then
+  usage
+  exit 2
+fi
+
+prompt="${prompt_args[*]}"
+
+# If project not set via flag or env, try to parse "project: <id>" from the prompt
+if [[ -z "$project" ]]; then
+  if [[ "$prompt" =~ [Pp]roject[[:space:]]*:[[:space:]]*([a-zA-Z0-9_-]+) ]]; then
+    project="${BASH_REMATCH[1]}"
+  fi
+fi
+
+# Default to weakekit
+project="${project:-weakekit}"
+
+dashboard_mode="${WEAKEKIT_DASHBOARD:-embedded}"
+dashboard_url="${WEAKEKIT_DASHBOARD_URL:-}"
 
 args=(
   --template source-to-project \
@@ -17,7 +78,7 @@ args=(
   --output runs
 )
 
-args+=(--project weavekit)
+args+=(--project "$project")
 
 run_with_portless=false
 case "$dashboard_mode" in
@@ -32,13 +93,13 @@ case "$dashboard_mode" in
   off|none)
     ;;
   *)
-    echo 'WEAVEKIT_DASHBOARD must be "embedded" or "off".' >&2
+    echo 'WEAKEKIT_DASHBOARD must be "embedded" or "off".' >&2
     exit 2
     ;;
 esac
 
 if [[ "$run_with_portless" == "true" ]]; then
-  nubx portless run --name weavekit-source-to-project nub src/cli.ts workflow run "${args[@]}"
+  nubx portless run --name weakekit-source-to-project nub src/cli.ts workflow run "${args[@]}"
 else
   nub src/cli.ts workflow run "${args[@]}"
 fi

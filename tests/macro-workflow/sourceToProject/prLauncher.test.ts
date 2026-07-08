@@ -14,6 +14,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "claude",
         agentArgs: ["--dangerously-skip-permissions"],
         split: "down",
+        agentOptions: [],
       },
       context: {
         runId: "run-1",
@@ -62,7 +63,7 @@ describe("source-to-project manual PR launcher", () => {
     expect(result).toMatchObject({
       provider: "herdr",
       worktreePath: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
-      branchName: "source-to-project/opp-1-run-1",
+      branchName: "worktree/opp-1-run-1",
       agentName: "source-to-project-opp-1-run-1",
       workspaceId: "wP",
       tabId: "wP:t1",
@@ -75,7 +76,7 @@ describe("source-to-project manual PR launcher", () => {
         "--cwd",
         "/repo/weavekit",
         "--branch",
-        "source-to-project/opp-1-run-1",
+        "worktree/opp-1-run-1",
         "--label",
         "Add manual PR launch",
         "--json",
@@ -102,14 +103,148 @@ describe("source-to-project manual PR launcher", () => {
         "--",
         "claude",
         "--dangerously-skip-permissions",
-        expect.stringContaining("/plan\nStart in plan mode"),
+        expect.stringContaining("/plan\n\nRequirements:"),
       ],
       cwd: "/repo/weavekit",
     });
-    expect(commands[2]?.args.at(-1)).toContain("Implement the reviewed source-to-project opportunity");
+    expect(commands[2]?.args.at(-1)).toContain("Requirements:");
+    expect(commands[2]?.args.at(-1)).not.toContain("Implement the reviewed source-to-project opportunity and open a PR.");
+    expect(commands[2]?.args.at(-1)).not.toContain("Start agents from the CLI context");
     expect(commands[2]?.args.at(-1)).toContain("https://plan.agent-native.com/local-plans/opp-1");
     expect(commands[2]?.args.at(-1)).toContain("nub run typecheck");
     expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(false);
+  });
+
+  it("skips plan mode and asks the agent to implement directly when initialPromptMode is 'implement'", async () => {
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+    await launchSourceToProjectPrAgent({
+      config: {
+        provider: "herdr",
+        agentCommand: "codex",
+        agentArgs: [],
+        split: "right",
+        agentOptions: [],
+      },
+      context: { ...launchContextFixture(), initialPromptMode: "implement" },
+      isSuperpowersInstalled: () => false,
+      shell: {
+        async run(command, args, options) {
+          commands.push({ command, args, cwd: options.cwd });
+          if (command === "sh") {
+            return "/Users/smendenhall/.local/bin/codex\n";
+          }
+          if (command === "herdr" && args[0] === "worktree") {
+            return JSON.stringify({
+              result: {
+                worktree: {
+                  path: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
+                  branch: "source-to-project/opp-1-run-1",
+                },
+                workspace_id: "wP",
+                root_pane: { pane_id: "wP:p1", tab_id: "wP:t1" },
+              },
+            });
+          }
+          return "";
+        },
+      },
+    });
+
+    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    expect(paneRunCommand?.args[2]).toBe("wP:p1");
+    expect(paneRunCommand?.args[3]).not.toContain("/plan\n");
+    expect(paneRunCommand?.args[3]).not.toContain("Start agents from the CLI context");
+    expect(paneRunCommand?.args[3]).toContain("Implement this reviewed source-to-project opportunity directly.");
+    expect(paneRunCommand?.args[3]).not.toContain("no plan-mode approval step");
+    expect(paneRunCommand?.args[3]).not.toContain("subagent-driven development");
+    expect(paneRunCommand?.args[3]).toContain("Requirements:");
+  });
+
+  it("asks Codex to use subagent-driven development when the superpowers plugin is installed", async () => {
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+    await launchSourceToProjectPrAgent({
+      config: {
+        provider: "herdr",
+        agentCommand: "codex",
+        agentArgs: [],
+        split: "right",
+        agentOptions: [],
+      },
+      context: { ...launchContextFixture(), initialPromptMode: "implement" },
+      isSuperpowersInstalled: () => true,
+      shell: {
+        async run(command, args, options) {
+          commands.push({ command, args, cwd: options.cwd });
+          if (command === "sh") {
+            return "/Users/smendenhall/.local/bin/codex\n";
+          }
+          if (command === "herdr" && args[0] === "worktree") {
+            return JSON.stringify({
+              result: {
+                worktree: {
+                  path: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
+                  branch: "source-to-project/opp-1-run-1",
+                },
+                workspace_id: "wP",
+                root_pane: { pane_id: "wP:p1", tab_id: "wP:t1" },
+              },
+            });
+          }
+          return "";
+        },
+      },
+    });
+
+    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    expect(paneRunCommand?.args[3]).toContain(
+      "Use subagent-driven development to implement this reviewed source-to-project opportunity directly.",
+    );
+    expect(paneRunCommand?.args[3]).not.toContain("no plan-mode approval step");
+  });
+
+  it("keeps the plan-mode explanation for Copilot's implement-mode prompt regardless of superpowers", async () => {
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+    await launchSourceToProjectPrAgent({
+      config: {
+        provider: "herdr",
+        agentCommand: "copilot",
+        agentArgs: [],
+        split: "right",
+        agentOptions: [],
+      },
+      context: { ...launchContextFixture(), initialPromptMode: "implement" },
+      isSuperpowersInstalled: () => true,
+      shell: {
+        async run(command, args, options) {
+          commands.push({ command, args, cwd: options.cwd });
+          if (command === "sh") {
+            return "/Users/smendenhall/.local/bin/copilot\n";
+          }
+          if (command === "herdr" && args[0] === "worktree") {
+            return JSON.stringify({
+              result: {
+                worktree: {
+                  path: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
+                  branch: "source-to-project/opp-1-run-1",
+                },
+                workspace_id: "wP",
+                root_pane: { pane_id: "wP:p1", tab_id: "wP:t1" },
+              },
+            });
+          }
+          return "";
+        },
+      },
+    });
+
+    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    expect(paneRunCommand?.args[3]).toContain(
+      "Implement this reviewed source-to-project opportunity directly (no plan-mode approval step; it was already planned and reviewed upstream in the workflow).",
+    );
+    expect(paneRunCommand?.args[3]).not.toContain("subagent-driven development");
   });
 
   it("resolves bare agent commands before passing them to Herdr", async () => {
@@ -121,6 +256,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "codex",
         agentArgs: [],
         split: "right",
+        agentOptions: [],
       },
       context: launchContextFixture(),
       shell: {
@@ -151,7 +287,7 @@ describe("source-to-project manual PR launcher", () => {
     expect(paneRunCommand?.args[3]).toContain("/Users/smendenhall/.local/bin/codex");
     expect(paneRunCommand?.args[3]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(paneRunCommand?.args[3]).toContain("/plan");
-    expect(paneRunCommand?.args[3]).toContain("Implement the reviewed source-to-project opportunity");
+    expect(paneRunCommand?.args[3]).toContain("Requirements:");
     expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent start")).toBe(false);
     expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(false);
   });
@@ -165,6 +301,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "/Users/smendenhall/.local/bin/codex",
         agentArgs: [],
         split: "down",
+        agentOptions: [],
       },
       context: launchContextFixture(),
       shell: {
@@ -202,6 +339,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "/Users/smendenhall/.local/bin/codex",
         agentArgs: [],
         split: "right",
+        agentOptions: [],
       },
       context: launchContextFixture(),
       shell: {

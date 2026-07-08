@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { accessSync, constants, existsSync, readdirSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +35,12 @@ import {
   type SourceToProjectBamlFunctionName,
 } from "./modelPolicy.js";
 import { buildCorroborationPrompt, buildPlanPrompt, buildProjectResearchPrompt, buildSourceReadingPrompt } from "./prompts.js";
+import {
+  launchSourceToProjectPrAgent,
+  type SourceToProjectPrLaunchContext,
+  type SourceToProjectPrLaunchResult,
+  type SourceToProjectPrLauncher,
+} from "./prLauncher.js";
 import { prepareAutonomousWorktree, type WorktreePreparationResult } from "./worktree.js";
 
 const execFileAsync = promisify(execFile);
@@ -132,6 +138,7 @@ type CopilotRuntimeSkillLoadDiagnostics = {
 };
 
 type CopilotRuntimeSession = {
+  sessionId?: string;
   sendAndWait?(message: { prompt: string }, timeout?: number): Promise<{ data?: ({ content?: string } & Record<string, unknown>) } | undefined>;
   send?(message: { prompt: string; agentMode?: "plan" | "autopilot" | "interactive" | "shell" }): Promise<string>;
   on?(handler: (event: CopilotRuntimeSessionEvent) => void): () => void;
@@ -228,6 +235,7 @@ export type CopilotHarnessClient = {
     nodeId?: string;
     label?: string;
     capabilityScope?: CopilotCapabilityScope;
+    onSessionId?: (sessionId: string) => void;
   }): Promise<string>;
 };
 
@@ -372,6 +380,7 @@ export type SourceToProjectHarnessOptions = {
   prefetchedSourceContent?: string;
   project: ProjectCatalogEntry;
   mode: SourceToProjectMode;
+  /** Cap on accepted opportunities promoted per run. 0 or undefined means unlimited: every opportunity that clears the acceptance thresholds is promoted. */
   maxOpportunities?: number;
   thresholds?: SourceToProjectThresholds;
   copilot?: CopilotHarnessClient;
@@ -387,6 +396,8 @@ export type SourceToProjectHarnessOptions = {
   usageCollector?: WorkflowUsageCollector;
   visualPlanBridgeCleanup?: VisualPlanBridgeCleanupScheduler;
   visualPlanBridgeCleanupTtlMs?: number;
+  /** Overridable for tests; defaults to the real Herdr-based launcher. */
+  prLauncher?: SourceToProjectPrLauncher;
 };
 
 export function createOfflineSourceToProjectHarnessClient(): CopilotHarnessClient {
@@ -632,6 +643,9 @@ export function createCopilotSdkHarnessClient(args: {
           cwd: runArgs.cwd,
           elapsedMs: elapsedSince(startedAt),
         }, verboseEvents);
+        if (runArgs.onSessionId && session.sessionId) {
+          runArgs.onSessionId(session.sessionId);
+        }
         await loadCopilotCapabilityScope(session, runArgs.capabilityScope, {
           timeoutMs,
           mode: runArgs.mode,
@@ -1297,9 +1311,11 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
 
   const copilotAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
     if (node.id === "visual-plan-preflight") {
+      // Use the workflow runner's CWD (not the target project) so npm config (.npmrc trust policy etc.)
+      // from the weavekit repo is respected when installing the visual-plan skill.
       const install = await ensureAgentNativeSkillInstalledForAdvisoryWorkflow({
         skill: "visual-plan",
-        cwd: options.project.workingTree,
+        cwd: process.cwd(),
         shell: options.shell,
         offline: options.sourceToProject?.offline,
         tooling: options.tooling,
@@ -1339,7 +1355,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       return {
         status: "passed",
         output: `Source analysis complete: ${sourceAnalysis.title}`,
-        payload: { sourceAnalysis },
+        payload: { sourceAnalysis, rawSourceReading: raw },
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
           copilotCall({ mode: "research", prompt, model: copilotModel }),
           bamlCall("DistillSourceAnalysis", bamlModel),
@@ -1377,7 +1393,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       return {
         status: "passed",
         output: `Project brief complete: ${projectBrief.displayName}`,
-        payload: { projectBrief },
+        payload: { projectBrief, rawProjectResearch: raw },
         execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
           copilotCall({
             mode: "research",
@@ -1394,9 +1410,13 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
     if (isOpportunityPlanNode(node)) {
       const opportunity = readNodeInput<Opportunity>(node, "opportunity");
       const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
-      const resolvedPlan = resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject);
+      const projectBrief = getPayloadValue<ProjectBrief>(context, "project-research", "projectBrief");
+      const rawSourceReading = getOptionalPayloadValue<string>(context, "source-reading", "rawSourceReading");
+      const rawProjectResearch = getOptionalPayloadValue<string>(context, "project-research", "rawProjectResearch");
+      const resolvedPlan = resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject, projectBrief, { rawSourceReading: rawSourceReading ?? undefined, rawProjectResearch: rawProjectResearch ?? undefined });
       const { prompt, selectedCandidateJson, copilotModel, rawPlanArtifactPath } = resolvedPlan;
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
+      let capturedSessionId: string | undefined;
       const rawPlan = await copilot.run({
         cwd: options.project.workingTree,
         prompt,
@@ -1405,16 +1425,20 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         operation: node.id,
         nodeId: node.id,
         label: `Copilot plan ${opportunity.id}`,
+        onSessionId: (id) => { capturedSessionId = id; },
       });
+      const fullPlanContent = capturedSessionId ? await readCopilotSessionPlan(capturedSessionId) : undefined;
       const persistedPlan = await persistRawPlanMarkdown({
         outputDir: context.outputDir,
         nodeId: node.id,
         rawPlan,
         rawPlanArtifactPath,
+        fullPlanContent,
       });
       const planSummary = withRawPlanArtifactPath(
-        await bamlClient.DistillPlanArtifact(selectedCandidateJson, rawPlan, rawPlanArtifactPath),
+        await bamlClient.DistillPlanArtifact(selectedCandidateJson, fullPlanContent ?? rawPlan, rawPlanArtifactPath),
         rawPlanArtifactPath,
+        persistedPlan.planFilePath,
       );
       return {
         status: "passed",
@@ -1446,9 +1470,12 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
 
       const selectedCandidateJson = JSON.stringify(selection.selectedCandidate);
       const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
-      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(options.project), rawPlanArtifactPath);
+      const rawSourceReadingSel = getOptionalPayloadValue<string>(context, "source-reading", "rawSourceReading");
+      const rawProjectResearchSel = getOptionalPayloadValue<string>(context, "project-research", "rawProjectResearch");
+      const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(projectBrief), rawPlanArtifactPath, { rawSourceReading: rawSourceReadingSel ?? undefined, rawProjectResearch: rawProjectResearchSel ?? undefined });
       const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
+      let capturedSessionIdSel: string | undefined;
       const rawPlan = await copilot.run({
         cwd: options.project.workingTree,
         prompt,
@@ -1457,16 +1484,20 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         operation: node.id,
         nodeId: node.id,
         label: "Copilot selected-opportunity plan",
+        onSessionId: (id) => { capturedSessionIdSel = id; },
       });
+      const fullPlanContent = capturedSessionIdSel ? await readCopilotSessionPlan(capturedSessionIdSel) : undefined;
       const persistedPlan = await persistRawPlanMarkdown({
         outputDir: context.outputDir,
         nodeId: node.id,
         rawPlan,
         rawPlanArtifactPath,
+        fullPlanContent,
       });
       const planSummary = withRawPlanArtifactPath(
-        await bamlClient.DistillPlanArtifact(selectedCandidateJson, rawPlan, rawPlanArtifactPath),
+        await bamlClient.DistillPlanArtifact(selectedCandidateJson, fullPlanContent ?? rawPlan, rawPlanArtifactPath),
         rawPlanArtifactPath,
+        persistedPlan.planFilePath,
       );
       return {
         status: "passed",
@@ -1790,6 +1821,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         : undefined;
       const plan = upstreamNodeId ? getOptionalPayloadValue<PlanArtifactSummary>(context, upstreamNodeId, "plan") : undefined;
       const status = finalRecommendationReview?.status ?? (typeof visualization?.status === "string" ? visualization.status : "rejected");
+      const rawPlanMarkdown = await readRawPlanMarkdownForReport(context.outputDir, plan?.rawPlanArtifactPath);
       const sourceToProjectReportMarkdown = buildOpportunityReportMarkdown({
         mode: options.mode,
         opportunity,
@@ -1797,6 +1829,16 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         status,
         plan,
         finalRecommendationReview,
+        rawPlanMarkdown,
+      });
+      const autoImplementLaunch = await maybeAutoImplementOpportunity({
+        options,
+        context,
+        node,
+        opportunity,
+        plan,
+        status,
+        reportMarkdown: sourceToProjectReportMarkdown,
       });
       return {
         status: "passed",
@@ -1811,6 +1853,8 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
             rationale: finalRecommendationReview?.rationale,
           },
           sourceToProjectReportMarkdown,
+          ...(autoImplementLaunch ? { autoImplementLaunch } : {}),
+          ...(rawPlanMarkdown ? { rawPlanMarkdown } : {}),
           opportunityAcceptance: acceptance,
           opportunityVisualization: visualization,
           plan,
@@ -1849,10 +1893,14 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         ? getOptionalPayloadValue<FinalRecommendationReview>(context, upstreamNodeId, "finalRecommendationReview")
         : undefined;
       const plans = collectPlansFromDependencies(context, node);
+      const rawPlanMarkdownByPlanIndex = await Promise.all(
+        plans.map((plan) => readRawPlanMarkdownForReport(context.outputDir, plan.rawPlanArtifactPath)),
+      );
       const sourceToProjectReportMarkdown = buildAggregateReportMarkdown({
         mode: options.mode,
         plans,
         finalRecommendationReview,
+        rawPlanMarkdownByPlanIndex,
       });
       return {
         status: "passed",
@@ -1865,6 +1913,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
             rationale: finalRecommendationReview?.rationale,
           },
           plans,
+          ...(rawPlanMarkdownByPlanIndex.some(Boolean) ? { rawPlanMarkdownByPlanIndex } : {}),
           finalRecommendationReview,
         },
         execution: reporterExecution(node),
@@ -1903,8 +1952,8 @@ export function createSourceToProjectDynamicExpander(options: SourceToProjectHar
 
     const thresholds = mergeThresholds(DEFAULT_SOURCE_TO_PROJECT_THRESHOLDS, options.thresholds, options.project.thresholds);
     const opportunityAcceptances = selectAcceptedOpportunities(councilReview, thresholds);
-    const accepted = opportunityAcceptances.filter((acceptance) => acceptance.accepted);
-    if (accepted.length === 0) {
+    const allAccepted = opportunityAcceptances.filter((acceptance) => acceptance.accepted);
+    if (allAccepted.length === 0) {
       return [{
         id: "report-no-accepted-opportunities",
         kind: WorkflowNodeKind.REPORT,
@@ -1924,6 +1973,12 @@ export function createSourceToProjectDynamicExpander(options: SourceToProjectHar
         replanPolicy: "never",
       }];
     }
+
+    // 0 or undefined means unlimited: promote every opportunity that clears the acceptance
+    // thresholds instead of arbitrarily capping how many high-confidence opportunities proceed.
+    const maxOpportunities = options.maxOpportunities ?? options.project.maxOpportunities ?? 0;
+    const sortedAccepted = allAccepted.sort((a, b) => b.acceptanceAverage - a.acceptanceAverage);
+    const accepted = maxOpportunities > 0 ? sortedAccepted.slice(0, maxOpportunities) : sortedAccepted;
 
     const opportunityNodes = accepted.flatMap((acceptance) => buildOpportunityFanOutNodes(acceptance));
     return options.mode === "autonomous-pr"
@@ -2165,6 +2220,8 @@ function resolveOpportunityPlanExecution(
   context: WorkflowExecutionContext,
   project: ProjectCatalogEntry,
   sourceToProject?: SourceToProjectDefaults,
+  projectBrief?: ProjectBrief,
+  rawTranscripts?: { rawSourceReading?: string; rawProjectResearch?: string },
 ): { selectedCandidateJson: string; prompt: string; copilotModel?: string; rawPlanArtifactPath: string; execution: WorkflowExecutionMetadata } {
   const opportunity = readNodeInput<Opportunity>(node, "opportunity");
   const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
@@ -2184,7 +2241,8 @@ function resolveOpportunityPlanExecution(
     raw: opportunity,
   });
   const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
-  const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(project), rawPlanArtifactPath);
+  const projectJson = projectBrief ? JSON.stringify(projectBrief) : JSON.stringify(project);
+  const prompt = buildPlanPrompt(selectedCandidateJson, projectJson, rawPlanArtifactPath, rawTranscripts);
   const copilotModel = resolveCopilotModel(SourceToProjectModelOperation.PLAN_GENERATION, sourceToProject);
   return {
     selectedCandidateJson,
@@ -2202,27 +2260,145 @@ async function persistRawPlanMarkdown(args: {
   nodeId: string;
   rawPlan: string;
   rawPlanArtifactPath: string;
-}): Promise<{ artifacts: WorkflowArtifactRef[] | undefined }> {
+  fullPlanContent?: string;
+}): Promise<{ artifacts: WorkflowArtifactRef[] | undefined; planFilePath?: string }> {
   if (!args.outputDir) {
     return { artifacts: undefined };
   }
   const artifactPath = join(args.outputDir, args.rawPlanArtifactPath);
   await mkdir(dirname(artifactPath), { recursive: true });
   await writeFile(artifactPath, args.rawPlan, "utf8");
-  return {
-    artifacts: [{
+  const artifacts: WorkflowArtifactRef[] = [{
+    kind: "markdown",
+    path: args.rawPlanArtifactPath,
+    description: `Raw Copilot plan markdown for ${args.nodeId}.`,
+  }];
+  let planFilePath: string | undefined;
+  if (args.fullPlanContent) {
+    const fullArtifactRelPath = args.rawPlanArtifactPath.replace(/\.md$/, "-full.md");
+    const fullArtifactPath = join(args.outputDir, fullArtifactRelPath);
+    await writeFile(fullArtifactPath, args.fullPlanContent, "utf8");
+    planFilePath = fullArtifactPath;
+    artifacts.push({
       kind: "markdown",
-      path: args.rawPlanArtifactPath,
-      description: `Raw Copilot plan markdown for ${args.nodeId}.`,
-    }],
-  };
+      path: fullArtifactRelPath,
+      description: `Full Copilot session plan.md for ${args.nodeId}.`,
+    });
+  }
+  return { artifacts, planFilePath };
 }
 
-function withRawPlanArtifactPath(plan: PlanArtifactSummary, rawPlanArtifactPath: string): PlanArtifactSummary {
+function withRawPlanArtifactPath(plan: PlanArtifactSummary, rawPlanArtifactPath: string, planFilePath?: string): PlanArtifactSummary {
   return {
     ...plan,
     rawPlanArtifactPath,
+    ...(planFilePath ? { planFilePath } : {}),
   };
+}
+
+async function readRawPlanMarkdownForReport(outputDir: string | undefined, rawPlanArtifactPath: string | undefined | null): Promise<string | undefined> {
+  if (!outputDir || !rawPlanArtifactPath) {
+    return undefined;
+  }
+  try {
+    const rawPlanMarkdown = await readFile(join(outputDir, rawPlanArtifactPath), "utf8");
+    return stripPlanningAgentPreamble(rawPlanMarkdown);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Planning agents (e.g. the task-plan skill) commonly prefix their final plan markdown with a
+ * conversational status line like "Plan saved and todos tracked. Here is the final plan markdown
+ * (the harness will persist it to `raw-plans/<file>.md`):" followed by a `---` separator. That
+ * path is only meaningful in the run's `outputDir` and does not exist once this markdown is
+ * embedded into a report/prompt handed to a fresh agent in a different worktree, so strip it
+ * before the raw plan content is reused downstream.
+ */
+export function stripPlanningAgentPreamble(markdown: string): string {
+  const lines = markdown.split("\n");
+  if (!/^Plan saved and todos tracked\b/i.test(lines[0] ?? "")) {
+    return markdown;
+  }
+  let index = 1;
+  while (index < lines.length && lines[index].trim() === "") index++;
+  if (lines[index]?.trim() === "---") {
+    index++;
+    while (index < lines.length && lines[index].trim() === "") index++;
+  }
+  return lines.slice(index).join("\n");
+}
+
+export type AutoImplementLaunchOutcome =
+  | { status: "launched"; worktreePath: string; branchName: string; agentName: string; startedCommand: string }
+  | { status: "failed"; error: string };
+
+/**
+ * Best-effort automation: when enabled, immediately hands an accepted opportunity's reviewed
+ * report to a Herdr-managed worktree + agent for direct implementation, instead of requiring a
+ * manual "Create PR" click. Never fails the report node -- launch errors are captured in the
+ * returned outcome so they can be surfaced in the dashboard/report without blocking the run.
+ */
+async function maybeAutoImplementOpportunity(args: {
+  options: SourceToProjectHarnessOptions;
+  context: WorkflowExecutionContext;
+  node: RuntimeWorkflowNode;
+  opportunity: Opportunity;
+  plan: PlanArtifactSummary | undefined;
+  status: string;
+  reportMarkdown: string;
+}): Promise<AutoImplementLaunchOutcome | undefined> {
+  const { options, context, node, opportunity, plan, status, reportMarkdown } = args;
+  if (status !== "accepted") {
+    return undefined;
+  }
+  if (!options.sourceToProject?.autoImplementOnReport) {
+    return undefined;
+  }
+  if (!options.project.autonomousPrAllowed) {
+    return undefined;
+  }
+  const runId = context.outputDir ? basename(context.outputDir) : node.id;
+  const launcher = options.prLauncher ?? { launch: launchSourceToProjectPrAgent };
+  const launchContext: SourceToProjectPrLaunchContext = {
+    runId,
+    nodeId: node.id,
+    objective: context.objective ?? options.originalPrompt ?? "",
+    source: options.source,
+    project: options.project,
+    opportunityId: opportunity.id,
+    opportunityTitle: opportunity.title,
+    reportMarkdown,
+    planTitle: plan?.title,
+    recommendation: plan?.recommendation,
+    initialPromptMode: "implement",
+  };
+  try {
+    const launch: SourceToProjectPrLaunchResult = await launcher.launch({
+      config: options.sourceToProject.prLauncher,
+      context: launchContext,
+    });
+    return {
+      status: "launched",
+      worktreePath: launch.worktreePath,
+      branchName: launch.branchName,
+      agentName: launch.agentName,
+      startedCommand: launch.startedCommand,
+    };
+  } catch (error) {
+    return { status: "failed", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function readCopilotSessionPlan(sessionId: string): Promise<string | undefined> {
+  const copilotHome = process.env.COPILOT_HOME ?? join(homedir(), ".copilot");
+  const planPath = join(copilotHome, "session-state", sessionId, "plan.md");
+  try {
+    return await readFile(planPath, "utf8");
+  } catch {
+    return undefined;
+  }
 }
 
 function rawPlanArtifactPathForNode(nodeId: string): string {
@@ -2316,9 +2492,12 @@ async function ensureAgentNativeSkillInstalledForAdvisoryWorkflow(args: Paramete
     const install = await ensureAgentNativeSkillInstalled(args);
     return { ...install, usable: install.usable ?? true };
   } catch (error) {
-    if (!isAgentNativeHostedAuthPendingError(error)) {
+    if (!isAgentNativeHostedAuthPendingError(error) && !isNubTrustDowngradeError(error)) {
       throw error;
     }
+    const warning = isNubTrustDowngradeError(error)
+      ? "visual-plan skill install was blocked by a dependency trust-downgrade (ERR_NUB_TRUST_DOWNGRADE); visual-plan is unavailable for this run. To fix, add the flagged package to trustPolicyExclude in your .npmrc."
+      : "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.";
     return {
       skill: args.skill,
       command: args.tooling?.agentNativeSkillsInstaller ?? "nub",
@@ -2332,7 +2511,7 @@ async function ensureAgentNativeSkillInstalledForAdvisoryWorkflow(args: Paramete
       output: error instanceof Error ? error.message : String(error),
       skipped: true,
       usable: false,
-      warning: "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
+      warning,
     };
   }
 }
@@ -2392,6 +2571,11 @@ function isAgentNativeHostedAuthPendingError(error: unknown): boolean {
     || /Authentication pending/i.test(message)
     || /Authentication skipped/i.test(message)
     || /Skipped URL-only hosted MCP config/i.test(message);
+}
+
+function isNubTrustDowngradeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /ERR_NUB_TRUST_DOWNGRADE/i.test(message) || /trust downgrade/i.test(message);
 }
 
 function validateAgentNativeSkillInstallOutput(skill: AgentNativeSkillInstallResult["skill"], output: string): void {
@@ -2605,6 +2789,7 @@ function buildOpportunityReportMarkdown(args: {
   status: string;
   plan?: PlanArtifactSummary;
   finalRecommendationReview?: FinalRecommendationReview;
+  rawPlanMarkdown?: string;
 }): string {
   return [
     `# Source-to-Project Report: ${args.opportunity.id} ${args.opportunity.title}`,
@@ -2647,6 +2832,12 @@ function buildOpportunityReportMarkdown(args: {
     "## Review",
     "",
     args.finalRecommendationReview?.rationale ?? "No final recommendation review rationale was available.",
+    ...(args.rawPlanMarkdown ? [
+      "",
+      "## Full Plan (as written by the planning agent)",
+      "",
+      args.rawPlanMarkdown,
+    ] : []),
   ].join("\n");
 }
 
@@ -2654,6 +2845,7 @@ function buildAggregateReportMarkdown(args: {
   mode: SourceToProjectMode;
   plans: PlanArtifactSummary[];
   finalRecommendationReview?: FinalRecommendationReview;
+  rawPlanMarkdownByPlanIndex?: (string | undefined)[];
 }): string {
   return [
     "# Source-to-Project Report",
@@ -2682,6 +2874,12 @@ function buildAggregateReportMarkdown(args: {
         "",
         ...plan.implementationOutline.map((step) => `- ${step}`),
         "",
+        ...(args.rawPlanMarkdownByPlanIndex?.[index] ? [
+          `**Full Plan ${index + 1} (as written by the planning agent):**`,
+          "",
+          args.rawPlanMarkdownByPlanIndex[index]!,
+          "",
+        ] : []),
       ])
       : ["No advisory plans were available.", ""]),
     "## Review",

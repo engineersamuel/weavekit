@@ -65,8 +65,35 @@ const WorkflowNode = memo(({ data }) => {
       <div className="custom-node-title">{data.label}</div>
       <div className="node-harness-line">{data.harness}</div>
       <div className="node-model-line">model {data.model}</div>
-      {data.canCreatePr ? (
+      {data.autoImplementLaunch?.status === "launched" ? (
         <div className="node-inline-actions nodrag">
+          <span className="node-action-badge node-action-badge-success">
+            Auto-implement started: {data.autoImplementLaunch.agentName}
+          </span>
+        </div>
+      ) : data.autoImplementLaunch?.status === "failed" ? (
+        <div className="node-inline-actions nodrag">
+          <span className="node-action-error">Auto-implement launch failed: {data.autoImplementLaunch.error}</span>
+        </div>
+      ) : null}
+      {data.canCreatePr && data.autoImplementLaunch?.status !== "launched" ? (
+        <div className="node-inline-actions nodrag">
+          {data.agentOptions?.length > 0 ? (
+            <select
+              className="node-action-select"
+              disabled={prLaunchState?.status === "running"}
+              value={data.selectedAgentId ?? ""}
+              onChange={(event) => {
+                event.stopPropagation();
+                data.onSelectAgent?.(event.target.value);
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {data.agentOptions.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+          ) : null}
           <button
             type="button"
             className="node-action-button"
@@ -646,23 +673,128 @@ function renderInlineMarkdown(text) {
   return parts;
 }
 
+const FULL_PLAN_HEADING_MARKER = "## Full Plan (as written by the planning agent)";
+
+function stripFullPlanSection(markdown) {
+  const text = String(markdown ?? "");
+  const index = text.indexOf(FULL_PLAN_HEADING_MARKER);
+  if (index === -1) {
+    return text;
+  }
+  return text.slice(0, index).replace(/\n+$/, "\n");
+}
+
+// Mirrors the backend's stripPlanningAgentPreamble (src/macro-workflow/sourceToProject/harnesses.ts)
+// so plan text embedded in older, already-persisted reports also renders/copies cleanly.
+function stripPlanningAgentPreamble(markdown) {
+  const lines = String(markdown ?? "").split("\n");
+  if (!/^Plan saved and todos tracked\b/i.test(lines[0] ?? "")) {
+    return markdown;
+  }
+  let index = 1;
+  while (index < lines.length && lines[index].trim() === "") index++;
+  if (lines[index]?.trim() === "---") {
+    index++;
+    while (index < lines.length && lines[index].trim() === "") index++;
+  }
+  return lines.slice(index).join("\n");
+}
+
+function extractFullPlanSection(markdown) {
+  const text = String(markdown ?? "");
+  const index = text.indexOf(FULL_PLAN_HEADING_MARKER);
+  if (index === -1) {
+    return undefined;
+  }
+  const after = text.slice(index + FULL_PLAN_HEADING_MARKER.length).replace(/^\s*\n+/, "").trimEnd();
+  return after ? stripPlanningAgentPreamble(after) : undefined;
+}
+
+function buildRawPlanEntries(payload, output) {
+  if (!payload) {
+    return [];
+  }
+  if (typeof payload.rawPlanMarkdown === "string" && payload.rawPlanMarkdown.trim()) {
+    return [{ title: payload.plan?.title, markdown: stripPlanningAgentPreamble(payload.rawPlanMarkdown) }];
+  }
+  if (Array.isArray(payload.rawPlanMarkdownByPlanIndex)) {
+    const plans = Array.isArray(payload.plans) ? payload.plans : [];
+    const entries = payload.rawPlanMarkdownByPlanIndex
+      .map((markdown, index) => ({ title: plans[index]?.title, markdown: stripPlanningAgentPreamble(markdown) }))
+      .filter((entry) => typeof entry.markdown === "string" && entry.markdown.trim());
+    if (entries.length > 0) {
+      return entries;
+    }
+  }
+  const fallback = extractFullPlanSection(output ?? payload.sourceToProjectReportMarkdown);
+  return fallback ? [{ title: payload.plan?.title, markdown: fallback }] : [];
+}
+
+function RawPlanCard({ title, markdown }) {
+  const [copyState, setCopyState] = useState("idle");
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    setTimeout(() => setCopyState("idle"), 1800);
+  };
+
+  return (
+    <section className="raw-plan-card">
+      <div className="raw-plan-card-header">
+        <div>
+          <div className="output-panel-eyebrow">Plan sent to herdr</div>
+          <h3>{title || "Full plan (as written by the planning agent)"}</h3>
+        </div>
+        <button type="button" className="node-action-button raw-plan-copy-button" onClick={handleCopy}>
+          {copyState === "copied" ? "Copied!" : copyState === "failed" ? "Copy failed" : "Copy plan"}
+        </button>
+      </div>
+      <div className="raw-plan-card-body">
+        <MarkdownOutput markdown={markdown} />
+      </div>
+    </section>
+  );
+}
+
 function RichNodeOutput({ result }) {
+  const rawPlanEntries = useMemo(() => buildRawPlanEntries(result?.payload, result?.output), [result?.payload, result?.output]);
+  const summaryMarkdown = rawPlanEntries.length > 0 ? stripFullPlanSection(result?.output) : (result?.output ?? "");
+
   if (result?.payload && Object.keys(result.payload).length > 0) {
     return (
-      <div className="rich-output">
-        <PayloadHighlights payload={result.payload} />
-        {result.output?.trim() ? (
-          <section className="structured-section">
-            <h3>Summary</h3>
-            <MarkdownOutput markdown={result.output} />
-          </section>
-        ) : null}
-        <StructuredValue value={result.payload} title="Structured Payload" path="payload" />
-      </div>
+      <section className="node-output-section">
+        <h3>Node Output</h3>
+        <div className="rich-output">
+          <PayloadHighlights payload={result.payload} />
+          {rawPlanEntries.map((entry, index) => (
+            <RawPlanCard key={index} title={entry.title} markdown={entry.markdown} />
+          ))}
+          {summaryMarkdown?.trim() ? (
+            <section className="structured-section">
+              <h3>Output Summary</h3>
+              <MarkdownOutput markdown={summaryMarkdown} />
+            </section>
+          ) : null}
+          <StructuredValue value={result.payload} title="Typed Output Payload" path="payload" />
+        </div>
+      </section>
     );
   }
 
-  return <MarkdownOutput markdown={result?.output ?? ""} />;
+  return (
+    <section className="node-output-section">
+      <h3>Node Output</h3>
+      <section className="structured-section">
+        <h3>Output Summary</h3>
+        <MarkdownOutput markdown={result?.output ?? ""} />
+      </section>
+    </section>
+  );
 }
 
 function PayloadHighlights({ payload }) {
@@ -681,7 +813,11 @@ function PayloadHighlights({ payload }) {
     return <DeepResearchQuestionBatchHighlights summary={questionBatch} />;
   }
 
-  const plans = Array.isArray(payload?.plans) ? payload.plans : [];
+  const plans = Array.isArray(payload?.plans)
+    ? payload.plans
+    : payload?.plan
+      ? [payload.plan]
+      : [];
   if (plans.length > 0) {
     return <PlanHighlights plans={plans} />;
   }
@@ -1318,7 +1454,25 @@ function App() {
   const [flowInstance, setFlowInstance] = useState(null);
   const [artifactModal, setArtifactModal] = useState(null);
   const [prLaunches, setPrLaunches] = useState({});
+  const [agentOptions, setAgentOptions] = useState([]);
+  const [defaultAgentId, setDefaultAgentId] = useState(undefined);
+  const [selectedAgentByNode, setSelectedAgentByNode] = useState({});
   const lastViewportFitKey = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/source-to-project/agent-options")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!active) return;
+        setAgentOptions(Array.isArray(payload.options) ? payload.options : []);
+        setDefaultAgentId(payload.defaultAgentId);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1447,6 +1601,7 @@ function App() {
       return;
     }
     const launchKey = prLaunchKey(runId, nodeId);
+    const agentId = selectedAgentByNode[nodeId] ?? defaultAgentId;
     setPrLaunches((current) => ({
       ...current,
       [launchKey]: { status: "running", message: "Creating PR agent..." },
@@ -1455,7 +1610,7 @@ function App() {
       const response = await fetch("/api/source-to-project/pr-launch", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
-        body: JSON.stringify({ runId, nodeId }),
+        body: JSON.stringify({ runId, nodeId, agentId }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -1527,10 +1682,14 @@ function App() {
           canCreatePr,
           prLaunchState: prLaunches[launchKey],
           onCreatePr: createPrForNode,
+          autoImplementLaunch: nodeResult?.payload?.autoImplementLaunch,
+          agentOptions,
+          selectedAgentId: selectedAgentByNode[node.id] ?? defaultAgentId,
+          onSelectAgent: (agentId) => setSelectedAgentByNode((current) => ({ ...current, [node.id]: agentId })),
         },
       };
     }),
-  }), [graph, prLaunches, snapshot]);
+  }), [graph, prLaunches, snapshot, agentOptions, defaultAgentId, selectedAgentByNode]);
   const activeRunId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
   const viewportFitKey = useMemo(() => createWorkflowViewportFitKey({
     runId: activeRunId,
@@ -1742,7 +1901,6 @@ function App() {
           </div>
           <div className="output-panel-body">
             <NodeExecutionContext node={selectedNode} result={selectedResult} state={snapshot?.state} />
-            <NodeArtifactLinks node={selectedNode} result={selectedResult} snapshot={snapshot} onOpenArtifact={openArtifact} />
             {isPlanningSelection ? (
               <StructuredValue value={buildPlanningPayload(snapshot?.state)} title="Planned DAG" path="plannedDag" />
             ) : canRenderSelectedOutput || (selectedNodeStatus === "passed" && selectedResult?.payload) ? (
@@ -1756,6 +1914,7 @@ function App() {
             ) : (
               <p className="output-empty">No output recorded.</p>
             )}
+            <NodeArtifactLinks node={selectedNode} result={selectedResult} snapshot={snapshot} onOpenArtifact={openArtifact} />
           </div>
         </aside>
       ) : null}

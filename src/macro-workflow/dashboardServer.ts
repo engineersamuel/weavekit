@@ -157,6 +157,23 @@ export async function createWorkflowDashboardServer(
       return;
     }
 
+    if (requestUrl.pathname === "/api/source-to-project/agent-options") {
+      try {
+        const config = loadTypedWeavekitConfig(options.configPath);
+        const agentOptions = config.sourceToProject.prLauncher.agentOptions;
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({
+          options: agentOptions,
+          defaultAgentId: agentOptions.find((option) => option.agentCommand === config.sourceToProject.prLauncher.agentCommand)?.id
+            ?? agentOptions[0]?.id,
+        }));
+      } catch (error) {
+        response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ options: [], error: error instanceof Error ? error.message : String(error) }));
+      }
+      return;
+    }
+
     if (requestUrl.pathname === "/api/source-to-project/pr-launch") {
       if (request.method !== "POST") {
         writePrLaunchErrorResponse(response, 405, "Method not allowed.");
@@ -177,6 +194,7 @@ export async function createWorkflowDashboardServer(
         const launchArgs = await buildSourceToProjectPrLaunchArgs({
           state,
           nodeId: payload.nodeId,
+          agentId: payload.agentId,
           config,
         });
         const launcher = options.prLauncher ?? { launch: launchSourceToProjectPrAgent };
@@ -426,7 +444,7 @@ export function createWorkflowDashboardSnapshotVersion(snapshot: WorkflowDashboa
   });
 }
 
-function parsePrLaunchRequestBody(body: string): { runId?: string; nodeId: string } {
+function parsePrLaunchRequestBody(body: string): { runId?: string; nodeId: string; agentId?: string } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -443,12 +461,14 @@ function parsePrLaunchRequestBody(body: string): { runId?: string; nodeId: strin
   return {
     runId: typeof record.runId === "string" && record.runId.trim() ? record.runId : undefined,
     nodeId: record.nodeId,
+    agentId: typeof record.agentId === "string" && record.agentId.trim() ? record.agentId : undefined,
   };
 }
 
 async function buildSourceToProjectPrLaunchArgs(args: {
   state: MacroWorkflowRunStateLike;
   nodeId: string;
+  agentId?: string;
   config: WeavekitConfig;
 }): Promise<SourceToProjectPrLaunchArgs> {
   if (args.state.templateId !== "source-to-project") {
@@ -486,10 +506,32 @@ async function buildSourceToProjectPrLaunchArgs(args: {
     planTitle: readString(plan?.title),
     recommendation: readString(plan?.recommendation),
     projectBrief,
+    // The report node's plan was already produced and reviewed earlier in the workflow (see
+    // reportMarkdown's embedded "Full Plan" section), so the manually-launched agent should
+    // implement it directly rather than re-running /plan mode from scratch in the new worktree.
+    initialPromptMode: "implement",
   };
   return {
-    config: args.config.sourceToProject.prLauncher,
+    config: resolveSourceToProjectPrLauncherConfig(args.config.sourceToProject.prLauncher, args.agentId),
     context,
+  };
+}
+
+function resolveSourceToProjectPrLauncherConfig(
+  prLauncher: WeavekitConfig["sourceToProject"]["prLauncher"],
+  agentId: string | undefined,
+): WeavekitConfig["sourceToProject"]["prLauncher"] {
+  if (!agentId) {
+    return prLauncher;
+  }
+  const selected = prLauncher.agentOptions.find((option) => option.id === agentId);
+  if (!selected) {
+    throw dashboardRequestError(400, `Unknown agent id: ${agentId}.`);
+  }
+  return {
+    ...prLauncher,
+    agentCommand: selected.agentCommand,
+    agentArgs: selected.agentArgs,
   };
 }
 
