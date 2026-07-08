@@ -62,6 +62,17 @@ export function buildPlanPrompt(opportunityJson: string, projectJson: string, ra
     "Do not plan changes to the workflow runner, the weakekit codebase, or any other repository. Do not reference or propose changes to weakekit src/, plans/, CONTEXT.md, docs/adr, entities/, or CI configuration for the workflow runner.",
     "The target project may be a completely different type of system (e.g., a documentation vault, a Python service, a shell script collection) — respect its actual architecture and toolchain.",
     "When the opportunity involves adopting a tool or library from the source (e.g., by adding a config file or invoking its CLI), prefer that direct approach over reimplementing equivalent functionality in custom code. Only propose custom reimplementation when direct adoption is explicitly infeasible for the target project.",
+
+    // Tool integration completeness
+    "TOOL INTEGRATION COMPLETENESS: When integrating an external tool that scans or validates files, the plan must be atomic and complete — do not defer automated enforcement to a future phase. A complete tool integration includes ALL of the following in the same plan: (1) the tool's config file at the project root unless the tool explicitly documents non-root placement; (2) an ignore file (e.g., .mdvsignore) and a .gitignore entry for the tool's output directory to exclude generated, private, or out-of-scope content; (3) wiring the tool's check/validate command into any existing health-check, validation, or CI script that already runs checks for the project; (4) updating relevant documentation to record the new tool's role.",
+    "Do NOT produce a plan that creates only a config file and defers health-check or script integration. 'Scripts are out of scope' or 'health-check will be added later' is NOT an acceptable plan boundary. The automated enforcement wiring is the most important part of the plan — without it, the config file has no effect on the project's validation workflow.",
+
+    // Config file placement
+    "CONFIG FILE PLACEMENT: Tool config files (mdvs.toml, .eslintrc, pyproject.toml sections, etc.) belong at the project root by default. Only place a config file in a subdirectory if the tool's own documentation explicitly supports subdirectory config AND root placement would cause problems. When unsure, default to project root.",
+
+    // Phase 1 scope conservatism
+    "PHASE 1 SCOPE CONSERVATISM: For Phase 1 / initial integration, be conservative about what the tool scans. Exclude content that is: raw/unprocessed source material (e.g., 03-sources/), private or restricted directories, auto-generated files, and large binary or media assets. Explicitly include these exclusions in the ignore file. Expanding scope to riskier content categories is a Phase 2 concern — do not include it in Phase 1 scope or implementation steps.",
+
     rawPlanArtifactPath ? `Raw plan artifact path:\n${rawPlanArtifactPath}` : undefined,
     "The candidate has already passed selection. Do not switch to a different opportunity or bundle.",
     "The plan must explain the user-visible/project improvement before listing files, tests, or infrastructure chores.",
