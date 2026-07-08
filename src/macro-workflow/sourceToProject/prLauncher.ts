@@ -171,12 +171,26 @@ function buildAgentCommandArgs(args: { agentCommand: string; configuredArgs: str
   const configuredArgs = [...args.configuredArgs];
   const permissionArgs = isCodexCommand(args.agentCommand) && !hasCodexPermissionOverride(configuredArgs)
     ? ["--dangerously-bypass-approvals-and-sandbox"]
-    : [];
+    : isCopilotCommand(args.agentCommand) && !hasCopilotPermissionOverride(configuredArgs)
+      ? ["--allow-all"]
+      : [];
   return [...permissionArgs, ...configuredArgs, args.prompt];
 }
 
 function isCodexCommand(command: string): boolean {
   return command.split(/[\\/]/).pop() === "codex";
+}
+
+function isCopilotCommand(command: string): boolean {
+  return command.split(/[\\/]/).pop() === "copilot";
+}
+
+function hasCopilotPermissionOverride(args: string[]): boolean {
+  return args.some((arg) => (
+    arg === "--allow-all"
+    || arg === "--allow-all-tools"
+    || arg.startsWith("--allow-tool")
+  ));
 }
 
 function hasCodexPermissionOverride(args: string[]): boolean {
@@ -242,11 +256,6 @@ function shellQuote(value: string): string {
 
 export function buildSourceToProjectPrAgentPrompt(context: SourceToProjectPrLaunchContext): string {
   return [
-    "Implement the reviewed source-to-project opportunity and open a PR.",
-    "",
-    "Start agents from the CLI context:",
-    "Use Herdr agent targets as the visible implementation surface. This terminal was started with `herdr agent start`, so continue working in the current worktree, run validation, commit the changes, and open a pull request.",
-    "",
     "Requirements:",
     "- Implement the reviewed opportunity only; do not switch to a different recommendation.",
     "- Run the configured validation commands before opening the PR.",
@@ -309,7 +318,6 @@ function renderNamedList(title: string, values: string[]): string[] {
 export function buildSourceToProjectPrAgentInitialPrompt(context: SourceToProjectPrLaunchContext): string {
   return [
     "/plan",
-    "Start in plan mode for this PR handoff. First produce a concise implementation plan for the reviewed opportunity, then wait for human approval before editing files.",
     "",
     buildSourceToProjectPrAgentPrompt(context),
   ].join("\n");
@@ -329,10 +337,15 @@ export function buildSourceToProjectPrAgentAutoImplementInitialPrompt(context: S
 }
 
 function sourceToProjectPrLaunchIds(context: SourceToProjectPrLaunchContext): { branchName: string; agentName: string } {
-  const slug = sanitizeLaunchPart(`${context.opportunityId}-${context.runId}`) || sanitizeLaunchPart(context.nodeId) || "manual-pr";
+  const opportunitySlug = shortLaunchPart(context.opportunityId, 24) || shortLaunchPart(context.nodeId, 24);
+  const runSlug = shortLaunchPart(context.runId, 8);
+  const shortId = [opportunitySlug, runSlug].filter(Boolean).join("-") || "manual-pr";
   return {
-    branchName: `source-to-project/${slug}`.slice(0, 96),
-    agentName: `source-to-project-${slug}`.slice(0, 80),
+    // Keep this short: Herdr derives the worktree directory name from the branch name, and a
+    // long "source-to-project/<opportunity-id>-<full-run-uuid>" branch produced an unwieldy
+    // worktree directory. `worktree/<short-id>` mirrors Herdr's own short worktree naming.
+    branchName: `worktree/${shortId}`.slice(0, 60),
+    agentName: `source-to-project-${shortId}`.slice(0, 60),
   };
 }
 
@@ -342,6 +355,10 @@ function labelForOpportunity(context: SourceToProjectPrLaunchContext): string {
 
 function sanitizeLaunchPart(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function shortLaunchPart(value: string, maxLen: number): string {
+  return sanitizeLaunchPart(value).slice(0, maxLen).replace(/-+$/, "");
 }
 
 function parseHerdrWorktreeCreateOutput(output: string): { worktreePath: string; workspaceId?: string; tabId?: string; rootPaneId?: string } {

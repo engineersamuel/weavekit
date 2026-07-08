@@ -14,6 +14,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "claude",
         agentArgs: ["--dangerously-skip-permissions"],
         split: "down",
+        agentOptions: [],
       },
       context: {
         runId: "run-1",
@@ -62,7 +63,7 @@ describe("source-to-project manual PR launcher", () => {
     expect(result).toMatchObject({
       provider: "herdr",
       worktreePath: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
-      branchName: "source-to-project/opp-1-run-1",
+      branchName: "worktree/opp-1-run-1",
       agentName: "source-to-project-opp-1-run-1",
       workspaceId: "wP",
       tabId: "wP:t1",
@@ -75,7 +76,7 @@ describe("source-to-project manual PR launcher", () => {
         "--cwd",
         "/repo/weavekit",
         "--branch",
-        "source-to-project/opp-1-run-1",
+        "worktree/opp-1-run-1",
         "--label",
         "Add manual PR launch",
         "--json",
@@ -102,11 +103,13 @@ describe("source-to-project manual PR launcher", () => {
         "--",
         "claude",
         "--dangerously-skip-permissions",
-        expect.stringContaining("/plan\nStart in plan mode"),
+        expect.stringContaining("/plan\n\nRequirements:"),
       ],
       cwd: "/repo/weavekit",
     });
-    expect(commands[2]?.args.at(-1)).toContain("Implement the reviewed source-to-project opportunity");
+    expect(commands[2]?.args.at(-1)).toContain("Requirements:");
+    expect(commands[2]?.args.at(-1)).not.toContain("Implement the reviewed source-to-project opportunity and open a PR.");
+    expect(commands[2]?.args.at(-1)).not.toContain("Start agents from the CLI context");
     expect(commands[2]?.args.at(-1)).toContain("https://plan.agent-native.com/local-plans/opp-1");
     expect(commands[2]?.args.at(-1)).toContain("nub run typecheck");
     expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(false);
@@ -121,6 +124,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "codex",
         agentArgs: [],
         split: "right",
+        agentOptions: [],
       },
       context: { ...launchContextFixture(), initialPromptMode: "implement" },
       shell: {
@@ -149,9 +153,9 @@ describe("source-to-project manual PR launcher", () => {
     const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
     expect(paneRunCommand?.args[2]).toBe("wP:p1");
     expect(paneRunCommand?.args[3]).not.toContain("/plan\n");
-    expect(paneRunCommand?.args[3]).not.toContain("Start in plan mode for this PR handoff");
+    expect(paneRunCommand?.args[3]).not.toContain("Start agents from the CLI context");
     expect(paneRunCommand?.args[3]).toContain("Implement this reviewed source-to-project opportunity directly");
-    expect(paneRunCommand?.args[3]).toContain("Implement the reviewed source-to-project opportunity");
+    expect(paneRunCommand?.args[3]).toContain("Requirements:");
   });
 
   it("resolves bare agent commands before passing them to Herdr", async () => {
@@ -163,6 +167,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "codex",
         agentArgs: [],
         split: "right",
+        agentOptions: [],
       },
       context: launchContextFixture(),
       shell: {
@@ -193,7 +198,7 @@ describe("source-to-project manual PR launcher", () => {
     expect(paneRunCommand?.args[3]).toContain("/Users/smendenhall/.local/bin/codex");
     expect(paneRunCommand?.args[3]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(paneRunCommand?.args[3]).toContain("/plan");
-    expect(paneRunCommand?.args[3]).toContain("Implement the reviewed source-to-project opportunity");
+    expect(paneRunCommand?.args[3]).toContain("Requirements:");
     expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent start")).toBe(false);
     expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(false);
   });
@@ -207,6 +212,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "/Users/smendenhall/.local/bin/codex",
         agentArgs: [],
         split: "down",
+        agentOptions: [],
       },
       context: launchContextFixture(),
       shell: {
@@ -244,6 +250,7 @@ describe("source-to-project manual PR launcher", () => {
         agentCommand: "/Users/smendenhall/.local/bin/codex",
         agentArgs: [],
         split: "right",
+        agentOptions: [],
       },
       context: launchContextFixture(),
       shell: {

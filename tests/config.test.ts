@@ -187,6 +187,10 @@ knowledge_export = "off"
       agentCommand: "codex",
       agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
       split: "right",
+      agentOptions: [
+        { id: "codex", label: "Codex", agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"] },
+        { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
+      ],
     });
     expect(config.sourceToProject.thresholds.minApplicability).toBe(0.7);
     expect(config.sourceToProject.thresholds.minAcceptanceAverage).toBe(0.85);
@@ -221,7 +225,37 @@ split = "down"
       agentCommand: "claude",
       agentArgs: ["--dangerously-skip-permissions"],
       split: "down",
+      agentOptions: [
+        { id: "codex", label: "Codex", agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"] },
+        { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
+      ],
     });
+  });
+
+  it("loads custom source-to-project PR launcher agent options for the Create PR dropdown", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(configPath, `
+[[source_to_project.pr_launcher.agent_options]]
+id = "claude"
+label = "Claude"
+agent_command = "claude"
+agent_args = ["--dangerously-skip-permissions"]
+
+[[source_to_project.pr_launcher.agent_options]]
+id = "copilot"
+label = "Copilot"
+agent_command = "copilot"
+agent_args = ["--allow-all"]
+`, "utf8");
+
+    const config = loadTypedWeavekitConfig(configPath, {});
+
+    expect(config.sourceToProject.prLauncher.agentOptions).toEqual([
+      { id: "claude", label: "Claude", agentCommand: "claude", agentArgs: ["--dangerously-skip-permissions"] },
+      { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
+    ]);
   });
 
   it("expands a leading tilde in project working tree paths", async () => {
@@ -350,7 +384,7 @@ directory = "/config/hve-core"
         thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
         mode: "advisory" as const,
         offline: false,
-        prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"], split: "right" as const }, autoImplementOnReport: false,
+        prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"], split: "right" as const, agentOptions: [] }, autoImplementOnReport: false,
       },
       deepResearch: {
         providers: [DeepResearchProvider.GROK, DeepResearchProvider.EXA, DeepResearchProvider.COPILOT_LAST30DAYS],

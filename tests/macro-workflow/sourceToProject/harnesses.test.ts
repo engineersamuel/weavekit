@@ -47,7 +47,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         copilotModel: "copilot-research-model",
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" }, autoImplementOnReport: false,
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -570,7 +570,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         timeoutMs: 600000,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" }, autoImplementOnReport: false,
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
       },
     });
 
@@ -591,7 +591,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         sourceReadingMaxToolCalls: 12,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" }, autoImplementOnReport: false,
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -670,7 +670,7 @@ describe("source-to-project harness registry", () => {
         mode: "advisory",
         offline: false,
         projectResearchMaxToolCalls: 24,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right" }, autoImplementOnReport: false,
+        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -2721,7 +2721,7 @@ function defaultSourceToProjectDefaultsFixture() {
     thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
     mode: "advisory" as const,
     offline: false,
-    prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: [], split: "right" as const },
+    prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: [], split: "right" as const, agentOptions: [] },
     autoImplementOnReport: false,
   };
 }

@@ -78,6 +78,22 @@ const WorkflowNode = memo(({ data }) => {
       ) : null}
       {data.canCreatePr && data.autoImplementLaunch?.status !== "launched" ? (
         <div className="node-inline-actions nodrag">
+          {data.agentOptions?.length > 0 ? (
+            <select
+              className="node-action-select"
+              disabled={prLaunchState?.status === "running"}
+              value={data.selectedAgentId ?? ""}
+              onChange={(event) => {
+                event.stopPropagation();
+                data.onSelectAgent?.(event.target.value);
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {data.agentOptions.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+          ) : null}
           <button
             type="button"
             className="node-action-button"
@@ -1340,7 +1356,25 @@ function App() {
   const [flowInstance, setFlowInstance] = useState(null);
   const [artifactModal, setArtifactModal] = useState(null);
   const [prLaunches, setPrLaunches] = useState({});
+  const [agentOptions, setAgentOptions] = useState([]);
+  const [defaultAgentId, setDefaultAgentId] = useState(undefined);
+  const [selectedAgentByNode, setSelectedAgentByNode] = useState({});
   const lastViewportFitKey = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/source-to-project/agent-options")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!active) return;
+        setAgentOptions(Array.isArray(payload.options) ? payload.options : []);
+        setDefaultAgentId(payload.defaultAgentId);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1469,6 +1503,7 @@ function App() {
       return;
     }
     const launchKey = prLaunchKey(runId, nodeId);
+    const agentId = selectedAgentByNode[nodeId] ?? defaultAgentId;
     setPrLaunches((current) => ({
       ...current,
       [launchKey]: { status: "running", message: "Creating PR agent..." },
@@ -1477,7 +1512,7 @@ function App() {
       const response = await fetch("/api/source-to-project/pr-launch", {
         method: "POST",
         headers: { "Content-Type": "application/json; charset=utf-8" },
-        body: JSON.stringify({ runId, nodeId }),
+        body: JSON.stringify({ runId, nodeId, agentId }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) {
@@ -1550,10 +1585,13 @@ function App() {
           prLaunchState: prLaunches[launchKey],
           onCreatePr: createPrForNode,
           autoImplementLaunch: nodeResult?.payload?.autoImplementLaunch,
+          agentOptions,
+          selectedAgentId: selectedAgentByNode[node.id] ?? defaultAgentId,
+          onSelectAgent: (agentId) => setSelectedAgentByNode((current) => ({ ...current, [node.id]: agentId })),
         },
       };
     }),
-  }), [graph, prLaunches, snapshot]);
+  }), [graph, prLaunches, snapshot, agentOptions, defaultAgentId, selectedAgentByNode]);
   const activeRunId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
   const viewportFitKey = useMemo(() => createWorkflowViewportFitKey({
     runId: activeRunId,

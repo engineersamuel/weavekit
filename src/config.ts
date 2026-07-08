@@ -16,11 +16,20 @@ export type SourceToProjectThresholds = {
   maxRisk: number;
 };
 
+export type SourceToProjectPrLauncherAgentOption = {
+  id: string;
+  label: string;
+  agentCommand: string;
+  agentArgs: string[];
+};
+
 export type SourceToProjectPrLauncherConfig = {
   provider: "herdr";
   agentCommand: string;
   agentArgs: string[];
   split: "right" | "down";
+  /** Selectable agents for the dashboard's Create PR agent dropdown. First entry is the default. */
+  agentOptions: SourceToProjectPrLauncherAgentOption[];
 };
 
 export type SourceToProjectDefaults = {
@@ -350,6 +359,10 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
       agentCommand: "codex",
       agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
       split: "right",
+      agentOptions: [
+        { id: "codex", label: "Codex", agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"] },
+        { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
+      ],
     },
     autoImplementOnReport: false,
   };
@@ -541,7 +554,34 @@ function readSourceToProjectPrLauncherConfig(
     agentCommand: readString(record.agent_command, defaults.agentCommand),
     agentArgs: Array.isArray(record.agent_args) ? readStringArray(record.agent_args) : defaults.agentArgs,
     split: record.split === "down" ? "down" : "right",
+    agentOptions: readSourceToProjectPrLauncherAgentOptions(record.agent_options, defaults.agentOptions),
   };
+}
+
+function readSourceToProjectPrLauncherAgentOptions(
+  value: unknown,
+  defaults: SourceToProjectPrLauncherAgentOption[],
+): SourceToProjectPrLauncherAgentOption[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return defaults;
+  }
+  const options = value
+    .map((entry): SourceToProjectPrLauncherAgentOption | undefined => {
+      const record = asRecord(entry);
+      const id = readOptionalString(record.id);
+      const agentCommand = readOptionalString(record.agent_command);
+      if (!id || !agentCommand) {
+        return undefined;
+      }
+      return {
+        id,
+        label: readString(record.label, id),
+        agentCommand,
+        agentArgs: readStringArray(record.agent_args),
+      };
+    })
+    .filter((option): option is SourceToProjectPrLauncherAgentOption => option !== undefined);
+  return options.length > 0 ? options : defaults;
 }
 
 function readCopilotDefaults(value: unknown, env: NodeJS.ProcessEnv = process.env): CopilotDefaults {
