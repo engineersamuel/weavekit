@@ -90,6 +90,7 @@ class PlanArtifactSummary {
   validationCommands string[] @description("Commands or checks that should prove the plan worked.")
   risks string[] @description("Material implementation or product risks.")
   rawPlanArtifactPath string?
+  planFilePath string? @description("Absolute path to the full Copilot plan.md copied from the plan-mode session into the run output directory. Set by the workflow harness; always null here.")
 }
 
 class FinalRecommendationReview {
@@ -199,6 +200,7 @@ function DistillPlanArtifact(opportunityJson: string, rawPlan: string, rawPlanAr
     Do not make the UI reader infer the recommendation from a long scope paragraph.
     Use scope for detailed implementation boundaries only.
     Set rawPlanArtifactPath exactly to the supplied raw plan artifact path. Do not invent or rewrite it.
+    Set planFilePath to null. The workflow harness populates it from the session context.
 
     {{ _.role("user") }}
     Opportunity or bundle JSON:

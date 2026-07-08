@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { accessSync, constants, existsSync, readdirSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -132,6 +132,7 @@ type CopilotRuntimeSkillLoadDiagnostics = {
 };
 
 type CopilotRuntimeSession = {
+  sessionId?: string;
   sendAndWait?(message: { prompt: string }, timeout?: number): Promise<{ data?: ({ content?: string } & Record<string, unknown>) } | undefined>;
   send?(message: { prompt: string; agentMode?: "plan" | "autopilot" | "interactive" | "shell" }): Promise<string>;
   on?(handler: (event: CopilotRuntimeSessionEvent) => void): () => void;
@@ -228,6 +229,7 @@ export type CopilotHarnessClient = {
     nodeId?: string;
     label?: string;
     capabilityScope?: CopilotCapabilityScope;
+    onSessionId?: (sessionId: string) => void;
   }): Promise<string>;
 };
 
@@ -632,6 +634,9 @@ export function createCopilotSdkHarnessClient(args: {
           cwd: runArgs.cwd,
           elapsedMs: elapsedSince(startedAt),
         }, verboseEvents);
+        if (runArgs.onSessionId && session.sessionId) {
+          runArgs.onSessionId(session.sessionId);
+        }
         await loadCopilotCapabilityScope(session, runArgs.capabilityScope, {
           timeoutMs,
           mode: runArgs.mode,
@@ -1402,6 +1407,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       const resolvedPlan = resolveOpportunityPlanExecution(node, context, options.project, options.sourceToProject, projectBrief, { rawSourceReading: rawSourceReading ?? undefined, rawProjectResearch: rawProjectResearch ?? undefined });
       const { prompt, selectedCandidateJson, copilotModel, rawPlanArtifactPath } = resolvedPlan;
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
+      let capturedSessionId: string | undefined;
       const rawPlan = await copilot.run({
         cwd: options.project.workingTree,
         prompt,
@@ -1410,16 +1416,20 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         operation: node.id,
         nodeId: node.id,
         label: `Copilot plan ${opportunity.id}`,
+        onSessionId: (id) => { capturedSessionId = id; },
       });
+      const fullPlanContent = capturedSessionId ? await readCopilotSessionPlan(capturedSessionId) : undefined;
       const persistedPlan = await persistRawPlanMarkdown({
         outputDir: context.outputDir,
         nodeId: node.id,
         rawPlan,
         rawPlanArtifactPath,
+        fullPlanContent,
       });
       const planSummary = withRawPlanArtifactPath(
-        await bamlClient.DistillPlanArtifact(selectedCandidateJson, rawPlan, rawPlanArtifactPath),
+        await bamlClient.DistillPlanArtifact(selectedCandidateJson, fullPlanContent ?? rawPlan, rawPlanArtifactPath),
         rawPlanArtifactPath,
+        persistedPlan.planFilePath,
       );
       return {
         status: "passed",
@@ -1456,6 +1466,7 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
       const prompt = buildPlanPrompt(selectedCandidateJson, JSON.stringify(projectBrief), rawPlanArtifactPath, { rawSourceReading: rawSourceReadingSel ?? undefined, rawProjectResearch: rawProjectResearchSel ?? undefined });
       const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
+      let capturedSessionIdSel: string | undefined;
       const rawPlan = await copilot.run({
         cwd: options.project.workingTree,
         prompt,
@@ -1464,16 +1475,20 @@ export function createSourceToProjectHarnessRegistry(options: SourceToProjectHar
         operation: node.id,
         nodeId: node.id,
         label: "Copilot selected-opportunity plan",
+        onSessionId: (id) => { capturedSessionIdSel = id; },
       });
+      const fullPlanContent = capturedSessionIdSel ? await readCopilotSessionPlan(capturedSessionIdSel) : undefined;
       const persistedPlan = await persistRawPlanMarkdown({
         outputDir: context.outputDir,
         nodeId: node.id,
         rawPlan,
         rawPlanArtifactPath,
+        fullPlanContent,
       });
       const planSummary = withRawPlanArtifactPath(
-        await bamlClient.DistillPlanArtifact(selectedCandidateJson, rawPlan, rawPlanArtifactPath),
+        await bamlClient.DistillPlanArtifact(selectedCandidateJson, fullPlanContent ?? rawPlan, rawPlanArtifactPath),
         rawPlanArtifactPath,
+        persistedPlan.planFilePath,
       );
       return {
         status: "passed",
@@ -2217,27 +2232,50 @@ async function persistRawPlanMarkdown(args: {
   nodeId: string;
   rawPlan: string;
   rawPlanArtifactPath: string;
-}): Promise<{ artifacts: WorkflowArtifactRef[] | undefined }> {
+  fullPlanContent?: string;
+}): Promise<{ artifacts: WorkflowArtifactRef[] | undefined; planFilePath?: string }> {
   if (!args.outputDir) {
     return { artifacts: undefined };
   }
   const artifactPath = join(args.outputDir, args.rawPlanArtifactPath);
   await mkdir(dirname(artifactPath), { recursive: true });
   await writeFile(artifactPath, args.rawPlan, "utf8");
-  return {
-    artifacts: [{
+  const artifacts: WorkflowArtifactRef[] = [{
+    kind: "markdown",
+    path: args.rawPlanArtifactPath,
+    description: `Raw Copilot plan markdown for ${args.nodeId}.`,
+  }];
+  let planFilePath: string | undefined;
+  if (args.fullPlanContent) {
+    const fullArtifactRelPath = args.rawPlanArtifactPath.replace(/\.md$/, "-full.md");
+    const fullArtifactPath = join(args.outputDir, fullArtifactRelPath);
+    await writeFile(fullArtifactPath, args.fullPlanContent, "utf8");
+    planFilePath = fullArtifactPath;
+    artifacts.push({
       kind: "markdown",
-      path: args.rawPlanArtifactPath,
-      description: `Raw Copilot plan markdown for ${args.nodeId}.`,
-    }],
-  };
+      path: fullArtifactRelPath,
+      description: `Full Copilot session plan.md for ${args.nodeId}.`,
+    });
+  }
+  return { artifacts, planFilePath };
 }
 
-function withRawPlanArtifactPath(plan: PlanArtifactSummary, rawPlanArtifactPath: string): PlanArtifactSummary {
+function withRawPlanArtifactPath(plan: PlanArtifactSummary, rawPlanArtifactPath: string, planFilePath?: string): PlanArtifactSummary {
   return {
     ...plan,
     rawPlanArtifactPath,
+    ...(planFilePath ? { planFilePath } : {}),
   };
+}
+
+async function readCopilotSessionPlan(sessionId: string): Promise<string | undefined> {
+  const copilotHome = process.env.COPILOT_HOME ?? join(homedir(), ".copilot");
+  const planPath = join(copilotHome, "session-state", sessionId, "plan.md");
+  try {
+    return await readFile(planPath, "utf8");
+  } catch {
+    return undefined;
+  }
 }
 
 function rawPlanArtifactPathForNode(nodeId: string): string {

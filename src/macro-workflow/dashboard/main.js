@@ -649,20 +649,31 @@ function renderInlineMarkdown(text) {
 function RichNodeOutput({ result }) {
   if (result?.payload && Object.keys(result.payload).length > 0) {
     return (
-      <div className="rich-output">
-        <PayloadHighlights payload={result.payload} />
-        {result.output?.trim() ? (
-          <section className="structured-section">
-            <h3>Summary</h3>
-            <MarkdownOutput markdown={result.output} />
-          </section>
-        ) : null}
-        <StructuredValue value={result.payload} title="Structured Payload" path="payload" />
-      </div>
+      <section className="node-output-section">
+        <h3>Node Output</h3>
+        <div className="rich-output">
+          <PayloadHighlights payload={result.payload} />
+          {result.output?.trim() ? (
+            <section className="structured-section">
+              <h3>Output Summary</h3>
+              <MarkdownOutput markdown={result.output} />
+            </section>
+          ) : null}
+          <StructuredValue value={result.payload} title="Typed Output Payload" path="payload" />
+        </div>
+      </section>
     );
   }
 
-  return <MarkdownOutput markdown={result?.output ?? ""} />;
+  return (
+    <section className="node-output-section">
+      <h3>Node Output</h3>
+      <section className="structured-section">
+        <h3>Output Summary</h3>
+        <MarkdownOutput markdown={result?.output ?? ""} />
+      </section>
+    </section>
+  );
 }
 
 function PayloadHighlights({ payload }) {
@@ -1742,7 +1753,6 @@ function App() {
           </div>
           <div className="output-panel-body">
             <NodeExecutionContext node={selectedNode} result={selectedResult} state={snapshot?.state} />
-            <NodeArtifactLinks node={selectedNode} result={selectedResult} snapshot={snapshot} onOpenArtifact={openArtifact} />
             {isPlanningSelection ? (
               <StructuredValue value={buildPlanningPayload(snapshot?.state)} title="Planned DAG" path="plannedDag" />
             ) : canRenderSelectedOutput || (selectedNodeStatus === "passed" && selectedResult?.payload) ? (
@@ -1756,6 +1766,7 @@ function App() {
             ) : (
               <p className="output-empty">No output recorded.</p>
             )}
+            <NodeArtifactLinks node={selectedNode} result={selectedResult} snapshot={snapshot} onOpenArtifact={openArtifact} />
           </div>
         </aside>
       ) : null}

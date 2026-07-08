@@ -275,6 +275,7 @@ export namespace partial_types {
       validationCommands: string[]
       risks: string[]
       rawPlanArtifactPath?: string | null
+      planFilePath?: string | null
     }
     export interface ProjectBrief {
       projectId?: string | null

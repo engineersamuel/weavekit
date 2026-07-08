@@ -344,6 +344,7 @@ export interface PlanArtifactSummary {
   validationCommands: string[]
   risks: string[]
   rawPlanArtifactPath?: string | null
+  planFilePath?: string | null
   
 }
 

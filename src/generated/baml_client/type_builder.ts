@@ -85,7 +85,7 @@ export default class TypeBuilder {
     
     PersonaSelectionRequest: ClassViewer<'PersonaSelectionRequest', "workflowName" | "workflowPurpose" | "taskPrompt" | "context" | "constraints" | "roundNumber" | "roundFocus" | "previousSelectionIds" | "previousRoundSignals" | "minPersonas" | "maxPersonas" | "candidates">;
     
-    PlanArtifactSummary: ClassViewer<'PlanArtifactSummary', "opportunityIds" | "title" | "recommendation" | "problemSolved" | "sourceLessonApplied" | "targetChange" | "expectedUserValue" | "implementationOutline" | "scope" | "filesLikelyTouched" | "validationCommands" | "risks" | "rawPlanArtifactPath">;
+    PlanArtifactSummary: ClassViewer<'PlanArtifactSummary', "opportunityIds" | "title" | "recommendation" | "problemSolved" | "sourceLessonApplied" | "targetChange" | "expectedUserValue" | "implementationOutline" | "scope" | "filesLikelyTouched" | "validationCommands" | "risks" | "rawPlanArtifactPath" | "planFilePath">;
     
     ProjectBrief: ClassViewer<'ProjectBrief', "projectId" | "displayName" | "architecture" | "constraints" | "goals" | "changeSurfaces" | "validationCommands" | "risks" | "evidence">;
     
@@ -259,7 +259,7 @@ export default class TypeBuilder {
         ]);
         
         this.PlanArtifactSummary = this.tb.classViewer("PlanArtifactSummary", [
-          "opportunityIds","title","recommendation","problemSolved","sourceLessonApplied","targetChange","expectedUserValue","implementationOutline","scope","filesLikelyTouched","validationCommands","risks","rawPlanArtifactPath",
+          "opportunityIds","title","recommendation","problemSolved","sourceLessonApplied","targetChange","expectedUserValue","implementationOutline","scope","filesLikelyTouched","validationCommands","risks","rawPlanArtifactPath","planFilePath",
         ]);
         
         this.ProjectBrief = this.tb.classViewer("ProjectBrief", [
