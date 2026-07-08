@@ -35,11 +35,11 @@ class ProjectBrief {
 }
 
 class OpportunityScore {
-  applicability float
-  impact float
-  confidence float
-  implementationCost float
-  risk float
+  applicability float @description("How directly the source lesson applies to the target project.")
+  impact float @description("Expected user or maintainer value if the opportunity is implemented.")
+  confidence float @description("Confidence that the source and project evidence support this opportunity.")
+  implementationCost float @description("Estimated implementation effort and complexity cost.")
+  risk float @description("Risk of regressions, unnecessary complexity, or poor fit.")
 }
 
 class Opportunity {

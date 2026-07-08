@@ -35,6 +35,7 @@ import {
   type SourceToProjectBamlFunctionName,
 } from "./modelPolicy.js";
 import { buildCorroborationPrompt, buildPlanPrompt, buildProjectResearchPrompt, buildSourceReadingPrompt } from "./prompts.js";
+import { averageOpportunityScoreVector, opportunityScoreToScalar } from "./opportunityGeometry.js";
 import {
   launchSourceToProjectPrAgent,
   type SourceToProjectPrLaunchContext,
@@ -3333,14 +3334,7 @@ function buildBundleCandidate(
 }
 
 function averageOpportunityScore(opportunities: Opportunity[]): PlanCandidate["score"] {
-  const count = opportunities.length;
-  return {
-    applicability: opportunities.reduce((sum, opportunity) => sum + opportunity.score.applicability, 0) / count,
-    impact: opportunities.reduce((sum, opportunity) => sum + opportunity.score.impact, 0) / count,
-    confidence: opportunities.reduce((sum, opportunity) => sum + opportunity.score.confidence, 0) / count,
-    implementationCost: opportunities.reduce((sum, opportunity) => sum + opportunity.score.implementationCost, 0) / count,
-    risk: opportunities.reduce((sum, opportunity) => sum + opportunity.score.risk, 0) / count,
-  };
+  return averageOpportunityScoreVector(opportunities.map((opportunity) => opportunity.score));
 }
 
 function sourceCoreFitScore(text: string): number {
@@ -3383,13 +3377,7 @@ function candidateQualityScore(
   sourceCoreFit: number,
   metaInfrastructurePenalty: number,
 ): number {
-  return (score.impact * 0.34) +
-    (score.applicability * 0.24) +
-    (score.confidence * 0.24) +
-    (sourceCoreFit * 0.24) -
-    (score.implementationCost * 0.12) -
-    (score.risk * 0.18) -
-    metaInfrastructurePenalty;
+  return opportunityScoreToScalar(score, sourceCoreFit, metaInfrastructurePenalty);
 }
 
 async function runValidationCommands(commands: string[], cwd: string, shell?: ShellClient): Promise<string> {
