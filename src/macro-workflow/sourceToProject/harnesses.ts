@@ -1975,15 +1975,16 @@ export function createSourceToProjectDynamicExpander(options: SourceToProjectHar
       }];
     }
 
-    // 0 or undefined means unlimited: promote every opportunity that clears the acceptance
-    // thresholds instead of arbitrarily capping how many high-confidence opportunities proceed.
+    // 0 or undefined means unlimited: promote every candidate that clears the acceptance
+    // thresholds instead of arbitrarily capping how many high-confidence candidates proceed.
     const maxOpportunities = options.maxOpportunities ?? options.project.maxOpportunities ?? 0;
-    const sortedAccepted = allAccepted.sort((a, b) => b.acceptanceAverage - a.acceptanceAverage);
-    const accepted = maxOpportunities > 0 ? sortedAccepted.slice(0, maxOpportunities) : sortedAccepted;
+    const promotedCandidates = selectPromotedAcceptedCandidates(councilReview, allAccepted, maxOpportunities);
 
-    const opportunityNodes = accepted.flatMap((acceptance) => buildOpportunityFanOutNodes(acceptance));
+    const opportunityNodes = promotedCandidates.flatMap((candidate) =>
+      buildOpportunityFanOutNodes(candidate.acceptance, candidate.selectedCandidate)
+    );
     return options.mode === "autonomous-pr"
-      ? [...opportunityNodes, ...buildAutonomousPrNodes(accepted)]
+      ? [...opportunityNodes, ...buildAutonomousPrNodes(promotedCandidates.map((candidate) => candidate.acceptance))]
       : opportunityNodes;
   };
 }
@@ -2056,11 +2057,134 @@ export function selectAcceptedOpportunities(
   });
 }
 
-function buildOpportunityFanOutNodes(acceptance: OpportunityAcceptance): RuntimeWorkflowNode[] {
+function selectPromotedAcceptedCandidates(
+  review: OpportunityCouncilReview,
+  accepted: OpportunityAcceptance[],
+  maxOpportunities: number,
+): Array<{ acceptance: OpportunityAcceptance; selectedCandidate?: PlanCandidate }> {
+  const sortedAccepted = [...accepted].sort((a, b) => b.acceptanceAverage - a.acceptanceAverage);
+  const acceptedById = new Map(sortedAccepted.map((acceptance) => [acceptance.id, acceptance]));
+  const opportunityById = new Map(review.opportunities.map((opportunity) => [opportunity.id, opportunity]));
+  const selected: Array<{ acceptance: OpportunityAcceptance; selectedCandidate?: PlanCandidate }> = [];
+  const coveredOpportunityIds = new Set<string>();
+
+  const bundleCandidates = review.bundles
+    .map((bundle, index) => {
+      const uniqueOpportunityIds = [...new Set(bundle.opportunityIds)];
+      const acceptedMembers = uniqueOpportunityIds
+        .map((id) => acceptedById.get(id))
+        .filter((acceptance): acceptance is OpportunityAcceptance => Boolean(acceptance));
+      if (
+        !isValidPromotionBundle(bundle) ||
+        uniqueOpportunityIds.length !== bundle.opportunityIds.length ||
+        acceptedMembers.length !== uniqueOpportunityIds.length ||
+        acceptedMembers.length < 2
+      ) {
+        return undefined;
+      }
+      const acceptanceAverage = acceptedMembers.reduce((sum, acceptance) => sum + acceptance.acceptanceAverage, 0) / acceptedMembers.length;
+      return { bundle, acceptedMembers, acceptanceAverage, index };
+    })
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((left, right) =>
+      right.acceptedMembers.length - left.acceptedMembers.length ||
+      right.acceptanceAverage - left.acceptanceAverage ||
+      left.index - right.index
+    );
+
+  for (const candidate of bundleCandidates) {
+    const uncoveredAcceptedMembers = candidate.acceptedMembers.filter((acceptance) => !coveredOpportunityIds.has(acceptance.id));
+    if (uncoveredAcceptedMembers.length < 2) {
+      continue;
+    }
+    const memberOpportunities = candidate.bundle.opportunityIds
+      .map((id) => opportunityById.get(id))
+      .filter((opportunity): opportunity is Opportunity => Boolean(opportunity));
+    const acceptedMemberOpportunities = uncoveredAcceptedMembers.map((acceptance) => acceptance.opportunity);
+    const score = averageOpportunityScore(acceptedMemberOpportunities);
+    const evidence = acceptedMemberOpportunities.flatMap((opportunity) => opportunity.evidence);
+    const syntheticOpportunity: Opportunity = {
+      id: candidate.bundle.id,
+      title: candidate.bundle.id,
+      lesson: acceptedMemberOpportunities.map((opportunity) => opportunity.lesson).join("\n"),
+      projectChange: candidate.bundle.maxPrScope,
+      changeSurface: candidate.bundle.sharedChangeSurface,
+      score,
+      evidence,
+      speculative: acceptedMemberOpportunities.every((opportunity) => opportunity.speculative),
+    };
+    const acceptance = bundleOpportunityAcceptance(candidate.bundle, syntheticOpportunity, uncoveredAcceptedMembers);
+    selected.push({
+      acceptance,
+      selectedCandidate: {
+        kind: "bundle",
+        id: candidate.bundle.id,
+        title: candidate.bundle.id,
+        opportunityIds: candidate.bundle.opportunityIds,
+        projectChange: candidate.bundle.maxPrScope,
+        sourceLesson: memberOpportunities.map((opportunity) => opportunity.lesson).join("\n"),
+        userValue: candidate.bundle.combinedUserValue,
+        evidenceCount: memberOpportunities.reduce((sum, opportunity) => sum + opportunity.evidence.length, 0),
+        speculative: memberOpportunities.every((opportunity) => opportunity.speculative),
+        score,
+        sourceCoreFit: 1,
+        metaInfrastructurePenalty: 0,
+        qualityScore: acceptance.acceptanceAverage,
+        raw: candidate.bundle,
+      },
+    });
+    for (const member of uncoveredAcceptedMembers) {
+      coveredOpportunityIds.add(member.id);
+    }
+  }
+
+  for (const acceptance of sortedAccepted) {
+    if (coveredOpportunityIds.has(acceptance.id)) {
+      continue;
+    }
+    selected.push({ acceptance });
+  }
+
+  return maxOpportunities > 0 ? selected.slice(0, maxOpportunities) : selected;
+}
+
+function isValidPromotionBundle(bundle: OpportunityBundle): boolean {
+  return bundle.opportunityIds.length > 1 &&
+    Boolean(bundle.rationale.trim()) &&
+    Boolean(bundle.sharedChangeSurface.trim()) &&
+    Boolean(bundle.combinedUserValue.trim()) &&
+    Boolean(bundle.separationRisk.trim()) &&
+    Boolean(bundle.maxPrScope.trim());
+}
+
+function bundleOpportunityAcceptance(
+  bundle: OpportunityBundle,
+  opportunity: Opportunity,
+  acceptedMembers: OpportunityAcceptance[],
+): OpportunityAcceptance {
+  const acceptanceAverage = acceptedMembers.reduce((sum, acceptance) => sum + acceptance.acceptanceAverage, 0) / acceptedMembers.length;
+  return {
+    id: bundle.id,
+    title: bundle.id,
+    accepted: true,
+    reason: `Accepted bundle ${bundle.id} because it covers ${acceptedMembers.length} accepted opportunities with one shared change surface.`,
+    acceptanceAverage,
+    scores: {
+      applicability: opportunity.score.applicability,
+      impact: opportunity.score.impact,
+      confidence: opportunity.score.confidence,
+      risk: opportunity.score.risk,
+    },
+    opportunity,
+  };
+}
+
+function buildOpportunityFanOutNodes(acceptance: OpportunityAcceptance, selectedCandidate?: PlanCandidate): RuntimeWorkflowNode[] {
   const idPart = toNodeIdPart(acceptance.id);
   const sharedInput = {
     opportunity: acceptance.opportunity,
     opportunityAcceptance: acceptance,
+    ...(selectedCandidate ? { selectedCandidate } : {}),
   };
   return [
     {
@@ -2228,7 +2352,8 @@ function resolveOpportunityPlanExecution(
   const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
   const councilReview = readCouncilReview(context);
   const relatedBundles = councilReview.bundles.filter((bundle) => bundle.opportunityIds.includes(opportunity.id));
-  const selectedCandidateJson = JSON.stringify({
+  const selectedCandidate = node.input?.selectedCandidate as PlanCandidate | undefined;
+  const selectedCandidateJson = JSON.stringify(selectedCandidate ?? {
     kind: "opportunity",
     id: opportunity.id,
     title: opportunity.title,

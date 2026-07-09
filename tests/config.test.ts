@@ -232,6 +232,36 @@ split = "down"
     });
   });
 
+  it("does not materialize undefined project threshold override fields", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(configPath, `
+[source_to_project]
+min_acceptance_average = 0.9
+
+[projects.weavekit]
+display_name = "Weavekit"
+working_tree = "/tmp/weavekit"
+mainline = "origin main"
+remote = "origin"
+context_docs = []
+validation_commands = []
+autonomous_pr_allowed = false
+notification = "cli"
+knowledge_export = "off"
+`, "utf8");
+
+    const config = loadTypedWeavekitConfig(configPath, {});
+    const spreadThresholds = {
+      ...config.sourceToProject.thresholds,
+      ...config.projects.weavekit?.thresholds,
+    };
+
+    expect(Object.keys(config.projects.weavekit?.thresholds ?? {})).toEqual([]);
+    expect(spreadThresholds.minAcceptanceAverage).toBe(0.9);
+  });
+
   it("loads custom source-to-project PR launcher agent options for the Create PR dropdown", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
