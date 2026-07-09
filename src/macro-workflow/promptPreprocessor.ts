@@ -71,7 +71,7 @@ export function createGrokXPostFetcher(args: GrokXPostFetcherOptions = {}): XPos
       "-p",
       prompt,
       "-m",
-      "grok-build",
+      "grok-4.5",
       "--output-format",
       "plain",
     ], {

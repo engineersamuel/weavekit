@@ -105,7 +105,7 @@ describe("X post prompt preprocessing", () => {
       markdown: "# Clean Markdown\n\nBody.",
     });
     await expect(readText(argsPath)).resolves.toContain("x_search tool to fetch the full content of https://x.com/alice/status/12345");
-    await expect(readText(argsPath)).resolves.toContain("grok-build");
+    await expect(readText(argsPath)).resolves.toContain("grok-4.5");
     await expect(readText(argsPath)).resolves.toContain("plain");
   });
 
