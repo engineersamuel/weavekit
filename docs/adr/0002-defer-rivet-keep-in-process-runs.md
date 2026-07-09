@@ -14,10 +14,10 @@ HITL), durable sleeps, and replay-from-step. This is materially richer than Flue
 durability is agent-session/turn recovery plus finite-run inspection, with no step/join/race/
 rollback DSL and no native HITL pause-resume) and richer than our current in-process loop.
 
-We still rejected adopting it now. Rivet is a durable *actor* runtime, so adopting it for the
+We still rejected adopting it now. Rivet is a durable _actor_ runtime, so adopting it for the
 control we described would reintroduce the three things [ADR 0001](0001-no-durable-work-queue.md)
 deliberately removed: a second actor, work that outlives the orchestrator process, and human
-gates. It also fights the product thesis that automated verification gates *eliminate* HITL.
+gates. It also fights the product thesis that automated verification gates _eliminate_ HITL.
 For isolated, single-machine Runs, most of Rivet's value is inert — durable suspension and
 replay-from-step buy nothing in a process meant to finish in one sitting, and crash-resume is
 already served by on-disk run-state snapshots plus the Langfuse execution DAG. Finally, the
@@ -53,7 +53,7 @@ axis. BAML (typed calls) and the Copilot SDK (persona workers) stay regardless o
    operational weight (run a runtime, model Runs as actors, version/deploy); bets on an
    undecided hosted pivot.
 3. **Adopt Rivet alongside Flue — rejected.** Both are durable/hosting substrates (Flue on
-   Cloudflare *is* Durable Objects; Rivet is a DO alternative). Stacking them is two durability
+   Cloudflare _is_ Durable Objects; Rivet is a DO alternative). Stacking them is two durability
    layers — redundant and confusing. Coherent coexistence is only "alternative backends behind a
    seam," never both running together.
 4. **Lean harder on Flue's durability for control — rejected.** Flue has no step/join/race/

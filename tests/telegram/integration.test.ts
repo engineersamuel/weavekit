@@ -28,8 +28,18 @@ class FakeClient implements MessageSender, UpdateSource {
       this.delivered = true;
       const [first, second] = this.sentIds;
       return [
-        { update_id: 1, message: { text: "ribeye", chat: { id: CHAT }, reply_to_message: { message_id: second! } } },
-        { update_id: 2, message: { text: "salmon", chat: { id: CHAT }, reply_to_message: { message_id: first! } } },
+        {
+          update_id: 1,
+          message: {
+            text: "ribeye",
+            chat: { id: CHAT },
+            reply_to_message: { message_id: second! },
+          },
+        },
+        {
+          update_id: 2,
+          message: { text: "salmon", chat: { id: CHAT }, reply_to_message: { message_id: first! } },
+        },
       ];
     }
     return [];
@@ -45,7 +55,10 @@ describe("telegram HITL pipeline (poller + inquiry + registry)", () => {
       longPollSec: 0,
     });
 
-    const [answerA, answerB] = await Promise.all([inquiry.ask("A: main course?"), inquiry.ask("B: main course?")]);
+    const [answerA, answerB] = await Promise.all([
+      inquiry.ask("A: main course?"),
+      inquiry.ask("B: main course?"),
+    ]);
 
     poller.stop();
     await poller.done;

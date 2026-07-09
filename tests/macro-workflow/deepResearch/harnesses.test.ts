@@ -82,12 +82,18 @@ describe("deep-research harnesses", () => {
       completedNodeIds: new Set([seedNode.id]),
     });
 
-    const providerNodes = (expansion ?? []).filter((node) => node.input?.deepResearchStep === "provider-research");
-    expect(providerNodes.map((node) => ({
-      id: node.id,
-      questionIds: ((node.input?.questions ?? []) as Array<{ id: string }>).map((question) => question.id),
-      queryCount: ((node.input?.queries ?? []) as string[]).length,
-    }))).toEqual([
+    const providerNodes = (expansion ?? []).filter(
+      (node) => node.input?.deepResearchStep === "provider-research",
+    );
+    expect(
+      providerNodes.map((node) => ({
+        id: node.id,
+        questionIds: ((node.input?.questions ?? []) as Array<{ id: string }>).map(
+          (question) => question.id,
+        ),
+        queryCount: ((node.input?.queries ?? []) as string[]).length,
+      })),
+    ).toEqual([
       {
         id: "deep-research-grok-1",
         questionIds: ["q-recency", "q-choice"],
@@ -104,7 +110,11 @@ describe("deep-research harnesses", () => {
         queryCount: 2,
       },
     ]);
-    expect(providerNodes.flatMap((node) => node.input?.questions as Array<{ id: string }>).map((question) => question.id)).not.toContain("q-local");
+    expect(
+      providerNodes
+        .flatMap((node) => node.input?.questions as Array<{ id: string }>)
+        .map((question) => question.id),
+    ).not.toContain("q-local");
     expect((expansion ?? []).find((node) => node.id === "deep-research-assess-1")).toMatchObject({
       dependsOn: [
         "deep-research-grok-1",
@@ -158,11 +168,17 @@ describe("deep-research harnesses", () => {
       completedNodeIds: new Set([seedNode.id]),
     });
 
-    const providerNodes = (expansion ?? []).filter((node) => node.input?.deepResearchStep === "provider-research");
-    expect(providerNodes.map((node) => ({
-      id: node.id,
-      questionIds: ((node.input?.questions ?? []) as Array<{ id: string }>).map((question) => question.id),
-    }))).toEqual([
+    const providerNodes = (expansion ?? []).filter(
+      (node) => node.input?.deepResearchStep === "provider-research",
+    );
+    expect(
+      providerNodes.map((node) => ({
+        id: node.id,
+        questionIds: ((node.input?.questions ?? []) as Array<{ id: string }>).map(
+          (question) => question.id,
+        ),
+      })),
+    ).toEqual([
       {
         id: "deep-research-grok-1",
         questionIds: ["q-unhinted"],
@@ -182,23 +198,34 @@ describe("deep-research harnesses", () => {
     const registry = createDeepResearchHarnessRegistry();
     const adapter = registry.get(WorkflowHarnessKind.RESEARCH)!;
     const context = emptyExecutionContext();
-    const questions = [{
-      id: "q1",
-      text: "What CI workflow should this repository use?",
-      rationale: "Need CI evidence.",
-      researchMode: "web-lookup",
-      researchModeRationale: "Fixture question uses lightweight web lookup.",
-      priority: 1,
-      providerHints: ["grok", "copilot-last30days", "exa"],
-      searchQueries: ["Node TypeScript GitHub Actions CI"],
-      completionCriteria: ["Find CI guidance."],
-      status: "pending",
-      dependencies: [],
-    }];
+    const questions = [
+      {
+        id: "q1",
+        text: "What CI workflow should this repository use?",
+        rationale: "Need CI evidence.",
+        researchMode: "web-lookup",
+        researchModeRationale: "Fixture question uses lightweight web lookup.",
+        priority: 1,
+        providerHints: ["grok", "copilot-last30days", "exa"],
+        searchQueries: ["Node TypeScript GitHub Actions CI"],
+        completionCriteria: ["Find CI guidance."],
+        status: "pending",
+        dependencies: [],
+      },
+    ];
 
-    const copilotExecution = await adapter.prepareExecution?.(providerNodeFixture("copilot-last30days", questions), context);
-    const grokExecution = await adapter.prepareExecution?.(providerNodeFixture("grok", questions), context);
-    const exaExecution = await adapter.prepareExecution?.(providerNodeFixture("exa", questions), context);
+    const copilotExecution = await adapter.prepareExecution?.(
+      providerNodeFixture("copilot-last30days", questions),
+      context,
+    );
+    const grokExecution = await adapter.prepareExecution?.(
+      providerNodeFixture("grok", questions),
+      context,
+    );
+    const exaExecution = await adapter.prepareExecution?.(
+      providerNodeFixture("exa", questions),
+      context,
+    );
 
     expect(copilotExecution?.calls?.[0]).toMatchObject({
       executor: "copilot-last30days",
@@ -207,7 +234,9 @@ describe("deep-research harnesses", () => {
       model: "claude-sonnet-5",
       prompt: expect.stringContaining("/last30days"),
     });
-    expect(copilotExecution?.calls?.[0]?.prompt).toContain("What CI workflow should this repository use?");
+    expect(copilotExecution?.calls?.[0]?.prompt).toContain(
+      "What CI workflow should this repository use?",
+    );
     expect(grokExecution?.calls?.[0]).toMatchObject({
       executor: "grok",
       operation: "search",
@@ -238,17 +267,20 @@ describe("deep-research harnesses", () => {
     const provider = (name: string): DeepResearchProviderClient => ({
       async search(args) {
         providerCalls.push(`${name}:${args.queries.join("|")}`);
-        return [{
-          provider: name,
-          questionId: args.questions[0]?.id ?? "unknown",
-          query: args.queries[0] ?? "",
-          url: `https://example.com/${name}`,
-          title: `${name} result`,
-          excerpt: `${name} excerpt`,
-          content: `${name} content`,
-          sourceQuality: "primary",
-          provenance: name === "grok" ? "grok cli with x_search" : "exa mcp web_search_exa/web_fetch_exa",
-        }];
+        return [
+          {
+            provider: name,
+            questionId: args.questions[0]?.id ?? "unknown",
+            query: args.queries[0] ?? "",
+            url: `https://example.com/${name}`,
+            title: `${name} result`,
+            excerpt: `${name} excerpt`,
+            content: `${name} content`,
+            sourceQuality: "primary",
+            provenance:
+              name === "grok" ? "grok cli with x_search" : "exa mcp web_search_exa/web_fetch_exa",
+          },
+        ];
       },
     });
 
@@ -258,32 +290,36 @@ describe("deep-research harnesses", () => {
           bamlCalls.push(`questions:${config.maxIterations}`);
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What patterns make agent workflows durable?",
-              rationale: "Core objective coverage.",
-              researchMode: "deep-research",
-              researchModeRationale: "Fixture question exercises all configured providers.",
-              priority: 1,
-              providerHints: ["exa", "grok"],
-              searchQueries: ["durable agent workflows"],
-              completionCriteria: ["Find concrete patterns."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What patterns make agent workflows durable?",
+                rationale: "Core objective coverage.",
+                researchMode: "deep-research",
+                researchModeRationale: "Fixture question exercises all configured providers.",
+                priority: 1,
+                providerHints: ["exa", "grok"],
+                searchQueries: ["durable agent workflows"],
+                completionCriteria: ["Find concrete patterns."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(_questionSet, evidence) {
           bamlCalls.push(`assess:${evidence.length}`);
           return {
             iteration: 1,
-            questionCoverage: [{
-              questionId: "q1",
-              coverageScore: 0.9,
-              evidenceQuality: "high",
-              contradictions: [],
-              gaps: [],
-            }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 0.9,
+                evidenceQuality: "high",
+                contradictions: [],
+                gaps: [],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -309,10 +345,7 @@ describe("deep-research harnesses", () => {
     });
 
     expect(state.status).toBe("passed");
-    expect(providerCalls).toEqual([
-      "exa:durable agent workflows",
-      "grok:durable agent workflows",
-    ]);
+    expect(providerCalls).toEqual(["exa:durable agent workflows", "grok:durable agent workflows"]);
     expect(bamlCalls).toEqual(["questions:2", "assess:2", "report:2"]);
     expect(state.currentPlan.nodes.map((node) => node.id)).toEqual([
       "deep-research-questions-1",
@@ -321,15 +354,22 @@ describe("deep-research harnesses", () => {
       "deep-research-assess-1",
       "deep-research-report",
     ]);
-    expect(state.currentPlan.nodes.find((node) => node.id === "deep-research-exa-1")).toMatchObject({
-      model: "claude-sonnet-5",
-      modelRationale: "Exa provider research uses Sonnet for source-query execution and synthesis.",
-    });
-    expect(state.currentPlan.nodes.find((node) => node.id === "deep-research-grok-1")).toMatchObject({
+    expect(state.currentPlan.nodes.find((node) => node.id === "deep-research-exa-1")).toMatchObject(
+      {
+        model: "claude-sonnet-5",
+        modelRationale:
+          "Exa provider research uses Sonnet for source-query execution and synthesis.",
+      },
+    );
+    expect(
+      state.currentPlan.nodes.find((node) => node.id === "deep-research-grok-1"),
+    ).toMatchObject({
       model: "grok-default",
       modelRationale: "Grok provider research uses the configured Grok CLI default model.",
     });
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-report")?.payload).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-report")?.payload,
+    ).toMatchObject({
       deepResearchReport: {
         objective: "Research durable agent workflows",
         methodology: expect.stringContaining("Collected 2 normalized evidence item(s)"),
@@ -338,8 +378,16 @@ describe("deep-research harnesses", () => {
           expect.objectContaining({ questionId: "q1", evidenceId: "grok-1-1" }),
         ],
         sources: [
-          expect.objectContaining({ id: "exa-1-1", provider: "exa", url: "https://example.com/exa" }),
-          expect.objectContaining({ id: "grok-1-1", provider: "grok", url: "https://example.com/grok" }),
+          expect.objectContaining({
+            id: "exa-1-1",
+            provider: "exa",
+            url: "https://example.com/exa",
+          }),
+          expect.objectContaining({
+            id: "grok-1-1",
+            provider: "grok",
+            url: "https://example.com/grok",
+          }),
         ],
         markdown: expect.stringContaining("# Deep Research Report"),
       },
@@ -350,17 +398,19 @@ describe("deep-research harnesses", () => {
     const provider: DeepResearchProviderClient = {
       async search(args) {
         const prefix = args.objective.includes("lint") ? "lint" : "hooks";
-        return [{
-          provider: "exa",
-          questionId: args.questions[0]?.id ?? `${prefix}-q1`,
-          query: args.queries[0] ?? "",
-          url: `https://example.com/${prefix}`,
-          title: `${prefix} guidance`,
-          excerpt: `Use the maintained ${prefix} tool.`,
-          content: `Use the maintained ${prefix} tool for verification.`,
-          sourceQuality: "primary",
-          provenance: "exa mcp web_search_exa",
-        }];
+        return [
+          {
+            provider: "exa",
+            questionId: args.questions[0]?.id ?? `${prefix}-q1`,
+            query: args.queries[0] ?? "",
+            url: `https://example.com/${prefix}`,
+            title: `${prefix} guidance`,
+            excerpt: `Use the maintained ${prefix} tool.`,
+            content: `Use the maintained ${prefix} tool for verification.`,
+            sourceQuality: "primary",
+            provenance: "exa mcp web_search_exa",
+          },
+        ];
       },
     };
     const compiled: Array<{ objective: string; evidenceIds: string[] }> = [];
@@ -371,33 +421,41 @@ describe("deep-research harnesses", () => {
           const prefix = String(prompt).includes("lint") ? "lint" : "hooks";
           return {
             iteration: 1,
-            questions: [{
-              id: `${prefix}-q1`,
-              text: `Which ${prefix} verification tool should this gap use?`,
-              rationale: "Need tool guidance.",
-              researchMode: "web-lookup",
-              researchModeRationale: "Fixture question uses lightweight web lookup.",
-              priority: 1,
-              providerHints: ["exa"],
-              searchQueries: [`${prefix} verification tool guidance`],
-              completionCriteria: ["Find tool guidance."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: `${prefix}-q1`,
+                text: `Which ${prefix} verification tool should this gap use?`,
+                rationale: "Need tool guidance.",
+                researchMode: "web-lookup",
+                researchModeRationale: "Fixture question uses lightweight web lookup.",
+                priority: 1,
+                providerHints: ["exa"],
+                searchQueries: [`${prefix} verification tool guidance`],
+                completionCriteria: ["Find tool guidance."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(questionSet, evidence, priorState) {
           expect(evidence.map((item) => item.questionId)).toEqual([questionSet.questions[0]?.id]);
-          expect(priorState.evidence.every((item) => item.questionId.startsWith(questionSet.questions[0]?.id.split("-")[0] ?? ""))).toBe(true);
+          expect(
+            priorState.evidence.every((item) =>
+              item.questionId.startsWith(questionSet.questions[0]?.id.split("-")[0] ?? ""),
+            ),
+          ).toBe(true);
           return {
             iteration: 1,
-            questionCoverage: [{
-              questionId: questionSet.questions[0]?.id ?? "q1",
-              coverageScore: 0.9,
-              evidenceQuality: "high",
-              contradictions: [],
-              gaps: [],
-            }],
+            questionCoverage: [
+              {
+                questionId: questionSet.questions[0]?.id ?? "q1",
+                coverageScore: 0.9,
+                evidenceQuality: "high",
+                contradictions: [],
+                gaps: [],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -430,16 +488,19 @@ describe("deep-research harnesses", () => {
       maxResultsPerQuestion: 1,
     }).nodes[0]!;
 
-    const state = await runMacroWorkflow({
-      id: "embedded-deep-research",
-      objective: "Research verification candidates",
-      templateId: "verification-optimizer",
-      maxReplans: 0,
-      nodes: [lintSeed, hooksSeed],
-    }, {
-      harnesses,
-      expandAfterNode: createDeepResearchDynamicExpander(),
-    });
+    const state = await runMacroWorkflow(
+      {
+        id: "embedded-deep-research",
+        objective: "Research verification candidates",
+        templateId: "verification-optimizer",
+        maxReplans: 0,
+        nodes: [lintSeed, hooksSeed],
+      },
+      {
+        harnesses,
+        expandAfterNode: createDeepResearchDynamicExpander(),
+      },
+    );
 
     expect(state.status).toBe("passed");
     expect(state.currentPlan.nodes.map((node) => node.id)).toEqual([
@@ -456,14 +517,20 @@ describe("deep-research harnesses", () => {
       { objective: "Research lint verification candidate", evidenceIds: ["exa-1-1"] },
       { objective: "Research hooks verification candidate", evidenceIds: ["exa-1-1"] },
     ]);
-    expect(state.nodeResults.find((result) => result.nodeId === "verification-research-lint-report")?.payload).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "verification-research-lint-report")
+        ?.payload,
+    ).toMatchObject({
       deepResearchRunId: "verification-research-lint",
       deepResearchReport: {
         objective: "Research lint verification candidate",
         sources: [expect.objectContaining({ url: "https://example.com/lint" })],
       },
     });
-    expect(state.nodeResults.find((result) => result.nodeId === "verification-research-hooks-report")?.payload).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "verification-research-hooks-report")
+        ?.payload,
+    ).toMatchObject({
       deepResearchRunId: "verification-research-hooks",
       deepResearchReport: {
         objective: "Research hooks verification candidate",
@@ -482,19 +549,22 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What exists?",
-              rationale: "Need sources.",
-              researchMode: "deep-research",
-              researchModeRationale: "Fixture question exercises the configured accepted provider.",
-              priority: 1,
-              providerHints: ["tavily"],
-              searchQueries: ["agent research"],
-              completionCriteria: ["Find sources."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What exists?",
+                rationale: "Need sources.",
+                researchMode: "deep-research",
+                researchModeRationale:
+                  "Fixture question exercises the configured accepted provider.",
+                priority: 1,
+                providerHints: ["tavily"],
+                searchQueries: ["agent research"],
+                completionCriteria: ["Find sources."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration() {
@@ -512,9 +582,12 @@ describe("deep-research harnesses", () => {
     });
 
     expect(state.status).toBe("failed");
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-tavily-1")).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-tavily-1"),
+    ).toMatchObject({
       status: "failed",
-      error: "Deep research provider tavily is accepted but not implemented/configured for this MVP.",
+      error:
+        "Deep research provider tavily is accepted but not implemented/configured for this MVP.",
     });
   });
 
@@ -522,11 +595,15 @@ describe("deep-research harnesses", () => {
     const dir = await mkdtemp(join(tmpdir(), "deep-research-grok-default-"));
     const argsPath = join(dir, "args.txt");
     const commandPath = join(dir, "grok-default.sh");
-    await writeFile(commandPath, [
-      "#!/bin/sh",
-      `printf '%s\\n' "$@" > "${argsPath}"`,
-      "printf '%s\\n' 'Grok default model research output.'",
-    ].join("\n"), "utf8");
+    await writeFile(
+      commandPath,
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$@" > "${argsPath}"`,
+        "printf '%s\\n' 'Grok default model research output.'",
+      ].join("\n"),
+      "utf8",
+    );
     await chmod(commandPath, 0o755);
 
     const harnesses = createDeepResearchHarnessRegistry({
@@ -535,19 +612,21 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What does Grok find?",
-              rationale: "Need Grok evidence.",
-              researchMode: "recency-social",
-              researchModeRationale: "Fixture question exercises Grok recency routing.",
-              priority: 1,
-              providerHints: ["grok"],
-              searchQueries: ["grok default model research"],
-              completionCriteria: ["Find one result."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What does Grok find?",
+                rationale: "Need Grok evidence.",
+                researchMode: "recency-social",
+                researchModeRationale: "Fixture question exercises Grok recency routing.",
+                priority: 1,
+                providerHints: ["grok"],
+                searchQueries: ["grok default model research"],
+                completionCriteria: ["Find one result."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(_questionSet, evidence) {
@@ -557,7 +636,15 @@ describe("deep-research harnesses", () => {
           });
           return {
             iteration: 1,
-            questionCoverage: [{ questionId: "q1", coverageScore: 1, evidenceQuality: "medium", contradictions: [], gaps: [] }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 1,
+                evidenceQuality: "medium",
+                contradictions: [],
+                gaps: [],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -663,7 +750,15 @@ describe("deep-research harnesses", () => {
           });
           return {
             iteration: 1,
-            questionCoverage: [{ questionId: "q1", coverageScore: 1, evidenceQuality: "community", contradictions: [], gaps: [] }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 1,
+                evidenceQuality: "community",
+                contradictions: [],
+                gaps: [],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -684,23 +779,30 @@ describe("deep-research harnesses", () => {
     });
 
     expect(state.status).toBe("passed");
-    expect(state.currentPlan.nodes.map((node) => node.id)).toContain("deep-research-copilot-last30days-1");
-    expect(state.currentPlan.nodes.find((node) => node.id === "deep-research-copilot-last30days-1")).toMatchObject({
+    expect(state.currentPlan.nodes.map((node) => node.id)).toContain(
+      "deep-research-copilot-last30days-1",
+    );
+    expect(
+      state.currentPlan.nodes.find((node) => node.id === "deep-research-copilot-last30days-1"),
+    ).toMatchObject({
       model: "claude-sonnet-5",
-      modelRationale: "Copilot last30days provider research uses Sonnet for recent-source synthesis.",
+      modelRationale:
+        "Copilot last30days provider research uses Sonnet for recent-source synthesis.",
     });
-    expect(copilotCalls).toEqual([expect.objectContaining({
-      mode: "research",
-      model: "claude-sonnet-5",
-      maxToolCalls: 60,
-      operation: "deep-research-copilot-last30days-1",
-      capabilityScope: {
-        kind: "skill",
-        skillName: "last30days",
-        skillDirectories: [skillsRoot],
-        disabledSkills: ["other-skill"],
-      },
-    })]);
+    expect(copilotCalls).toEqual([
+      expect.objectContaining({
+        mode: "research",
+        model: "claude-sonnet-5",
+        maxToolCalls: 60,
+        operation: "deep-research-copilot-last30days-1",
+        capabilityScope: {
+          kind: "skill",
+          skillName: "last30days",
+          skillDirectories: [skillsRoot],
+          disabledSkills: ["other-skill"],
+        },
+      }),
+    ]);
     expect(copilotCalls[0]).toMatchObject({
       prompt: expect.stringContaining("/last30days"),
     });
@@ -728,19 +830,21 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What are developers saying?",
-              rationale: "Need recent community evidence.",
-              researchMode: "recency-social",
-              researchModeRationale: "Fixture question exercises last30days recency routing.",
-              priority: 1,
-              providerHints: ["copilot-last30days"],
-              searchQueries: ["agent workflow reliability"],
-              completionCriteria: ["Find recent discussion."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What are developers saying?",
+                rationale: "Need recent community evidence.",
+                researchMode: "recency-social",
+                researchModeRationale: "Fixture question exercises last30days recency routing.",
+                priority: 1,
+                providerHints: ["copilot-last30days"],
+                searchQueries: ["agent workflow reliability"],
+                completionCriteria: ["Find recent discussion."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration() {
@@ -758,9 +862,10 @@ describe("deep-research harnesses", () => {
     });
 
     expect(state.status).toBe("failed");
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-copilot-last30days-1")?.error).toContain(
-      "Install it with `nubx skills add mvanhorn/last30days-skill -g`.",
-    );
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-copilot-last30days-1")
+        ?.error,
+    ).toContain("Install it with `nubx skills add mvanhorn/last30days-skill -g`.");
   });
 
   it("writes a human-readable markdown report when BAML report parsing fails", async () => {
@@ -778,31 +883,35 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What makes agent workflows durable?",
-              rationale: "Need durable workflow evidence.",
-              researchMode: "web-lookup",
-              researchModeRationale: "Fixture question uses lightweight web lookup.",
-              priority: 1,
-              providerHints: ["exa"],
-              searchQueries: ["durable agent workflows"],
-              completionCriteria: ["Find one cited source."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What makes agent workflows durable?",
+                rationale: "Need durable workflow evidence.",
+                researchMode: "web-lookup",
+                researchModeRationale: "Fixture question uses lightweight web lookup.",
+                priority: 1,
+                providerHints: ["exa"],
+                searchQueries: ["durable agent workflows"],
+                completionCriteria: ["Find one cited source."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(_questionSet, _evidence, _priorState) {
           return {
             iteration: 1,
-            questionCoverage: [{
-              questionId: "q1",
-              coverageScore: 0.7,
-              evidenceQuality: "medium",
-              contradictions: [],
-              gaps: ["Need more production case studies."],
-            }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 0.7,
+                evidenceQuality: "medium",
+                contradictions: [],
+                gaps: ["Need more production case studies."],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: false,
@@ -816,17 +925,19 @@ describe("deep-research harnesses", () => {
       providers: {
         exa: {
           async search() {
-            return [{
-              provider: "exa",
-              questionId: "q1",
-              query: "durable agent workflows",
-              url: "https://example.com/durable-agents",
-              title: "Durable Agents",
-              excerpt: "Durable agents persist state, retry work, and resume after failures.",
-              content: "Long source content that should not be required for fallback markdown.",
-              sourceQuality: "primary",
-              provenance: "exa mcp web_search_exa",
-            }];
+            return [
+              {
+                provider: "exa",
+                questionId: "q1",
+                query: "durable agent workflows",
+                url: "https://example.com/durable-agents",
+                title: "Durable Agents",
+                excerpt: "Durable agents persist state, retry work, and resume after failures.",
+                content: "Long source content that should not be required for fallback markdown.",
+                sourceQuality: "primary",
+                provenance: "exa mcp web_search_exa",
+              },
+            ];
           },
         },
       },
@@ -838,7 +949,9 @@ describe("deep-research harnesses", () => {
       outputDir,
     });
 
-    const reportResult = state.nodeResults.find((result) => result.nodeId === "deep-research-report");
+    const reportResult = state.nodeResults.find(
+      (result) => result.nodeId === "deep-research-report",
+    );
     await writeMacroWorkflowArtifacts({ outputDir, state });
     const markdown = await readFile(join(outputDir, "DeepResearchReport.md"), "utf8");
 
@@ -849,20 +962,24 @@ describe("deep-research harnesses", () => {
       payload: {
         deepResearchReport: {
           markdown: expect.stringContaining("# Deep Research Report"),
-          sources: [{
-            id: "exa-1-1",
-            provider: "exa",
-            url: "https://example.com/durable-agents",
-            title: "Durable Agents",
-            quality: "primary",
-          }],
+          sources: [
+            {
+              id: "exa-1-1",
+              provider: "exa",
+              url: "https://example.com/durable-agents",
+              title: "Durable Agents",
+              quality: "primary",
+            },
+          ],
         },
       },
     });
     expect(reportResult?.output).toContain("BAML report compilation failed");
     expect(markdown).toContain("Durable agents persist state");
     expect(markdown).toContain("https://example.com/durable-agents");
-    const payload = JSON.parse(await readFile(join(outputDir, "deep-research-report.payload.json"), "utf8")) as {
+    const payload = JSON.parse(
+      await readFile(join(outputDir, "deep-research-report.payload.json"), "utf8"),
+    ) as {
       deepResearchReport?: { markdown?: string };
     };
     expect(payload.deepResearchReport?.markdown).toContain("# Deep Research Report");
@@ -882,25 +999,35 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What makes agent workflows durable?",
-              rationale: "Need durable workflow evidence.",
-              researchMode: "web-lookup",
-              researchModeRationale: "Fixture question uses lightweight web lookup.",
-              priority: 1,
-              providerHints: ["exa"],
-              searchQueries: ["durable agent workflows"],
-              completionCriteria: ["Find one cited source."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What makes agent workflows durable?",
+                rationale: "Need durable workflow evidence.",
+                researchMode: "web-lookup",
+                researchModeRationale: "Fixture question uses lightweight web lookup.",
+                priority: 1,
+                providerHints: ["exa"],
+                searchQueries: ["durable agent workflows"],
+                completionCriteria: ["Find one cited source."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration() {
           return {
             iteration: 1,
-            questionCoverage: [{ questionId: "q1", coverageScore: 1, evidenceQuality: "high", contradictions: [], gaps: [] }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 1,
+                evidenceQuality: "high",
+                contradictions: [],
+                gaps: [],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -909,22 +1036,25 @@ describe("deep-research harnesses", () => {
         },
         async CompileDeepResearchReport() {
           return {
-            markdown: "{objective: Research durable agent workflows, methodology: old structured response without markdown}",
+            markdown:
+              "{objective: Research durable agent workflows, methodology: old structured response without markdown}",
           };
         },
       },
       providers: {
         exa: {
           async search() {
-            return [{
-              provider: "exa",
-              questionId: "q1",
-              query: "durable agent workflows",
-              title: "Durable Agents",
-              excerpt: "Durable agents persist state.",
-              sourceQuality: "primary",
-              provenance: "exa mcp web_search_exa",
-            }];
+            return [
+              {
+                provider: "exa",
+                questionId: "q1",
+                query: "durable agent workflows",
+                title: "Durable Agents",
+                excerpt: "Durable agents persist state.",
+                sourceQuality: "primary",
+                provenance: "exa mcp web_search_exa",
+              },
+            ];
           },
         },
       },
@@ -936,7 +1066,9 @@ describe("deep-research harnesses", () => {
     });
 
     expect(state.status).toBe("failed");
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-report")).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-report"),
+    ).toMatchObject({
       status: "failed",
       error: expect.stringContaining("required Markdown report heading"),
       payload: {
@@ -955,11 +1087,13 @@ describe("deep-research harnesses", () => {
         async run({ input }) {
           calls.push({ tool: "search", input });
           return {
-            results: [{
-              url: "https://example.com/exa",
-              title: "Exa result",
-              text: "Search excerpt",
-            }],
+            results: [
+              {
+                url: "https://example.com/exa",
+                title: "Exa result",
+                text: "Search excerpt",
+              },
+            ],
           };
         },
       },
@@ -979,19 +1113,21 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What does Exa find?",
-              rationale: "Need web evidence.",
-              researchMode: "web-lookup",
-              researchModeRationale: "Fixture question uses lightweight web lookup.",
-              priority: 1,
-              providerHints: ["exa"],
-              searchQueries: ["exa deep research"],
-              completionCriteria: ["Find one source."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What does Exa find?",
+                rationale: "Need web evidence.",
+                researchMode: "web-lookup",
+                researchModeRationale: "Fixture question uses lightweight web lookup.",
+                priority: 1,
+                providerHints: ["exa"],
+                searchQueries: ["exa deep research"],
+                completionCriteria: ["Find one source."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(_questionSet, evidence) {
@@ -1006,7 +1142,15 @@ describe("deep-research harnesses", () => {
           });
           return {
             iteration: 1,
-            questionCoverage: [{ questionId: "q1", coverageScore: 1, evidenceQuality: "high", contradictions: [], gaps: [] }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 1,
+                evidenceQuality: "high",
+                contradictions: [],
+                gaps: [],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -1052,14 +1196,18 @@ describe("deep-research harnesses", () => {
         async web_search_exa(args) {
           searchCalls.push(args);
           if (searchCalls.length === 1) {
-            throw new Error("web_search_exa error (403): The following requested domains are not available: x.com. Remove them from includeDomains and try again.");
+            throw new Error(
+              "web_search_exa error (403): The following requested domains are not available: x.com. Remove them from includeDomains and try again.",
+            );
           }
           return {
-            results: [{
-              url: "https://example.com/typescript-linter",
-              title: "TypeScript linter comparison",
-              text: "Biome, oxlint, and ESLint have different performance and completeness tradeoffs.",
-            }],
+            results: [
+              {
+                url: "https://example.com/typescript-linter",
+                title: "TypeScript linter comparison",
+                text: "Biome, oxlint, and ESLint have different performance and completeness tradeoffs.",
+              },
+            ],
           };
         },
       },
@@ -1067,19 +1215,22 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "Which TypeScript linter is fastest and most complete?",
-              rationale: "Need current linter evidence.",
-              researchMode: "deep-research",
-              researchModeRationale: "Fixture question exercises partial provider failure handling.",
-              priority: 1,
-              providerHints: ["exa"],
-              searchQueries: ["site:x.com TypeScript linter Biome Oxlint ESLint"],
-              completionCriteria: ["Find one source."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "Which TypeScript linter is fastest and most complete?",
+                rationale: "Need current linter evidence.",
+                researchMode: "deep-research",
+                researchModeRationale:
+                  "Fixture question exercises partial provider failure handling.",
+                priority: 1,
+                providerHints: ["exa"],
+                searchQueries: ["site:x.com TypeScript linter Biome Oxlint ESLint"],
+                completionCriteria: ["Find one source."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(_questionSet, evidence) {
@@ -1091,7 +1242,15 @@ describe("deep-research harnesses", () => {
           });
           return {
             iteration: 1,
-            questionCoverage: [{ questionId: "q1", coverageScore: 1, evidenceQuality: "medium", contradictions: [], gaps: [] }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 1,
+                evidenceQuality: "medium",
+                contradictions: [],
+                gaps: [],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -1132,7 +1291,9 @@ describe("deep-research harnesses", () => {
       { query: "site:x.com TypeScript linter Biome Oxlint ESLint", numResults: 1 },
       { query: "site:x.com TypeScript linter Biome Oxlint ESLint", numResults: 1 },
     ]);
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-exa-1")?.output).toContain("after 1 retry");
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-exa-1")?.output,
+    ).toContain("after 1 retry");
   });
 
   it("continues assessment when one provider in a multi-provider iteration exhausts retries", async () => {
@@ -1141,16 +1302,18 @@ describe("deep-research harnesses", () => {
       providers: {
         exa: {
           async search(args) {
-            return [{
-              provider: "exa",
-              questionId: args.questions[0]?.id ?? "q1",
-              query: args.queries[0] ?? "ci workflow",
-              url: "https://example.com/ci",
-              title: "CI guidance",
-              excerpt: "Run typecheck, tests, code generation, and build in CI.",
-              sourceQuality: "primary",
-              provenance: "exa mcp web_search_exa",
-            }];
+            return [
+              {
+                provider: "exa",
+                questionId: args.questions[0]?.id ?? "q1",
+                query: args.queries[0] ?? "ci workflow",
+                url: "https://example.com/ci",
+                title: "CI guidance",
+                excerpt: "Run typecheck, tests, code generation, and build in CI.",
+                sourceQuality: "primary",
+                provenance: "exa mcp web_search_exa",
+              },
+            ];
           },
         },
         grok: {
@@ -1163,26 +1326,37 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What CI workflow should this repository use?",
-              rationale: "Need CI evidence.",
-              researchMode: "deep-research",
-              researchModeRationale: "Fixture question exercises fan-in when only one provider returns evidence.",
-              priority: 1,
-              providerHints: ["exa", "grok"],
-              searchQueries: ["Node TypeScript GitHub Actions CI"],
-              completionCriteria: ["Find CI guidance."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What CI workflow should this repository use?",
+                rationale: "Need CI evidence.",
+                researchMode: "deep-research",
+                researchModeRationale:
+                  "Fixture question exercises fan-in when only one provider returns evidence.",
+                priority: 1,
+                providerHints: ["exa", "grok"],
+                searchQueries: ["Node TypeScript GitHub Actions CI"],
+                completionCriteria: ["Find CI guidance."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(_questionSet, evidence) {
           assessmentEvidenceCounts.push(evidence.length);
           return {
             iteration: 1,
-            questionCoverage: [{ questionId: "q1", coverageScore: 0.8, evidenceQuality: "medium", contradictions: [], gaps: ["Grok provider failed."] }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 0.8,
+                evidenceQuality: "medium",
+                contradictions: [],
+                gaps: ["Grok provider failed."],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -1190,7 +1364,9 @@ describe("deep-research harnesses", () => {
           };
         },
         async CompileDeepResearchReport() {
-          return { markdown: "# Deep Research Report\n\nUse CI guidance from remaining providers." };
+          return {
+            markdown: "# Deep Research Report\n\nUse CI guidance from remaining providers.",
+          };
         },
       },
     });
@@ -1210,21 +1386,27 @@ describe("deep-research harnesses", () => {
 
     expect(state.status).toBe("passed");
     expect(assessmentEvidenceCounts).toEqual([1]);
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-grok-1")).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-grok-1"),
+    ).toMatchObject({
       status: "passed",
       output: expect.stringContaining("grok failed after 1 retry"),
       payload: {
         deepResearchEvidence: [],
-        deepResearchProviderFailures: [{
-          provider: "grok",
-          iteration: 1,
-          retryCount: 1,
-          message: "grok cli failed",
-        }],
+        deepResearchProviderFailures: [
+          {
+            provider: "grok",
+            iteration: 1,
+            retryCount: 1,
+            message: "grok cli failed",
+          },
+        ],
       },
     });
     expect(state.currentPlan.nodes.map((node) => node.id)).toContain("deep-research-assess-1");
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-assess-1")).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-assess-1"),
+    ).toMatchObject({
       status: "passed",
       output: expect.stringContaining("Research iteration 1 is sufficient"),
     });
@@ -1243,16 +1425,18 @@ describe("deep-research harnesses", () => {
         "copilot-last30days": failingProvider,
         exa: {
           async search(args) {
-            return [{
-              provider: "exa",
-              questionId: args.questions[0]?.id ?? "q1",
-              query: args.queries[0] ?? "ci workflow",
-              url: "https://example.com/ci",
-              title: "CI guidance",
-              excerpt: "Run verification in CI.",
-              sourceQuality: "primary",
-              provenance: "exa mcp web_search_exa",
-            }];
+            return [
+              {
+                provider: "exa",
+                questionId: args.questions[0]?.id ?? "q1",
+                query: args.queries[0] ?? "ci workflow",
+                url: "https://example.com/ci",
+                title: "CI guidance",
+                excerpt: "Run verification in CI.",
+                sourceQuality: "primary",
+                provenance: "exa mcp web_search_exa",
+              },
+            ];
           },
         },
       },
@@ -1260,26 +1444,37 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What CI workflow should this repository use?",
-              rationale: "Need CI evidence.",
-              researchMode: "deep-research",
-              researchModeRationale: "Fixture question exercises all configured provider failures.",
-              priority: 1,
-              providerHints: ["grok", "copilot-last30days", "exa"],
-              searchQueries: ["Node TypeScript GitHub Actions CI"],
-              completionCriteria: ["Find CI guidance."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What CI workflow should this repository use?",
+                rationale: "Need CI evidence.",
+                researchMode: "deep-research",
+                researchModeRationale:
+                  "Fixture question exercises all configured provider failures.",
+                priority: 1,
+                providerHints: ["grok", "copilot-last30days", "exa"],
+                searchQueries: ["Node TypeScript GitHub Actions CI"],
+                completionCriteria: ["Find CI guidance."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(_questionSet, evidence) {
           assessedEvidenceProviders.push(evidence.map((item) => item.provider));
           return {
             iteration: 1,
-            questionCoverage: [{ questionId: "q1", coverageScore: 0.75, evidenceQuality: "medium", contradictions: [], gaps: ["Two providers failed."] }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 0.75,
+                evidenceQuality: "medium",
+                contradictions: [],
+                gaps: ["Two providers failed."],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -1307,21 +1502,27 @@ describe("deep-research harnesses", () => {
 
     expect(state.status).toBe("passed");
     expect(assessedEvidenceProviders).toEqual([["exa"]]);
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-grok-1")).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-grok-1"),
+    ).toMatchObject({
       status: "passed",
       payload: {
         deepResearchEvidence: [],
         deepResearchProviderFailures: [expect.objectContaining({ provider: "grok" })],
       },
     });
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-copilot-last30days-1")).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-copilot-last30days-1"),
+    ).toMatchObject({
       status: "passed",
       payload: {
         deepResearchEvidence: [],
         deepResearchProviderFailures: [expect.objectContaining({ provider: "copilot-last30days" })],
       },
     });
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-assess-1")).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-assess-1"),
+    ).toMatchObject({
       status: "passed",
       output: expect.stringContaining("Research iteration 1 is sufficient"),
     });
@@ -1342,19 +1543,21 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What CI workflow should this repository use?",
-              rationale: "Need CI evidence.",
-              researchMode: "web-lookup",
-              researchModeRationale: "Fixture question uses lightweight web lookup.",
-              priority: 1,
-              providerHints: ["exa", "grok"],
-              searchQueries: ["Node TypeScript GitHub Actions CI"],
-              completionCriteria: ["Find CI guidance."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What CI workflow should this repository use?",
+                rationale: "Need CI evidence.",
+                researchMode: "web-lookup",
+                researchModeRationale: "Fixture question uses lightweight web lookup.",
+                priority: 1,
+                providerHints: ["exa", "grok"],
+                searchQueries: ["Node TypeScript GitHub Actions CI"],
+                completionCriteria: ["Find CI guidance."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration() {
@@ -1380,7 +1583,9 @@ describe("deep-research harnesses", () => {
     });
 
     expect(state.status).toBe("failed");
-    expect(state.nodeResults.find((result) => result.nodeId === "deep-research-assess-1")).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "deep-research-assess-1"),
+    ).toMatchObject({
       status: "failed",
       error: expect.stringContaining("All provider research failed for iteration 1"),
     });
@@ -1406,19 +1611,21 @@ describe("deep-research harnesses", () => {
         async GenerateResearchQuestions() {
           return {
             iteration: 1,
-            questions: [{
-              id: "q1",
-              text: "What makes agents durable?",
-              rationale: "Need cited source.",
-              researchMode: "web-lookup",
-              researchModeRationale: "Fixture question uses lightweight web lookup.",
-              priority: 1,
-              providerHints: ["exa"],
-              searchQueries: ["durable agent workflows"],
-              completionCriteria: ["Find one source."],
-              status: "pending",
-              dependencies: [],
-            }],
+            questions: [
+              {
+                id: "q1",
+                text: "What makes agents durable?",
+                rationale: "Need cited source.",
+                researchMode: "web-lookup",
+                researchModeRationale: "Fixture question uses lightweight web lookup.",
+                priority: 1,
+                providerHints: ["exa"],
+                searchQueries: ["durable agent workflows"],
+                completionCriteria: ["Find one source."],
+                status: "pending",
+                dependencies: [],
+              },
+            ],
           };
         },
         async AssessResearchIteration(_questionSet, evidence) {
@@ -1432,7 +1639,15 @@ describe("deep-research harnesses", () => {
           });
           return {
             iteration: 1,
-            questionCoverage: [{ questionId: "q1", coverageScore: 1, evidenceQuality: "high", contradictions: [], gaps: [] }],
+            questionCoverage: [
+              {
+                questionId: "q1",
+                coverageScore: 1,
+                evidenceQuality: "high",
+                contradictions: [],
+                gaps: [],
+              },
+            ],
             contradictions: [],
             newFollowUpQuestions: [],
             answerSufficient: true,
@@ -1461,9 +1676,13 @@ describe("deep-research harnesses", () => {
 
   it("connects the configured Exa MCP server for the default Exa provider and closes it", async () => {
     const close = vi.fn(async () => undefined);
-    const callTool = vi.fn(async ({ arguments: input }: { arguments?: Record<string, unknown> }) => ({
-      structuredContent: { results: [{ url: "https://example.com", title: "Result", text: String(input?.query) }] },
-    }));
+    const callTool = vi.fn(
+      async ({ arguments: input }: { arguments?: Record<string, unknown> }) => ({
+        structuredContent: {
+          results: [{ url: "https://example.com", title: "Result", text: String(input?.query) }],
+        },
+      }),
+    );
     const connect = vi.fn(async () => ({
       async listTools() {
         return { tools: [{ name: "web_search_exa" }] };
@@ -1478,12 +1697,15 @@ describe("deep-research harnesses", () => {
     });
 
     expect(connect).toHaveBeenCalledOnce();
-    expect(connect).toHaveBeenCalledWith(expect.objectContaining({
-      name: "exa",
-      url: expect.stringContaining("exa-secret"),
-    }));
-    await expect(connection.client?.web_search_exa({ query: "agent research", numResults: 2 }))
-      .resolves.toMatchObject({ results: [{ title: "Result" }] });
+    expect(connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "exa",
+        url: expect.stringContaining("exa-secret"),
+      }),
+    );
+    await expect(
+      connection.client?.web_search_exa({ query: "agent research", numResults: 2 }),
+    ).resolves.toMatchObject({ results: [{ title: "Result" }] });
     expect(callTool).toHaveBeenCalledWith({
       name: "web_search_exa",
       arguments: { query: "agent research", numResults: 2 },
@@ -1496,10 +1718,12 @@ describe("deep-research harnesses", () => {
   it("does not call Flue MCP tool definitions directly for the default Exa provider", async () => {
     const close = vi.fn(async () => undefined);
     const callTool = vi.fn(async () => ({
-      content: [{
-        type: "text",
-        text: JSON.stringify({ results: [{ url: "https://example.com/exa", title: "Exa" }] }),
-      }],
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ results: [{ url: "https://example.com/exa", title: "Exa" }] }),
+        },
+      ],
     }));
     const connect = vi.fn(async () => ({
       async listTools() {
@@ -1514,8 +1738,9 @@ describe("deep-research harnesses", () => {
       connectMcpClient: connect,
     });
 
-    await expect(connection.client?.web_search_exa({ query: "agent research", numResults: 2 }))
-      .resolves.toMatchObject({ results: [{ title: "Exa" }] });
+    await expect(
+      connection.client?.web_search_exa({ query: "agent research", numResults: 2 }),
+    ).resolves.toMatchObject({ results: [{ title: "Exa" }] });
     expect(callTool).toHaveBeenCalledWith({
       name: "web_search_exa",
       arguments: { query: "agent research", numResults: 2 },
@@ -1525,7 +1750,10 @@ describe("deep-research harnesses", () => {
   });
 });
 
-function providerNodeFixture(provider: string, questions: WorkflowNodePayload[]): RuntimeWorkflowNode {
+function providerNodeFixture(
+  provider: string,
+  questions: WorkflowNodePayload[],
+): RuntimeWorkflowNode {
   return {
     id: `deep-research-${provider}-1`,
     kind: WorkflowNodeKind.RESEARCH,

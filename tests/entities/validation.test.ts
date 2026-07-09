@@ -26,11 +26,13 @@ describe("entity manifest schemas", () => {
 
     expect(result.success).toBe(false);
     const errors = collectZodEntityErrors(result, "entities/personas/reviewer.yaml");
-    expect(errors).toContainEqual(expect.objectContaining({
-      code: "entity.schema",
-      fieldPath: "kind",
-      repairHint: "Use kind: persona and set persona.role: reviewer.",
-    }));
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        code: "entity.schema",
+        fieldPath: "kind",
+        repairHint: "Use kind: persona and set persona.role: reviewer.",
+      }),
+    );
   });
 
   it("rejects unknown fields in strict mode", () => {
@@ -70,17 +72,22 @@ describe("entity manifest schemas", () => {
 
     expect(result.success).toBe(false);
     const errors = collectZodEntityErrors(result, "entities/personas/pragmatic.yaml");
-    expect(errors).toContainEqual(expect.objectContaining({
-      code: "entity.schema",
-      fieldPath: "persona.unexpected",
-    }));
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        code: "entity.schema",
+        fieldPath: "persona.unexpected",
+      }),
+    );
   });
 });
 
 describe("entity semantic validation", () => {
   it("rejects missing and empty persona prompt Markdown", async () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-entities-"));
-    await write(root, "entities/personas/pragmatic.yaml", `
+    await write(
+      root,
+      "entities/personas/pragmatic.yaml",
+      `
 id: pragmatic
 kind: persona
 name: Pragmatic Builder
@@ -97,9 +104,12 @@ execution:
   promptRef: ./pragmatic.md
   output:
     normalizeWithBamlFunction: NormalizePersonaCritique
-`);
+`,
+    );
     const missing = validateEntityCatalog(root);
-    expect(missing.errors).toContainEqual(expect.objectContaining({ code: "entity.prompt_missing" }));
+    expect(missing.errors).toContainEqual(
+      expect.objectContaining({ code: "entity.prompt_missing" }),
+    );
 
     await write(root, "entities/personas/pragmatic.md", "\n");
     const empty = validateEntityCatalog(root);
@@ -108,7 +118,10 @@ execution:
 
   it("rejects invalid BAML functions and present mcps", async () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-entities-"));
-    await write(root, "entities/artifacts/source-analysis.yaml", `
+    await write(
+      root,
+      "entities/artifacts/source-analysis.yaml",
+      `
 id: source-analysis
 kind: artifact
 name: Source Analysis
@@ -118,17 +131,20 @@ execution:
   bamlFunction: NotAFunction
 capabilities:
   mcps: []
-`);
+`,
+    );
     const result = validateEntityCatalog(root);
-    expect(result.errors.map((error) => error.code)).toEqual(expect.arrayContaining([
-      "entity.baml_function_unknown",
-      "entity.mcps_not_supported_v1",
-    ]));
+    expect(result.errors.map((error) => error.code)).toEqual(
+      expect.arrayContaining(["entity.baml_function_unknown", "entity.mcps_not_supported_v1"]),
+    );
   });
 
   it("accepts valid generated BAML function references", async () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-entities-"));
-    await write(root, "entities/personas/pragmatic.yaml", `
+    await write(
+      root,
+      "entities/personas/pragmatic.yaml",
+      `
 id: pragmatic
 kind: persona
 name: Pragmatic Builder
@@ -145,7 +161,8 @@ execution:
   promptRef: ./pragmatic.md
   output:
     normalizeWithBamlFunction: NormalizePersonaCritique
-`);
+`,
+    );
     await write(root, "entities/personas/pragmatic.md", "Prompt prose");
 
     expect(validateEntityCatalog(root).errors).toEqual([]);

@@ -35,29 +35,34 @@ vi.mock("@opentelemetry/api", () => ({
   },
   trace: {
     getTracer: vi.fn(() => ({
-      startActiveSpan: vi.fn(async (name: string, fn: (span: {
-        setAttribute: (key: string, value: unknown) => void;
-        setStatus: (value: unknown) => void;
-        recordException: (value: unknown) => void;
-        end: () => void;
-      }) => Promise<unknown>) => {
-        const span = {
-          attributes: {} as Record<string, unknown>,
-          ended: false,
-        };
-        mocks.spanState.startActiveSpanCalls.push(name);
-        mocks.spanState.spans.push(span);
-        return await fn({
-          setAttribute(key, value) {
-            span.attributes[key] = value;
-          },
-          setStatus() {},
-          recordException() {},
-          end() {
-            span.ended = true;
-          },
-        });
-      }),
+      startActiveSpan: vi.fn(
+        async (
+          name: string,
+          fn: (span: {
+            setAttribute: (key: string, value: unknown) => void;
+            setStatus: (value: unknown) => void;
+            recordException: (value: unknown) => void;
+            end: () => void;
+          }) => Promise<unknown>,
+        ) => {
+          const span = {
+            attributes: {} as Record<string, unknown>,
+            ended: false,
+          };
+          mocks.spanState.startActiveSpanCalls.push(name);
+          mocks.spanState.spans.push(span);
+          return await fn({
+            setAttribute(key, value) {
+              span.attributes[key] = value;
+            },
+            setStatus() {},
+            recordException() {},
+            end() {
+              span.ended = true;
+            },
+          });
+        },
+      ),
     })),
   },
 }));
@@ -91,9 +96,11 @@ describe("defaultRouteModelCall", () => {
       candidates: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
     };
 
-    await expect(defaultRouteModelCall(input, new AbortController().signal)).resolves.toMatchObject({
-      clientName: "CopilotProxyGpt54",
-    });
+    await expect(defaultRouteModelCall(input, new AbortController().signal)).resolves.toMatchObject(
+      {
+        clientName: "CopilotProxyGpt54",
+      },
+    );
 
     expect(mocks.bamlCall).toHaveBeenCalledWith(
       input.taskKind,
@@ -152,13 +159,22 @@ describe("defaultRouteModelCall", () => {
       candidates: ["CopilotProxyGpt54", "CopilotProxyClaudeSonnet46"],
     };
 
-    await expect(defaultRouteModelCall(input, new AbortController().signal)).resolves.toMatchObject({
-      clientName: "CopilotProxyGpt54",
-    });
+    await expect(defaultRouteModelCall(input, new AbortController().signal)).resolves.toMatchObject(
+      {
+        clientName: "CopilotProxyGpt54",
+      },
+    );
 
-    const callOptions = mocks.bamlCall.mock.calls[0]?.[3] as {
-      collector?: { name?: string; logs: unknown[]; last: unknown; usage: Record<string, unknown> };
-    } | undefined;
+    const callOptions = mocks.bamlCall.mock.calls[0]?.[3] as
+      | {
+          collector?: {
+            name?: string;
+            logs: unknown[];
+            last: unknown;
+            usage: Record<string, unknown>;
+          };
+        }
+      | undefined;
     expect(callOptions?.collector).toBeDefined();
     expect(callOptions?.collector?.name).toBe("decision-council.route-model-call");
     expect(mocks.spanState.spans[0]?.attributes).toMatchObject({
@@ -168,7 +184,11 @@ describe("defaultRouteModelCall", () => {
       "gen_ai.usage.output_tokens": 7,
       "gen_ai.usage.cached_input_tokens": 3,
     });
-    expect(JSON.parse(mocks.spanState.spans[0]?.attributes["langfuse.observation.usage_details"] as string)).toEqual({
+    expect(
+      JSON.parse(
+        mocks.spanState.spans[0]?.attributes["langfuse.observation.usage_details"] as string,
+      ),
+    ).toEqual({
       input: 11,
       output: 7,
       total: 18,

@@ -1,4 +1,8 @@
-import { loadLocalEnvFiles, loadTypedWeavekitConfig, resolveProjectCatalogEntry } from "../src/config.js";
+import {
+  loadLocalEnvFiles,
+  loadTypedWeavekitConfig,
+  resolveProjectCatalogEntry,
+} from "../src/config.js";
 import { launchSourceToProjectPrAgent } from "../src/macro-workflow/sourceToProject/prLauncher.js";
 
 type SmokeArgs = {
@@ -11,14 +15,17 @@ async function main() {
   loadLocalEnvFiles();
   const args = parseArgs(process.argv.slice(2));
   if (!args.project) {
-    throw new Error("Usage: nub scripts/source-to-project-pr-launch-smoke.ts --project <id> [--prompt <text>] [--config <path>]");
+    throw new Error(
+      "Usage: nub scripts/source-to-project-pr-launch-smoke.ts --project <id> [--prompt <text>] [--config <path>]",
+    );
   }
   const config = loadTypedWeavekitConfig(args.configPath);
   const project = resolveProjectCatalogEntry(config, args.project);
   if (!project.autonomousPrAllowed) {
     throw new Error(`Project ${project.id} has autonomous_pr_allowed = false.`);
   }
-  const samplePrompt = args.prompt ?? "Sample implementation prompt for verifying Weavekit -> Herdr PR launch.";
+  const samplePrompt =
+    args.prompt ?? "Sample implementation prompt for verifying Weavekit -> Herdr PR launch.";
   const result = await launchSourceToProjectPrAgent({
     config: config.sourceToProject.prLauncher,
     context: {

@@ -87,7 +87,10 @@ describe("createBamlPersonaSelector", () => {
       candidatePersonas: [candidateA, candidateB],
       bamlClient: {
         async ChoosePersonasForTask() {
-          return { personaIds: ["builder", "socratic"], rationale: "Cover execution and critique." };
+          return {
+            personaIds: ["builder", "socratic"],
+            rationale: "Cover execution and critique.",
+          };
         },
       },
     });

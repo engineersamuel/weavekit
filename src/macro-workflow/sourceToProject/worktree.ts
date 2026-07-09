@@ -40,7 +40,9 @@ export async function prepareAutonomousWorktree(
   const globEnvFiles = deps.globEnvFiles ?? defaultGlobEnvFiles;
   const worktreePath = join(args.worktreeRoot, args.branchName.replace(/[^a-zA-Z0-9._-]+/g, "-"));
 
-  await run("git", ["worktree", "add", "-B", args.branchName, worktreePath, branch], { cwd: args.sourceWorkingTree });
+  await run("git", ["worktree", "add", "-B", args.branchName, worktreePath, branch], {
+    cwd: args.sourceWorkingTree,
+  });
   await run("git", ["pull", "--rebase", remote, branch], { cwd: worktreePath });
 
   const envFiles = await globEnvFiles(args.sourceWorkingTree);
@@ -62,7 +64,11 @@ export async function prepareAutonomousWorktree(
   };
 }
 
-async function defaultRun(command: string, args: string[], options: { cwd: string }): Promise<string> {
+async function defaultRun(
+  command: string,
+  args: string[],
+  options: { cwd: string },
+): Promise<string> {
   const result = await execFileAsync(command, args, { cwd: options.cwd });
   return result.stdout;
 }

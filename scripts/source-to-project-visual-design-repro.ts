@@ -9,11 +9,20 @@ import {
   type CopilotHarnessLogEvent,
 } from "../src/macro-workflow/sourceToProject/harnesses.js";
 import type { WorkflowExecutionContext } from "../src/macro-workflow/harness.js";
-import { WorkflowHarnessKind, type RuntimeWorkflowNode, type WorkflowNodePayload } from "../src/macro-workflow/types.js";
+import {
+  WorkflowHarnessKind,
+  type RuntimeWorkflowNode,
+  type WorkflowNodePayload,
+} from "../src/macro-workflow/types.js";
 
 const DEFAULT_FIXTURE_PATH = "tests/fixtures/source-to-project/visual-design-o3-replay.json";
 
-export type VisualDesignReplayMode = "live" | "mock-hosted" | "mock-local-plan" | "mock-local-html" | "mock-no-url";
+export type VisualDesignReplayMode =
+  | "live"
+  | "mock-hosted"
+  | "mock-local-plan"
+  | "mock-local-html"
+  | "mock-no-url";
 
 export type VisualDesignReplayFixture = {
   sourceRunId: string;
@@ -36,14 +45,18 @@ export type VisualDesignReplayOptions = {
   onTrace?: (message: string) => void;
 };
 
-export async function loadVisualDesignReplayFixture(path = DEFAULT_FIXTURE_PATH): Promise<VisualDesignReplayFixture> {
+export async function loadVisualDesignReplayFixture(
+  path = DEFAULT_FIXTURE_PATH,
+): Promise<VisualDesignReplayFixture> {
   const raw = await readFile(resolve(path), "utf8");
   const parsed = JSON.parse(raw) as VisualDesignReplayFixture;
   if (!parsed.visualDesignNode?.id?.startsWith("visual-design-opportunity-")) {
     throw new Error(`Invalid visual-design replay fixture ${path}: missing visualDesignNode.`);
   }
   if (!parsed.payloads?.[parsed.visualDesignNode.dependsOn[0] ?? ""]) {
-    throw new Error(`Invalid visual-design replay fixture ${path}: missing report dependency payload.`);
+    throw new Error(
+      `Invalid visual-design replay fixture ${path}: missing report dependency payload.`,
+    );
   }
   return parsed;
 }
@@ -52,15 +65,18 @@ export function payloadMapForVisualDesignReplay(
   fixture: VisualDesignReplayFixture,
   options: { checkInstall?: boolean } = {},
 ): Map<string, WorkflowNodePayload> {
-  const entries = Object.entries(fixture.payloads)
-    .filter(([nodeId]) => !options.checkInstall || nodeId !== "visual-plan-preflight");
+  const entries = Object.entries(fixture.payloads).filter(
+    ([nodeId]) => !options.checkInstall || nodeId !== "visual-plan-preflight",
+  );
   return new Map(entries);
 }
 
 export async function runVisualDesignReplay(options: VisualDesignReplayOptions = {}) {
   const startedAt = Date.now();
   const trace = createReplayTrace(options, startedAt);
-  trace(`start mode=${options.mode ?? "live"} fixture=${options.fixturePath ?? DEFAULT_FIXTURE_PATH}`);
+  trace(
+    `start mode=${options.mode ?? "live"} fixture=${options.fixturePath ?? DEFAULT_FIXTURE_PATH}`,
+  );
   const fixture = await loadVisualDesignReplayFixture(options.fixturePath);
   trace(`fixture loaded run=${fixture.sourceRunId} node=${fixture.visualDesignNode.id}`);
   const cwd = resolve(options.cwd ?? process.cwd());
@@ -89,25 +105,33 @@ export async function runVisualDesignReplay(options: VisualDesignReplayOptions =
     mode: "advisory",
     copilot,
     visualPlanBridgeCleanupTtlMs: options.bridgeTtlMs,
-    ...(mode === "live" ? {} : {
-      visualPlanBridgeCleanup(args) {
-        const bridge = bridgeFromHostedArtifactUrl(args.hostedArtifactUrl);
-        return bridge
-          ? {
-            status: "scheduled",
-            bridgeUrl: bridge.bridgeUrl,
-            port: bridge.port,
-            cleanupAfterMs: args.cleanupAfterMs,
-            cleanupCommand: `mock cleanup port ${bridge.port}`,
-          }
-          : undefined;
-      },
-    }),
-    ...(options.checkInstall ? {} : { shell: {
-      async run(command, args) {
-        throw new Error(`Visual-design replay unexpectedly invoked installer command: ${[command, ...args].join(" ")}`);
-      },
-    } }),
+    ...(mode === "live"
+      ? {}
+      : {
+          visualPlanBridgeCleanup(args) {
+            const bridge = bridgeFromHostedArtifactUrl(args.hostedArtifactUrl);
+            return bridge
+              ? {
+                  status: "scheduled",
+                  bridgeUrl: bridge.bridgeUrl,
+                  port: bridge.port,
+                  cleanupAfterMs: args.cleanupAfterMs,
+                  cleanupCommand: `mock cleanup port ${bridge.port}`,
+                }
+              : undefined;
+          },
+        }),
+    ...(options.checkInstall
+      ? {}
+      : {
+          shell: {
+            async run(command, args) {
+              throw new Error(
+                `Visual-design replay unexpectedly invoked installer command: ${[command, ...args].join(" ")}`,
+              );
+            },
+          },
+        }),
   });
   const adapter = registry.get(WorkflowHarnessKind.COPILOT_SDK);
   if (!adapter) {
@@ -124,11 +148,12 @@ export async function runVisualDesignReplay(options: VisualDesignReplayOptions =
     trace(`adapter start node=${fixture.visualDesignNode.id}`);
     const result = await adapter(fixture.visualDesignNode, context);
     trace(`adapter complete status=${result.status}`);
-    const hostedArtifactUrl = result.payload?.sourceToProjectVisualPlan
-      && typeof result.payload.sourceToProjectVisualPlan === "object"
-      && "hostedArtifactUrl" in result.payload.sourceToProjectVisualPlan
-      ? String(result.payload.sourceToProjectVisualPlan.hostedArtifactUrl)
-      : undefined;
+    const hostedArtifactUrl =
+      result.payload?.sourceToProjectVisualPlan &&
+      typeof result.payload.sourceToProjectVisualPlan === "object" &&
+      "hostedArtifactUrl" in result.payload.sourceToProjectVisualPlan
+        ? String(result.payload.sourceToProjectVisualPlan.hostedArtifactUrl)
+        : undefined;
     if (hostedArtifactUrl) {
       trace(`result url=${hostedArtifactUrl}`);
     }
@@ -215,7 +240,9 @@ function formatCopilotTraceEvent(event: CopilotHarnessLogEvent): string {
     event.timeoutMs !== undefined ? `timeoutMs=${event.timeoutMs}` : undefined,
     event.elapsedMs !== undefined ? `sdkElapsed=${formatElapsed(event.elapsedMs)}` : undefined,
     event.message ? `message=${JSON.stringify(event.message)}` : undefined,
-  ].filter((part): part is string => Boolean(part)).join(" ");
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" ");
 }
 
 function startPlanUrlWatcher(
@@ -249,7 +276,9 @@ function startPlanUrlWatcher(
   };
 }
 
-async function readPlanUrlFiles(cwd: string): Promise<Array<{ path: string; mtimeMs: number; url: string }>> {
+async function readPlanUrlFiles(
+  cwd: string,
+): Promise<Array<{ path: string; mtimeMs: number; url: string }>> {
   const plansDir = join(cwd, "plans");
   let entries: Array<{ isDirectory(): boolean; name: string }>;
   try {
@@ -293,7 +322,9 @@ function parseArgs(argv: string[]): VisualDesignReplayOptions {
     } else if (arg === "--mode") {
       const value = readArgValue(argv, index, arg);
       if (!isVisualDesignReplayMode(value)) {
-        throw new Error("Invalid --mode. Expected live, mock-hosted, mock-local-plan, mock-local-html, or mock-no-url.");
+        throw new Error(
+          "Invalid --mode. Expected live, mock-hosted, mock-local-plan, mock-local-html, or mock-no-url.",
+        );
       }
       options.mode = value;
       index += 1;
@@ -325,10 +356,12 @@ function parseArgs(argv: string[]): VisualDesignReplayOptions {
       options.trace = true;
       options.traceEvents = true;
     } else {
-      throw new Error([
-        `Unknown argument: ${arg ?? ""}`,
-        "Usage: nub scripts/source-to-project-visual-design-repro.ts [--fixture <path>] [--mode live|mock-hosted|mock-local-plan|mock-local-html|mock-no-url] [--cwd <path>] [--timeout-ms <ms>] [--bridge-ttl-ms <ms>] [--trace] [--trace-events]",
-      ].join("\n"));
+      throw new Error(
+        [
+          `Unknown argument: ${arg ?? ""}`,
+          "Usage: nub scripts/source-to-project-visual-design-repro.ts [--fixture <path>] [--mode live|mock-hosted|mock-local-plan|mock-local-html|mock-no-url] [--cwd <path>] [--timeout-ms <ms>] [--bridge-ttl-ms <ms>] [--trace] [--trace-events]",
+        ].join("\n"),
+      );
     }
   }
   return options;
@@ -343,10 +376,18 @@ function readArgValue(argv: string[], index: number, flag: string): string {
 }
 
 function isVisualDesignReplayMode(value: string): value is VisualDesignReplayMode {
-  return value === "live" || value === "mock-hosted" || value === "mock-local-plan" || value === "mock-local-html" || value === "mock-no-url";
+  return (
+    value === "live" ||
+    value === "mock-hosted" ||
+    value === "mock-local-plan" ||
+    value === "mock-local-html" ||
+    value === "mock-no-url"
+  );
 }
 
-function bridgeFromHostedArtifactUrl(hostedArtifactUrl: string): { bridgeUrl: string; port: number } | undefined {
+function bridgeFromHostedArtifactUrl(
+  hostedArtifactUrl: string,
+): { bridgeUrl: string; port: number } | undefined {
   try {
     const hosted = new URL(hostedArtifactUrl);
     const bridgeParam = hosted.searchParams.get("bridge");

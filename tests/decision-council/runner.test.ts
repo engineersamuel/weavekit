@@ -1,6 +1,9 @@
 import { trace } from "@opentelemetry/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { runDecisionCouncil, type RunDecisionCouncilOptions } from "../../src/decision-council/runner.js";
+import {
+  runDecisionCouncil,
+  type RunDecisionCouncilOptions,
+} from "../../src/decision-council/runner.js";
 import { runDecisionCouncilLoop } from "../../src/decision-council/workflow.js";
 import { createDecisionCouncilWorkflow } from "../../src/flue/decisionCouncilWorkflowDefinition.js";
 import type { JudgeReducer, CritiqueNormalizer } from "../../src/decision-council/bamlAdapters.js";
@@ -41,53 +44,58 @@ const telemetry = vi.hoisted(() => {
     getActiveSpan() {
       return activeSpan;
     },
-    startActiveSpan: vi.fn(async (name: string, fn: (span: {
-      setAttribute: (key: string, value: unknown) => void;
-      setStatus: (value: unknown) => void;
-      recordException: (value: unknown) => void;
-      addEvent: (eventName: string, attributes?: Record<string, unknown>) => void;
-      spanContext: () => { traceId: string };
-      end: () => void;
-    }) => Promise<unknown>) => {
-      const parent = activeSpan;
-      const span = {
-        name,
-        parentName: parent?.name,
-        traceId: `trace-${spans.length + 1}`,
-        attributes: {} as Record<string, unknown>,
-        status: [] as unknown[],
-        exceptions: [] as unknown[],
-        events: [] as { name: string; attributes: Record<string, unknown> }[],
-        ended: false,
-      };
-      startActiveSpanCalls.push(name);
-      spans.push(span);
-      activeSpan = span;
-      try {
-        return await fn({
-          setAttribute(key, value) {
-            span.attributes[key] = value;
-          },
-          setStatus(value) {
-            span.status.push(value);
-          },
-          recordException(value) {
-            span.exceptions.push(value);
-          },
-          addEvent(eventName, attributes = {}) {
-            span.events.push({ name: eventName, attributes });
-          },
-          spanContext() {
-            return { traceId: span.traceId };
-          },
-          end() {
-            span.ended = true;
-          },
-        });
-      } finally {
-        activeSpan = parent;
-      }
-    }),
+    startActiveSpan: vi.fn(
+      async (
+        name: string,
+        fn: (span: {
+          setAttribute: (key: string, value: unknown) => void;
+          setStatus: (value: unknown) => void;
+          recordException: (value: unknown) => void;
+          addEvent: (eventName: string, attributes?: Record<string, unknown>) => void;
+          spanContext: () => { traceId: string };
+          end: () => void;
+        }) => Promise<unknown>,
+      ) => {
+        const parent = activeSpan;
+        const span = {
+          name,
+          parentName: parent?.name,
+          traceId: `trace-${spans.length + 1}`,
+          attributes: {} as Record<string, unknown>,
+          status: [] as unknown[],
+          exceptions: [] as unknown[],
+          events: [] as { name: string; attributes: Record<string, unknown> }[],
+          ended: false,
+        };
+        startActiveSpanCalls.push(name);
+        spans.push(span);
+        activeSpan = span;
+        try {
+          return await fn({
+            setAttribute(key, value) {
+              span.attributes[key] = value;
+            },
+            setStatus(value) {
+              span.status.push(value);
+            },
+            recordException(value) {
+              span.exceptions.push(value);
+            },
+            addEvent(eventName, attributes = {}) {
+              span.events.push({ name: eventName, attributes });
+            },
+            spanContext() {
+              return { traceId: span.traceId };
+            },
+            end() {
+              span.ended = true;
+            },
+          });
+        } finally {
+          activeSpan = parent;
+        }
+      },
+    ),
   };
 });
 
@@ -108,7 +116,9 @@ vi.mock("@opentelemetry/api", () => ({
 }));
 
 vi.mock("../../src/entities/index.js", async () => {
-  const actual = await vi.importActual<typeof import("../../src/entities/index.js")>("../../src/entities/index.js");
+  const actual = await vi.importActual<typeof import("../../src/entities/index.js")>(
+    "../../src/entities/index.js",
+  );
   return {
     ...actual,
     assertValidEntityCatalog: entityValidation.assertValidEntityCatalog,
@@ -157,11 +167,17 @@ function testPersonas(ids = defaultPersonaIds): PersonaDefinition[] {
   });
 }
 
-function selectorFromPersonas(personas: PersonaDefinition[], rationale = "Test selected personas."): PersonaSelector {
+function selectorFromPersonas(
+  personas: PersonaDefinition[],
+  rationale = "Test selected personas.",
+): PersonaSelector {
   return {
     async choosePersonas() {
       return {
-        personaSet: { name: "selected", personas: personas.map((persona) => structuredClone(persona)) },
+        personaSet: {
+          name: "selected",
+          personas: personas.map((persona) => structuredClone(persona)),
+        },
         rationale,
       };
     },
@@ -282,9 +298,14 @@ describe("runDecisionCouncil", () => {
     });
     const choosePersonas = vi.fn();
 
-    await expect(runDecisionCouncil({ prompt: "Should we proceed?" }, {
-      deps: { writeArtifacts: false, personaSelector: { choosePersonas } },
-    })).rejects.toThrow("Entity catalog validation failed");
+    await expect(
+      runDecisionCouncil(
+        { prompt: "Should we proceed?" },
+        {
+          deps: { writeArtifacts: false, personaSelector: { choosePersonas } },
+        },
+      ),
+    ).rejects.toThrow("Entity catalog validation failed");
     expect(choosePersonas).not.toHaveBeenCalled();
   });
 
@@ -394,9 +415,15 @@ describe("runDecisionCouncil", () => {
       },
     );
 
-    const selectorSpan = telemetry.spans.find((span) => span.name === "run.council.persona-selector");
-    const selectorInput = JSON.parse(selectorSpan?.attributes["langfuse.observation.input"] as string);
-    const selectorOutput = JSON.parse(selectorSpan?.attributes["langfuse.observation.output"] as string);
+    const selectorSpan = telemetry.spans.find(
+      (span) => span.name === "run.council.persona-selector",
+    );
+    const selectorInput = JSON.parse(
+      selectorSpan?.attributes["langfuse.observation.input"] as string,
+    );
+    const selectorOutput = JSON.parse(
+      selectorSpan?.attributes["langfuse.observation.output"] as string,
+    );
 
     expect(selectorSpan?.parentName).toBe("council-run");
     expect(selectorInput).toMatchObject({
@@ -535,7 +562,9 @@ describe("runDecisionCouncil", () => {
       },
     );
 
-    expect(events.indexOf("normalize:socratic")).toBeLessThan(events.indexOf("worker-done:skeptic"));
+    expect(events.indexOf("normalize:socratic")).toBeLessThan(
+      events.indexOf("worker-done:skeptic"),
+    );
   });
 
   it("overwrites hallucinated failedPersonas from judge with authoritative run-state failures", async () => {
@@ -552,7 +581,9 @@ describe("runDecisionCouncil", () => {
           convergence: 0.9,
           nextExperiment: "Try it.",
           finalReportMarkdown: "# Design Council Report\n\nUse Flue.",
-          failedPersonas: [{ personaId: "hallucinated", message: "invented by LLM", retryable: false }],
+          failedPersonas: [
+            { personaId: "hallucinated", message: "invented by LLM", retryable: false },
+          ],
         };
       },
     };
@@ -671,7 +702,10 @@ describe("runDecisionCouncil", () => {
 
   it("records round personaSelection ids and rationale in workflow state", async () => {
     const finalState = await runDecisionCouncilLoop(
-      createInitialRunState({ prompt: "Track selected personas per round." }, { name: "test", personas: testPersonas() }),
+      createInitialRunState(
+        { prompt: "Track selected personas per round." },
+        { name: "test", personas: testPersonas() },
+      ),
       {
         personaSelector: makeRoundSelector([
           {
@@ -743,7 +777,11 @@ describe("runDecisionCouncil", () => {
   it("accepts a custom router without breaking the run", async () => {
     const router: ModelRouter = {
       async route() {
-        return { clientName: "CopilotProxyClaudeHaiku45", model: "claude-haiku-4-5", rationale: "test" };
+        return {
+          clientName: "CopilotProxyClaudeHaiku45",
+          model: "claude-haiku-4-5",
+          rationale: "test",
+        };
       },
     };
 
@@ -785,7 +823,9 @@ describe("runDecisionCouncil", () => {
     );
 
     const rootSpan = telemetry.spans.find((span) => span.name === "council-run");
-    const normalizeSpan = telemetry.spans.find((span) => span.name === "run.council.baml.normalize");
+    const normalizeSpan = telemetry.spans.find(
+      (span) => span.name === "run.council.baml.normalize",
+    );
 
     expect(telemetry.startActiveSpanCalls).toContain("council-run");
     expect(rootSpan?.attributes).toMatchObject({
@@ -830,7 +870,9 @@ describe("runDecisionCouncil", () => {
     );
 
     const rootSpan = telemetry.spans.find((span) => span.name === "council-run");
-    const normalizeSpan = telemetry.spans.find((span) => span.name === "run.council.baml.normalize");
+    const normalizeSpan = telemetry.spans.find(
+      (span) => span.name === "run.council.baml.normalize",
+    );
     const traceInput = rootSpan?.attributes["langfuse.trace.input"] as string;
     const traceOutput = rootSpan?.attributes["langfuse.trace.output"] as string;
     const observationInput = rootSpan?.attributes["langfuse.observation.input"] as string;
@@ -904,15 +946,27 @@ describe("runDecisionCouncil", () => {
           normalizer,
           judge: judge(1),
         },
-        logger: { event(event) { events.push(event); } },
+        logger: {
+          event(event) {
+            events.push(event);
+          },
+        },
       },
     );
 
     expect(events).toContainEqual(
-      expect.objectContaining({ type: "council.persona.started", personaId: "mckinsey", skill: "mckinsey-strategist" }),
+      expect.objectContaining({
+        type: "council.persona.started",
+        personaId: "mckinsey",
+        skill: "mckinsey-strategist",
+      }),
     );
     expect(events).toContainEqual(
-      expect.objectContaining({ type: "council.persona.completed", personaId: "mckinsey", skill: "mckinsey-strategist" }),
+      expect.objectContaining({
+        type: "council.persona.completed",
+        personaId: "mckinsey",
+        skill: "mckinsey-strategist",
+      }),
     );
   });
 
@@ -933,7 +987,9 @@ describe("runDecisionCouncil", () => {
     );
 
     const councilSpan = telemetry.spans.find((span) => span.name === "council-run");
-    expect(councilSpan?.attributes["weavekit.decision_council.skill_personas"]).toBe("mckinsey-strategist");
+    expect(councilSpan?.attributes["weavekit.decision_council.skill_personas"]).toBe(
+      "mckinsey-strategist",
+    );
   });
 
   it("includes skill name in council.persona.failed event for skill-backed personas", async () => {
@@ -951,16 +1007,23 @@ describe("runDecisionCouncil", () => {
             normalizer,
             judge: judge(1),
           },
-          logger: { event(event) { events.push(event); } },
+          logger: {
+            event(event) {
+              events.push(event);
+            },
+          },
         },
       ),
     ).resolves.toBeDefined();
 
     expect(events).toContainEqual(
-      expect.objectContaining({ type: "council.persona.failed", personaId: "mckinsey", skill: "mckinsey-strategist" }),
+      expect.objectContaining({
+        type: "council.persona.failed",
+        personaId: "mckinsey",
+        skill: "mckinsey-strategist",
+      }),
     );
   });
-
 });
 
 describe("createDecisionCouncilWorkflow", () => {

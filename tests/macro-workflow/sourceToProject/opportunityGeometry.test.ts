@@ -63,9 +63,18 @@ describe("OpportunityScore geometry", () => {
       risk: 0.1,
     };
 
-    expect(opportunityScoreToScalar(canonical, 0.8, 0.05)).toBeCloseTo(legacyScalar(canonical, 0.8, 0.05), 12);
-    expect(opportunityScoreToScalar(scoreVector(0), 0, 0)).toBeCloseTo(legacyScalar(scoreVector(0), 0, 0), 12);
-    expect(opportunityScoreToScalar(scoreVector(1), 1, 0.2)).toBeCloseTo(legacyScalar(scoreVector(1), 1, 0.2), 12);
+    expect(opportunityScoreToScalar(canonical, 0.8, 0.05)).toBeCloseTo(
+      legacyScalar(canonical, 0.8, 0.05),
+      12,
+    );
+    expect(opportunityScoreToScalar(scoreVector(0), 0, 0)).toBeCloseTo(
+      legacyScalar(scoreVector(0), 0, 0),
+      12,
+    );
+    expect(opportunityScoreToScalar(scoreVector(1), 1, 0.2)).toBeCloseTo(
+      legacyScalar(scoreVector(1), 1, 0.2),
+      12,
+    );
   });
 });
 
@@ -84,11 +93,13 @@ function legacyScalar(
   sourceCoreFit: number,
   metaInfrastructurePenalty: number,
 ): number {
-  return (score.impact * 0.34) +
-    (score.applicability * 0.24) +
-    (score.confidence * 0.24) +
-    (sourceCoreFit * 0.24) -
-    (score.implementationCost * 0.12) -
-    (score.risk * 0.18) -
-    metaInfrastructurePenalty;
+  return (
+    score.impact * 0.34 +
+    score.applicability * 0.24 +
+    score.confidence * 0.24 +
+    sourceCoreFit * 0.24 -
+    score.implementationCost * 0.12 -
+    score.risk * 0.18 -
+    metaInfrastructurePenalty
+  );
 }

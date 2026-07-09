@@ -8,7 +8,8 @@ export type TelemetryHandle = { shutdown(): Promise<void> };
 
 const noopHandle: TelemetryHandle = { async shutdown() {} };
 const defaultLangfuseBaseUrl = "https://cloud.langfuse.com";
-const rawContentRedactionMessage = "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>";
+const rawContentRedactionMessage =
+  "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>";
 
 export function telemetryEnabled(): boolean {
   return process.env.OTEL_SDK_DISABLED !== "true";
@@ -41,7 +42,8 @@ function redactLangfuseValue(data: unknown): unknown {
 
   if (data === null || data === undefined) return data;
   if (typeof data === "string") return rawContentRedactionMessage;
-  if (typeof data === "number" || typeof data === "boolean" || typeof data === "bigint") return data;
+  if (typeof data === "number" || typeof data === "boolean" || typeof data === "bigint")
+    return data;
   if (typeof data === "symbol" || typeof data === "function") return rawContentRedactionMessage;
   return rawContentRedactionMessage;
 }
@@ -60,14 +62,19 @@ function hasGenAiAttributes(span: ReadableSpan | null | undefined): boolean {
 function ensureInstrumentationScope(span: ReadableSpan | null | undefined): void {
   if (!span || typeof span !== "object") return;
 
-  const currentScope = (span as ReadableSpan & { instrumentationScope?: { name?: string; version?: string } }).instrumentationScope;
+  const currentScope = (
+    span as ReadableSpan & { instrumentationScope?: { name?: string; version?: string } }
+  ).instrumentationScope;
   if (currentScope?.name) return;
 
-  const library = (span as ReadableSpan & { instrumentationLibrary?: { name?: string; version?: string } })
-    .instrumentationLibrary;
+  const library = (
+    span as ReadableSpan & { instrumentationLibrary?: { name?: string; version?: string } }
+  ).instrumentationLibrary;
   const name = library?.name || "unknown";
   const version = library?.version;
-  (span as ReadableSpan & { instrumentationScope?: { name: string; version?: string } }).instrumentationScope = {
+  (
+    span as ReadableSpan & { instrumentationScope?: { name: string; version?: string } }
+  ).instrumentationScope = {
     name,
     ...(version ? { version } : {}),
   };
@@ -75,7 +82,8 @@ function ensureInstrumentationScope(span: ReadableSpan | null | undefined): void
 
 function isWeavekitSpan(span: ReadableSpan | null | undefined): boolean {
   if (!span) return false;
-  const scope = (span as ReadableSpan & { instrumentationScope?: { name?: string } }).instrumentationScope;
+  const scope = (span as ReadableSpan & { instrumentationScope?: { name?: string } })
+    .instrumentationScope;
   return span.instrumentationLibrary?.name === "weavekit" || scope?.name === "weavekit";
 }
 
@@ -107,7 +115,8 @@ function buildSpanProcessors(): SpanProcessor[] {
     spanProcessors.push(
       new LangfuseSpanProcessor({
         ...langfuseConfig,
-        shouldExportSpan: ({ otelSpan }) => shouldExportToLangfuse(otelSpan as ReadableSpan | null | undefined),
+        shouldExportSpan: ({ otelSpan }) =>
+          shouldExportToLangfuse(otelSpan as ReadableSpan | null | undefined),
         ...(isRawExportEnabled() ? {} : { mask: buildLangfuseMask() }),
         mediaUploadEnabled: false,
       }),
@@ -117,7 +126,9 @@ function buildSpanProcessors(): SpanProcessor[] {
   return spanProcessors;
 }
 
-function createSdkConfig(serviceName: string): NonNullable<ConstructorParameters<typeof NodeSDK>[0]> {
+function createSdkConfig(
+  serviceName: string,
+): NonNullable<ConstructorParameters<typeof NodeSDK>[0]> {
   const spanProcessors = buildSpanProcessors();
   return {
     serviceName: process.env.OTEL_SERVICE_NAME ?? serviceName,

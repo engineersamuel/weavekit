@@ -73,7 +73,10 @@ describe("copilot SDK telemetry options", () => {
     const span = tracer.startSpan("copilot-sdk-test-span");
 
     try {
-      const carrier = context.with(trace.setSpan(context.active(), span), () => options?.onGetTraceContext?.() ?? {});
+      const carrier = context.with(
+        trace.setSpan(context.active(), span),
+        () => options?.onGetTraceContext?.() ?? {},
+      );
       expect(carrier).toBeDefined();
       expect(carrier).toBeTypeOf("object");
     } finally {

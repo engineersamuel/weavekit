@@ -7,9 +7,10 @@
 # edit/write/apply_patch call, and:
 #   - runs `oxlint --fix` on any touched *.ts/tsx/js/jsx/mjs/cjs file (safe:
 #     oxlint only rewrites the specific fixable issues it finds).
-#   - runs `oxfmt` on a touched file ONLY if it is newly added (not present
-#     at git HEAD), since oxfmt reformats whole files and this repo has not
-#     been fully reformatted yet (see AGENTS.md).
+#   - runs `oxfmt` on any touched formattable file, except generated code
+#     under src/generated/** (excluded via .oxfmtrc.json — that's owned by
+#     `baml-cli generate`'s own formatter; run `nub run baml-generate`
+#     instead of oxfmt to keep it in sync).
 #
 # Never fails the calling harness: all real work is best-effort (`|| true`)
 # so a formatter/linter hiccup never blocks the agent's turn.
@@ -51,6 +52,11 @@ while IFS= read -r file; do
   [ -z "$file" ] && continue
   [ -f "$file" ] || continue
 
+  relfile="$(to_relpath "$file")"
+  case "$relfile" in
+    src/generated/*) continue ;;
+  esac
+
   case "$file" in
     *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs)
       nubx oxlint --fix "$file" >/dev/null 2>&1 || true
@@ -59,10 +65,7 @@ while IFS= read -r file; do
 
   case "$file" in
     *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.json|*.yaml|*.yml|*.md)
-      relfile="$(to_relpath "$file")"
-      if ! git cat-file -e "HEAD:$relfile" 2>/dev/null; then
-        nubx oxfmt "$file" >/dev/null 2>&1 || true
-      fi
+      nubx oxfmt "$file" >/dev/null 2>&1 || true
       ;;
   esac
 done <<< "$files"

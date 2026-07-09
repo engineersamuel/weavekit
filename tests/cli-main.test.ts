@@ -20,7 +20,9 @@ vi.mock("../src/decision-council/runner.js", () => ({
 
 vi.mock("../src/entities/index.js", () => ({
   validateEntityCatalog: vi.fn(() => ({ valid: true, errors: [] })),
-  formatEntityValidationErrors: vi.fn((errors: unknown[]) => `Entity catalog validation failed with ${errors.length} error(s).`),
+  formatEntityValidationErrors: vi.fn(
+    (errors: unknown[]) => `Entity catalog validation failed with ${errors.length} error(s).`,
+  ),
 }));
 
 import { main } from "../src/cli.js";
@@ -50,7 +52,9 @@ describe("CLI main", () => {
       await expect(main()).resolves.toBeUndefined();
 
       expect(shutdown).toHaveBeenCalledTimes(1);
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Telemetry shutdown failed: telemetry shutdown failed"));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Telemetry shutdown failed: telemetry shutdown failed"),
+      );
     } finally {
       process.argv = argvSnapshot;
       stderrSpy.mockRestore();
@@ -72,7 +76,9 @@ describe("CLI main", () => {
     try {
       await expect(main()).resolves.toBeUndefined();
 
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Telemetry startup failed: invalid Langfuse URL"));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Telemetry startup failed: invalid Langfuse URL"),
+      );
       expect(runDecisionCouncilMock).toHaveBeenCalledTimes(1);
       expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining("Use Flue"));
     } finally {

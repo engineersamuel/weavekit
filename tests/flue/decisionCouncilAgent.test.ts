@@ -5,7 +5,10 @@ import { createDecisionCouncilAgent } from "../../src/flue/decisionCouncilAgent.
 describe("createDecisionCouncilAgent", () => {
   it("creates a Flue agent with Superpowers skill and supplied MCP tools", async () => {
     const tool = { name: "mcp__EngHub__search" } as ToolDefinition;
-    const agent = createDecisionCouncilAgent({ tools: [tool], model: "anthropic/claude-sonnet-4-6" });
+    const agent = createDecisionCouncilAgent({
+      tools: [tool],
+      model: "anthropic/claude-sonnet-4-6",
+    });
     const config = await agent.initialize({ id: "test" } as never);
 
     expect(config.model).toBe("anthropic/claude-sonnet-4-6");

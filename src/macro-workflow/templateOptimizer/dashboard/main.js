@@ -21,20 +21,26 @@ const TemplateNode = memo(({ data }) => (
   <div className={`template-node template-node-${data.source}`}>
     <Handle type="target" position={Position.Left} className="template-handle" />
     <div className="template-node-title">{data.label}</div>
-    <div className="template-node-meta">{data.kind || "node"} / {data.harness || "harness"}</div>
+    <div className="template-node-meta">
+      {data.kind || "node"} / {data.harness || "harness"}
+    </div>
     <div className="template-node-source">{data.sourceLabel}</div>
     <Handle type="source" position={Position.Right} className="template-handle" />
   </div>
 ));
 
 const ElkEdge = memo(({ id, sourceX, sourceY, targetX, targetY, data, markerEnd, style }) => {
-  const points = data?.points?.length ? data.points : [
-    { x: sourceX, y: sourceY },
-    { x: sourceX + 44, y: sourceY },
-    { x: targetX - 44, y: targetY },
-    { x: targetX, y: targetY },
-  ];
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const points = data?.points?.length
+    ? data.points
+    : [
+        { x: sourceX, y: sourceY },
+        { x: sourceX + 44, y: sourceY },
+        { x: targetX - 44, y: targetY },
+        { x: targetX, y: targetY },
+      ];
+  const path = points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
   return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />;
 });
 
@@ -62,17 +68,21 @@ function App() {
     setDetail(payload);
   }, []);
 
-  const loadRuns = useCallback(async (preferredRunId) => {
-    setLoading(true);
-    const response = await fetch("/api/runs");
-    const payload = await response.json();
-    const nextRuns = payload.runs || [];
-    const nextRunId = preferredRunId || selectedRunId || payload.latestRunId || nextRuns[0]?.runId;
-    setRuns(nextRuns);
-    setSelectedRunId(nextRunId);
-    await loadRun(nextRunId);
-    setLoading(false);
-  }, [loadRun, selectedRunId]);
+  const loadRuns = useCallback(
+    async (preferredRunId) => {
+      setLoading(true);
+      const response = await fetch("/api/runs");
+      const payload = await response.json();
+      const nextRuns = payload.runs || [];
+      const nextRunId =
+        preferredRunId || selectedRunId || payload.latestRunId || nextRuns[0]?.runId;
+      setRuns(nextRuns);
+      setSelectedRunId(nextRunId);
+      await loadRun(nextRunId);
+      setLoading(false);
+    },
+    [loadRun, selectedRunId],
+  );
 
   useEffect(() => {
     void loadRuns();
@@ -88,12 +98,17 @@ function App() {
         <p>Review completed optimizer runs and inspect the suggested template change.</p>
         <div className="callout">
           <strong>Completed optimizer runs</strong>
-          <p>This UI does not generate new DAGs. Run a new optimization in your terminal, then refresh this page.</p>
+          <p>
+            This UI does not generate new DAGs. Run a new optimization in your terminal, then
+            refresh this page.
+          </p>
           <code className="command">mise run source-to-project:optimize-template</code>
         </div>
         <div className="toolbar">
           <span className="muted">{runs.length === 1 ? "1 run" : `${runs.length} runs`}</span>
-          <button className="button" type="button" onClick={() => loadRuns(selectedRunId)}>Refresh</button>
+          <button className="button" type="button" onClick={() => loadRuns(selectedRunId)}>
+            Refresh
+          </button>
         </div>
         <RunList runs={runs} selectedRunId={selectedRunId} onSelect={loadRun} loading={loading} />
       </aside>
@@ -114,7 +129,11 @@ function App() {
                   <span className="pill">{detail.finalGraph.edges.length} edges</span>
                 </div>
               </div>
-              <TemplateFlowGraph graph={detail.finalGraph} mode="inspector" ariaLabel="Proposed optimized template graph" />
+              <TemplateFlowGraph
+                graph={detail.finalGraph}
+                mode="inspector"
+                ariaLabel="Proposed optimized template graph"
+              />
             </section>
             <WhyBetter run={run} summary={summary} comparison={detail.graphComparison} />
             <RunComparison runs={runs} onSelect={loadRun} />
@@ -181,8 +200,11 @@ function EmptyState() {
 
 function DecisionBrief({ run, summary }) {
   const fixtureRows = getFixtureRows(run.iterations || []);
-  const challengerWins = fixtureRows.filter(({ judgment }) => (judgment.winner || judgment.winnerCandidateId) === "challenger").length;
-  const confidence = summary?.decisionConfidence ?? run.iterations?.at(-1)?.aggregateJudgment?.decisionConfidence;
+  const challengerWins = fixtureRows.filter(
+    ({ judgment }) => (judgment.winner || judgment.winnerCandidateId) === "challenger",
+  ).length;
+  const confidence =
+    summary?.decisionConfidence ?? run.iterations?.at(-1)?.aggregateJudgment?.decisionConfidence;
   const runId = summary?.runId || run.runId || "";
   const candidateId = run.finalRecommendation?.candidateId || run.finalIncumbent?.id || "";
   const dryRunCommand = `mise run optimize-template:apply -- ${runId} --dry-run --candidate ${candidateId}`;
@@ -192,21 +214,38 @@ function DecisionBrief({ run, summary }) {
         <div>
           <h2>Decision Brief</h2>
           <p className="muted">Selected run {runId}</p>
-          <p className="rationale">{run.finalRecommendation?.rationale || run.finalIncumbent?.rationale || run.note || ""}</p>
+          <p className="rationale">
+            {run.finalRecommendation?.rationale || run.finalIncumbent?.rationale || run.note || ""}
+          </p>
           <div className="summary-grid">
             <Metric label="Recommendation" value={run.finalRecommendation?.recommendation || ""} />
             <Metric label="Score Delta" value={formatDelta(summary?.scoreDelta)} />
             <Metric label="Confidence" value={formatPercent(confidence)} />
-            <Metric label="Fixture Wins" value={fixtureRows.length > 0 ? `${challengerWins} / ${fixtureRows.length}` : "n/a"} />
+            <Metric
+              label="Fixture Wins"
+              value={fixtureRows.length > 0 ? `${challengerWins} / ${fixtureRows.length}` : "n/a"}
+            />
           </div>
         </div>
         <div>
           <h2>Human Action Check</h2>
           <ul className="decision-checks">
-            <DecisionCheck label="Evidence" text="Review fixture wins, deltas, confidence, and rationale below." />
-            <DecisionCheck label="Topology" text="Compare the current and proposed DAGs side by side before accepting." />
-            <DecisionCheck label="Risk" text={`${summary?.criticalRegressionCount || 0} critical regression(s), ${summary?.rejectedMoveCount || 0} rejected move(s).`} />
-            <DecisionCheck label="Apply" text="Use the dry-run apply path first; live rewrite is still intentionally gated." />
+            <DecisionCheck
+              label="Evidence"
+              text="Review fixture wins, deltas, confidence, and rationale below."
+            />
+            <DecisionCheck
+              label="Topology"
+              text="Compare the current and proposed DAGs side by side before accepting."
+            />
+            <DecisionCheck
+              label="Risk"
+              text={`${summary?.criticalRegressionCount || 0} critical regression(s), ${summary?.rejectedMoveCount || 0} rejected move(s).`}
+            />
+            <DecisionCheck
+              label="Apply"
+              text="Use the dry-run apply path first; live rewrite is still intentionally gated."
+            />
           </ul>
           <div className="decision-action">
             <h3>Preview Adoption Package</h3>
@@ -222,7 +261,11 @@ function DecisionCheck({ label, text }) {
   return (
     <li>
       <span className="check-mark">OK</span>
-      <span><strong>{label}</strong><br />{text}</span>
+      <span>
+        <strong>{label}</strong>
+        <br />
+        {text}
+      </span>
     </li>
   );
 }
@@ -294,14 +337,35 @@ function ChangeSummary({ comparison }) {
   }
   return (
     <div className="change-summary">
-      <ChangeBlock title="Added Nodes" items={comparison.addedNodes || []} labelFor={(node) => node.title || node.id} />
-      <ChangeBlock title="Removed Nodes" items={comparison.removedNodes || []} labelFor={(node) => node.title || node.id} />
+      <ChangeBlock
+        title="Added Nodes"
+        items={comparison.addedNodes || []}
+        labelFor={(node) => node.title || node.id}
+      />
+      <ChangeBlock
+        title="Removed Nodes"
+        items={comparison.removedNodes || []}
+        labelFor={(node) => node.title || node.id}
+      />
       <div>
         <h3>Topology Delta</h3>
         <ul className="change-list">
-          <li>{formatSignedCount(comparison.proposed.totalNodes - comparison.baseline.totalNodes)} total nodes</li>
-          <li>{formatSignedCount(comparison.proposed.sharedInitialNodes - comparison.baseline.sharedInitialNodes)} shared initial nodes</li>
-          <li>{formatSignedCount(comparison.proposed.expansionNodes - comparison.baseline.expansionNodes)} expansion nodes</li>
+          <li>
+            {formatSignedCount(comparison.proposed.totalNodes - comparison.baseline.totalNodes)}{" "}
+            total nodes
+          </li>
+          <li>
+            {formatSignedCount(
+              comparison.proposed.sharedInitialNodes - comparison.baseline.sharedInitialNodes,
+            )}{" "}
+            shared initial nodes
+          </li>
+          <li>
+            {formatSignedCount(
+              comparison.proposed.expansionNodes - comparison.baseline.expansionNodes,
+            )}{" "}
+            expansion nodes
+          </li>
           <li>{formatSignedCount(comparison.proposed.edges - comparison.baseline.edges)} edges</li>
         </ul>
       </div>
@@ -316,7 +380,11 @@ function ChangeBlock({ title, items, labelFor }) {
     <div>
       <h3>{title}</h3>
       <ul className="change-list">
-        {visible.length === 0 ? <li>None</li> : visible.map((item) => <li key={item.id}>{labelFor(item)}</li>)}
+        {visible.length === 0 ? (
+          <li>None</li>
+        ) : (
+          visible.map((item) => <li key={item.id}>{labelFor(item)}</li>)
+        )}
         {overflow > 0 ? <li>+{overflow} more</li> : null}
       </ul>
     </div>
@@ -337,14 +405,24 @@ function TemplateFlowGraph({ graph, mode, ariaLabel }) {
     }
 
     setLayout((current) => ({ ...current, loading: true, error: undefined }));
-    elk.layout(elkGraph)
+    elk
+      .layout(elkGraph)
       .then((layoutedGraph) => {
         if (cancelled) return;
-        setLayout({ ...buildReactFlowGraph(graph || EMPTY_GRAPH, layoutedGraph), loading: false, error: undefined });
+        setLayout({
+          ...buildReactFlowGraph(graph || EMPTY_GRAPH, layoutedGraph),
+          loading: false,
+          error: undefined,
+        });
       })
       .catch((error) => {
         if (cancelled) return;
-        setLayout({ nodes: [], edges: [], loading: false, error: error instanceof Error ? error.message : String(error) });
+        setLayout({
+          nodes: [],
+          edges: [],
+          loading: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
 
     return () => {
@@ -354,7 +432,17 @@ function TemplateFlowGraph({ graph, mode, ariaLabel }) {
 
   const { nodes, edges, loading, error } = layout;
   if (nodes.length === 0) {
-    return <div className={`flow-shell ${mode}`}><div className="empty">{loading ? "Laying out graph with ELK." : error ? `ELK layout failed: ${error}` : "No graph nodes recorded."}</div></div>;
+    return (
+      <div className={`flow-shell ${mode}`}>
+        <div className="empty">
+          {loading
+            ? "Laying out graph with ELK."
+            : error
+              ? `ELK layout failed: ${error}`
+              : "No graph nodes recorded."}
+        </div>
+      </div>
+    );
   }
   return (
     <div className={`flow-shell ${mode}`} aria-label={ariaLabel}>
@@ -426,7 +514,8 @@ function buildReactFlowGraph(graph, layoutedGraph) {
         kind: node.kind,
         harness: node.harness,
         source: node.source,
-        sourceLabel: node.source === "expansion" ? `${node.mode || "mode"} expansion` : "shared initial",
+        sourceLabel:
+          node.source === "expansion" ? `${node.mode || "mode"} expansion` : "shared initial",
       },
     };
   });
@@ -456,7 +545,9 @@ function edgeSectionPoints(edge) {
 function WhyBetter({ run, summary, comparison }) {
   const fixtureRows = getFixtureRows(run.iterations || []);
   const latestAggregate = run.iterations?.at(-1)?.aggregateJudgment;
-  const challengerWins = fixtureRows.filter(({ judgment }) => (judgment.winner || judgment.winnerCandidateId) === "challenger").length;
+  const challengerWins = fixtureRows.filter(
+    ({ judgment }) => (judgment.winner || judgment.winnerCandidateId) === "challenger",
+  ).length;
   const topologyDelta = comparison
     ? `Topology changed by ${formatSignedCount(comparison.proposed.totalNodes - comparison.baseline.totalNodes)} node(s), ${formatSignedCount(comparison.proposed.edges - comparison.baseline.edges)} edge(s), and ${formatSignedCount(comparison.proposed.expansionCases - comparison.baseline.expansionCases)} expansion case(s).`
     : "Topology comparison is unavailable for this run.";
@@ -464,18 +555,49 @@ function WhyBetter({ run, summary, comparison }) {
     <section className="section panel">
       <h2>Why This Is Better</h2>
       <ul className="evidence-list">
-        <li><strong>Aggregate judgment</strong><p>The proposed incumbent scored {formatDelta(summary?.scoreDelta ?? latestAggregate?.scoreDelta)} versus the current template with {formatPercent(summary?.decisionConfidence ?? latestAggregate?.decisionConfidence)} decision confidence and {summary?.criticalRegressionCount ?? latestAggregate?.criticalRegressionCount ?? 0} critical regression(s).</p></li>
-        <li><strong>Fixture coverage</strong><p>The challenger won {challengerWins} of {fixtureRows.length} judged fixture(s), including no-fit and multi-opportunity scenarios when present.</p></li>
-        <li><strong>Structural change</strong><p>{topologyDelta}</p></li>
-        <li><strong>Optimizer rationale</strong><p>{run.finalIncumbent?.rationale || run.finalRecommendation?.rationale || ""}</p></li>
+        <li>
+          <strong>Aggregate judgment</strong>
+          <p>
+            The proposed incumbent scored{" "}
+            {formatDelta(summary?.scoreDelta ?? latestAggregate?.scoreDelta)} versus the current
+            template with{" "}
+            {formatPercent(summary?.decisionConfidence ?? latestAggregate?.decisionConfidence)}{" "}
+            decision confidence and{" "}
+            {summary?.criticalRegressionCount ?? latestAggregate?.criticalRegressionCount ?? 0}{" "}
+            critical regression(s).
+          </p>
+        </li>
+        <li>
+          <strong>Fixture coverage</strong>
+          <p>
+            The challenger won {challengerWins} of {fixtureRows.length} judged fixture(s), including
+            no-fit and multi-opportunity scenarios when present.
+          </p>
+        </li>
+        <li>
+          <strong>Structural change</strong>
+          <p>{topologyDelta}</p>
+        </li>
+        <li>
+          <strong>Optimizer rationale</strong>
+          <p>{run.finalIncumbent?.rationale || run.finalRecommendation?.rationale || ""}</p>
+        </li>
         <li>
           <strong>Fixture-level evidence</strong>
-          {fixtureRows.length === 0 ? <p>No fixture judgments recorded.</p> : (
+          {fixtureRows.length === 0 ? (
+            <p>No fixture judgments recorded.</p>
+          ) : (
             <ul className="evidence-list nested">
               {fixtureRows.slice(0, 6).map(({ judgment }) => (
                 <li key={judgment.fixtureId}>
-                  <strong>{judgment.fixtureId || "fixture"}: {judgment.winner || judgment.winnerCandidateId || "unknown"}</strong>
-                  <p>Delta {formatFixtureDelta(judgment)}, confidence {formatPercent(judgment.decisionConfidence)}. {judgment.rationale || ""}</p>
+                  <strong>
+                    {judgment.fixtureId || "fixture"}:{" "}
+                    {judgment.winner || judgment.winnerCandidateId || "unknown"}
+                  </strong>
+                  <p>
+                    Delta {formatFixtureDelta(judgment)}, confidence{" "}
+                    {formatPercent(judgment.decisionConfidence)}. {judgment.rationale || ""}
+                  </p>
                 </li>
               ))}
             </ul>
@@ -488,18 +610,37 @@ function WhyBetter({ run, summary, comparison }) {
 
 function RunComparison({ runs, onSelect }) {
   if (runs.length === 0) {
-    return <section className="section panel"><h2>Run Comparison</h2><div className="empty">No runs to compare.</div></section>;
+    return (
+      <section className="section panel">
+        <h2>Run Comparison</h2>
+        <div className="empty">No runs to compare.</div>
+      </section>
+    );
   }
   return (
     <section className="section panel">
       <h2>Run Comparison</h2>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Run</th><th>Status</th><th>Recommendation</th><th>Candidate</th><th>Iterations</th><th>Delta</th><th>Regressions</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Status</th>
+              <th>Recommendation</th>
+              <th>Candidate</th>
+              <th>Iterations</th>
+              <th>Delta</th>
+              <th>Regressions</th>
+            </tr>
+          </thead>
           <tbody>
             {runs.map((run) => (
               <tr key={run.runId}>
-                <td><button className="button" type="button" onClick={() => onSelect(run.runId)}>{run.runId}</button></td>
+                <td>
+                  <button className="button" type="button" onClick={() => onSelect(run.runId)}>
+                    {run.runId}
+                  </button>
+                </td>
                 <td>{run.status}</td>
                 <td>{run.finalRecommendation || ""}</td>
                 <td>{run.finalCandidateId || ""}</td>
@@ -522,7 +663,16 @@ function CandidateScores({ candidates }) {
   return (
     <div className="table-wrap">
       <table>
-        <thead><tr><th>Candidate</th><th>Role</th><th>Strategy</th><th>Delta</th><th>Confidence</th><th>Decision</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Candidate</th>
+            <th>Role</th>
+            <th>Strategy</th>
+            <th>Delta</th>
+            <th>Confidence</th>
+            <th>Decision</th>
+          </tr>
+        </thead>
         <tbody>
           {candidates.map((candidate, index) => (
             <tr key={`${candidate.id}-${candidate.role}-${index}`}>
@@ -542,7 +692,11 @@ function CandidateScores({ candidates }) {
 
 function AdoptionTasks({ tasks }) {
   if (tasks.length === 0) {
-    return <ul className="list"><li>No adoption tasks recorded.</li></ul>;
+    return (
+      <ul className="list">
+        <li>No adoption tasks recorded.</li>
+      </ul>
+    );
   }
   return (
     <ul className="list">
@@ -565,10 +719,36 @@ function ApplyPath({ run, summary }) {
     <section className="section panel">
       <h2>HITL Apply Path</h2>
       <ol className="steps">
-        <li><strong>Generate new candidates outside this viewer.</strong><p>This dashboard watches completed runs. Use the source-to-project optimize task, then press Refresh.</p><code className="command">mise run source-to-project:optimize-template</code></li>
-        <li><strong>Review the recommended candidate.</strong><p>The before/after graphs, score tables, and evidence sections show why this candidate beat the current template.</p></li>
-        <li><strong>Preview the adoption package.</strong><p>This is the current HITL-safe apply path. It writes or refreshes apply-dry-run.md without changing repository files.</p><code className="command">{dryRunCommand}</code></li>
-        <li><strong>Live rewrite is not implemented yet.</strong><p>The apply script currently rejects non-dry-run writes, so accepting this candidate still requires a follow-up implementation step.</p></li>
+        <li>
+          <strong>Generate new candidates outside this viewer.</strong>
+          <p>
+            This dashboard watches completed runs. Use the source-to-project optimize task, then
+            press Refresh.
+          </p>
+          <code className="command">mise run source-to-project:optimize-template</code>
+        </li>
+        <li>
+          <strong>Review the recommended candidate.</strong>
+          <p>
+            The before/after graphs, score tables, and evidence sections show why this candidate
+            beat the current template.
+          </p>
+        </li>
+        <li>
+          <strong>Preview the adoption package.</strong>
+          <p>
+            This is the current HITL-safe apply path. It writes or refreshes apply-dry-run.md
+            without changing repository files.
+          </p>
+          <code className="command">{dryRunCommand}</code>
+        </li>
+        <li>
+          <strong>Live rewrite is not implemented yet.</strong>
+          <p>
+            The apply script currently rejects non-dry-run writes, so accepting this candidate still
+            requires a follow-up implementation step.
+          </p>
+        </li>
       </ol>
     </section>
   );
@@ -579,14 +759,28 @@ function FixtureMatrix({ iterations }) {
   return (
     <section className="section panel">
       <h2>Fixture Judgment Matrix</h2>
-      {rows.length === 0 ? <div className="empty">No fixture judgments recorded.</div> : (
+      {rows.length === 0 ? (
+        <div className="empty">No fixture judgments recorded.</div>
+      ) : (
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Iteration</th><th>Fixture</th><th>Winner</th><th>Score Delta</th><th>Critical Regression</th><th>Confidence</th><th>Rationale</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Iteration</th>
+                <th>Fixture</th>
+                <th>Winner</th>
+                <th>Score Delta</th>
+                <th>Critical Regression</th>
+                <th>Confidence</th>
+                <th>Rationale</th>
+              </tr>
+            </thead>
             <tbody>
               {rows.map(({ iteration, judgment }) => (
                 <tr key={`${iteration.index}-${iteration.candidateIndex}-${judgment.fixtureId}`}>
-                  <td>{iteration.index}.{iteration.candidateIndex}</td>
+                  <td>
+                    {iteration.index}.{iteration.candidateIndex}
+                  </td>
                   <td>{judgment.fixtureId || ""}</td>
                   <td>{judgment.winner || judgment.winnerCandidateId || ""}</td>
                   <td>{formatFixtureDelta(judgment)}</td>
@@ -607,7 +801,13 @@ function RejectedMoves({ moves }) {
   return (
     <section className="section panel">
       <h2>Rejected Moves</h2>
-      <ul className="list">{moves.length === 0 ? <li>No rejected moves recorded.</li> : moves.map((move) => <li key={move}>{move}</li>)}</ul>
+      <ul className="list">
+        {moves.length === 0 ? (
+          <li>No rejected moves recorded.</li>
+        ) : (
+          moves.map((move) => <li key={move}>{move}</li>)
+        )}
+      </ul>
     </section>
   );
 }
@@ -619,7 +819,15 @@ function Artifacts({ runId }) {
       <h2>Artifacts</h2>
       <div className="links">
         {files.map((file) => (
-          <a className="artifact-link" href={`/api/artifact?runId=${encodeURIComponent(runId || "")}&file=${encodeURIComponent(file)}`} target="_blank" rel="noreferrer" key={file}>{file}</a>
+          <a
+            className="artifact-link"
+            href={`/api/artifact?runId=${encodeURIComponent(runId || "")}&file=${encodeURIComponent(file)}`}
+            target="_blank"
+            rel="noreferrer"
+            key={file}
+          >
+            {file}
+          </a>
         ))}
       </div>
     </section>
@@ -639,13 +847,17 @@ function inferGraphMetrics(graph) {
 }
 
 function getFixtureRows(iterations) {
-  return iterations.flatMap((iteration) => (iteration.fixtureJudgments || []).map((judgment) => ({ iteration, judgment })));
+  return iterations.flatMap((iteration) =>
+    (iteration.fixtureJudgments || []).map((judgment) => ({ iteration, judgment })),
+  );
 }
 
 function formatDate(value) {
   if (!value) return "unknown time";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function formatDelta(value) {
@@ -669,15 +881,18 @@ function formatFixtureDelta(judgment) {
 }
 
 function formatRegression(judgment) {
-  if (typeof judgment.criticalRegression === "boolean") return judgment.criticalRegression ? "yes" : "no";
-  if (Array.isArray(judgment.criticalRegressions)) return judgment.criticalRegressions.length ? judgment.criticalRegressions.join("; ") : "no";
+  if (typeof judgment.criticalRegression === "boolean")
+    return judgment.criticalRegression ? "yes" : "no";
+  if (Array.isArray(judgment.criticalRegressions))
+    return judgment.criticalRegressions.length ? judgment.criticalRegressions.join("; ") : "no";
   return "n/a";
 }
 
 function formatCandidateDecision(candidate) {
   if (candidate.role === "baseline") return "current template";
   if (candidate.role === "final-incumbent") return candidate.recommendation || "selected";
-  if (typeof candidate.replacedIncumbent === "boolean") return candidate.replacedIncumbent ? "replaced incumbent" : "kept incumbent";
+  if (typeof candidate.replacedIncumbent === "boolean")
+    return candidate.replacedIncumbent ? "replaced incumbent" : "kept incumbent";
   return candidate.recommendation || "";
 }
 

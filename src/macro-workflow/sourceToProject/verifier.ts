@@ -36,8 +36,13 @@ export function verifyOpportunityPromotion(
       });
     }
 
-    const acceptanceAverage = (opportunity.score.applicability + opportunity.score.impact + opportunity.score.confidence) / 3;
-    if (acceptanceAverage < thresholds.minAcceptanceAverage || opportunity.score.risk > thresholds.maxRisk) {
+    const acceptanceAverage =
+      (opportunity.score.applicability + opportunity.score.impact + opportunity.score.confidence) /
+      3;
+    if (
+      acceptanceAverage < thresholds.minAcceptanceAverage ||
+      opportunity.score.risk > thresholds.maxRisk
+    ) {
       issues.push({
         code: "below-opportunity-threshold",
         message: `Opportunity ${opportunity.id} does not meet promotion thresholds.`,
@@ -51,7 +56,8 @@ export function verifyOpportunityPromotion(
 
 export function verifyBundles(review: OpportunityCouncilReview): SourceToProjectVerificationResult {
   const issues = review.bundles.flatMap((bundle) => {
-    const valid = bundle.rationale.trim() &&
+    const valid =
+      bundle.rationale.trim() &&
       bundle.sharedChangeSurface.trim() &&
       bundle.combinedUserValue.trim() &&
       bundle.separationRisk.trim() &&
@@ -60,11 +66,13 @@ export function verifyBundles(review: OpportunityCouncilReview): SourceToProject
 
     return valid
       ? []
-      : [{
-        code: "invalid-bundle" as const,
-        message: `Bundle ${bundle.id} does not satisfy the bundle contract.`,
-        bundleId: bundle.id,
-      }];
+      : [
+          {
+            code: "invalid-bundle" as const,
+            message: `Bundle ${bundle.id} does not satisfy the bundle contract.`,
+            bundleId: bundle.id,
+          },
+        ];
   });
 
   return { valid: issues.length === 0, issues };

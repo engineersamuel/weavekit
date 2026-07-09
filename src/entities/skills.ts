@@ -38,13 +38,15 @@ export function validateSkillReference(
   if (!skillPath) {
     return {
       valid: false,
-      errors: [{
-        code: "entity.skill_missing",
-        fieldPath: "capabilities.skills",
-        message: `Skill ${skillName} was not found.`,
-        repairHint: `Create a SKILL.md for ${skillName} or remove it from capabilities.skills. Searched: ${searchedPaths.join(", ")}`,
-        value: skillName,
-      }],
+      errors: [
+        {
+          code: "entity.skill_missing",
+          fieldPath: "capabilities.skills",
+          message: `Skill ${skillName} was not found.`,
+          repairHint: `Create a SKILL.md for ${skillName} or remove it from capabilities.skills. Searched: ${searchedPaths.join(", ")}`,
+          value: skillName,
+        },
+      ],
     };
   }
 
@@ -53,14 +55,16 @@ export function validateSkillReference(
     return {
       valid: false,
       skillPath,
-      errors: [{
-        code: "entity.skill_name_mismatch",
-        filePath: skillPath,
-        fieldPath: "capabilities.skills",
-        message: `Skill ${skillName} has SKILL.md frontmatter name ${frontmatterName ?? "<missing>"}.`,
-        repairHint: `Set SKILL.md frontmatter name to "${skillName}" or update capabilities.skills.`,
-        value: frontmatterName,
-      }],
+      errors: [
+        {
+          code: "entity.skill_name_mismatch",
+          filePath: skillPath,
+          fieldPath: "capabilities.skills",
+          message: `Skill ${skillName} has SKILL.md frontmatter name ${frontmatterName ?? "<missing>"}.`,
+          repairHint: `Set SKILL.md frontmatter name to "${skillName}" or update capabilities.skills.`,
+          value: frontmatterName,
+        },
+      ],
     };
   }
 

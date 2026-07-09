@@ -26,38 +26,38 @@ This is not "A or B." It is one stack with two entry points:
   and `@earendil-works/pi-ai`. Verified two ways: `npm view @flue/runtime dependencies`
   **and** this repo's own `package-lock.json` (lines ~1169-1170, resolving
   `@earendil-works/pi-agent-core@0.79.10` + `@earendil-works/pi-ai@0.79.10`).
-- Flue's own marketing confirms it: *"Powered by Pi, the open agent harness."*
+- Flue's own marketing confirms it: _"Powered by Pi, the open agent harness."_
 - So **"PI" = the low-level harness** (agent loop, multi-provider model API, sessions);
   **"Flue" = the batteries-included framework** wrapping it (durability, HTTP, channels,
   deploy, SDK, observability).
 
-**BAML is orthogonal to both.** BAML owns the *single typed LLM call*; PI/Flue own the
-*orchestration around many calls*. BAML is not an alternative to Flue — it complements it,
+**BAML is orthogonal to both.** BAML owns the _single typed LLM call_; PI/Flue own the
+_orchestration around many calls_. BAML is not an alternative to Flue — it complements it,
 and is in fact stronger than Flue's native structured outputs (see below). WeaveKit already
 runs **Flue + BAML** together for this reason.
 
 ## Who owns which layer
 
-| Layer | Tool | Owns | Does **not** own |
-|---|---|---|---|
-| Typed model call | **BAML** (`@boundaryml/baml`) | Prompt-as-typed-function, Schema-Aligned Parsing, retries/fallbacks, streaming partials, multi-lang codegen | Multi-step orchestration, durability, serving — "an agent is a while loop in your host language" |
-| Agent harness | **PI** (`earendil-works/pi`) | Agent loop, ~30-provider model API (4 wire protocols), tool-calling (TypeBox), sessions/compaction, steering/HITL, parallel tools | Structured-output DSL, durable execution, HTTP server, channels, OTel, multi-workflow registry, MCP-in-core, sub-agents, permissions |
-| Production framework | **Flue** (`withastro/flue`) | Everything in PI **plus** durable/resumable execution, persistence adapters, Hono routing/auth, `defineWorkflow`/`defineAgent`, channels, deploy targets, client SDK + React, MCP client, CLI, observability adapters | Constrained-decoding structured outputs (uses valibot + retries — weaker than BAML), multi-node Node.js scaling (yet), native HITL/scheduler/eval engine |
+| Layer                | Tool                          | Owns                                                                                                                                                                                                                  | Does **not** own                                                                                                                                         |
+| -------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Typed model call     | **BAML** (`@boundaryml/baml`) | Prompt-as-typed-function, Schema-Aligned Parsing, retries/fallbacks, streaming partials, multi-lang codegen                                                                                                           | Multi-step orchestration, durability, serving — "an agent is a while loop in your host language"                                                         |
+| Agent harness        | **PI** (`earendil-works/pi`)  | Agent loop, ~30-provider model API (4 wire protocols), tool-calling (TypeBox), sessions/compaction, steering/HITL, parallel tools                                                                                     | Structured-output DSL, durable execution, HTTP server, channels, OTel, multi-workflow registry, MCP-in-core, sub-agents, permissions                     |
+| Production framework | **Flue** (`withastro/flue`)   | Everything in PI **plus** durable/resumable execution, persistence adapters, Hono routing/auth, `defineWorkflow`/`defineAgent`, channels, deploy targets, client SDK + React, MCP client, CLI, observability adapters | Constrained-decoding structured outputs (uses valibot + retries — weaker than BAML), multi-node Node.js scaling (yet), native HITL/scheduler/eval engine |
 
 ## Side-by-side for the orchestration decision
 
-| | **Bare PI + BAML** | **Flue + BAML** (current) |
-|---|---|---|
-| **Typed outputs / BAML intermediate** | ✅ BAML (best-in-class) | ✅ BAML (best-in-class) |
-| **Agent loop, tools, multi-provider** | ✅ PI | ✅ PI (inside Flue) |
-| **Fan-out/fan-in (council rounds)** | App-level (already hand-rolled in `workflow.ts`) | App-level (same) |
-| **Observability (OTel)** | ❌ none in PI — build it yourself | ✅ `@flue/opentelemetry` / OTel + Braintrust + Sentry adapters |
-| **External connections / notifications** | ❌ build HTTP + webhook verify + dispatch | ✅ Channels (Slack/GitHub/Teams/Linear/Stripe…) + routing + schedules |
-| **Create + manage multiple workflows** | ❌ build a registry/runner | ✅ `defineWorkflow`/`defineAgent` + file discovery + run records + SDK |
-| **Durability / crash recovery** | ❌ JSONL transcripts only; no resumable execution | ✅ Durable Streams + persistence adapters (single-node on Node today) |
-| **Deploy targets** | Embed the library yourself | ✅ Node / Cloudflare / CI / Vercel / Fly / Render |
-| **Maturity** | MIT, ~v0.80.x, **fast breaking churn** (multiple releases/day) | Apache-2.0, **1.0-beta.6**, beta but more stable surface |
-| **GitHub Copilot personas** | `@github/copilot-sdk` (orthogonal); PI has a Copilot provider | same |
+|                                          | **Bare PI + BAML**                                             | **Flue + BAML** (current)                                              |
+| ---------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Typed outputs / BAML intermediate**    | ✅ BAML (best-in-class)                                        | ✅ BAML (best-in-class)                                                |
+| **Agent loop, tools, multi-provider**    | ✅ PI                                                          | ✅ PI (inside Flue)                                                    |
+| **Fan-out/fan-in (council rounds)**      | App-level (already hand-rolled in `workflow.ts`)               | App-level (same)                                                       |
+| **Observability (OTel)**                 | ❌ none in PI — build it yourself                              | ✅ `@flue/opentelemetry` / OTel + Braintrust + Sentry adapters         |
+| **External connections / notifications** | ❌ build HTTP + webhook verify + dispatch                      | ✅ Channels (Slack/GitHub/Teams/Linear/Stripe…) + routing + schedules  |
+| **Create + manage multiple workflows**   | ❌ build a registry/runner                                     | ✅ `defineWorkflow`/`defineAgent` + file discovery + run records + SDK |
+| **Durability / crash recovery**          | ❌ JSONL transcripts only; no resumable execution              | ✅ Durable Streams + persistence adapters (single-node on Node today)  |
+| **Deploy targets**                       | Embed the library yourself                                     | ✅ Node / Cloudflare / CI / Vercel / Fly / Render                      |
+| **Maturity**                             | MIT, ~v0.80.x, **fast breaking churn** (multiple releases/day) | Apache-2.0, **1.0-beta.6**, beta but more stable surface               |
+| **GitHub Copilot personas**              | `@github/copilot-sdk` (orthogonal); PI has a Copilot provider  | same                                                                   |
 
 ## Mapping to WeaveKit's design brief (`examples/design-question.md`)
 
@@ -85,7 +85,7 @@ that distinguish a framework from a library — which is the entire reason Flue 
 WeaveKit's brief explicitly wants observability, external connections/notifications, and
 multi-workflow management — Flue's production layer. Today the coupling is **thin** (only the
 `createCouncilWorkflow` seam + planned `@flue/opentelemetry`), and the council loop is
-hand-rolled TypeScript, so switching *cost* is low — but the *requirements* pull toward
+hand-rolled TypeScript, so switching _cost_ is low — but the _requirements_ pull toward
 Flue's layer as the project grows. Keep BAML for the typed fan-in contracts (it is stronger
 than Flue's valibot + retries). **Net: Flue (PI inside) + BAML is the coherent stack.**
 

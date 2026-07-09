@@ -15,7 +15,11 @@ import {
   type DecisionCouncilReport,
 } from "./types.js";
 import type { z } from "zod";
-import { createDefaultModelRouter, defaultRouteModelCall, type ModelRouter } from "./modelRouter.js";
+import {
+  createDefaultModelRouter,
+  defaultRouteModelCall,
+  type ModelRouter,
+} from "./modelRouter.js";
 
 export type RunDecisionCouncilOptions = {
   maxRounds?: number;
@@ -36,7 +40,10 @@ function traceIdFor(span: { spanContext(): { traceId?: string } }): string | und
   return traceId && traceId !== "00000000000000000000000000000000" ? traceId : undefined;
 }
 
-export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilInputSchema>, options: RunDecisionCouncilOptions = {}): Promise<DecisionCouncilReport> {
+export async function runDecisionCouncil(
+  input: z.input<typeof DecisionCouncilInputSchema>,
+  options: RunDecisionCouncilOptions = {},
+): Promise<DecisionCouncilReport> {
   const { assertValidEntityCatalog } = await import("../entities/index.js");
   assertValidEntityCatalog(process.cwd());
 
@@ -44,7 +51,10 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
   const runId = `council-${Date.now().toString(36)}`;
   return tracer.startActiveSpan("council-run", async (span) => {
     const traceId = traceIdFor(span);
-    const logger = composeDecisionCouncilLoggers(options.logger, createOtelDecisionCouncilLogger({ span }));
+    const logger = composeDecisionCouncilLoggers(
+      options.logger,
+      createOtelDecisionCouncilLogger({ span }),
+    );
 
     try {
       const parsedInput = DecisionCouncilInputSchema.parse(input);
@@ -52,7 +62,8 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
       setSerializedAttribute(span, "langfuse.trace.input", parsedInput);
       setSerializedAttribute(span, "langfuse.observation.input", parsedInput);
       const candidatePool = listPersonas();
-      const personaSelector = options.deps?.personaSelector ??
+      const personaSelector =
+        options.deps?.personaSelector ??
         createBamlPersonaSelector({
           candidatePersonas: candidatePool,
           minPersonas: 2,
@@ -76,7 +87,9 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
       span.setAttribute("weavekit.decision_council.run_id", runId);
       span.setAttribute("weavekit.decision_council.persona_count", initialState.personas.length);
       span.setAttribute("weavekit.decision_council.max_rounds", maxRounds);
-      const skillPersonas = initialState.personas.filter((p) => p.skill?.name).map((p) => p.skill!.name);
+      const skillPersonas = initialState.personas
+        .filter((p) => p.skill?.name)
+        .map((p) => p.skill!.name);
       if (skillPersonas.length > 0) {
         span.setAttribute("weavekit.decision_council.skill_personas", skillPersonas.join(","));
       }
@@ -101,7 +114,9 @@ export async function runDecisionCouncil(input: z.input<typeof DecisionCouncilIn
       const finalState = await runDecisionCouncilLoop(initialState, deps);
 
       if (!finalState.finalReport) {
-        throw new DecisionCouncilRunFailedError("Council workflow completed without a final report.");
+        throw new DecisionCouncilRunFailedError(
+          "Council workflow completed without a final report.",
+        );
       }
 
       if (options.deps?.writeArtifacts !== false) {

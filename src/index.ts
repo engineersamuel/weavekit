@@ -23,7 +23,10 @@ export {
   type RouteScore,
   type WorkflowRouteKind,
 } from "./initialRouter.js";
-export { createDecisionCouncilWorkflow, type DecisionCouncilFlueOptions } from "./flue/decisionCouncilWorkflowDefinition.js";
+export {
+  createDecisionCouncilWorkflow,
+  type DecisionCouncilFlueOptions,
+} from "./flue/decisionCouncilWorkflowDefinition.js";
 export {
   createConfiguredDecisionCouncilWorkflow,
   type ConfiguredDecisionCouncilWorkflowOptions,

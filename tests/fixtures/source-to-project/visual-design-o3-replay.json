@@ -90,12 +90,8 @@
         }
       }
     },
-    "dependsOn": [
-      "report-opportunity-o3"
-    ],
-    "gates": [
-      "output-contract"
-    ],
+    "dependsOn": ["report-opportunity-o3"],
+    "gates": ["output-contract"],
     "writeMode": "read-only",
     "replanPolicy": "never"
   },
@@ -109,10 +105,7 @@
         "skillInstall": {
           "skill": "visual-plan",
           "command": "fixture",
-          "args": [
-            "visual-plan-preflight",
-            "already-checked"
-          ],
+          "args": ["visual-plan-preflight", "already-checked"],
           "output": "Fixture assumes visual-plan install/auth was checked separately; this replay starts at the visual-design node.",
           "skipped": false
         }

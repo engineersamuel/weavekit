@@ -4,7 +4,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { DeepResearchProvider, type DeepResearchDefaults, type ToolingDefaults } from "../../config.js";
+import {
+  DeepResearchProvider,
+  type DeepResearchDefaults,
+  type ToolingDefaults,
+} from "../../config.js";
 import { getEnabledRemoteMcpSpecs } from "../../flue/mcpConfig.js";
 import type { RemoteFlueMcpSpec } from "../../flue/mcpConfig.js";
 import type {
@@ -16,20 +20,38 @@ import type {
   ResearchIterationAssessment,
   ResearchQuestionSet,
 } from "../../generated/baml_client/index.js";
-import type { HarnessAdapter, HarnessExecutionResult, HarnessRegistry, WorkflowExecutionContext } from "../harness.js";
+import type {
+  HarnessAdapter,
+  HarnessExecutionResult,
+  HarnessRegistry,
+  WorkflowExecutionContext,
+} from "../harness.js";
 import { createStaticHarnessRegistry } from "../harness.js";
 import type { WorkflowDynamicExpander } from "../runner.js";
 import { runMacroWorkflow } from "../runner.js";
 import { materializeWorkflowPlan } from "../templates.js";
-import type { RuntimeWorkflowNode, WorkflowArtifactRef, WorkflowExecutionCall, WorkflowExecutionMetadata, WorkflowNodePayload } from "../types.js";
+import type {
+  RuntimeWorkflowNode,
+  WorkflowArtifactRef,
+  WorkflowExecutionCall,
+  WorkflowExecutionMetadata,
+  WorkflowNodePayload,
+} from "../types.js";
 import { WorkflowGateKind, WorkflowHarnessKind, WorkflowNodeKind } from "../types.js";
 import type { CopilotCapabilityScope } from "../sourceToProject/harnesses.js";
-import { createLiveDeepResearchBamlClient as createLiveDeepResearchBamlClientImpl, type DeepResearchBamlClient } from "./bamlAdapters.js";
+import {
+  createLiveDeepResearchBamlClient as createLiveDeepResearchBamlClientImpl,
+  type DeepResearchBamlClient,
+} from "./bamlAdapters.js";
 
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_DEEP_RESEARCH_CONFIG: DeepResearchConfig = {
-  providers: [DeepResearchProvider.GROK, DeepResearchProvider.EXA, DeepResearchProvider.COPILOT_LAST30DAYS],
+  providers: [
+    DeepResearchProvider.GROK,
+    DeepResearchProvider.EXA,
+    DeepResearchProvider.COPILOT_LAST30DAYS,
+  ],
   maxIterations: 3,
   questionsPerIteration: 5,
   maxResultsPerQuestion: 5,
@@ -52,7 +74,12 @@ type DeepResearchStep =
   | "compile-report"
   | "visualize-report";
 
-type DeepResearchMode = "local-only" | "official-docs" | "web-lookup" | "recency-social" | "deep-research";
+type DeepResearchMode =
+  | "local-only"
+  | "official-docs"
+  | "web-lookup"
+  | "recency-social"
+  | "deep-research";
 
 const DeepResearchMode = {
   LOCAL_ONLY: "local-only",
@@ -96,7 +123,10 @@ export type DeepResearchExaMcpClient = {
 
 export type DeepResearchMcpTool = {
   name: string;
-  run(context: { input: Record<string, unknown>; signal?: AbortSignal }): unknown | Promise<unknown>;
+  run(context: {
+    input: Record<string, unknown>;
+    signal?: AbortSignal;
+  }): unknown | Promise<unknown>;
 };
 
 export type DeepResearchDirectMcpTool = {
@@ -104,7 +134,10 @@ export type DeepResearchDirectMcpTool = {
 };
 
 export type DeepResearchDirectMcpClient = {
-  listTools(args?: { cursor?: string }, options?: { timeout?: number; resetTimeoutOnProgress?: boolean }): Promise<{
+  listTools(
+    args?: { cursor?: string },
+    options?: { timeout?: number; resetTimeoutOnProgress?: boolean },
+  ): Promise<{
     tools: DeepResearchDirectMcpTool[];
     nextCursor?: string;
   }>;
@@ -116,7 +149,9 @@ export type DeepResearchDirectMcpClient = {
   close(): Promise<void>;
 };
 
-export type ConnectDeepResearchMcpClient = (spec: RemoteFlueMcpSpec) => Promise<DeepResearchDirectMcpClient>;
+export type ConnectDeepResearchMcpClient = (
+  spec: RemoteFlueMcpSpec,
+) => Promise<DeepResearchDirectMcpClient>;
 
 export type DeepResearchCopilotClient = {
   model?: string;
@@ -162,11 +197,15 @@ export type DefaultDeepResearchExaMcpConnection = {
   close(): Promise<void>;
 };
 
-export function createLiveDeepResearchBamlClient(options: Parameters<typeof createLiveDeepResearchBamlClientImpl>[0] = {}) {
+export function createLiveDeepResearchBamlClient(
+  options: Parameters<typeof createLiveDeepResearchBamlClientImpl>[0] = {},
+) {
   return createLiveDeepResearchBamlClientImpl(options);
 }
 
-export function createBoundedDeepResearchRunner(options: DeepResearchHarnessOptions = {}): BoundedDeepResearchRunner {
+export function createBoundedDeepResearchRunner(
+  options: DeepResearchHarnessOptions = {},
+): BoundedDeepResearchRunner {
   return {
     async run(args) {
       const config = normalizeDeepResearchConfig({ ...options.config, ...args.config });
@@ -185,10 +224,13 @@ export function createBoundedDeepResearchRunner(options: DeepResearchHarnessOpti
         expandAfterNode: createDeepResearchDynamicExpander(),
         outputDir: args.outputDir,
       });
-      const report = state.nodeResults.find((result) => result.nodeId === "deep-research-report")?.payload?.deepResearchReport;
+      const report = state.nodeResults.find((result) => result.nodeId === "deep-research-report")
+        ?.payload?.deepResearchReport;
       if (state.status !== "passed" || !isDeepResearchReport(report)) {
         const failed = state.nodeResults.find((result) => result.status === "failed");
-        throw new Error(failed?.error ?? `Bounded deep research failed with status ${state.status}.`);
+        throw new Error(
+          failed?.error ?? `Bounded deep research failed with status ${state.status}.`,
+        );
       }
       return report;
     },
@@ -197,10 +239,13 @@ export function createBoundedDeepResearchRunner(options: DeepResearchHarnessOpti
 
 function toDeepResearchDefaults(config: DeepResearchConfig): DeepResearchDefaults {
   const providers = config.providers.filter((provider): provider is DeepResearchProvider =>
-    Object.values(DeepResearchProvider).includes(provider as DeepResearchProvider)
+    Object.values(DeepResearchProvider).includes(provider as DeepResearchProvider),
   );
   return {
-    providers: providers.length > 0 ? providers : (DEFAULT_DEEP_RESEARCH_CONFIG.providers as DeepResearchProvider[]),
+    providers:
+      providers.length > 0
+        ? providers
+        : (DEFAULT_DEEP_RESEARCH_CONFIG.providers as DeepResearchProvider[]),
     maxIterations: config.maxIterations,
     questionsPerIteration: config.questionsPerIteration,
     maxResultsPerQuestion: config.maxResultsPerQuestion,
@@ -209,7 +254,9 @@ function toDeepResearchDefaults(config: DeepResearchConfig): DeepResearchDefault
   };
 }
 
-export function createExaMcpClientFromTools(tools: DeepResearchMcpTool[]): DeepResearchExaMcpClient | undefined {
+export function createExaMcpClientFromTools(
+  tools: DeepResearchMcpTool[],
+): DeepResearchExaMcpClient | undefined {
   const searchTool = findMcpTool(tools, ["web_search_exa", "mcp__exa__web_search_exa"]);
   if (!searchTool) {
     return undefined;
@@ -221,19 +268,23 @@ export function createExaMcpClientFromTools(tools: DeepResearchMcpTool[]): DeepR
     },
     ...(fetchTool
       ? {
-        async web_fetch_exa(args: { url: string }) {
-          return fetchTool.run({ input: args });
-        },
-      }
+          async web_fetch_exa(args: { url: string }) {
+            return fetchTool.run({ input: args });
+          },
+        }
       : {}),
   };
 }
 
-export async function createDefaultDeepResearchExaMcpConnection(options: {
-  env?: NodeJS.ProcessEnv;
-  connectMcpClient?: ConnectDeepResearchMcpClient;
-} = {}): Promise<DefaultDeepResearchExaMcpConnection> {
-  const exaSpecs = getEnabledRemoteMcpSpecs(options.env ?? process.env).filter((spec) => spec.name === "exa");
+export async function createDefaultDeepResearchExaMcpConnection(
+  options: {
+    env?: NodeJS.ProcessEnv;
+    connectMcpClient?: ConnectDeepResearchMcpClient;
+  } = {},
+): Promise<DefaultDeepResearchExaMcpConnection> {
+  const exaSpecs = getEnabledRemoteMcpSpecs(options.env ?? process.env).filter(
+    (spec) => spec.name === "exa",
+  );
   if (exaSpecs.length === 0) {
     return { async close() {} };
   }
@@ -267,94 +318,134 @@ export function createExaMcpClientFromDirectClient(
     },
     ...(fetchToolName
       ? {
-        async web_fetch_exa(args: { url: string }) {
-          return callDeepResearchMcpTool(mcp, fetchToolName, args);
-        },
-      }
+          async web_fetch_exa(args: { url: string }) {
+            return callDeepResearchMcpTool(mcp, fetchToolName, args);
+          },
+        }
       : {}),
   };
 }
 
-export function createDeepResearchHarnessRegistry(options: DeepResearchHarnessOptions = {}): HarnessRegistry {
+export function createDeepResearchHarnessRegistry(
+  options: DeepResearchHarnessOptions = {},
+): HarnessRegistry {
   const config = normalizeDeepResearchConfig(options.config);
   const baml = options.baml ?? createLiveDeepResearchBamlClientImpl();
   const providers = resolveProviderClients(options);
   const registry = createStaticHarnessRegistry();
 
-  const researchAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
-    const step = readDeepResearchStep(node);
-    if (step === "generate-questions") {
-      const nodeConfig = readNodeConfig(node, config);
-      const deepResearchRunId = readDeepResearchRunId(node);
-      const objective = readNodeObjective(node, context);
-      const priorState = buildPriorState(context, deepResearchRunId);
-      const questionSet = await baml.GenerateResearchQuestions(objective, priorState, nodeConfig);
-      return {
-        status: "passed",
-        output: `Generated ${questionSet.questions.length} research question(s) for iteration ${questionSet.iteration}.`,
-        payload: {
-          ...deepResearchRunPayload(deepResearchRunId),
-          deepResearchQuestionSet: questionSet,
-          deepResearchConfig: nodeConfig,
-        },
-        execution: executionMetadata(WorkflowHarnessKind.RESEARCH, [
-          bamlCall("GenerateResearchQuestions", "gpt-5.5", buildGenerateQuestionsPromptPreview(objective, priorState, nodeConfig)),
-        ]),
-      };
-    }
-
-    if (step === "provider-research") {
-      const provider = readRequiredString(node.input, "provider");
-      const iteration = readRequiredNumber(node.input, "iteration");
-      const questions = readQuestions(node.input);
-      const queries = readStringArray(node.input, "queries");
-      const maxResultsPerQuestion = readRequiredNumber(node.input, "maxResultsPerQuestion");
-      const nodeConfig = readNodeConfig(node, config);
-      const providerClient = providers[provider as DeepResearchProvider];
-      if (!providerClient) {
-        throw new Error(`Deep research provider ${provider} is accepted but not implemented/configured for this MVP.`);
-      }
-      const providerArgs = {
-        provider,
-        iteration,
-        nodeId: node.id,
-        deepResearchRunId: readDeepResearchRunId(node),
-        questions,
-        queries,
-        maxResultsPerQuestion,
-        objective: readNodeObjective(node, context),
-      };
-      const providerPrompt = buildProviderExecutionPrompt(providerArgs);
-      let providerResult: { evidence: DeepResearchProviderEvidence[]; retryCount: number };
-      try {
-        providerResult = await searchProviderWithRetries(providerClient, providerArgs, nodeConfig.providerRetryAttempts);
-      } catch (error) {
-        if (nodeConfig.providers.length <= 1) {
-          throw error;
-        }
-        const retryCount = nodeConfig.providerRetryAttempts;
-        const message = errorMessage(error);
-        const failure: DeepResearchProviderFailure = {
-          provider,
-          iteration,
-          retryCount,
-          message,
-          questionIds: questions.map((question) => question.id),
-        };
-        const retryPhrase = retryCount > 0
-          ? ` after ${retryCount} ${retryCount === 1 ? "retry" : "retries"}`
-          : "";
+  const researchAdapter: HarnessAdapter = Object.assign(
+    async (
+      node: RuntimeWorkflowNode,
+      context: WorkflowExecutionContext,
+    ): Promise<HarnessExecutionResult> => {
+      const step = readDeepResearchStep(node);
+      if (step === "generate-questions") {
+        const nodeConfig = readNodeConfig(node, config);
+        const deepResearchRunId = readDeepResearchRunId(node);
+        const objective = readNodeObjective(node, context);
+        const priorState = buildPriorState(context, deepResearchRunId);
+        const questionSet = await baml.GenerateResearchQuestions(objective, priorState, nodeConfig);
         return {
           status: "passed",
-          output: [
-            `${provider} failed${retryPhrase}; continuing with 0 normalized source result(s) from this provider.`,
-            `Other configured providers may still satisfy the research iteration.`,
-            `Error: ${clipWhitespace(message, 500)}`,
-          ].join(" "),
+          output: `Generated ${questionSet.questions.length} research question(s) for iteration ${questionSet.iteration}.`,
+          payload: {
+            ...deepResearchRunPayload(deepResearchRunId),
+            deepResearchQuestionSet: questionSet,
+            deepResearchConfig: nodeConfig,
+          },
+          execution: executionMetadata(WorkflowHarnessKind.RESEARCH, [
+            bamlCall(
+              "GenerateResearchQuestions",
+              "gpt-5.5",
+              buildGenerateQuestionsPromptPreview(objective, priorState, nodeConfig),
+            ),
+          ]),
+        };
+      }
+
+      if (step === "provider-research") {
+        const provider = readRequiredString(node.input, "provider");
+        const iteration = readRequiredNumber(node.input, "iteration");
+        const questions = readQuestions(node.input);
+        const queries = readStringArray(node.input, "queries");
+        const maxResultsPerQuestion = readRequiredNumber(node.input, "maxResultsPerQuestion");
+        const nodeConfig = readNodeConfig(node, config);
+        const providerClient = providers[provider as DeepResearchProvider];
+        if (!providerClient) {
+          throw new Error(
+            `Deep research provider ${provider} is accepted but not implemented/configured for this MVP.`,
+          );
+        }
+        const providerArgs = {
+          provider,
+          iteration,
+          nodeId: node.id,
+          deepResearchRunId: readDeepResearchRunId(node),
+          questions,
+          queries,
+          maxResultsPerQuestion,
+          objective: readNodeObjective(node, context),
+        };
+        const providerPrompt = buildProviderExecutionPrompt(providerArgs);
+        let providerResult: { evidence: DeepResearchProviderEvidence[]; retryCount: number };
+        try {
+          providerResult = await searchProviderWithRetries(
+            providerClient,
+            providerArgs,
+            nodeConfig.providerRetryAttempts,
+          );
+        } catch (error) {
+          if (nodeConfig.providers.length <= 1) {
+            throw error;
+          }
+          const retryCount = nodeConfig.providerRetryAttempts;
+          const message = errorMessage(error);
+          const failure: DeepResearchProviderFailure = {
+            provider,
+            iteration,
+            retryCount,
+            message,
+            questionIds: questions.map((question) => question.id),
+          };
+          const retryPhrase =
+            retryCount > 0 ? ` after ${retryCount} ${retryCount === 1 ? "retry" : "retries"}` : "";
+          return {
+            status: "passed",
+            output: [
+              `${provider} failed${retryPhrase}; continuing with 0 normalized source result(s) from this provider.`,
+              `Other configured providers may still satisfy the research iteration.`,
+              `Error: ${clipWhitespace(message, 500)}`,
+            ].join(" "),
+            payload: {
+              ...deepResearchRunPayload(readDeepResearchRunId(node)),
+              deepResearchEvidence: [],
+              deepResearchProviderFailures: [failure],
+            },
+            execution: executionMetadata(WorkflowHarnessKind.RESEARCH, [
+              {
+                executor: provider,
+                operation: "search",
+                mode: "research",
+                prompt: providerPrompt,
+                model: providerNodeModel(provider).model,
+              },
+            ]),
+          };
+        }
+        const evidence = providerResult.evidence.map((item, index) =>
+          normalizeEvidence(item, provider, iteration, index),
+        );
+        const retrySuffix =
+          providerResult.retryCount > 0
+            ? ` after ${providerResult.retryCount} ${providerResult.retryCount === 1 ? "retry" : "retries"}`
+            : "";
+        return {
+          status: "passed",
+          output: `${provider} returned ${evidence.length} normalized source result(s)${retrySuffix}.`,
           payload: {
             ...deepResearchRunPayload(readDeepResearchRunId(node)),
-            deepResearchEvidence: [],
-            deepResearchProviderFailures: [failure],
+            deepResearchEvidence: evidence,
           },
           execution: executionMetadata(WorkflowHarnessKind.RESEARCH, [
             {
@@ -367,73 +458,74 @@ export function createDeepResearchHarnessRegistry(options: DeepResearchHarnessOp
           ]),
         };
       }
-      const evidence = providerResult.evidence.map((item, index) => normalizeEvidence(item, provider, iteration, index));
-      const retrySuffix = providerResult.retryCount > 0
-        ? ` after ${providerResult.retryCount} ${providerResult.retryCount === 1 ? "retry" : "retries"}`
-        : "";
-      return {
-        status: "passed",
-        output: `${provider} returned ${evidence.length} normalized source result(s)${retrySuffix}.`,
-        payload: { ...deepResearchRunPayload(readDeepResearchRunId(node)), deepResearchEvidence: evidence },
-        execution: executionMetadata(WorkflowHarnessKind.RESEARCH, [
-          {
-            executor: provider,
-            operation: "search",
-            mode: "research",
-            prompt: providerPrompt,
-            model: providerNodeModel(provider).model,
+
+      if (step === "assess-iteration") {
+        const iteration = readRequiredNumber(node.input, "iteration");
+        const deepResearchRunId = readDeepResearchRunId(node);
+        const questionSet = getPayloadValue<ResearchQuestionSet>(
+          context,
+          readRequiredString(node.input, "questionNodeId"),
+          "deepResearchQuestionSet",
+        );
+        const providerNodeIds = readProviderNodeIds(node.input);
+        const evidence = providerNodeIds.flatMap((nodeId) =>
+          getPayloadValue<DeepResearchEvidence[]>(context, nodeId, "deepResearchEvidence"),
+        );
+        const providerFailures = providerNodeIds.flatMap((nodeId) =>
+          getOptionalPayloadArray<DeepResearchProviderFailure>(
+            context,
+            nodeId,
+            "deepResearchProviderFailures",
+          ).filter(isDeepResearchProviderFailure),
+        );
+        if (evidence.length === 0 && providerFailures.length > 0) {
+          throw new Error(
+            [
+              `All provider research failed for iteration ${iteration}; cannot assess evidence coverage.`,
+              ...providerFailures.map(
+                (failure) => `${failure.provider}: ${clipWhitespace(failure.message, 220)}`,
+              ),
+            ].join(" "),
+          );
+        }
+        const priorState = buildPriorState(context, deepResearchRunId);
+        const assessment = await baml.AssessResearchIteration(questionSet, evidence, priorState);
+        const prompt = buildAssessIterationPromptPreview(questionSet, evidence, priorState);
+        return {
+          status: "passed",
+          output: assessment.answerSufficient
+            ? `Research iteration ${iteration} is sufficient: ${assessment.stopReason}`
+            : `Research iteration ${iteration} needs follow-up: ${assessment.stopReason}`,
+          payload: {
+            ...deepResearchRunPayload(deepResearchRunId),
+            deepResearchAssessment: assessment,
+            deepResearchConfig: readNodeConfig(node, config),
           },
-        ]),
-      };
-    }
-
-    if (step === "assess-iteration") {
-      const iteration = readRequiredNumber(node.input, "iteration");
-      const deepResearchRunId = readDeepResearchRunId(node);
-      const questionSet = getPayloadValue<ResearchQuestionSet>(context, readRequiredString(node.input, "questionNodeId"), "deepResearchQuestionSet");
-      const providerNodeIds = readProviderNodeIds(node.input);
-      const evidence = providerNodeIds.flatMap((nodeId) =>
-        getPayloadValue<DeepResearchEvidence[]>(context, nodeId, "deepResearchEvidence")
-      );
-      const providerFailures = providerNodeIds.flatMap((nodeId) =>
-        getOptionalPayloadArray<DeepResearchProviderFailure>(context, nodeId, "deepResearchProviderFailures").filter(isDeepResearchProviderFailure)
-      );
-      if (evidence.length === 0 && providerFailures.length > 0) {
-        throw new Error([
-          `All provider research failed for iteration ${iteration}; cannot assess evidence coverage.`,
-          ...providerFailures.map((failure) => `${failure.provider}: ${clipWhitespace(failure.message, 220)}`),
-        ].join(" "));
+          execution: executionMetadata(WorkflowHarnessKind.RESEARCH, [
+            bamlCall("AssessResearchIteration", "gpt-5.5", prompt),
+          ]),
+        };
       }
-      const priorState = buildPriorState(context, deepResearchRunId);
-      const assessment = await baml.AssessResearchIteration(questionSet, evidence, priorState);
-      const prompt = buildAssessIterationPromptPreview(questionSet, evidence, priorState);
+
       return {
         status: "passed",
-        output: assessment.answerSufficient
-          ? `Research iteration ${iteration} is sufficient: ${assessment.stopReason}`
-          : `Research iteration ${iteration} needs follow-up: ${assessment.stopReason}`,
-        payload: {
-          ...deepResearchRunPayload(deepResearchRunId),
-          deepResearchAssessment: assessment,
-          deepResearchConfig: readNodeConfig(node, config),
-        },
-        execution: executionMetadata(WorkflowHarnessKind.RESEARCH, [
-          bamlCall("AssessResearchIteration", "gpt-5.5", prompt),
-        ]),
+        output: `Deep research harness skipped unsupported node ${node.id}.`,
       };
-    }
-
-    return { status: "passed", output: `Deep research harness skipped unsupported node ${node.id}.` };
-  }, {
-    prepareExecution(node: RuntimeWorkflowNode, context: WorkflowExecutionContext) {
-      return prepareDeepResearchResearchExecution(node, context, config);
     },
-  });
+    {
+      prepareExecution(node: RuntimeWorkflowNode, context: WorkflowExecutionContext) {
+        return prepareDeepResearchResearchExecution(node, context, config);
+      },
+    },
+  );
 
   const reporterAdapter: HarnessAdapter = async (node, context) => {
     const step = readDeepResearchStep(node);
     if (step !== "compile-report") {
-      return { status: "passed", output: `Deep research reporter skipped unsupported node ${node.id}.` };
+      return {
+        status: "passed",
+        output: `Deep research reporter skipped unsupported node ${node.id}.`,
+      };
     }
     const deepResearchRunId = readDeepResearchRunId(node);
     const finalState = buildPriorState(context, deepResearchRunId);
@@ -441,8 +533,15 @@ export function createDeepResearchHarnessRegistry(options: DeepResearchHarnessOp
     let report: DeepResearchReport;
     let compilerError: string | undefined;
     try {
-      const compiled = await baml.CompileDeepResearchReport(objective, compactReportInputState(finalState));
-      report = buildDeepResearchReportWithMarkdown(objective, finalState, validateCompiledReportMarkdown(compiled.markdown));
+      const compiled = await baml.CompileDeepResearchReport(
+        objective,
+        compactReportInputState(finalState),
+      );
+      report = buildDeepResearchReportWithMarkdown(
+        objective,
+        finalState,
+        validateCompiledReportMarkdown(compiled.markdown),
+      );
     } catch (error) {
       compilerError = errorMessage(error);
       report = buildFallbackDeepResearchReport(objective, finalState, error);
@@ -463,9 +562,14 @@ export function createDeepResearchHarnessRegistry(options: DeepResearchHarnessOp
   const copilotAdapter: HarnessAdapter = async (node, context) => {
     const step = readDeepResearchStep(node);
     if (step !== "visualize-report") {
-      return { status: "passed", output: `Deep research Copilot harness skipped unsupported node ${node.id}.` };
+      return {
+        status: "passed",
+        output: `Deep research Copilot harness skipped unsupported node ${node.id}.`,
+      };
     }
-    const reportNodeId = readOptionalStringValue(node.input, "reportNodeId") ?? deepResearchNodeId(readDeepResearchRunId(node), "report");
+    const reportNodeId =
+      readOptionalStringValue(node.input, "reportNodeId") ??
+      deepResearchNodeId(readDeepResearchRunId(node), "report");
     const report = getPayloadValue<DeepResearchReport>(context, reportNodeId, "deepResearchReport");
     const prompt = buildVisualPlanPrompt(report);
     if (!options.copilot) {
@@ -513,7 +617,9 @@ export function createDeepResearchDynamicExpander(): WorkflowDynamicExpander {
     }
     const step = readDeepResearchStep(node);
     if (step === "generate-questions") {
-      const questionSet = result.payload?.deepResearchQuestionSet as ResearchQuestionSet | undefined;
+      const questionSet = result.payload?.deepResearchQuestionSet as
+        | ResearchQuestionSet
+        | undefined;
       if (!questionSet) {
         return undefined;
       }
@@ -526,15 +632,17 @@ export function createDeepResearchDynamicExpander(): WorkflowDynamicExpander {
         if (questions.length === 0) {
           return [];
         }
-        return [buildProviderNode({
-          provider,
-          iteration,
-          questions,
-          config,
-          questionNodeId: node.id,
-          deepResearchRunId,
-          objective,
-        })];
+        return [
+          buildProviderNode({
+            provider,
+            iteration,
+            questions,
+            config,
+            questionNodeId: node.id,
+            deepResearchRunId,
+            objective,
+          }),
+        ];
       });
       return [
         ...providerNodes,
@@ -550,7 +658,9 @@ export function createDeepResearchDynamicExpander(): WorkflowDynamicExpander {
     }
 
     if (step === "assess-iteration") {
-      const assessment = result.payload?.deepResearchAssessment as ResearchIterationAssessment | undefined;
+      const assessment = result.payload?.deepResearchAssessment as
+        | ResearchIterationAssessment
+        | undefined;
       if (!assessment) {
         return undefined;
       }
@@ -569,13 +679,29 @@ export function createDeepResearchDynamicExpander(): WorkflowDynamicExpander {
   };
 }
 
-export function normalizeDeepResearchConfig(config: Partial<DeepResearchDefaults> | DeepResearchConfig | undefined): DeepResearchConfig {
+export function normalizeDeepResearchConfig(
+  config: Partial<DeepResearchDefaults> | DeepResearchConfig | undefined,
+): DeepResearchConfig {
   return {
-    providers: config?.providers?.length ? config.providers : DEFAULT_DEEP_RESEARCH_CONFIG.providers,
-    maxIterations: positiveIntegerOr(config?.maxIterations, DEFAULT_DEEP_RESEARCH_CONFIG.maxIterations),
-    questionsPerIteration: positiveIntegerOr(config?.questionsPerIteration, DEFAULT_DEEP_RESEARCH_CONFIG.questionsPerIteration),
-    maxResultsPerQuestion: positiveIntegerOr(config?.maxResultsPerQuestion, DEFAULT_DEEP_RESEARCH_CONFIG.maxResultsPerQuestion),
-    providerRetryAttempts: nonNegativeIntegerOr(config?.providerRetryAttempts, DEFAULT_DEEP_RESEARCH_CONFIG.providerRetryAttempts),
+    providers: config?.providers?.length
+      ? config.providers
+      : DEFAULT_DEEP_RESEARCH_CONFIG.providers,
+    maxIterations: positiveIntegerOr(
+      config?.maxIterations,
+      DEFAULT_DEEP_RESEARCH_CONFIG.maxIterations,
+    ),
+    questionsPerIteration: positiveIntegerOr(
+      config?.questionsPerIteration,
+      DEFAULT_DEEP_RESEARCH_CONFIG.questionsPerIteration,
+    ),
+    maxResultsPerQuestion: positiveIntegerOr(
+      config?.maxResultsPerQuestion,
+      DEFAULT_DEEP_RESEARCH_CONFIG.maxResultsPerQuestion,
+    ),
+    providerRetryAttempts: nonNegativeIntegerOr(
+      config?.providerRetryAttempts,
+      DEFAULT_DEEP_RESEARCH_CONFIG.providerRetryAttempts,
+    ),
     visualize: config?.visualize ?? DEFAULT_DEEP_RESEARCH_CONFIG.visualize,
   };
 }
@@ -592,18 +718,23 @@ function nonNegativeIntegerOr(value: number | undefined, fallback: number): numb
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
-function resolveProviderClients(options: DeepResearchHarnessOptions): Partial<Record<DeepResearchProvider, DeepResearchProviderClient>> {
+function resolveProviderClients(
+  options: DeepResearchHarnessOptions,
+): Partial<Record<DeepResearchProvider, DeepResearchProviderClient>> {
   return {
-    [DeepResearchProvider.EXA]: options.providers?.exa ?? (options.exaMcp ? createExaMcpProvider(options.exaMcp) : undefined),
+    [DeepResearchProvider.EXA]:
+      options.providers?.exa ?? (options.exaMcp ? createExaMcpProvider(options.exaMcp) : undefined),
     [DeepResearchProvider.GROK]: options.providers?.grok ?? createGrokCliProvider(options.grok),
     [DeepResearchProvider.TAVILY]: options.providers?.tavily,
     [DeepResearchProvider.PERPLEXITY]: options.providers?.perplexity,
-    [DeepResearchProvider.COPILOT_LAST30DAYS]: options.providers?.[DeepResearchProvider.COPILOT_LAST30DAYS] ?? createCopilotLast30DaysProvider({
-      copilot: options.copilot,
-      tooling: options.tooling,
-      cwd: options.cwd ?? process.cwd(),
-      homeDirectory: options.homeDirectory,
-    }),
+    [DeepResearchProvider.COPILOT_LAST30DAYS]:
+      options.providers?.[DeepResearchProvider.COPILOT_LAST30DAYS] ??
+      createCopilotLast30DaysProvider({
+        copilot: options.copilot,
+        tooling: options.tooling,
+        cwd: options.cwd ?? process.cwd(),
+        homeDirectory: options.homeDirectory,
+      }),
   };
 }
 
@@ -630,11 +761,16 @@ async function searchProviderWithRetries(
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-function findMcpTool(tools: DeepResearchMcpTool[], names: string[]): DeepResearchMcpTool | undefined {
+function findMcpTool(
+  tools: DeepResearchMcpTool[],
+  names: string[],
+): DeepResearchMcpTool | undefined {
   return tools.find((tool) => names.includes(tool.name));
 }
 
-async function connectDeepResearchMcpClient(spec: RemoteFlueMcpSpec): Promise<DeepResearchDirectMcpClient> {
+async function connectDeepResearchMcpClient(
+  spec: RemoteFlueMcpSpec,
+): Promise<DeepResearchDirectMcpClient> {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const client = new Client({
     name: "weavekit-deep-research",
@@ -642,9 +778,14 @@ async function connectDeepResearchMcpClient(spec: RemoteFlueMcpSpec): Promise<De
   });
   const requestInit = spec.headers ? { headers: spec.headers } : undefined;
   const url = new URL(spec.url);
-  const mcpTransport = spec.transport === "sse"
-    ? new (await import("@modelcontextprotocol/sdk/client/sse.js")).SSEClientTransport(url, { requestInit })
-    : new (await import("@modelcontextprotocol/sdk/client/streamableHttp.js")).StreamableHTTPClientTransport(url, { requestInit });
+  const mcpTransport =
+    spec.transport === "sse"
+      ? new (await import("@modelcontextprotocol/sdk/client/sse.js")).SSEClientTransport(url, {
+          requestInit,
+        })
+      : new (
+          await import("@modelcontextprotocol/sdk/client/streamableHttp.js")
+        ).StreamableHTTPClientTransport(url, { requestInit });
   try {
     await client.connect(mcpTransport);
     return client as DeepResearchDirectMcpClient;
@@ -654,7 +795,9 @@ async function connectDeepResearchMcpClient(spec: RemoteFlueMcpSpec): Promise<De
   }
 }
 
-async function listDeepResearchMcpTools(mcp: DeepResearchDirectMcpClient): Promise<DeepResearchDirectMcpTool[]> {
+async function listDeepResearchMcpTools(
+  mcp: DeepResearchDirectMcpClient,
+): Promise<DeepResearchDirectMcpTool[]> {
   const tools: DeepResearchDirectMcpTool[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
@@ -663,7 +806,9 @@ async function listDeepResearchMcpTools(mcp: DeepResearchDirectMcpClient): Promi
     tools.push(...page.tools);
     cursor = page.nextCursor;
     if (cursor && seenCursors.has(cursor)) {
-      throw new Error(`[weavekit] MCP server repeated tools/list cursor ${JSON.stringify(cursor)} during Exa tool discovery.`);
+      throw new Error(
+        `[weavekit] MCP server repeated tools/list cursor ${JSON.stringify(cursor)} during Exa tool discovery.`,
+      );
     }
     if (cursor) {
       seenCursors.add(cursor);
@@ -672,7 +817,10 @@ async function listDeepResearchMcpTools(mcp: DeepResearchDirectMcpClient): Promi
   return tools;
 }
 
-function findMcpToolCallName(tools: DeepResearchDirectMcpTool[], names: string[]): string | undefined {
+function findMcpToolCallName(
+  tools: DeepResearchDirectMcpTool[],
+  names: string[],
+): string | undefined {
   const tool = tools.find((item) => names.includes(item.name));
   if (!tool) {
     return undefined;
@@ -712,7 +860,9 @@ function readMcpTextContent(record: Record<string, unknown>): string | undefined
   const text = content
     .flatMap((item) => {
       const itemRecord = asRecord(item);
-      return itemRecord.type === "text" && typeof itemRecord.text === "string" ? [itemRecord.text] : [];
+      return itemRecord.type === "text" && typeof itemRecord.text === "string"
+        ? [itemRecord.text]
+        : [];
     })
     .join("\n")
     .trim();
@@ -734,11 +884,16 @@ function createExaMcpProvider(exa: DeepResearchExaMcpClient): DeepResearchProvid
       for (const [questionIndex, question] of args.questions.entries()) {
         const queries = question.searchQueries.length > 0 ? question.searchQueries : args.queries;
         for (const query of queries.slice(0, args.maxResultsPerQuestion)) {
-          const searchResult = await exa.web_search_exa({ query, numResults: args.maxResultsPerQuestion });
-          evidence.push(...await fetchExaResultContent(
-            exa,
-            normalizeExaSearchResult(searchResult, question.id, query, questionIndex),
-          ));
+          const searchResult = await exa.web_search_exa({
+            query,
+            numResults: args.maxResultsPerQuestion,
+          });
+          evidence.push(
+            ...(await fetchExaResultContent(
+              exa,
+              normalizeExaSearchResult(searchResult, question.id, query, questionIndex),
+            )),
+          );
         }
       }
       return evidence.slice(0, args.questions.length * args.maxResultsPerQuestion);
@@ -753,25 +908,33 @@ async function fetchExaResultContent(
   if (!exa.web_fetch_exa) {
     return evidence;
   }
-  return Promise.all(evidence.map(async (item) => {
-    if (!item.url || item.content) {
-      return item;
-    }
-    try {
-      const fetched = await exa.web_fetch_exa?.({ url: item.url });
-      const record = asRecord(fetched);
-      return {
-        ...item,
-        content: readOptionalString(record.content) ?? readOptionalString(record.text) ?? item.content,
-        provenance: `${item.provenance}; web_fetch_exa`,
-      };
-    } catch {
-      return item;
-    }
-  }));
+  return Promise.all(
+    evidence.map(async (item) => {
+      if (!item.url || item.content) {
+        return item;
+      }
+      try {
+        const fetched = await exa.web_fetch_exa?.({ url: item.url });
+        const record = asRecord(fetched);
+        return {
+          ...item,
+          content:
+            readOptionalString(record.content) ?? readOptionalString(record.text) ?? item.content,
+          provenance: `${item.provenance}; web_fetch_exa`,
+        };
+      } catch {
+        return item;
+      }
+    }),
+  );
 }
 
-function normalizeExaSearchResult(searchResult: unknown, questionId: string, query: string, questionIndex: number): DeepResearchProviderEvidence[] {
+function normalizeExaSearchResult(
+  searchResult: unknown,
+  questionId: string,
+  query: string,
+  questionIndex: number,
+): DeepResearchProviderEvidence[] {
   const searchRecord = asRecord(searchResult);
   const content = readOptionalString(searchRecord.content);
   if (content && !searchRecord.url && !searchRecord.title && !searchRecord.results) {
@@ -798,8 +961,16 @@ function normalizeExaSearchResult(searchResult: unknown, questionId: string, que
   });
 }
 
-function parseExaTextSearchResults(content: string, questionId: string, query: string, questionIndex: number): DeepResearchProviderEvidence[] {
-  const blocks = content.split(/\n(?=Title:\s*)/u).map((block) => block.trim()).filter(Boolean);
+function parseExaTextSearchResults(
+  content: string,
+  questionId: string,
+  query: string,
+  questionIndex: number,
+): DeepResearchProviderEvidence[] {
+  const blocks = content
+    .split(/\n(?=Title:\s*)/u)
+    .map((block) => block.trim())
+    .filter(Boolean);
   const parsed = blocks.flatMap((block, index) => {
     const title = block.match(/^Title:\s*(.+)$/mu)?.[1]?.trim();
     const url = block.match(/^URL:\s*(.+)$/mu)?.[1]?.trim();
@@ -807,40 +978,45 @@ function parseExaTextSearchResults(content: string, questionId: string, query: s
       return [];
     }
     const highlights = block.match(/^Highlights:\s*([\s\S]*)$/mu)?.[1]?.trim();
-    return [{
-      provider: DeepResearchProvider.EXA,
-      questionId,
-      query,
-      url,
-      title,
-      excerpt: highlights ? clipWhitespace(highlights, 1_000) : undefined,
-      content: block,
-      sourceQuality: "unknown",
-      provenance: `exa mcp web_search_exa text result ${questionIndex + 1}.${index + 1}`,
-    }];
+    return [
+      {
+        provider: DeepResearchProvider.EXA,
+        questionId,
+        query,
+        url,
+        title,
+        excerpt: highlights ? clipWhitespace(highlights, 1_000) : undefined,
+        content: block,
+        sourceQuality: "unknown",
+        provenance: `exa mcp web_search_exa text result ${questionIndex + 1}.${index + 1}`,
+      },
+    ];
   });
-  return parsed.length > 0 ? parsed : [{
-    provider: DeepResearchProvider.EXA,
-    questionId,
-    query,
-    content,
-    sourceQuality: "unknown",
-    provenance: `exa mcp web_search_exa text result ${questionIndex + 1}.1`,
-  }];
+  return parsed.length > 0
+    ? parsed
+    : [
+        {
+          provider: DeepResearchProvider.EXA,
+          questionId,
+          query,
+          content,
+          sourceQuality: "unknown",
+          provenance: `exa mcp web_search_exa text result ${questionIndex + 1}.1`,
+        },
+      ];
 }
 
-function createGrokCliProvider(options: DeepResearchHarnessOptions["grok"] = {}): DeepResearchProviderClient {
+function createGrokCliProvider(
+  options: DeepResearchHarnessOptions["grok"] = {},
+): DeepResearchProviderClient {
   const command = options.command ?? "grok";
   const timeoutMs = options.timeoutMs ?? 300_000;
   return {
     async search(args) {
       const prompt = buildGrokProviderPrompt(args);
-      const { stdout } = await execFileAsync(command, [
-        "-p",
-        prompt,
-        "--output-format",
-        "plain",
-      ], { timeout: timeoutMs });
+      const { stdout } = await execFileAsync(command, ["-p", prompt, "--output-format", "plain"], {
+        timeout: timeoutMs,
+      });
       const content = stdout.trim();
       if (!content) {
         throw new Error("grok returned empty deep-research output.");
@@ -871,7 +1047,11 @@ function prepareDeepResearchResearchExecution(
     const objective = readNodeObjective(node, context);
     const priorState = buildPriorState(context, deepResearchRunId);
     return executionMetadata(WorkflowHarnessKind.RESEARCH, [
-      bamlCall("GenerateResearchQuestions", "gpt-5.5", buildGenerateQuestionsPromptPreview(objective, priorState, nodeConfig)),
+      bamlCall(
+        "GenerateResearchQuestions",
+        "gpt-5.5",
+        buildGenerateQuestionsPromptPreview(objective, priorState, nodeConfig),
+      ),
     ]);
   }
   if (step === "provider-research") {
@@ -898,14 +1078,22 @@ function prepareDeepResearchResearchExecution(
   }
   if (step === "assess-iteration") {
     const deepResearchRunId = readDeepResearchRunId(node);
-    const questionSet = getPayloadValue<ResearchQuestionSet>(context, readRequiredString(node.input, "questionNodeId"), "deepResearchQuestionSet");
+    const questionSet = getPayloadValue<ResearchQuestionSet>(
+      context,
+      readRequiredString(node.input, "questionNodeId"),
+      "deepResearchQuestionSet",
+    );
     const providerNodeIds = readProviderNodeIds(node.input);
     const evidence = providerNodeIds.flatMap((nodeId) =>
-      getPayloadValue<DeepResearchEvidence[]>(context, nodeId, "deepResearchEvidence")
+      getPayloadValue<DeepResearchEvidence[]>(context, nodeId, "deepResearchEvidence"),
     );
     const priorState = buildPriorState(context, deepResearchRunId);
     return executionMetadata(WorkflowHarnessKind.RESEARCH, [
-      bamlCall("AssessResearchIteration", "gpt-5.5", buildAssessIterationPromptPreview(questionSet, evidence, priorState)),
+      bamlCall(
+        "AssessResearchIteration",
+        "gpt-5.5",
+        buildAssessIterationPromptPreview(questionSet, evidence, priorState),
+      ),
     ]);
   }
   return undefined;
@@ -971,10 +1159,16 @@ function buildExaProviderPrompt(args: {
     `Provider result limit per question: ${args.maxResultsPerQuestion}`,
     "",
     "Questions:",
-    ...args.questions.map((question) => [
-      `- ${question.id}: ${question.text}`,
-      question.searchQueries.length > 0 ? `  Search queries: ${question.searchQueries.join("; ")}` : undefined,
-    ].filter(Boolean).join("\n")),
+    ...args.questions.map((question) =>
+      [
+        `- ${question.id}: ${question.text}`,
+        question.searchQueries.length > 0
+          ? `  Search queries: ${question.searchQueries.join("; ")}`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    ),
     "",
     "All provider-node search queries:",
     ...args.queries.map((query) => `- ${query}`),
@@ -1039,20 +1233,30 @@ function createCopilotLast30DaysProvider(options: {
   return {
     async search(args) {
       if (!options.copilot) {
-        throw new Error([
-          "Deep research provider copilot-last30days requires a Copilot SDK client configured.",
-          "In CLI runs this is created automatically from [copilot] config; programmatic callers should pass options.copilot.",
-        ].join(" "));
+        throw new Error(
+          [
+            "Deep research provider copilot-last30days requires a Copilot SDK client configured.",
+            "In CLI runs this is created automatically from [copilot] config; programmatic callers should pass options.copilot.",
+          ].join(" "),
+        );
       }
-      const capabilityScope = last30DaysSkillCapabilityScope(options.cwd, options.tooling, options.homeDirectory);
+      const capabilityScope = last30DaysSkillCapabilityScope(
+        options.cwd,
+        options.tooling,
+        options.homeDirectory,
+      );
       const prompt = buildCopilotLast30DaysPrompt(args);
       const content = await options.copilot.run({
         prompt,
         mode: "research",
         model: DEFAULT_COPILOT_LAST30DAYS_MODEL,
         maxToolCalls: DEFAULT_COPILOT_LAST30DAYS_MAX_TOOL_CALLS,
-        operation: args.nodeId ?? `deep-research-${DeepResearchProvider.COPILOT_LAST30DAYS}-${args.iteration}`,
-        nodeId: args.nodeId ?? `deep-research-${DeepResearchProvider.COPILOT_LAST30DAYS}-${args.iteration}`,
+        operation:
+          args.nodeId ??
+          `deep-research-${DeepResearchProvider.COPILOT_LAST30DAYS}-${args.iteration}`,
+        nodeId:
+          args.nodeId ??
+          `deep-research-${DeepResearchProvider.COPILOT_LAST30DAYS}-${args.iteration}`,
         label: "Copilot last30days deep research",
         capabilityScope,
       });
@@ -1089,19 +1293,34 @@ function buildCopilotLast30DaysPrompt(args: {
     "Return a concise synthesis with concrete source names, URLs when available, disagreement, recency signals, and confidence limits.",
     "",
     "Questions:",
-    ...args.questions.map((question) => [
-      `- ${question.id}: ${question.text}`,
-      question.searchQueries.length > 0 ? `  Search queries: ${question.searchQueries.join("; ")}` : undefined,
-    ].filter(Boolean).join("\n")),
+    ...args.questions.map((question) =>
+      [
+        `- ${question.id}: ${question.text}`,
+        question.searchQueries.length > 0
+          ? `  Search queries: ${question.searchQueries.join("; ")}`
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    ),
     "",
     "All provider-node search queries:",
     ...args.queries.map((query) => `- ${query}`),
   ].join("\n");
 }
 
-function last30DaysSkillCapabilityScope(cwd: string, tooling?: ToolingDefaults, homeDirectory = homedir()): CopilotCapabilityScope {
+function last30DaysSkillCapabilityScope(
+  cwd: string,
+  tooling?: ToolingDefaults,
+  homeDirectory = homedir(),
+): CopilotCapabilityScope {
   const skillName = "last30days";
-  const skillDirectory = resolveRequiredSkillDiscoveryDirectory(skillName, cwd, tooling, homeDirectory);
+  const skillDirectory = resolveRequiredSkillDiscoveryDirectory(
+    skillName,
+    cwd,
+    tooling,
+    homeDirectory,
+  );
   return {
     kind: "skill",
     skillName,
@@ -1110,24 +1329,33 @@ function last30DaysSkillCapabilityScope(cwd: string, tooling?: ToolingDefaults, 
   };
 }
 
-function resolveRequiredSkillDiscoveryDirectory(skillName: string, cwd: string, tooling: ToolingDefaults | undefined, homeDirectory: string): string {
-  const candidates = uniqueStrings([
-    tooling?.skillsDirectory,
-    join(cwd, ".agents", "skills"),
-    join(cwd, ".copilot", "skills"),
-    join(homeDirectory, ".agents", "skills"),
-    join(homeDirectory, ".copilot", "skills"),
-    join(homeDirectory, ".codex", "skills"),
-  ].filter((value): value is string => Boolean(value)));
+function resolveRequiredSkillDiscoveryDirectory(
+  skillName: string,
+  cwd: string,
+  tooling: ToolingDefaults | undefined,
+  homeDirectory: string,
+): string {
+  const candidates = uniqueStrings(
+    [
+      tooling?.skillsDirectory,
+      join(cwd, ".agents", "skills"),
+      join(cwd, ".copilot", "skills"),
+      join(homeDirectory, ".agents", "skills"),
+      join(homeDirectory, ".copilot", "skills"),
+      join(homeDirectory, ".codex", "skills"),
+    ].filter((value): value is string => Boolean(value)),
+  );
   const found = candidates.find((directory) => existsSync(join(directory, skillName, "SKILL.md")));
   if (found) {
     return found;
   }
-  throw new Error([
-    `Deep research provider copilot-last30days requires the ${skillName} skill, but no ${join(skillName, "SKILL.md")} was found in configured skill directories.`,
-    `Checked: ${candidates.join(", ")}.`,
-    "Install it with `nubx skills add mvanhorn/last30days-skill -g`.",
-  ].join(" "));
+  throw new Error(
+    [
+      `Deep research provider copilot-last30days requires the ${skillName} skill, but no ${join(skillName, "SKILL.md")} was found in configured skill directories.`,
+      `Checked: ${candidates.join(", ")}.`,
+      "Install it with `nubx skills add mvanhorn/last30days-skill -g`.",
+    ].join(" "),
+  );
 }
 
 function siblingSkillNames(skillDirectory: string): string[] {
@@ -1142,7 +1370,7 @@ function siblingSkillNames(skillDirectory: string): string[] {
 
 function readDeepResearchStep(node: RuntimeWorkflowNode): DeepResearchStep | undefined {
   const step = node.input?.deepResearchStep;
-  return typeof step === "string" ? step as DeepResearchStep : undefined;
+  return typeof step === "string" ? (step as DeepResearchStep) : undefined;
 }
 
 function readDeepResearchRunId(node: RuntimeWorkflowNode): string | undefined {
@@ -1157,8 +1385,13 @@ function deepResearchRunPayload(deepResearchRunId: string | undefined): Workflow
   return deepResearchRunId ? { deepResearchRunId } : {};
 }
 
-function readNodeConfig(node: RuntimeWorkflowNode, fallback: DeepResearchConfig = DEFAULT_DEEP_RESEARCH_CONFIG): DeepResearchConfig {
-  return normalizeDeepResearchConfig((node.input?.config as Partial<DeepResearchDefaults> | undefined) ?? fallback);
+function readNodeConfig(
+  node: RuntimeWorkflowNode,
+  fallback: DeepResearchConfig = DEFAULT_DEEP_RESEARCH_CONFIG,
+): DeepResearchConfig {
+  return normalizeDeepResearchConfig(
+    (node.input?.config as Partial<DeepResearchDefaults> | undefined) ?? fallback,
+  );
 }
 
 function questionsForProvider(
@@ -1166,15 +1399,24 @@ function questionsForProvider(
   configuredProviders: string[],
   questions: DeepResearchQuestion[],
 ): DeepResearchQuestion[] {
-  return questions.filter((question) => providersForQuestion(question, configuredProviders).includes(provider));
+  return questions.filter((question) =>
+    providersForQuestion(question, configuredProviders).includes(provider),
+  );
 }
 
-function providersForQuestion(question: DeepResearchQuestion, configuredProviders: string[]): string[] {
+function providersForQuestion(
+  question: DeepResearchQuestion,
+  configuredProviders: string[],
+): string[] {
   const mode = readQuestionResearchMode(question);
   if (mode) {
-    return configuredProviders.filter((provider) => providersForResearchMode(mode).includes(provider));
+    return configuredProviders.filter((provider) =>
+      providersForResearchMode(mode).includes(provider),
+    );
   }
-  const providerHints = question.providerHints.filter((provider) => configuredProviders.includes(provider));
+  const providerHints = question.providerHints.filter((provider) =>
+    configuredProviders.includes(provider),
+  );
   return providerHints.length > 0 ? providerHints : configuredProviders;
 }
 
@@ -1203,11 +1445,13 @@ function readQuestionResearchMode(question: DeepResearchQuestion): DeepResearchM
 }
 
 function isDeepResearchMode(value: unknown): value is DeepResearchMode {
-  return value === DeepResearchMode.LOCAL_ONLY ||
+  return (
+    value === DeepResearchMode.LOCAL_ONLY ||
     value === DeepResearchMode.OFFICIAL_DOCS ||
     value === DeepResearchMode.WEB_LOOKUP ||
     value === DeepResearchMode.RECENCY_SOCIAL ||
-    value === DeepResearchMode.DEEP_RESEARCH;
+    value === DeepResearchMode.DEEP_RESEARCH
+  );
 }
 
 export function buildDeepResearchSeedQuestionNode(args: {
@@ -1227,7 +1471,9 @@ export function buildDeepResearchSeedQuestionNode(args: {
     prompt: "Generate the first research question set for the objective.",
     input: {
       deepResearchStep: "generate-questions",
-      ...(args.deepResearchRunId ? { deepResearchRunId: args.deepResearchRunId, objective: args.objective } : {}),
+      ...(args.deepResearchRunId
+        ? { deepResearchRunId: args.deepResearchRunId, objective: args.objective }
+        : {}),
       iteration: 1,
       config: args.config,
     },
@@ -1292,7 +1538,11 @@ function buildProviderNode(args: {
       provider: args.provider,
       iteration: args.iteration,
       questions: args.questions,
-      queries: uniqueStrings(args.questions.flatMap((question) => question.searchQueries.length > 0 ? question.searchQueries : [question.text])),
+      queries: uniqueStrings(
+        args.questions.flatMap((question) =>
+          question.searchQueries.length > 0 ? question.searchQueries : [question.text],
+        ),
+      ),
       maxResultsPerQuestion: args.config.maxResultsPerQuestion,
       questionNodeId: args.questionNodeId,
       config: args.config,
@@ -1314,7 +1564,8 @@ function providerNodeModel(provider: string): { model: string; modelRationale: s
   if (provider === DeepResearchProvider.COPILOT_LAST30DAYS) {
     return {
       model: DEEP_RESEARCH_PROVIDER_SONNET_MODEL,
-      modelRationale: "Copilot last30days provider research uses Sonnet for recent-source synthesis.",
+      modelRationale:
+        "Copilot last30days provider research uses Sonnet for recent-source synthesis.",
     };
   }
   if (provider === DeepResearchProvider.GROK) {
@@ -1325,7 +1576,8 @@ function providerNodeModel(provider: string): { model: string; modelRationale: s
   }
   return {
     model: "deterministic",
-    modelRationale: "Provider research executes configured provider tooling rather than a planner model.",
+    modelRationale:
+      "Provider research executes configured provider tooling rather than a planner model.",
   };
 }
 
@@ -1362,15 +1614,21 @@ function buildAssessmentNode(args: {
   };
 }
 
-function buildReportNode(dependency: string, deepResearchRunId: string | undefined, objective: string): RuntimeWorkflowNode {
+function buildReportNode(
+  dependency: string,
+  deepResearchRunId: string | undefined,
+  objective: string,
+): RuntimeWorkflowNode {
   return {
     id: deepResearchNodeId(deepResearchRunId, "report"),
     kind: WorkflowNodeKind.REPORT,
     harness: WorkflowHarnessKind.REPORTER,
     title: "Compile deep research report",
-    description: "Compile the final cited Markdown report from all research evidence and assessments.",
+    description:
+      "Compile the final cited Markdown report from all research evidence and assessments.",
     model: "claude-opus-4.8",
-    modelRationale: "Final report synthesis uses the strongest available long-form synthesis model.",
+    modelRationale:
+      "Final report synthesis uses the strongest available long-form synthesis model.",
     prompt: "Compile the deep research Markdown report.",
     input: {
       deepResearchStep: "compile-report",
@@ -1385,7 +1643,9 @@ function buildReportNode(dependency: string, deepResearchRunId: string | undefin
 }
 
 function buildVisualizationNode(reportNodeId: string): RuntimeWorkflowNode {
-  const runId = reportNodeId.endsWith("-report") ? reportNodeId.slice(0, -"report".length).replace(/-$/u, "") : undefined;
+  const runId = reportNodeId.endsWith("-report")
+    ? reportNodeId.slice(0, -"report".length).replace(/-$/u, "")
+    : undefined;
   return {
     id: runId && runId !== "deep-research" ? `${runId}-visual-plan` : "deep-research-visual-plan",
     kind: WorkflowNodeKind.VISUALIZATION,
@@ -1407,7 +1667,10 @@ function buildVisualizationNode(reportNodeId: string): RuntimeWorkflowNode {
   };
 }
 
-function buildPriorState(context: WorkflowExecutionContext, deepResearchRunId?: string): DeepResearchPriorState {
+function buildPriorState(
+  context: WorkflowExecutionContext,
+  deepResearchRunId?: string,
+): DeepResearchPriorState {
   const evidence: DeepResearchEvidence[] = [];
   const assessments: ResearchIterationAssessment[] = [];
   const completedQuestionIds = new Set<string>();
@@ -1444,8 +1707,12 @@ function compactReportInputState(finalState: DeepResearchPriorState): DeepResear
     ...finalState,
     evidence: finalState.evidence.map((item) => ({
       ...item,
-      excerpt: item.excerpt ? clipWhitespace(item.excerpt, REPORT_INPUT_EXCERPT_LIMIT) : item.excerpt,
-      content: item.content ? clipWhitespace(item.content, REPORT_INPUT_CONTENT_LIMIT) : item.content,
+      excerpt: item.excerpt
+        ? clipWhitespace(item.excerpt, REPORT_INPUT_EXCERPT_LIMIT)
+        : item.excerpt,
+      content: item.content
+        ? clipWhitespace(item.content, REPORT_INPUT_CONTENT_LIMIT)
+        : item.content,
     })),
   };
 }
@@ -1475,7 +1742,9 @@ function validateCompiledReportMarkdown(markdown: string): string {
     throw new Error("CompileDeepResearchReport returned empty markdown.");
   }
   if (!/^#\s+Deep Research Report\b/mu.test(normalized)) {
-    throw new Error("CompileDeepResearchReport returned markdown without the required Markdown report heading.");
+    throw new Error(
+      "CompileDeepResearchReport returned markdown without the required Markdown report heading.",
+    );
   }
   return normalized;
 }
@@ -1496,16 +1765,21 @@ function buildDeterministicDeepResearchReportMetadata(
       `Collected ${evidence.length} normalized evidence item(s) from ${uniqueStrings(evidence.map((item) => item.provider)).join(", ") || "configured providers"}.`,
       methodologyDetail,
     ].join(" "),
-    findings: [{
-      title: findingTitle,
-      summary: findingSummary,
-      evidenceIds: evidence.slice(0, 25).map((item) => item.id),
-      confidence,
-    }],
+    findings: [
+      {
+        title: findingTitle,
+        summary: findingSummary,
+        evidenceIds: evidence.slice(0, 25).map((item) => item.id),
+        confidence,
+      },
+    ],
     evidenceMatrix: evidence.slice(0, FALLBACK_REPORT_EVIDENCE_MATRIX_LIMIT).map((item) => ({
       questionId: item.questionId,
       evidenceId: item.id,
-      relevance: item.excerpt || item.content ? clipWhitespace(item.excerpt ?? item.content ?? "", 180) : "Source collected for this research question.",
+      relevance:
+        item.excerpt || item.content
+          ? clipWhitespace(item.excerpt ?? item.content ?? "", 180)
+          : "Source collected for this research question.",
       quality: item.sourceQuality,
     })),
     contradictions: collectContradictions(finalState),
@@ -1540,21 +1814,27 @@ function buildFallbackDeepResearchReport(
 }
 
 function collectContradictions(finalState: DeepResearchPriorState): string[] {
-  return uniqueStrings(finalState.assessments.flatMap((assessment) => [
-    ...assessment.contradictions,
-    ...assessment.questionCoverage.flatMap((coverage) => coverage.contradictions),
-  ]));
+  return uniqueStrings(
+    finalState.assessments.flatMap((assessment) => [
+      ...assessment.contradictions,
+      ...assessment.questionCoverage.flatMap((coverage) => coverage.contradictions),
+    ]),
+  );
 }
 
 function collectGaps(finalState: DeepResearchPriorState): string[] {
-  return uniqueStrings(finalState.assessments.flatMap((assessment) => [
-    ...assessment.questionCoverage.flatMap((coverage) => coverage.gaps),
-    ...(assessment.answerSufficient ? [] : [assessment.stopReason]),
-  ]));
+  return uniqueStrings(
+    finalState.assessments.flatMap((assessment) => [
+      ...assessment.questionCoverage.flatMap((coverage) => coverage.gaps),
+      ...(assessment.answerSufficient ? [] : [assessment.stopReason]),
+    ]),
+  );
 }
 
 function estimateFallbackConfidence(finalState: DeepResearchPriorState): string {
-  const coverage = finalState.assessments.flatMap((assessment) => assessment.questionCoverage.map((item) => item.coverageScore));
+  const coverage = finalState.assessments.flatMap((assessment) =>
+    assessment.questionCoverage.map((item) => item.coverageScore),
+  );
   if (coverage.length === 0 || finalState.evidence.length === 0) {
     return "low";
   }
@@ -1601,7 +1881,9 @@ function renderFallbackDeepResearchMarkdown(
       "",
       `Confidence: ${finding.confidence}`,
       "",
-      finding.evidenceIds.length > 0 ? `Evidence IDs: ${finding.evidenceIds.join(", ")}` : "Evidence IDs: none recorded.",
+      finding.evidenceIds.length > 0
+        ? `Evidence IDs: ${finding.evidenceIds.join(", ")}`
+        : "Evidence IDs: none recorded.",
       "",
     ]),
     "## Iteration Assessments",
@@ -1609,17 +1891,19 @@ function renderFallbackDeepResearchMarkdown(
     ...(finalState.assessments.length === 0
       ? ["No assessment payloads were recorded.", ""]
       : finalState.assessments.flatMap((assessment) => [
-        `### Iteration ${assessment.iteration}`,
-        "",
-        `Answer sufficient: ${assessment.answerSufficient ? "yes" : "no"}`,
-        "",
-        assessment.stopReason,
-        "",
-      ])),
+          `### Iteration ${assessment.iteration}`,
+          "",
+          `Answer sufficient: ${assessment.answerSufficient ? "yes" : "no"}`,
+          "",
+          assessment.stopReason,
+          "",
+        ])),
     "## Contradictions And Gaps",
     "",
     report.contradictions.length > 0 ? "### Contradictions" : "No contradictions were recorded.",
-    ...(report.contradictions.length > 0 ? ["", ...renderMarkdownList(report.contradictions), ""] : [""]),
+    ...(report.contradictions.length > 0
+      ? ["", ...renderMarkdownList(report.contradictions), ""]
+      : [""]),
     report.gaps.length > 0 ? "### Gaps" : "No gaps were recorded.",
     ...(report.gaps.length > 0 ? ["", ...renderMarkdownList(report.gaps), ""] : [""]),
     "## Evidence Matrix",
@@ -1628,33 +1912,38 @@ function renderFallbackDeepResearchMarkdown(
     "| --- | --- | --- | --- |",
     ...(report.evidenceMatrix.length === 0
       ? ["| n/a | n/a | n/a | No evidence matrix entries were recorded. |"]
-      : report.evidenceMatrix.map((entry) =>
-        `| ${markdownTableCell(entry.questionId)} | ${markdownTableCell(entry.evidenceId)} | ${markdownTableCell(entry.quality)} | ${markdownTableCell(entry.relevance)} |`
-      )),
+      : report.evidenceMatrix.map(
+          (entry) =>
+            `| ${markdownTableCell(entry.questionId)} | ${markdownTableCell(entry.evidenceId)} | ${markdownTableCell(entry.quality)} | ${markdownTableCell(entry.relevance)} |`,
+        )),
     "",
     "## Source Highlights",
     "",
     ...(evidence.length === 0
       ? ["No source evidence was recorded.", ""]
-      : evidence.slice(0, FALLBACK_REPORT_EVIDENCE_MATRIX_LIMIT).flatMap((item) => [
-        `### ${item.id}: ${item.title ?? item.url ?? item.provider}`,
-        "",
-        `Provider: ${item.provider}; question: ${item.questionId}; quality: ${item.sourceQuality}; provenance: ${item.provenance}`,
-        "",
-        item.url ? `URL: ${item.url}` : "URL: not recorded",
-        "",
-        item.excerpt || item.content ? clipWhitespace(item.excerpt ?? item.content ?? "", 700) : "No excerpt or content was recorded.",
-        "",
-      ])),
+      : evidence
+          .slice(0, FALLBACK_REPORT_EVIDENCE_MATRIX_LIMIT)
+          .flatMap((item) => [
+            `### ${item.id}: ${item.title ?? item.url ?? item.provider}`,
+            "",
+            `Provider: ${item.provider}; question: ${item.questionId}; quality: ${item.sourceQuality}; provenance: ${item.provenance}`,
+            "",
+            item.url ? `URL: ${item.url}` : "URL: not recorded",
+            "",
+            item.excerpt || item.content
+              ? clipWhitespace(item.excerpt ?? item.content ?? "", 700)
+              : "No excerpt or content was recorded.",
+            "",
+          ])),
     "## Sources",
     "",
     ...(report.sources.length === 0
       ? ["No source URLs were recorded."]
       : report.sources.map((source) => {
-        const title = source.title || source.id;
-        const location = source.url ? ` - ${source.url}` : "";
-        return `- [${source.id}] ${title}${location} (${source.provider}, ${source.quality})`;
-      })),
+          const title = source.title || source.id;
+          const location = source.url ? ` - ${source.url}` : "";
+          return `- [${source.id}] ${title}${location} (${source.provider}, ${source.quality})`;
+        })),
   ].join("\n");
 }
 
@@ -1699,14 +1988,18 @@ async function persistReportMarkdown(
     return undefined;
   }
   await mkdir(outputDir, { recursive: true });
-  const reportPath = deepResearchRunId ? `${deepResearchRunId}-DeepResearchReport.md` : DEEP_RESEARCH_REPORT_PATH;
+  const reportPath = deepResearchRunId
+    ? `${deepResearchRunId}-DeepResearchReport.md`
+    : DEEP_RESEARCH_REPORT_PATH;
   const path = join(outputDir, reportPath);
   await writeFile(path, report.markdown, "utf8");
-  return [{
-    kind: "markdown",
-    path: reportPath,
-    description: "Deep research Markdown report.",
-  }];
+  return [
+    {
+      kind: "markdown",
+      path: reportPath,
+      description: "Deep research Markdown report.",
+    },
+  ];
 }
 
 function buildVisualPlanPrompt(report: DeepResearchReport): string {
@@ -1728,19 +2021,26 @@ function getPayloadValue<T>(context: WorkflowExecutionContext, nodeId: string, k
   return value as T;
 }
 
-function getOptionalPayloadArray<T>(context: WorkflowExecutionContext, nodeId: string, key: string): T[] {
+function getOptionalPayloadArray<T>(
+  context: WorkflowExecutionContext,
+  nodeId: string,
+  key: string,
+): T[] {
   const value = context.payloads.get(nodeId)?.[key];
-  return Array.isArray(value) ? value as T[] : [];
+  return Array.isArray(value) ? (value as T[]) : [];
 }
 
 function isDeepResearchProviderFailure(value: unknown): value is DeepResearchProviderFailure {
-  const record = value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-  return typeof record.provider === "string" &&
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return (
+    typeof record.provider === "string" &&
     typeof record.iteration === "number" &&
     typeof record.retryCount === "number" &&
-    typeof record.message === "string";
+    typeof record.message === "string"
+  );
 }
 
 function readRequiredString(input: WorkflowNodePayload | undefined, key: string): string {
@@ -1751,7 +2051,10 @@ function readRequiredString(input: WorkflowNodePayload | undefined, key: string)
   return value;
 }
 
-function readOptionalStringValue(input: WorkflowNodePayload | undefined, key: string): string | undefined {
+function readOptionalStringValue(
+  input: WorkflowNodePayload | undefined,
+  key: string,
+): string | undefined {
   const value = input?.[key];
   return typeof value === "string" && value.trim() ? value : undefined;
 }
@@ -1766,12 +2069,14 @@ function readRequiredNumber(input: WorkflowNodePayload | undefined, key: string)
 
 function readQuestions(input: WorkflowNodePayload | undefined): DeepResearchQuestion[] {
   const questions = input?.questions;
-  return Array.isArray(questions) ? questions as DeepResearchQuestion[] : [];
+  return Array.isArray(questions) ? (questions as DeepResearchQuestion[]) : [];
 }
 
 function readStringArray(input: WorkflowNodePayload | undefined, key: string): string[] {
   const value = input?.[key];
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }
 
 function readProviderNodeIds(input: WorkflowNodePayload | undefined): string[] {
@@ -1784,17 +2089,24 @@ function uniqueStrings(values: string[]): string[] {
 
 function clipWhitespace(value: string, maxLength: number): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trimEnd()}...` : normalized;
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength - 3).trimEnd()}...`
+    : normalized;
 }
 
 function isDeepResearchEvidence(value: unknown): value is DeepResearchEvidence {
   const record = asRecord(value);
-  return typeof record.id === "string" && typeof record.provider === "string" && typeof record.questionId === "string";
+  return (
+    typeof record.id === "string" &&
+    typeof record.provider === "string" &&
+    typeof record.questionId === "string"
+  );
 }
 
 function isDeepResearchReport(value: unknown): value is DeepResearchReport {
   const record = asRecord(value);
-  return typeof record.objective === "string" &&
+  return (
+    typeof record.objective === "string" &&
     typeof record.methodology === "string" &&
     Array.isArray(record.findings) &&
     Array.isArray(record.evidenceMatrix) &&
@@ -1802,7 +2114,8 @@ function isDeepResearchReport(value: unknown): value is DeepResearchReport {
     Array.isArray(record.gaps) &&
     typeof record.confidence === "string" &&
     Array.isArray(record.sources) &&
-    typeof record.markdown === "string";
+    typeof record.markdown === "string"
+  );
 }
 
 function isResearchIterationAssessment(value: unknown): value is ResearchIterationAssessment {
@@ -1811,14 +2124,19 @@ function isResearchIterationAssessment(value: unknown): value is ResearchIterati
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function executionMetadata(executor: string, calls: WorkflowExecutionCall[]): WorkflowExecutionMetadata {
+function executionMetadata(
+  executor: string,
+  calls: WorkflowExecutionCall[],
+): WorkflowExecutionMetadata {
   return {
     executor,
     calls,

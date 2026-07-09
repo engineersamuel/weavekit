@@ -25,48 +25,60 @@ describe("template optimizer candidate plan", () => {
     tempDirs.push(runsRoot);
     const runId = "run-123";
     await mkdir(join(runsRoot, runId), { recursive: true });
-    await writeFile(join(runsRoot, runId, "optimizer-run.json"), JSON.stringify({
-      finalIncumbent: {
-        id: "candidate-a",
-        templateId: "source-to-project",
-        mode: "advisory",
-        sharedInitialNodes: [
-          templateNode("source-intake-preflight", "verification", "verifier", []),
-          templateNode("source-reading", "research", "copilot-sdk", ["source-intake-preflight"]),
-          templateNode("council-review", "deliberation", "decision-council", ["source-reading"]),
-        ],
-        modePolicies: [
-          {
-            mode: "advisory",
-            enabledForOptimization: true,
-            constraints: [],
-            expansionCases: [
-              {
-                id: "single-selected-plan",
-                trigger: "council-review",
-                conditionSummary: "One accepted opportunity.",
-                nodes: [
-                  templateNode("plan-opportunity-accepted-opportunity", "planning", "research", ["council-review"]),
-                  templateNode("report-opportunity-accepted-opportunity", "report", "reporter", ["plan-opportunity-accepted-opportunity"]),
-                ],
-                expectedPayloads: ["sourceToProjectReportMarkdown"],
-                mustRunBeforeReport: true,
-                rationale: "Exercise candidate expansion.",
-              },
-            ],
-          },
-        ],
-        changedInitialDag: true,
-        changedExpansionPolicy: true,
-        requiresAutonomousPrReview: false,
-        summary: "Candidate summary",
-        rationale: "Candidate rationale",
-        suggestedCodeTouchpoints: [],
-        adoptionTasks: [],
-      },
-    }), "utf8");
+    await writeFile(
+      join(runsRoot, runId, "optimizer-run.json"),
+      JSON.stringify({
+        finalIncumbent: {
+          id: "candidate-a",
+          templateId: "source-to-project",
+          mode: "advisory",
+          sharedInitialNodes: [
+            templateNode("source-intake-preflight", "verification", "verifier", []),
+            templateNode("source-reading", "research", "copilot-sdk", ["source-intake-preflight"]),
+            templateNode("council-review", "deliberation", "decision-council", ["source-reading"]),
+          ],
+          modePolicies: [
+            {
+              mode: "advisory",
+              enabledForOptimization: true,
+              constraints: [],
+              expansionCases: [
+                {
+                  id: "single-selected-plan",
+                  trigger: "council-review",
+                  conditionSummary: "One accepted opportunity.",
+                  nodes: [
+                    templateNode("plan-opportunity-accepted-opportunity", "planning", "research", [
+                      "council-review",
+                    ]),
+                    templateNode("report-opportunity-accepted-opportunity", "report", "reporter", [
+                      "plan-opportunity-accepted-opportunity",
+                    ]),
+                  ],
+                  expectedPayloads: ["sourceToProjectReportMarkdown"],
+                  mustRunBeforeReport: true,
+                  rationale: "Exercise candidate expansion.",
+                },
+              ],
+            },
+          ],
+          changedInitialDag: true,
+          changedExpansionPolicy: true,
+          requiresAutonomousPrReview: false,
+          summary: "Candidate summary",
+          rationale: "Candidate rationale",
+          suggestedCodeTouchpoints: [],
+          adoptionTasks: [],
+        },
+      }),
+      "utf8",
+    );
 
-    const candidate = await loadTemplateOptimizerCandidatePlan({ runsRoot, runId, candidateId: "candidate-a" });
+    const candidate = await loadTemplateOptimizerCandidatePlan({
+      runsRoot,
+      runId,
+      candidateId: "candidate-a",
+    });
     const plan = materializeTemplateOptimizerCandidatePlan({
       candidate,
       objective: "Try optimized template",
@@ -75,7 +87,11 @@ describe("template optimizer candidate plan", () => {
 
     expect(plan.id).toBe("source-to-project-optimized-run-123-candidate-a");
     expect(plan.templateId).toBe("source-to-project");
-    expect(plan.nodes.map((node) => node.id)).toEqual(["visual-plan-preflight", "source-reading", "council-review"]);
+    expect(plan.nodes.map((node) => node.id)).toEqual([
+      "visual-plan-preflight",
+      "source-reading",
+      "council-review",
+    ]);
     expect(plan.nodes[0]).toMatchObject({
       id: "visual-plan-preflight",
       title: "Verify visual-plan capability",
@@ -89,15 +105,32 @@ describe("template optimizer candidate plan", () => {
     const candidate = candidateFixture({
       expansionCases: [
         expansionCase("single-selected-plan", [
-          templateNode("plan-opportunity-accepted-opportunity", "planning", "research", ["council-review"]),
+          templateNode("plan-opportunity-accepted-opportunity", "planning", "research", [
+            "council-review",
+          ]),
         ]),
         expansionCase("multiple-selected-plans", [
-          templateNode("plan-opportunity-branch-accepted-opportunity", "planning", "research", ["council-review"]),
-          templateNode("fan-in-opportunity-selection", "deliberation", "decision-council", ["plan-opportunity-branch-accepted-opportunity"]),
-          templateNode("recommended-advisory-package", "planning", "research", ["fan-in-opportunity-selection"]),
-          templateNode("final-recommendation-review-multiple-opportunities", "deliberation", "decision-council", ["recommended-advisory-package"]),
-          templateNode("report-multiple-opportunities", "report", "reporter", ["final-recommendation-review-multiple-opportunities"]),
-          templateNode("visual-multiple-opportunity-map", "visualization", "reporter", ["report-multiple-opportunities"]),
+          templateNode("plan-opportunity-branch-accepted-opportunity", "planning", "research", [
+            "council-review",
+          ]),
+          templateNode("fan-in-opportunity-selection", "deliberation", "decision-council", [
+            "plan-opportunity-branch-accepted-opportunity",
+          ]),
+          templateNode("recommended-advisory-package", "planning", "research", [
+            "fan-in-opportunity-selection",
+          ]),
+          templateNode(
+            "final-recommendation-review-multiple-opportunities",
+            "deliberation",
+            "decision-council",
+            ["recommended-advisory-package"],
+          ),
+          templateNode("report-multiple-opportunities", "report", "reporter", [
+            "final-recommendation-review-multiple-opportunities",
+          ]),
+          templateNode("visual-multiple-opportunity-map", "visualization", "reporter", [
+            "report-multiple-opportunities",
+          ]),
         ]),
       ],
     });
@@ -121,7 +154,13 @@ describe("template optimizer candidate plan", () => {
         output: "Council accepted multiple opportunities.",
         payload: { councilReview: councilReviewFixture(2) },
       },
-      currentPlan: { id: "plan", objective: "objective", templateId: "source-to-project", maxReplans: 0, nodes: [] },
+      currentPlan: {
+        id: "plan",
+        objective: "objective",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
       payloads: new Map(),
       completedNodeIds: new Set(),
     });
@@ -191,7 +230,13 @@ function councilReviewFixture(count: number) {
       lesson: "Transfer loop practice.",
       projectChange: "Adapt loops to workflow DAGs.",
       changeSurface: "src",
-      score: { applicability: 0.95, impact: 0.9, confidence: 0.9, implementationCost: 0.3, risk: 0.2 },
+      score: {
+        applicability: 0.95,
+        impact: 0.9,
+        confidence: 0.9,
+        implementationCost: 0.3,
+        risk: 0.2,
+      },
       evidence: [{ id: `e-${index + 1}`, source: "fixture" }],
       speculative: false,
     })),
@@ -201,12 +246,7 @@ function councilReviewFixture(count: number) {
   };
 }
 
-function templateNode(
-  id: string,
-  kind: string,
-  harness: string,
-  dependsOn: string[],
-) {
+function templateNode(id: string, kind: string, harness: string, dependsOn: string[]) {
   return {
     id,
     kind,

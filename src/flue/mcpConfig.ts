@@ -31,7 +31,9 @@ export function buildFlueMcpSpecs(
       enabled: Boolean(env.EXA_API_KEY),
       // Note: Exa MCP server requires the API key in the URL at runtime.
       // Runtime secrets like env.EXA_API_KEY are passed as connection parameters, not hardcoded from config files.
-      url: env.EXA_API_KEY ? `https://mcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(env.EXA_API_KEY)}` : "https://mcp.exa.ai/mcp",
+      url: env.EXA_API_KEY
+        ? `https://mcp.exa.ai/mcp?exaApiKey=${encodeURIComponent(env.EXA_API_KEY)}`
+        : "https://mcp.exa.ai/mcp",
       transport: "streamable-http",
       tools: ["*"],
     },
@@ -64,7 +66,8 @@ export function buildFlueMcpSpecs(
       name: "awesome-copilot",
       kind: "unsupported",
       source: "stdio",
-      reason: "Installed Flue connectMcpServer supports remote MCP endpoints; bridge the Docker stdio server before exposing it as Flue tools.",
+      reason:
+        "Installed Flue connectMcpServer supports remote MCP endpoints; bridge the Docker stdio server before exposing it as Flue tools.",
     },
   ];
 

@@ -37,11 +37,16 @@ export interface InitialRouter {
 }
 
 export const ROUTE_CONSIDERATIONS: Record<WorkflowRouteKind, string> = {
-  [Classifier.DIRECT]: "Handle directly when the prompt is narrow and does not need planning, research, multiple perspectives, or extra context.",
-  [Classifier.PLAN]: "Prefer plan mode when the request is mostly about breaking work into a concrete sequence, milestones, or implementation steps.",
-  [Classifier.RESEARCH]: "Use deep research when the request depends on current facts, evidence, comparisons, or exploration across sources.",
-  [Classifier.DECISION_COUNCIL]: "Pass to the decision council when the request needs a recommendation or trade-off analysis across competing options.",
-  [Classifier.ELICITATION]: "Elicit more information when the prompt is underspecified and the next step needs clarity about goals, constraints, or success criteria.",
+  [Classifier.DIRECT]:
+    "Handle directly when the prompt is narrow and does not need planning, research, multiple perspectives, or extra context.",
+  [Classifier.PLAN]:
+    "Prefer plan mode when the request is mostly about breaking work into a concrete sequence, milestones, or implementation steps.",
+  [Classifier.RESEARCH]:
+    "Use deep research when the request depends on current facts, evidence, comparisons, or exploration across sources.",
+  [Classifier.DECISION_COUNCIL]:
+    "Pass to the decision council when the request needs a recommendation or trade-off analysis across competing options.",
+  [Classifier.ELICITATION]:
+    "Elicit more information when the prompt is underspecified and the next step needs clarity about goals, constraints, or success criteria.",
 };
 
 function normalizeText(text: string): string {
@@ -140,40 +145,89 @@ export class HeuristicRouteScorer implements RouteScorer {
     ];
 
     if (countMatches(text, decisionTerms) > 0) {
-      addPoint(Classifier.DECISION_COUNCIL, 4, "The prompt asks for a decision, recommendation, or trade-off analysis.");
+      addPoint(
+        Classifier.DECISION_COUNCIL,
+        4,
+        "The prompt asks for a decision, recommendation, or trade-off analysis.",
+      );
     }
     if (countMatches(text, researchTerms) > 0) {
-      addPoint(Classifier.RESEARCH, 4, "The prompt asks for investigation, comparison, or evidence gathering.");
+      addPoint(
+        Classifier.RESEARCH,
+        4,
+        "The prompt asks for investigation, comparison, or evidence gathering.",
+      );
     }
     if (countMatches(text, planningTerms) > 0) {
-      addPoint(Classifier.PLAN, 4, "The prompt is framed around decomposition into steps or milestones.");
+      addPoint(
+        Classifier.PLAN,
+        4,
+        "The prompt is framed around decomposition into steps or milestones.",
+      );
     }
     if (countMatches(text, elicitationTerms) > 0) {
-      addPoint(Classifier.ELICITATION, 4, "The prompt is underspecified enough that the next step should clarify assumptions.");
+      addPoint(
+        Classifier.ELICITATION,
+        4,
+        "The prompt is underspecified enough that the next step should clarify assumptions.",
+      );
     }
 
     if (words.length >= 40) {
-      addPoint(Classifier.PLAN, 2, "The prompt is long and structured enough that planning is likely the best first move.");
+      addPoint(
+        Classifier.PLAN,
+        2,
+        "The prompt is long and structured enough that planning is likely the best first move.",
+      );
     }
     const isUnderspecified =
       words.length <= 6 &&
       /help|need|unclear|ambiguous|unknown|what|which|should|could|maybe|\?/.test(text);
-    if (isUnderspecified && !text.includes("plan") && !text.includes("research") && !text.includes("decision") && !text.includes("recommend")) {
-      addPoint(Classifier.ELICITATION, 3, "The prompt is terse and lacks enough detail for a direct route.");
+    if (
+      isUnderspecified &&
+      !text.includes("plan") &&
+      !text.includes("research") &&
+      !text.includes("decision") &&
+      !text.includes("recommend")
+    ) {
+      addPoint(
+        Classifier.ELICITATION,
+        3,
+        "The prompt is terse and lacks enough detail for a direct route.",
+      );
     }
 
     if (scores[Classifier.DECISION_COUNCIL].score > 0 && scores[Classifier.PLAN].score > 0) {
-      addPoint(Classifier.DECISION_COUNCIL, 1, "The prompt combines planning with a choice, which tends to favor a decision-first pass.");
+      addPoint(
+        Classifier.DECISION_COUNCIL,
+        1,
+        "The prompt combines planning with a choice, which tends to favor a decision-first pass.",
+      );
     }
     if (scores[Classifier.RESEARCH].score > 0 && scores[Classifier.PLAN].score > 0) {
-      addPoint(Classifier.RESEARCH, 1, "The prompt combines planning with evidence gathering, so research may be the better first pass.");
+      addPoint(
+        Classifier.RESEARCH,
+        1,
+        "The prompt combines planning with evidence gathering, so research may be the better first pass.",
+      );
     }
 
-    if (scores[Classifier.DECISION_COUNCIL].score === 0 && scores[Classifier.RESEARCH].score === 0 && scores[Classifier.PLAN].score === 0 && scores[Classifier.ELICITATION].score === 0) {
-      addPoint(Classifier.DIRECT, 2, "The prompt is straightforward and does not contain strong planning, research, or decision cues.");
+    if (
+      scores[Classifier.DECISION_COUNCIL].score === 0 &&
+      scores[Classifier.RESEARCH].score === 0 &&
+      scores[Classifier.PLAN].score === 0 &&
+      scores[Classifier.ELICITATION].score === 0
+    ) {
+      addPoint(
+        Classifier.DIRECT,
+        2,
+        "The prompt is straightforward and does not contain strong planning, research, or decision cues.",
+      );
     }
 
-    return (Object.entries(scores) as Array<[WorkflowRouteKind, { score: number; reasons: string[] }]>)
+    return (
+      Object.entries(scores) as Array<[WorkflowRouteKind, { score: number; reasons: string[] }]>
+    )
       .map(([kind, entry]) => ({
         kind: kind as WorkflowRouteKind,
         score: entry.score,
@@ -199,7 +253,9 @@ export class InitialWorkflowRouter implements InitialRouter {
     return {
       route: decisionRoute,
       score: selected.score,
-      rationale: selected.reason || "No strong signal was present, so the request falls back to the direct path.",
+      rationale:
+        selected.reason ||
+        "No strong signal was present, so the request falls back to the direct path.",
       consideration: ROUTE_CONSIDERATIONS[decisionRoute],
       needsElicitation,
       scores,
@@ -207,6 +263,8 @@ export class InitialWorkflowRouter implements InitialRouter {
   }
 }
 
-export function createInitialWorkflowRouter(scorer: RouteScorer = new HeuristicRouteScorer()): InitialRouter {
+export function createInitialWorkflowRouter(
+  scorer: RouteScorer = new HeuristicRouteScorer(),
+): InitialRouter {
   return new InitialWorkflowRouter(scorer);
 }

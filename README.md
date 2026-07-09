@@ -56,6 +56,7 @@ export BAML_MODEL="gpt-5-mini"
 `BAML_MODEL` sets the model for `DefaultClient`, the fallback used when no model router is injected. By default the decision council routes `normalize`/`assess`/`report` to fixed policy clients (see [Model + effort routing](#model--effort-routing)), so `BAML_MODEL` does not affect those calls. Defaults to `gpt-5-mini` in prior versions; must now be set explicitly.
 
 > **Migration note (from ≤ aa829d9):** The BAML `DefaultClient` env variables were renamed when client definitions were extracted to `baml_src/clients.baml`. Rename your environment variables:
+>
 > - `BAML_OPENAI_BASE_URL` → `COPILOT_PROXY_BASE_URL`
 > - `BAML_OPENAI_API_KEY` → `COPILOT_PROXY_API_KEY`
 
@@ -163,13 +164,13 @@ Set `[flue].model` in `~/.weavekit/config.toml` to override the default Flue mod
 
 The Flue workflow can expose selected MCP tools from the same systems used in local Copilot CLI config:
 
-| MCP | Env/config | Notes |
-| --- | --- | --- |
-| Exa | `EXA_API_KEY` | Builds `https://mcp.exa.ai/mcp?exaApiKey=...` at runtime. |
-| EngHub | none | Uses `https://mcp.eng.ms`. |
-| Context7 | `CONTEXT7_API_KEY` | Sent as a trusted application header. |
-| Baton | `includeLocalBaton: true` | Local development only; requires Baton MCP server on `http://localhost:53724/mcp`. |
-| awesome-copilot | not wired | Current Flue MCP API expects remote MCP endpoints; bridge the Docker stdio server before exposing it. |
+| MCP             | Env/config                | Notes                                                                                                 |
+| --------------- | ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Exa             | `EXA_API_KEY`             | Builds `https://mcp.exa.ai/mcp?exaApiKey=...` at runtime.                                             |
+| EngHub          | none                      | Uses `https://mcp.eng.ms`.                                                                            |
+| Context7        | `CONTEXT7_API_KEY`        | Sent as a trusted application header.                                                                 |
+| Baton           | `includeLocalBaton: true` | Local development only; requires Baton MCP server on `http://localhost:53724/mcp`.                    |
+| awesome-copilot | not wired                 | Current Flue MCP API expects remote MCP endpoints; bridge the Docker stdio server before exposing it. |
 
 Server or application registration code should use `createConfiguredDecisionCouncilWorkflow(...)` when it wants the environment-configured MCP tools attached to the Flue workflow:
 
@@ -286,7 +287,11 @@ import {
 } from "weavekit";
 
 const sunTzu = getPersona("sun-tzu");
-const dynamicSelector = createBamlPersonaSelector({ candidatePersonas: listPersonas(), minPersonas: 2, maxPersonas: 6 });
+const dynamicSelector = createBamlPersonaSelector({
+  candidatePersonas: listPersonas(),
+  minPersonas: 2,
+  maxPersonas: 6,
+});
 const message = composePersonaPrompt(sunTzu, {
   brief: { roundNumber: 1, prompt: "Should we out-build a larger competitor?", focus: "Strategy" },
 });
@@ -304,14 +309,14 @@ Weavekit's decision council routes each task (normalize, assess, report, persona
 
 **Default routing policy:**
 
-| Task kind | BAML client | Model | Use case |
-|-----------|-------------|-------|----------|
-| `normalize` | `CopilotProxyGpt54` | `gpt-5.4` | Lowest-TTFT structured extraction default |
-| `assess` | `CopilotProxyGpt54` | `gpt-5.4` | Lowest-TTFT Judge decision default |
-| `report` | `CopilotProxyGpt54` | `gpt-5.4` | Stable synthesis default |
-| `persona` | (Copilot SDK path) | `claude-sonnet-4.5` | Persona debate tier |
+| Task kind   | BAML client         | Model               | Use case                                  |
+| ----------- | ------------------- | ------------------- | ----------------------------------------- |
+| `normalize` | `CopilotProxyGpt54` | `gpt-5.4`           | Lowest-TTFT structured extraction default |
+| `assess`    | `CopilotProxyGpt54` | `gpt-5.4`           | Lowest-TTFT Judge decision default        |
+| `report`    | `CopilotProxyGpt54` | `gpt-5.4`           | Stable synthesis default                  |
+| `persona`   | (Copilot SDK path)  | `claude-sonnet-4.5` | Persona debate tier                       |
 
-**BAML effort passthrough:** By default, BAML routing swaps the *client* only and does NOT send `reasoning_effort` to the proxy. Effort passthrough is opt-in, left disabled pending proxy verification. Similarly, persona `reasoningEffort` is only forwarded when an operator wires an explicit capability predicate (it defaults to off). No model receives an effort field it might reject unless explicitly enabled.
+**BAML effort passthrough:** By default, BAML routing swaps the _client_ only and does NOT send `reasoning_effort` to the proxy. Effort passthrough is opt-in, left disabled pending proxy verification. Similarly, persona `reasoningEffort` is only forwarded when an operator wires an explicit capability predicate (it defaults to off). No model receives an effort field it might reject unless explicitly enabled.
 
 **Benchmark router latency:**
 
@@ -357,14 +362,16 @@ observe((event) => {
   }
 });
 
-const dispose = instrument(createOpenTelemetryInstrumentation({
-  content: {
-    enabled: process.env.OTEL_GENAI_CAPTURE_CONTENT === "true",
-    transform(content) {
-      return content;
+const dispose = instrument(
+  createOpenTelemetryInstrumentation({
+    content: {
+      enabled: process.env.OTEL_GENAI_CAPTURE_CONTENT === "true",
+      transform(content) {
+        return content;
+      },
     },
-  },
-}));
+  }),
+);
 ```
 
 Install the Flue OpenTelemetry bridge only in apps that export telemetry:
@@ -383,17 +390,17 @@ The Copilot persona worker also uses the built-in Copilot SDK telemetry path whe
 
 ### Environment variables
 
-| Variable | Purpose |
-| --- | --- |
-| `OTEL_SDK_DISABLED` | Set to `true` to disable OpenTelemetry startup entirely. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Enables OTLP trace export when set (for example `http://127.0.0.1:4318/v1/traces`). |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Optional OTLP auth/tenant headers consumed by the OTLP exporter environment configuration. |
-| `OTEL_SERVICE_NAME` | Optional OpenTelemetry service name override; defaults to `weavekit`. |
-| `OTEL_GENAI_CAPTURE_CONTENT` | Set to `true` to enable Copilot SDK content capture for persona sessions; defaults to redacted/off. |
-| `LANGFUSE_PUBLIC_KEY` | Langfuse public key. When paired with `LANGFUSE_SECRET_KEY`, enables Langfuse trace export. |
-| `LANGFUSE_SECRET_KEY` | Langfuse secret key. |
-| `LANGFUSE_BASE_URL` | Optional Langfuse base URL override. Defaults to `https://cloud.langfuse.com`. |
-| `LANGFUSE_EXPORT_RAW` | Set to `true` only when you intentionally want raw prompts/responses uploaded to Langfuse. By default Weavekit redacts exported content. |
+| Variable                      | Purpose                                                                                                                                  |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED`           | Set to `true` to disable OpenTelemetry startup entirely.                                                                                 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Enables OTLP trace export when set (for example `http://127.0.0.1:4318/v1/traces`).                                                      |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional OTLP auth/tenant headers consumed by the OTLP exporter environment configuration.                                               |
+| `OTEL_SERVICE_NAME`           | Optional OpenTelemetry service name override; defaults to `weavekit`.                                                                    |
+| `OTEL_GENAI_CAPTURE_CONTENT`  | Set to `true` to enable Copilot SDK content capture for persona sessions; defaults to redacted/off.                                      |
+| `LANGFUSE_PUBLIC_KEY`         | Langfuse public key. When paired with `LANGFUSE_SECRET_KEY`, enables Langfuse trace export.                                              |
+| `LANGFUSE_SECRET_KEY`         | Langfuse secret key.                                                                                                                     |
+| `LANGFUSE_BASE_URL`           | Optional Langfuse base URL override. Defaults to `https://cloud.langfuse.com`.                                                           |
+| `LANGFUSE_EXPORT_RAW`         | Set to `true` only when you intentionally want raw prompts/responses uploaded to Langfuse. By default Weavekit redacts exported content. |
 
 ### Example: telemetry enabled (OTLP + Langfuse)
 
@@ -455,7 +462,7 @@ nub run build
 
 ## Evaluating the Decision Council
 
-`evals/corpus/*.yaml` holds open-ended technical *decision* questions, each with a
+`evals/corpus/*.yaml` holds open-ended technical _decision_ questions, each with a
 detailed reference answer and a weighted rubric. The eval harness runs two
 providers against every question — the Decision Council (`runDecisionCouncil`,
 in-memory) and a vanilla `copilot -p` baseline (no extra prompting) — and grades

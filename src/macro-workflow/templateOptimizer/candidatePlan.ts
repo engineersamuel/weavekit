@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Opportunity, OpportunityCouncilReview, TemplateCandidate, TemplateExpansionCase } from "../../generated/baml_client/index.js";
+import type {
+  Opportunity,
+  OpportunityCouncilReview,
+  TemplateCandidate,
+  TemplateExpansionCase,
+} from "../../generated/baml_client/index.js";
 import type { SourceToProjectMode, SourceToProjectThresholds } from "../../config.js";
 import type { WorkflowDynamicExpander } from "../runner.js";
 import {
@@ -12,7 +17,10 @@ import {
   type WorkflowNodeWriteMode,
   type WorkflowReplanPolicy,
 } from "../types.js";
-import { SourceToProjectModelOperation, sourceToProjectNodeModelMetadata } from "../sourceToProject/modelPolicy.js";
+import {
+  SourceToProjectModelOperation,
+  sourceToProjectNodeModelMetadata,
+} from "../sourceToProject/modelPolicy.js";
 
 type CandidateOpportunityAcceptance = {
   id: string;
@@ -41,7 +49,10 @@ export async function loadTemplateOptimizerCandidatePlan(
   const runPath = join(args.runsRoot, args.runId, "optimizer-run.json");
   const payload = JSON.parse(await readFile(runPath, "utf8")) as unknown;
   const root = requireRecord(payload, "optimizer-run.json");
-  const candidate = requireRecord(root.finalIncumbent, "finalIncumbent") as unknown as TemplateCandidate;
+  const candidate = requireRecord(
+    root.finalIncumbent,
+    "finalIncumbent",
+  ) as unknown as TemplateCandidate;
   const candidateId = requireNonEmptyString(candidate.id, "finalIncumbent.id");
   if (args.candidateId && args.candidateId !== candidateId) {
     throw new Error(`Candidate ${args.candidateId} is not the final incumbent (${candidateId}).`);
@@ -55,8 +66,9 @@ export function materializeTemplateOptimizerCandidatePlan(args: {
   runId: string;
 }): RuntimeWorkflowPlan {
   const candidateId = requireNonEmptyString(args.candidate.id, "candidate.id");
-  const nodes = requireArray(args.candidate.sharedInitialNodes, "candidate.sharedInitialNodes")
-    .map((node, index) => toRuntimeWorkflowNode(node, `candidate.sharedInitialNodes[${index}]`));
+  const nodes = requireArray(args.candidate.sharedInitialNodes, "candidate.sharedInitialNodes").map(
+    (node, index) => toRuntimeWorkflowNode(node, `candidate.sharedInitialNodes[${index}]`),
+  );
   return {
     id: `source-to-project-optimized-${slugPart(args.runId)}-${slugPart(candidateId)}`,
     objective: args.objective,
@@ -85,11 +97,16 @@ export function createTemplateOptimizerCandidateDynamicExpander(args: {
     if (!expansionCase) {
       return undefined;
     }
-    return expansionCase.nodes.map((node, index) => withCandidateExpansionInput(
-      toRuntimeWorkflowNode(node, `candidate.modePolicies.${args.mode}.${expansionCase.id}.nodes[${index}]`),
-      acceptances,
-      accepted,
-    ));
+    return expansionCase.nodes.map((node, index) =>
+      withCandidateExpansionInput(
+        toRuntimeWorkflowNode(
+          node,
+          `candidate.modePolicies.${args.mode}.${expansionCase.id}.nodes[${index}]`,
+        ),
+        acceptances,
+        accepted,
+      ),
+    );
   };
 }
 
@@ -102,7 +119,8 @@ function toRuntimeWorkflowNode(node: unknown, path: string): RuntimeWorkflowNode
       kind: WorkflowNodeKind.VERIFICATION,
       harness: WorkflowHarnessKind.COPILOT_SDK,
       title: "Verify visual-plan capability",
-      description: "Fail fast if the visual-plan skill installer cannot resolve before source-to-project research begins.",
+      description:
+        "Fail fast if the visual-plan skill installer cannot resolve before source-to-project research begins.",
       ...sourceToProjectNodeModelMetadata(SourceToProjectModelOperation.DETERMINISTIC),
       prompt: "Verify visual-plan skill installation before source-to-project execution.",
       dependsOn: [],
@@ -115,28 +133,42 @@ function toRuntimeWorkflowNode(node: unknown, path: string): RuntimeWorkflowNode
   return {
     id,
     kind: requireWorkflowNodeKind(record.kind, `${path}.kind`),
-    harness: rewriteCandidateHarness(id, requireWorkflowHarnessKind(record.harness, `${path}.harness`)),
+    harness: rewriteCandidateHarness(
+      id,
+      requireWorkflowHarnessKind(record.harness, `${path}.harness`),
+    ),
     title: requireNonEmptyString(record.title, `${path}.title`),
     description: typeof record.description === "string" ? record.description : undefined,
     model: typeof record.model === "string" ? record.model : undefined,
     modelRationale: typeof record.modelRationale === "string" ? record.modelRationale : undefined,
     prompt: requireString(record.prompt, `${path}.prompt`),
-    dependsOn: requireStringArray(record.dependsOn, `${path}.dependsOn`).map(rewriteCandidateNodeId),
-    gates: requireStringArray(record.gates, `${path}.gates`).map((gate) => requireWorkflowGateKind(gate, `${path}.gates`)),
+    dependsOn: requireStringArray(record.dependsOn, `${path}.dependsOn`).map(
+      rewriteCandidateNodeId,
+    ),
+    gates: requireStringArray(record.gates, `${path}.gates`).map((gate) =>
+      requireWorkflowGateKind(gate, `${path}.gates`),
+    ),
     writeMode: requireWorkflowWriteMode(record.writeMode, `${path}.writeMode`),
     replanPolicy: requireWorkflowReplanPolicy(record.replanPolicy, `${path}.replanPolicy`),
   };
 }
 
-function findExpansionCase(candidate: TemplateCandidate, mode: SourceToProjectMode, acceptedCount: number): TemplateExpansionCase | undefined {
-  const policy = candidate.modePolicies.find((policy) => policy.mode === mode && policy.enabledForOptimization);
-  const caseId = acceptedCount === 0
-    ? "no-accepted-opportunities"
-    : acceptedCount === 1
-      ? "single-selected-plan"
-      : "multiple-selected-plans";
-  return policy?.expansionCases.find((expansionCase) =>
-    expansionCase.id === caseId && expansionCase.trigger === "council-review"
+function findExpansionCase(
+  candidate: TemplateCandidate,
+  mode: SourceToProjectMode,
+  acceptedCount: number,
+): TemplateExpansionCase | undefined {
+  const policy = candidate.modePolicies.find(
+    (policy) => policy.mode === mode && policy.enabledForOptimization,
+  );
+  const caseId =
+    acceptedCount === 0
+      ? "no-accepted-opportunities"
+      : acceptedCount === 1
+        ? "single-selected-plan"
+        : "multiple-selected-plans";
+  return policy?.expansionCases.find(
+    (expansionCase) => expansionCase.id === caseId && expansionCase.trigger === "council-review",
   );
 }
 
@@ -155,9 +187,9 @@ function withCandidateExpansionInput(
       opportunityAcceptances,
       ...(primaryAcceptance
         ? {
-          opportunity: primaryAcceptance.opportunity,
-          opportunityAcceptance: primaryAcceptance,
-        }
+            opportunity: primaryAcceptance.opportunity,
+            opportunityAcceptance: primaryAcceptance,
+          }
         : {}),
     },
   };
@@ -168,7 +200,9 @@ function selectAcceptedOpportunities(
   thresholds: SourceToProjectThresholds,
 ): CandidateOpportunityAcceptance[] {
   return review.opportunities.map((opportunity) => {
-    const acceptanceAverage = (opportunity.score.applicability + opportunity.score.impact + opportunity.score.confidence) / 3;
+    const acceptanceAverage =
+      (opportunity.score.applicability + opportunity.score.impact + opportunity.score.confidence) /
+      3;
     const scores = {
       applicability: opportunity.score.applicability,
       impact: opportunity.score.impact,
@@ -307,10 +341,10 @@ function requireWorkflowWriteMode(value: unknown, path: string): WorkflowNodeWri
 
 function requireWorkflowReplanPolicy(value: unknown, path: string): WorkflowReplanPolicy {
   if (
-    value !== "never"
-    && value !== "on-contract-failure"
-    && value !== "on-review-rejection"
-    && value !== "on-verification-failure"
+    value !== "never" &&
+    value !== "on-contract-failure" &&
+    value !== "on-review-rejection" &&
+    value !== "on-verification-failure"
   ) {
     throw new Error(`${path} must be a supported workflow replan policy.`);
   }
@@ -322,5 +356,11 @@ function isOneOf<T extends Record<string, string>>(value: unknown, values: T): v
 }
 
 function slugPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 64) || "candidate";
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 64) || "candidate"
+  );
 }

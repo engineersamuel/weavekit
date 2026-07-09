@@ -8,10 +8,15 @@ import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
 
 describe("macro workflow runner", () => {
   it("executes a plan end to end using the static harness registry", async () => {
-    const plan = materializeWorkflowPlan("implementation-review", { objective: "Implement rich logging" });
+    const plan = materializeWorkflowPlan("implementation-review", {
+      objective: "Implement rich logging",
+    });
     const harnesses = createStaticHarnessRegistry({
       [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "insights" }),
-      [WorkflowHarnessKind.DECISION_COUNCIL]: async () => ({ status: "passed", output: "consensus" }),
+      [WorkflowHarnessKind.DECISION_COUNCIL]: async () => ({
+        status: "passed",
+        output: "consensus",
+      }),
       [WorkflowHarnessKind.COPILOT_SDK]: async () => ({ status: "passed", output: "implemented" }),
       [WorkflowHarnessKind.VERIFIER]: async () => ({ status: "passed", output: "verified" }),
       [WorkflowHarnessKind.REPORTER]: async () => ({ status: "passed", output: "report" }),
@@ -57,7 +62,11 @@ describe("macro workflow runner", () => {
     };
     const seen: unknown[] = [];
     const harnesses = createStaticHarnessRegistry({
-      [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "research", payload: { answer: 42 } }),
+      [WorkflowHarnessKind.RESEARCH]: async () => ({
+        status: "passed",
+        output: "research",
+        payload: { answer: 42 },
+      }),
       [WorkflowHarnessKind.REPORTER]: async (_node, context) => {
         seen.push(context.payloads.get("research"));
         return { status: "passed", output: "report" };
@@ -143,12 +152,14 @@ describe("macro workflow runner", () => {
         mode: "research",
         prompt: "Read source artifact",
         model: "gpt-5.4",
-        calls: [{
-          executor: WorkflowHarnessKind.COPILOT_SDK,
-          mode: "research",
-          prompt: "Read source artifact",
-          model: "gpt-5.4",
-        }],
+        calls: [
+          {
+            executor: WorkflowHarnessKind.COPILOT_SDK,
+            mode: "research",
+            prompt: "Read source artifact",
+            model: "gpt-5.4",
+          },
+        ],
       },
     });
   });
@@ -179,12 +190,14 @@ describe("macro workflow runner", () => {
       mode: "plan",
       prompt: "Create an implementation plan with Selected candidate JSON.",
       model: "claude-opus-4.8",
-      calls: [{
-        executor: WorkflowHarnessKind.COPILOT_SDK,
-        mode: "plan",
-        prompt: "Create an implementation plan with Selected candidate JSON.",
-        model: "claude-opus-4.8",
-      }],
+      calls: [
+        {
+          executor: WorkflowHarnessKind.COPILOT_SDK,
+          mode: "plan",
+          prompt: "Create an implementation plan with Selected candidate JSON.",
+          model: "claude-opus-4.8",
+        },
+      ],
     };
     const livePrompts: Array<string | undefined> = [];
     const adapter = Object.assign(
@@ -237,12 +250,14 @@ describe("macro workflow runner", () => {
       mode: "plan",
       prompt: "Create an implementation plan with Selected candidate JSON.",
       model: "claude-opus-4.8",
-      calls: [{
-        executor: WorkflowHarnessKind.COPILOT_SDK,
-        mode: "plan",
-        prompt: "Create an implementation plan with Selected candidate JSON.",
-        model: "claude-opus-4.8",
-      }],
+      calls: [
+        {
+          executor: WorkflowHarnessKind.COPILOT_SDK,
+          mode: "plan",
+          prompt: "Create an implementation plan with Selected candidate JSON.",
+          model: "claude-opus-4.8",
+        },
+      ],
     };
     const adapter = Object.assign(
       async () => {
@@ -261,8 +276,12 @@ describe("macro workflow runner", () => {
     const state = await runMacroWorkflow(plan, { harnesses });
 
     expect(state.status).toBe("failed");
-    expect(state.nodeResults[0]?.execution?.prompt).toBe("Create an implementation plan with Selected candidate JSON.");
-    expect(state.nodeResults[0]?.execution?.calls?.[0]?.prompt).toBe("Create an implementation plan with Selected candidate JSON.");
+    expect(state.nodeResults[0]?.execution?.prompt).toBe(
+      "Create an implementation plan with Selected candidate JSON.",
+    );
+    expect(state.nodeResults[0]?.execution?.calls?.[0]?.prompt).toBe(
+      "Create an implementation plan with Selected candidate JSON.",
+    );
   });
 
   it("continues through normal adapter execution if execution metadata preparation fails", async () => {
@@ -285,14 +304,11 @@ describe("macro workflow runner", () => {
         },
       ],
     };
-    const adapter = Object.assign(
-      async () => ({ status: "passed" as const, output: "planned" }),
-      {
-        async prepareExecution() {
-          throw new Error("preview resolver failed");
-        },
+    const adapter = Object.assign(async () => ({ status: "passed" as const, output: "planned" }), {
+      async prepareExecution() {
+        throw new Error("preview resolver failed");
       },
-    );
+    });
     const harnesses = createStaticHarnessRegistry({
       [WorkflowHarnessKind.COPILOT_SDK]: adapter,
     });
@@ -315,7 +331,8 @@ describe("macro workflow runner", () => {
     expect(events).toContainEqual({
       type: MacroWorkflowEventKind.NODE_WARNING,
       nodeId: "plan-opportunity-o1",
-      reason: "Harness copilot-sdk prepareExecution failed for plan-opportunity-o1: preview resolver failed",
+      reason:
+        "Harness copilot-sdk prepareExecution failed for plan-opportunity-o1: preview resolver failed",
     });
   });
 
@@ -344,7 +361,11 @@ describe("macro workflow runner", () => {
           title: "Implement",
           prompt: "Implement",
           dependsOn: ["review"],
-          runWhen: { nodeId: "review", key: "finalRecommendationReview.status", equals: "accepted" },
+          runWhen: {
+            nodeId: "review",
+            key: "finalRecommendationReview.status",
+            equals: "accepted",
+          },
           gates: ["verification" as const],
           writeMode: "single-writer" as const,
           replanPolicy: "never" as const,
@@ -382,7 +403,9 @@ describe("macro workflow runner", () => {
 
     expect(state.status).toBe("passed");
     expect(calls).toEqual(["review", "report"]);
-    expect(state.nodeResults.find((result) => result.nodeId === "implement")?.status).toBe("skipped");
+    expect(state.nodeResults.find((result) => result.nodeId === "implement")?.status).toBe(
+      "skipped",
+    );
   });
 
   it("appends dynamic nodes after a successful node and emits replay additions before continuing", async () => {
@@ -421,21 +444,24 @@ describe("macro workflow runner", () => {
 
     const state = await runMacroWorkflow(plan, {
       harnesses,
-      expandAfterNode: ({ node }) => node.id === "council-review"
-        ? [{
-          id: "report",
-          kind: "report",
-          harness: WorkflowHarnessKind.REPORTER,
-          title: "Report",
-          description: "Publish dynamic report.",
-          model: "deterministic",
-          prompt: "Report",
-          dependsOn: ["council-review"],
-          gates: ["output-contract"],
-          writeMode: "read-only",
-          replanPolicy: "never",
-        }]
-        : undefined,
+      expandAfterNode: ({ node }) =>
+        node.id === "council-review"
+          ? [
+              {
+                id: "report",
+                kind: "report",
+                harness: WorkflowHarnessKind.REPORTER,
+                title: "Report",
+                description: "Publish dynamic report.",
+                model: "deterministic",
+                prompt: "Report",
+                dependsOn: ["council-review"],
+                gates: ["output-contract"],
+                writeMode: "read-only",
+                replanPolicy: "never",
+              },
+            ]
+          : undefined,
       onReplayEvent(event) {
         replayKinds.push(event.kind);
         if (event.node) {
@@ -508,36 +534,37 @@ describe("macro workflow runner", () => {
 
     const state = await runMacroWorkflow(plan, {
       harnesses,
-      expandAfterNode: ({ node }) => node.id === "council-review"
-        ? [
-          ...[
-            "alpha",
-            "beta",
-            "gamma",
-          ].map((id) => ({
-            id: `plan-opportunity-${id}`,
-            kind: "planning" as const,
-            harness: WorkflowHarnessKind.COPILOT_SDK,
-            title: `Plan ${id}`,
-            prompt: `Plan ${id}`,
-            dependsOn: ["council-review"],
-            gates: ["verification" as const],
-            writeMode: "read-only" as const,
-            replanPolicy: "never" as const,
-          })),
-          {
-            id: "report",
-            kind: "report" as const,
-            harness: WorkflowHarnessKind.REPORTER,
-            title: "Report",
-            prompt: "Report",
-            dependsOn: ["plan-opportunity-alpha", "plan-opportunity-beta", "plan-opportunity-gamma"],
-            gates: ["output-contract" as const],
-            writeMode: "read-only" as const,
-            replanPolicy: "never" as const,
-          },
-        ]
-        : undefined,
+      expandAfterNode: ({ node }) =>
+        node.id === "council-review"
+          ? [
+              ...["alpha", "beta", "gamma"].map((id) => ({
+                id: `plan-opportunity-${id}`,
+                kind: "planning" as const,
+                harness: WorkflowHarnessKind.COPILOT_SDK,
+                title: `Plan ${id}`,
+                prompt: `Plan ${id}`,
+                dependsOn: ["council-review"],
+                gates: ["verification" as const],
+                writeMode: "read-only" as const,
+                replanPolicy: "never" as const,
+              })),
+              {
+                id: "report",
+                kind: "report" as const,
+                harness: WorkflowHarnessKind.REPORTER,
+                title: "Report",
+                prompt: "Report",
+                dependsOn: [
+                  "plan-opportunity-alpha",
+                  "plan-opportunity-beta",
+                  "plan-opportunity-gamma",
+                ],
+                gates: ["output-contract" as const],
+                writeMode: "read-only" as const,
+                replanPolicy: "never" as const,
+              },
+            ]
+          : undefined,
     });
 
     expect(state.status).toBe("passed");
@@ -575,7 +602,9 @@ describe("macro workflow runner", () => {
     const state = await runMacroWorkflow(plan, {
       harnesses,
       onStateChange: (nextState, event) => {
-        events.push(`${event.type}:${nextState.status}:${nextState.nodeResults[0]?.status ?? "none"}`);
+        events.push(
+          `${event.type}:${nextState.status}:${nextState.nodeResults[0]?.status ?? "none"}`,
+        );
       },
     });
 

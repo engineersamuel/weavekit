@@ -12,12 +12,12 @@ Use an existing OpenTelemetry-compatible backend instead of building a custom UI
 
 Good options:
 
-| Backend | Use when |
-| --- | --- |
-| Jaeger | You want the simplest local distributed trace viewer. |
-| Grafana Tempo + Grafana | You want local or production-style traces, logs, and metrics together. |
-| Honeycomb | You want hosted trace analysis with strong query UX. |
-| Datadog / New Relic / Grafana Cloud | You want hosted all-in-one observability. |
+| Backend                             | Use when                                                               |
+| ----------------------------------- | ---------------------------------------------------------------------- |
+| Jaeger                              | You want the simplest local distributed trace viewer.                  |
+| Grafana Tempo + Grafana             | You want local or production-style traces, logs, and metrics together. |
+| Honeycomb                           | You want hosted trace analysis with strong query UX.                   |
+| Datadog / New Relic / Grafana Cloud | You want hosted all-in-one observability.                              |
 
 Local Jaeger starter:
 
@@ -58,14 +58,16 @@ Use Flue's OpenTelemetry bridge when running through a Flue-hosted app or the ex
 import { instrument } from "@flue/runtime";
 import { createOpenTelemetryInstrumentation } from "@flue/opentelemetry";
 
-instrument(createOpenTelemetryInstrumentation({
-  content: {
-    enabled: process.env.OTEL_GENAI_CAPTURE_CONTENT === "true",
-    transform(content) {
-      return content;
+instrument(
+  createOpenTelemetryInstrumentation({
+    content: {
+      enabled: process.env.OTEL_GENAI_CAPTURE_CONTENT === "true",
+      transform(content) {
+        return content;
+      },
     },
-  },
-}));
+  }),
+);
 ```
 
 Keep `OTEL_GENAI_CAPTURE_CONTENT` unset or `false` by default. Flue events can contain prompts, model messages, tool values, and workflow inputs, so content capture needs a redaction policy first.

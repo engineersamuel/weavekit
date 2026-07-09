@@ -76,7 +76,9 @@ describe("template optimizer apply", () => {
 
     const result = await dryRunApplyTemplateOptimizerPackage({ runsRoot, runId });
 
-    await expect(readFile(result.summaryPath, "utf8")).resolves.toContain("No adoption tasks recorded.");
+    await expect(readFile(result.summaryPath, "utf8")).resolves.toContain(
+      "No adoption tasks recorded.",
+    );
   });
 
   it("rejects a candidate id that is not the final incumbent", async () => {

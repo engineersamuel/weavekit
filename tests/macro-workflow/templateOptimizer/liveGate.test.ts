@@ -53,7 +53,9 @@ describe("template optimizer live gate", () => {
       scoreDelta: -1.4000000000000004,
       adoptionDecision: "keep-incumbent",
     });
-    expect(result.liveRejectedMoves[0]).toContain("Restore static DAG and dynamic workflow coverage.");
+    expect(result.liveRejectedMoves[0]).toContain(
+      "Restore static DAG and dynamic workflow coverage.",
+    );
   });
 
   it("promotes a fixture winner only after it clears live thresholds", async () => {
@@ -99,7 +101,9 @@ describe("template optimizer live gate", () => {
 
     expect(result.status).toBe("live-candidate-rejected");
     expect(result.finalIncumbent.id).toBe("baseline");
-    expect(result.liveRejectedMoves[0]).toContain("challenger live trial challenger-run-0 ended with status failed");
+    expect(result.liveRejectedMoves[0]).toContain(
+      "challenger live trial challenger-run-0 ended with status failed",
+    );
     expect(deps.judgeLiveOutputs).not.toHaveBeenCalled();
   });
 
@@ -121,7 +125,9 @@ describe("template optimizer live gate", () => {
 
     expect(result.status).toBe("live-gate-blocked");
     expect(result.finalIncumbent.id).toBe("baseline");
-    expect(result.liveRejectedMoves[0]).toContain("incumbent trial incumbent-run-0 ended with status failed");
+    expect(result.liveRejectedMoves[0]).toContain(
+      "incumbent trial incumbent-run-0 ended with status failed",
+    );
     expect(deps.runCandidateTrial).not.toHaveBeenCalled();
   });
 
@@ -158,7 +164,9 @@ describe("template optimizer live gate", () => {
     expect(deps.fixtureOptimizerDeps.generateChallenger).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        compactLiveTrialTraceSummary: expect.stringContaining("Recover evidence grounding and workflow coverage."),
+        compactLiveTrialTraceSummary: expect.stringContaining(
+          "Recover evidence grounding and workflow coverage.",
+        ),
       }),
     );
   });
@@ -200,7 +208,9 @@ function liveGateDeps(args: {
   const liveJudgments = args.liveJudgments ?? [];
   return {
     fixtureOptimizerDeps: {
-      generateChallenger: vi.fn(async () => challengers.shift() ?? candidate("unexpected-challenger")),
+      generateChallenger: vi.fn(
+        async () => challengers.shift() ?? candidate("unexpected-challenger"),
+      ),
       judgeFixture: vi.fn(async () => judgment({ winner: "challenger" })),
       aggregateJudgments: vi.fn(async (aggregateArgs) =>
         aggregate({
@@ -210,21 +220,25 @@ function liveGateDeps(args: {
         }),
       ),
     },
-    runIncumbentTrial: vi.fn(async (trialArgs) =>
-      incumbentTrials.shift() ?? {
-        runId: `incumbent-run-${trialArgs.liveTrialIndex}`,
-        status: "passed",
-        output: "incumbent output",
-      },
+    runIncumbentTrial: vi.fn(
+      async (trialArgs) =>
+        incumbentTrials.shift() ?? {
+          runId: `incumbent-run-${trialArgs.liveTrialIndex}`,
+          status: "passed",
+          output: "incumbent output",
+        },
     ),
-    runCandidateTrial: vi.fn(async (trialArgs) =>
-      candidateTrials.shift() ?? {
-        runId: `challenger-run-${trialArgs.liveTrialIndex}`,
-        status: "passed",
-        output: "challenger output",
-      },
+    runCandidateTrial: vi.fn(
+      async (trialArgs) =>
+        candidateTrials.shift() ?? {
+          runId: `challenger-run-${trialArgs.liveTrialIndex}`,
+          status: "passed",
+          output: "challenger output",
+        },
     ),
-    judgeLiveOutputs: vi.fn(async () => liveJudgments.shift() ?? liveJudgment({ winner: "challenger" })),
+    judgeLiveOutputs: vi.fn(
+      async () => liveJudgments.shift() ?? liveJudgment({ winner: "challenger" }),
+    ),
   };
 }
 

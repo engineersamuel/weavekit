@@ -9,7 +9,11 @@ describe("entity skill validation", () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-skills-"));
     const dir = join(root, ".copilot/skills/mckinsey-strategist");
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "SKILL.md"), "---\nname: mckinsey-strategist\n---\n# Skill\n", "utf8");
+    await writeFile(
+      join(dir, "SKILL.md"),
+      "---\nname: mckinsey-strategist\n---\n# Skill\n",
+      "utf8",
+    );
 
     expect(validateSkillReference("mckinsey-strategist", root)).toEqual({
       valid: true,

@@ -73,11 +73,18 @@ const judge: JudgeReducer = {
 describe("createConfiguredDecisionCouncilWorkflow", () => {
   it("connects enabled MCP specs, creates a workflow, and exposes cleanup", async () => {
     const close = vi.fn(async () => undefined);
-    const connect = vi.fn(async (name: string) => ({
-      name,
-      tools: [{ name: name === "context7" ? "mcp__context7__query_docs" : `mcp__${name}__search` } as ToolDefinition],
-      close,
-    }) satisfies McpServerConnection);
+    const connect = vi.fn(
+      async (name: string) =>
+        ({
+          name,
+          tools: [
+            {
+              name: name === "context7" ? "mcp__context7__query_docs" : `mcp__${name}__search`,
+            } as ToolDefinition,
+          ],
+          close,
+        }) satisfies McpServerConnection,
+    );
 
     const result = await createConfiguredDecisionCouncilWorkflow(
       { personaSelector, personaWorker, normalizer, judge },
@@ -88,9 +95,18 @@ describe("createConfiguredDecisionCouncilWorkflow", () => {
       },
     );
 
-    expect(connect).toHaveBeenCalledWith("exa", expect.objectContaining({ url: expect.stringContaining("exa-secret") }));
-    expect(connect).toHaveBeenCalledWith("EngHub", expect.objectContaining({ url: "https://mcp.eng.ms" }));
-    expect(connect).toHaveBeenCalledWith("context7", expect.objectContaining({ headers: { CONTEXT7_API_KEY: "ctx-key" } }));
+    expect(connect).toHaveBeenCalledWith(
+      "exa",
+      expect.objectContaining({ url: expect.stringContaining("exa-secret") }),
+    );
+    expect(connect).toHaveBeenCalledWith(
+      "EngHub",
+      expect.objectContaining({ url: "https://mcp.eng.ms" }),
+    );
+    expect(connect).toHaveBeenCalledWith(
+      "context7",
+      expect.objectContaining({ headers: { CONTEXT7_API_KEY: "ctx-key" } }),
+    );
     expect(result.tools.map((tool) => tool.name)).toEqual([
       "mcp__exa__search",
       "mcp__EngHub__search",
@@ -103,11 +119,14 @@ describe("createConfiguredDecisionCouncilWorkflow", () => {
   });
 
   it("can opt into local Baton without enabling unsupported stdio MCPs", async () => {
-    const connect = vi.fn(async (name: string) => ({
-      name,
-      tools: [],
-      close: async () => undefined,
-    }) satisfies McpServerConnection);
+    const connect = vi.fn(
+      async (name: string) =>
+        ({
+          name,
+          tools: [],
+          close: async () => undefined,
+        }) satisfies McpServerConnection,
+    );
 
     await createConfiguredDecisionCouncilWorkflow(
       { personaSelector, personaWorker, normalizer, judge },

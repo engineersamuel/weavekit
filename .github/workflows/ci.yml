@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Install mise + tools
         uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
@@ -42,20 +42,8 @@ jobs:
       - name: Lint
         run: nub run lint
 
-      - name: Format check (newly added files only)
-        # Oxfmt formats whole files, not diffs, and this repo has not been
-        # fully reformatted yet. So this only gates brand-new files
-        # (diff-filter=A) rather than edits to pre-existing, unformatted
-        # files. Widen to ACMR once a one-time repo-wide `nub run fmt` lands.
-        if: github.event_name == 'pull_request'
-        run: |
-          mapfile -t files < <(git diff --name-only --diff-filter=A "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.json' '*.yaml' '*.yml' '*.md')
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No newly added formattable files."
-            exit 0
-          fi
-          printf '%s\n' "${files[@]}"
-          nubx oxfmt --check "${files[@]}"
+      - name: Format check
+        run: nub run fmt:check
 
       - name: Typecheck
         run: nub run typecheck

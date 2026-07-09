@@ -18,7 +18,11 @@ describe("dashboard payload highlight helpers", () => {
         rankingRationale: "CI, lint, and coverage ranked highest.",
       },
       verificationExternalResearchCandidates: [
-        { opportunityId: "opp-ci", runId: "verification-research-opp-ci", reportNodeId: "verification-research-opp-ci-report" },
+        {
+          opportunityId: "opp-ci",
+          runId: "verification-research-opp-ci",
+          reportNodeId: "verification-research-opp-ci-report",
+        },
         {
           opportunityId: "baseline-coverage-threshold",
           runId: "verification-research-baseline-coverage-threshold",
@@ -33,12 +37,14 @@ describe("dashboard payload highlight helpers", () => {
       notAdvancedCount: 2,
       capLabel: "2 of 4 advancing to external research",
     });
-    expect(summary?.opportunities.map((item) => ({
-      id: item.id,
-      status: item.status,
-      badgeLabel: item.badgeLabel,
-      runId: item.runId,
-    }))).toEqual([
+    expect(
+      summary?.opportunities.map((item) => ({
+        id: item.id,
+        status: item.status,
+        badgeLabel: item.badgeLabel,
+        runId: item.runId,
+      })),
+    ).toEqual([
       {
         id: "opp-ci",
         status: "advanced",
@@ -135,26 +141,30 @@ describe("dashboard payload highlight helpers", () => {
     const summary = buildDeepResearchProviderFailureSummary({
       deepResearchRunId: "verification-research-opp-ci",
       deepResearchEvidence: [],
-      deepResearchProviderFailures: [{
-        provider: "grok",
-        iteration: 1,
-        retryCount: 1,
-        message: "Command failed: grok -p Use x_search",
-        questionIds: ["q1", "q2"],
-      }],
+      deepResearchProviderFailures: [
+        {
+          provider: "grok",
+          iteration: 1,
+          retryCount: 1,
+          message: "Command failed: grok -p Use x_search",
+          questionIds: ["q1", "q2"],
+        },
+      ],
     });
 
     expect(summary).toEqual({
       runId: "verification-research-opp-ci",
       failureCount: 1,
       evidenceCount: 0,
-      failures: [{
-        provider: "grok",
-        iteration: 1,
-        retryCount: 1,
-        message: "Command failed: grok -p Use x_search",
-        questionCount: 2,
-      }],
+      failures: [
+        {
+          provider: "grok",
+          iteration: 1,
+          retryCount: 1,
+          message: "Command failed: grok -p Use x_search",
+          questionCount: 2,
+        },
+      ],
     });
   });
 });

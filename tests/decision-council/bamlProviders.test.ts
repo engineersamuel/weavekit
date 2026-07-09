@@ -21,8 +21,8 @@ describe("BAML Copilot proxy providers", () => {
 
     expect(baml).toContain("base_url env.COPILOT_PROXY_BASE_URL");
     expect(baml).toContain("api_key env.COPILOT_PROXY_API_KEY");
-    expect(baml).toContain('client<llm> DefaultClient');
-    expect(baml).toContain('model env.BAML_MODEL');
+    expect(baml).toContain("client<llm> DefaultClient");
+    expect(baml).toContain("model env.BAML_MODEL");
     // Non-default proxy clients use a hardcoded local address
     expect(baml).toContain('base_url "http://127.0.0.1:8080/v1"');
     expect(council).not.toMatch(/^client<llm>/m);

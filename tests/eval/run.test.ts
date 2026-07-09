@@ -54,7 +54,13 @@ describe("runEval", () => {
   it("filters by id and throws when nothing matches", async () => {
     const { corpusDir, resultsDir } = tempCorpus();
     await expect(
-      runEval({ corpusDir, resultsDir, filterIds: ["does-not-exist"] }, { providers: [], evaluateFn: (async () => ({ toEvaluateSummary: async () => ({}) })) as never }),
+      runEval(
+        { corpusDir, resultsDir, filterIds: ["does-not-exist"] },
+        {
+          providers: [],
+          evaluateFn: (async () => ({ toEvaluateSummary: async () => ({}) })) as never,
+        },
+      ),
     ).rejects.toThrow(/No corpus items/);
   });
 
@@ -78,9 +84,12 @@ describe("runEval", () => {
     const { corpusDir, resultsDir } = tempCorpus();
     const evaluateFn = vi.fn(async () => ({ toEvaluateSummary: async () => ({}) }));
 
-    await expect(runEval({ corpusDir, resultsDir, maxConcurrency: 0 }, { providers: [], evaluateFn: evaluateFn as never })).rejects.toThrow(
-      /maxConcurrency.*integer >= 1/,
-    );
+    await expect(
+      runEval(
+        { corpusDir, resultsDir, maxConcurrency: 0 },
+        { providers: [], evaluateFn: evaluateFn as never },
+      ),
+    ).rejects.toThrow(/maxConcurrency.*integer >= 1/);
     expect(evaluateFn).not.toHaveBeenCalled();
   });
 });
@@ -92,10 +101,16 @@ describe("parseEvalArgs", () => {
     vi.restoreAllMocks();
   });
 
-  async function loadParser(): Promise<(argv: string[]) => { filterIds?: string[]; maxConcurrency?: number }> {
+  async function loadParser(): Promise<
+    (argv: string[]) => { filterIds?: string[]; maxConcurrency?: number }
+  > {
     vi.doMock("../../src/eval/run.js", () => ({ runEval: vi.fn(async () => "mock-results") }));
     const module = await import("../../src/eval-cli.js");
-    const parser = (module as { parseEvalArgs?: (argv: string[]) => { filterIds?: string[]; maxConcurrency?: number } }).parseEvalArgs;
+    const parser = (
+      module as {
+        parseEvalArgs?: (argv: string[]) => { filterIds?: string[]; maxConcurrency?: number };
+      }
+    ).parseEvalArgs;
     expect(parser).toBeTypeOf("function");
     return parser!;
   }

@@ -17,7 +17,11 @@ type TelegramApiResponse<T> = {
 export class TelegramClient implements MessageSender, UpdateSource {
   constructor(private readonly token: string) {}
 
-  private async call<T>(method: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  private async call<T>(
+    method: string,
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<T> {
     const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -26,7 +30,9 @@ export class TelegramClient implements MessageSender, UpdateSource {
     });
     const json = (await res.json()) as TelegramApiResponse<T>;
     if (!json.ok || json.result === undefined) {
-      throw new Error(`${method} failed: ${json.error_code ?? "?"} ${json.description ?? ""}`.trim());
+      throw new Error(
+        `${method} failed: ${json.error_code ?? "?"} ${json.description ?? ""}`.trim(),
+      );
     }
     return json.result;
   }
@@ -43,7 +49,11 @@ export class TelegramClient implements MessageSender, UpdateSource {
     });
   }
 
-  async getUpdates(offset: number, timeoutSec: number, signal?: AbortSignal): Promise<TelegramUpdate[]> {
+  async getUpdates(
+    offset: number,
+    timeoutSec: number,
+    signal?: AbortSignal,
+  ): Promise<TelegramUpdate[]> {
     return this.call<TelegramUpdate[]>("getUpdates", { offset, timeout: timeoutSec }, signal);
   }
 }

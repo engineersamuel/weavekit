@@ -49,7 +49,12 @@ export type WorkflowReplanPolicy =
   | "on-review-rejection"
   | "on-verification-failure";
 
-export type WorkflowPlanTemplateId = "implementation-review" | "source-to-project" | "verification-optimizer" | "x-article-summary" | "deep-research";
+export type WorkflowPlanTemplateId =
+  | "implementation-review"
+  | "source-to-project"
+  | "verification-optimizer"
+  | "x-article-summary"
+  | "deep-research";
 export type SourceToProjectMode = "advisory" | "autonomous-pr";
 export type VerificationOptimizerMode = "advisory" | "autonomous-pr";
 
@@ -216,7 +221,8 @@ export const WorkflowReplayEventKind = {
   REPLAN_APPLIED: "replan-applied",
   RUN_COMPLETED: "run-completed",
 } as const;
-export type WorkflowReplayEventKind = (typeof WorkflowReplayEventKind)[keyof typeof WorkflowReplayEventKind];
+export type WorkflowReplayEventKind =
+  (typeof WorkflowReplayEventKind)[keyof typeof WorkflowReplayEventKind];
 
 export type WorkflowReplayNode = {
   id: string;

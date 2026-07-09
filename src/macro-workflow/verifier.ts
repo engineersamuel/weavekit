@@ -15,9 +15,7 @@ import {
  */
 type GeneratedWorkflowPlanLike = RuntimeWorkflowPlan;
 
-const SUPPORTED_PLUGIN_COMMANDS = new Map([
-  ["hve-core", new Set(["hve-core:task-research"])],
-]);
+const SUPPORTED_PLUGIN_COMMANDS = new Map([["hve-core", new Set(["hve-core:task-research"])]]);
 
 function detectCycle(plan: GeneratedWorkflowPlanLike): boolean {
   const nodes = new Map(plan.nodes.map((node) => [node.id, node]));
@@ -64,7 +62,10 @@ function hasDownstreamVerification(plan: GeneratedWorkflowPlanLike, startId: str
     seen.add(id);
     const node = byId.get(id);
     if (!node) continue;
-    if (node.kind === WorkflowNodeKind.VERIFICATION || node.gates.includes(WorkflowGateKind.VERIFICATION)) {
+    if (
+      node.kind === WorkflowNodeKind.VERIFICATION ||
+      node.gates.includes(WorkflowGateKind.VERIFICATION)
+    ) {
       return true;
     }
     queue.push(...(children.get(id) ?? []));
@@ -93,7 +94,8 @@ function validatePluginCommandCapabilities(node: RuntimeWorkflowNode): WorkflowV
     const record = commandCapability as Record<string, unknown>;
     const plugin = typeof record.plugin === "string" ? record.plugin.trim() : "";
     const command = typeof record.command === "string" ? record.command.trim() : "";
-    const promptInputName = typeof record.promptInputName === "string" ? record.promptInputName.trim() : "";
+    const promptInputName =
+      typeof record.promptInputName === "string" ? record.promptInputName.trim() : "";
     if (!plugin) {
       issues.push({
         code: "invalid-plugin-command-capability",
@@ -132,7 +134,10 @@ function validatePluginCommandCapabilities(node: RuntimeWorkflowNode): WorkflowV
         nodeId: node.id,
       });
     }
-    if (record.args !== undefined && (!record.args || typeof record.args !== "object" || Array.isArray(record.args))) {
+    if (
+      record.args !== undefined &&
+      (!record.args || typeof record.args !== "object" || Array.isArray(record.args))
+    ) {
       issues.push({
         code: "invalid-plugin-command-capability",
         message: `Plugin command capability for ${plugin} must use an object for args.`,
@@ -163,7 +168,11 @@ export function verifyWorkflowPlan(
   if (plan.nodes.length === 0) {
     issues.push({ code: "empty-plan", message: "Workflow plan must contain at least one node." });
   }
-  if (!Number.isInteger(plan.maxReplans) || plan.maxReplans < 0 || plan.maxReplans > grammar.maxReplans) {
+  if (
+    !Number.isInteger(plan.maxReplans) ||
+    plan.maxReplans < 0 ||
+    plan.maxReplans > grammar.maxReplans
+  ) {
     issues.push({
       code: "invalid-replan-budget",
       message: `maxReplans must be between 0 and ${grammar.maxReplans}.`,
@@ -173,14 +182,26 @@ export function verifyWorkflowPlan(
   const ids = new Set<string>();
   for (const node of plan.nodes) {
     if (ids.has(node.id)) {
-      issues.push({ code: "duplicate-node-id", message: `Duplicate node id: ${node.id}.`, nodeId: node.id });
+      issues.push({
+        code: "duplicate-node-id",
+        message: `Duplicate node id: ${node.id}.`,
+        nodeId: node.id,
+      });
     }
     ids.add(node.id);
     if (!grammar.allowedNodeKinds.has(node.kind)) {
-      issues.push({ code: "forbidden-node-kind", message: `Forbidden node kind: ${node.kind}.`, nodeId: node.id });
+      issues.push({
+        code: "forbidden-node-kind",
+        message: `Forbidden node kind: ${node.kind}.`,
+        nodeId: node.id,
+      });
     }
     if (!grammar.allowedHarnesses.has(node.harness)) {
-      issues.push({ code: "forbidden-harness", message: `Forbidden harness: ${node.harness}.`, nodeId: node.id });
+      issues.push({
+        code: "forbidden-harness",
+        message: `Forbidden harness: ${node.harness}.`,
+        nodeId: node.id,
+      });
     }
     issues.push(...validatePluginCommandCapabilities(node));
   }
@@ -189,7 +210,11 @@ export function verifyWorkflowPlan(
     for (const depId of node.dependsOn) {
       const dep = plan.nodes.find((candidate) => candidate.id === depId);
       if (!dep) {
-        issues.push({ code: "unknown-dependency", message: `${node.id} depends on unknown node ${depId}.`, nodeId: node.id });
+        issues.push({
+          code: "unknown-dependency",
+          message: `${node.id} depends on unknown node ${depId}.`,
+          nodeId: node.id,
+        });
         continue;
       }
       const allowed = grammar.allowedTransitions.get(dep.kind) ?? new Set();
@@ -223,7 +248,10 @@ export function verifyWorkflowPlan(
   }
 
   for (const node of plan.nodes) {
-    if (node.kind === WorkflowNodeKind.IMPLEMENTATION && !hasDownstreamVerification(plan, node.id)) {
+    if (
+      node.kind === WorkflowNodeKind.IMPLEMENTATION &&
+      !hasDownstreamVerification(plan, node.id)
+    ) {
       issues.push({
         code: "missing-verification",
         message: `Implementation node ${node.id} must have a downstream verification gate.`,
@@ -246,29 +274,46 @@ export function verifyWorkflowReplanPatch(
 
   for (const nodeId of patch.replaceRemainingNodeIds) {
     if (completed.has(nodeId)) {
-      issues.push({ code: "unknown-dependency", message: `Cannot replace completed node ${nodeId}.`, nodeId });
+      issues.push({
+        code: "unknown-dependency",
+        message: `Cannot replace completed node ${nodeId}.`,
+        nodeId,
+      });
     }
     if (!plan.nodes.some((node) => node.id === nodeId)) {
-      issues.push({ code: "unknown-dependency", message: `Patch targets unknown node ${nodeId}.`, nodeId });
+      issues.push({
+        code: "unknown-dependency",
+        message: `Patch targets unknown node ${nodeId}.`,
+        nodeId,
+      });
     }
   }
 
   const ids = new Set(plan.nodes.map((node) => node.id));
   for (const node of patch.newNodes) {
     if (ids.has(node.id)) {
-      issues.push({ code: "duplicate-node-id", message: `Patch introduces duplicate node id ${node.id}.`, nodeId: node.id });
+      issues.push({
+        code: "duplicate-node-id",
+        message: `Patch introduces duplicate node id ${node.id}.`,
+        nodeId: node.id,
+      });
     }
     ids.add(node.id);
   }
 
   if (patch.replaceRemainingNodeIds.length === 0 && patch.newNodes.length === 0) {
-    issues.push({ code: "empty-plan", message: "Replan patch must replace at least one remaining node or add a new node." });
+    issues.push({
+      code: "empty-plan",
+      message: "Replan patch must replace at least one remaining node or add a new node.",
+    });
   }
 
   if (issues.length === 0) {
     const patchedPlan = {
       ...plan,
-      nodes: plan.nodes.filter((node) => !patch.replaceRemainingNodeIds.includes(node.id)).concat(patch.newNodes),
+      nodes: plan.nodes
+        .filter((node) => !patch.replaceRemainingNodeIds.includes(node.id))
+        .concat(patch.newNodes),
     };
     return verifyWorkflowPlan(patchedPlan, grammar);
   }

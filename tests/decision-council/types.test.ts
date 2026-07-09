@@ -108,9 +108,7 @@ describe("decision council domain types", () => {
       shouldContinue: true,
       diminishingReturns: false,
       needsHumanInput: true,
-      clarifyingQuestions: [
-        { id: "q1", text: "What is the budget ceiling?", choices: null },
-      ],
+      clarifyingQuestions: [{ id: "q1", text: "What is the budget ceiling?", choices: null }],
     });
 
     expect(assessment.clarifyingQuestions?.[0]).toEqual({

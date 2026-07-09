@@ -4,9 +4,17 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { formatDecisionCouncilSuccessMessage, parseDecisionCouncilCliArgs, parseEntityCliArgs, readDecisionCouncilInputFile } from "../src/cli.js";
+import {
+  formatDecisionCouncilSuccessMessage,
+  parseDecisionCouncilCliArgs,
+  parseEntityCliArgs,
+  readDecisionCouncilInputFile,
+} from "../src/cli.js";
 
-function runCommand(command: string, args: string[]): Promise<{ code: number | null; stderr: string; stdout: string }> {
+function runCommand(
+  command: string,
+  args: string[],
+): Promise<{ code: number | null; stderr: string; stdout: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: process.cwd(),
@@ -78,31 +86,71 @@ describe("CLI", () => {
 
   it("rejects removed named selection options", () => {
     const removedFlag = `--persona${"-set"}`;
-    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", removedFlag, "strategic"])).toThrow(
-      "Static persona sets are not supported.",
-    );
+    expect(() =>
+      parseDecisionCouncilCliArgs([
+        "decision-council",
+        "run",
+        "--input",
+        "x.md",
+        removedFlag,
+        "strategic",
+      ]),
+    ).toThrow("Static persona sets are not supported.");
   });
 
   it("parses --max-rounds as a positive integer", () => {
-    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds", "1"]);
+    const parsed = parseDecisionCouncilCliArgs([
+      "decision-council",
+      "run",
+      "--input",
+      "x.md",
+      "--max-rounds",
+      "1",
+    ]);
 
     expect(parsed.maxRounds).toBe(1);
   });
 
   it("rejects non-positive --max-rounds", () => {
-    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds", "0"])).toThrow();
+    expect(() =>
+      parseDecisionCouncilCliArgs([
+        "decision-council",
+        "run",
+        "--input",
+        "x.md",
+        "--max-rounds",
+        "0",
+      ]),
+    ).toThrow();
   });
 
   it("rejects non-integer --max-rounds", () => {
-    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds", "abc"])).toThrow();
+    expect(() =>
+      parseDecisionCouncilCliArgs([
+        "decision-council",
+        "run",
+        "--input",
+        "x.md",
+        "--max-rounds",
+        "abc",
+      ]),
+    ).toThrow();
   });
 
   it("rejects missing --max-rounds value", () => {
-    expect(() => parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds"])).toThrow();
+    expect(() =>
+      parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--max-rounds"]),
+    ).toThrow();
   });
 
   it("--smoke defaults max rounds to one without changing persona selection mode", () => {
-    const parsed = parseDecisionCouncilCliArgs(["decision-council", "run", "--input", "x.md", "--smoke"]);
+    const parsed = parseDecisionCouncilCliArgs([
+      "decision-council",
+      "run",
+      "--input",
+      "x.md",
+      "--smoke",
+    ]);
 
     expect(parsed.smoke).toBe(true);
     expect(parsed.maxRounds).toBe(1);
@@ -124,9 +172,9 @@ describe("CLI", () => {
   });
 
   it("reports decision council run usage", () => {
-    expect(() => parseDecisionCouncilCliArgs(["decision-council", "plan", "--input", "x.md"])).toThrow(
-      /Usage: weavekit decision-council run/,
-    );
+    expect(() =>
+      parseDecisionCouncilCliArgs(["decision-council", "plan", "--input", "x.md"]),
+    ).toThrow(/Usage: weavekit decision-council run/);
   });
 
   it("reads Markdown input into DecisionCouncilInput", async () => {
@@ -160,5 +208,4 @@ describe("CLI", () => {
     expect(result.stderr).not.toContain("Unknown file extension");
     expect(result.stderr).not.toContain("SKILL.md");
   });
-
 });

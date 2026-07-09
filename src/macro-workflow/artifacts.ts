@@ -30,11 +30,23 @@ export async function writeMacroWorkflowArtifacts(
   const reportPath = join(input.outputDir, "workflow-report.md");
   const statePath = join(input.outputDir, "workflow-state.json");
   const eventLogPath = join(input.outputDir, "workflow-events.jsonl");
-  await Promise.all(input.state.nodeResults
-    .filter((result) => result.payload)
-    .map((result) => writeFile(join(input.outputDir, `${result.nodeId}.payload.json`), JSON.stringify(result.payload, null, 2), "utf8")));
-  const artifactLines = input.state.nodeResults.flatMap((result) =>
-    result.artifacts?.map((artifact) => `- ${result.nodeId} ${artifact.kind}: ${artifact.path} - ${artifact.description}`) ?? [],
+  await Promise.all(
+    input.state.nodeResults
+      .filter((result) => result.payload)
+      .map((result) =>
+        writeFile(
+          join(input.outputDir, `${result.nodeId}.payload.json`),
+          JSON.stringify(result.payload, null, 2),
+          "utf8",
+        ),
+      ),
+  );
+  const artifactLines = input.state.nodeResults.flatMap(
+    (result) =>
+      result.artifacts?.map(
+        (artifact) =>
+          `- ${result.nodeId} ${artifact.kind}: ${artifact.path} - ${artifact.description}`,
+      ) ?? [],
   );
   const workflowArtifactLines = [
     `- Workflow report: ${reportPath}`,
@@ -44,7 +56,9 @@ export async function writeMacroWorkflowArtifacts(
   ];
   const payloadArtifactLines = input.state.nodeResults
     .filter((result) => result.payload)
-    .map((result) => `- ${result.nodeId}: ${join(input.outputDir, `${result.nodeId}.payload.json`)}`);
+    .map(
+      (result) => `- ${result.nodeId}: ${join(input.outputDir, `${result.nodeId}.payload.json`)}`,
+    );
 
   const report = [
     "# Macro Workflow Run Report",
@@ -59,7 +73,9 @@ export async function writeMacroWorkflowArtifacts(
     "## Node Results",
     ...(input.state.nodeResults.length === 0
       ? ["No node results recorded."]
-      : input.state.nodeResults.map((result) => `- ${result.nodeId}: ${result.status} - ${result.output}`)),
+      : input.state.nodeResults.map(
+          (result) => `- ${result.nodeId}: ${result.status} - ${result.output}`,
+        )),
     "",
     ...renderWorkflowUsageMarkdown(input.state.usage),
     "",
@@ -70,7 +86,9 @@ export async function writeMacroWorkflowArtifacts(
     ...(payloadArtifactLines.length === 0 ? ["No typed payloads recorded."] : payloadArtifactLines),
     "",
     "## Replans",
-    ...(input.state.replans.length === 0 ? ["No replans recorded."] : input.state.replans.map((replan) => `- ${replan.failedNodeId}: ${replan.reason}`)),
+    ...(input.state.replans.length === 0
+      ? ["No replans recorded."]
+      : input.state.replans.map((replan) => `- ${replan.failedNodeId}: ${replan.reason}`)),
   ].join("\n");
 
   await writeFile(reportPath, report, "utf8");
@@ -93,36 +111,53 @@ function renderSourceToProjectAdvisory(state: MacroWorkflowRunStateLike): string
     getPayloadValue<OpportunityCouncilReview>(state, "council-review", "councilReview") ??
     getPayloadValue<OpportunityCouncilReview>(state, "opportunity-mapping", "councilInputReview");
   const plans = collectPlanSummaries(state);
-  const finalReview = getPayloadValue<FinalRecommendationReview>(state, "final-recommendation-review", "finalRecommendationReview");
-  const notification = getPayloadValue<unknown>(state, "final-recommendation-review", "notification");
-  const opportunityAcceptances = getPayloadValue<unknown[]>(state, "council-review", "opportunityAcceptances") ?? [];
+  const finalReview = getPayloadValue<FinalRecommendationReview>(
+    state,
+    "final-recommendation-review",
+    "finalRecommendationReview",
+  );
+  const notification = getPayloadValue<unknown>(
+    state,
+    "final-recommendation-review",
+    "notification",
+  );
+  const opportunityAcceptances =
+    getPayloadValue<unknown[]>(state, "council-review", "opportunityAcceptances") ?? [];
 
   return [
     "## Advisory Summary",
     "",
-    ...(sourceAnalysis ? [
-      `- Source: ${sourceAnalysis.title}`,
-      `- Source takeaway: ${sourceAnalysis.summary}`,
-    ] : []),
-    ...(projectBrief ? [
-      `- Target project: ${projectBrief.displayName}`,
-      `- Project fit: ${projectBrief.architecture}`,
-    ] : []),
+    ...(sourceAnalysis
+      ? [`- Source: ${sourceAnalysis.title}`, `- Source takeaway: ${sourceAnalysis.summary}`]
+      : []),
+    ...(projectBrief
+      ? [
+          `- Target project: ${projectBrief.displayName}`,
+          `- Project fit: ${projectBrief.architecture}`,
+        ]
+      : []),
     ...(finalReview?.status === "rejected"
       ? renderFinalRecommendationRejection(finalReview, notification)
       : plans.length === 0
-      ? ["No selected improvement plans were recorded."]
-      : [
-        ...(finalReview?.status === "accepted" ? ["- Final recommendation review: accepted", ""] : []),
-        ...plans.flatMap((plan, index) => renderPlanRecommendation(plan, index)),
-      ]),
+        ? ["No selected improvement plans were recorded."]
+        : [
+            ...(finalReview?.status === "accepted"
+              ? ["- Final recommendation review: accepted", ""]
+              : []),
+            ...plans.flatMap((plan, index) => renderPlanRecommendation(plan, index)),
+          ]),
     "",
     "## Ranked Opportunities",
-    ...(councilReview ? renderRankedOpportunities(councilReview, opportunityAcceptances) : ["No ranked opportunities recorded."]),
+    ...(councilReview
+      ? renderRankedOpportunities(councilReview, opportunityAcceptances)
+      : ["No ranked opportunities recorded."]),
   ];
 }
 
-function renderFinalRecommendationRejection(review: FinalRecommendationReview, notification: unknown): string[] {
+function renderFinalRecommendationRejection(
+  review: FinalRecommendationReview,
+  notification: unknown,
+): string[] {
   const notificationRecord = asRecord(notification);
   const notificationSummary = readString(notificationRecord, "status")
     ? `${readString(notificationRecord, "channel") || "notification"} ${readString(notificationRecord, "status")}${readString(notificationRecord, "error") ? `: ${readString(notificationRecord, "error")}` : ""}`
@@ -147,7 +182,8 @@ function renderFinalRecommendationRejection(review: FinalRecommendationReview, n
 
 function renderPlanRecommendation(plan: PlanArtifactSummary, index: number): string[] {
   const record = asRecord(plan);
-  const recommendation = readString(record, "recommendation") || readString(record, "title") || `Plan ${index + 1}`;
+  const recommendation =
+    readString(record, "recommendation") || readString(record, "title") || `Plan ${index + 1}`;
   const targetChange = readString(record, "targetChange") || readString(record, "scope");
   const problemSolved = readString(record, "problemSolved");
   const sourceLessonApplied = readString(record, "sourceLessonApplied");
@@ -166,13 +202,20 @@ function renderPlanRecommendation(plan: PlanArtifactSummary, index: number): str
     ...(problemSolved ? ["**Problem solved**", "", problemSolved, ""] : []),
     ...(sourceLessonApplied ? ["**Source lesson applied**", "", sourceLessonApplied, ""] : []),
     ...(expectedUserValue ? ["**Expected value**", "", expectedUserValue, ""] : []),
-    ...(implementationOutline.length > 0 ? ["**Implementation outline**", ...renderList(implementationOutline), ""] : []),
-    ...(validationCommands.length > 0 ? ["**Validation**", ...renderList(validationCommands), ""] : []),
+    ...(implementationOutline.length > 0
+      ? ["**Implementation outline**", ...renderList(implementationOutline), ""]
+      : []),
+    ...(validationCommands.length > 0
+      ? ["**Validation**", ...renderList(validationCommands), ""]
+      : []),
     ...(risks.length > 0 ? ["**Risks**", ...renderList(risks), ""] : []),
   ];
 }
 
-function renderRankedOpportunities(review: OpportunityCouncilReview, acceptances: unknown[] = []): string[] {
+function renderRankedOpportunities(
+  review: OpportunityCouncilReview,
+  acceptances: unknown[] = [],
+): string[] {
   const opportunities = Array.isArray(review.opportunities) ? review.opportunities : [];
   const acceptanceById = new Map<string, Record<string, unknown>>();
   for (const acceptance of acceptances) {
@@ -187,16 +230,16 @@ function renderRankedOpportunities(review: OpportunityCouncilReview, acceptances
     ...(opportunities.length === 0
       ? ["No opportunities recorded."]
       : opportunities.map((opportunity, index) => {
-        const score = opportunity.score;
-        const scoreSummary = score
-          ? ` applicability ${formatScore(score.applicability)}, impact ${formatScore(score.impact)}, confidence ${formatScore(score.confidence)}`
-          : "";
-        const acceptance = acceptanceById.get(opportunity.id);
-        const acceptanceSummary = acceptance
-          ? `\n   ${readBoolean(acceptance, "accepted") ? "Accepted" : "Rejected"}: ${readString(acceptance, "reason")}`
-          : "";
-        return `${index + 1}. **${opportunity.title}**${scoreSummary}\n   ${opportunity.projectChange}${acceptanceSummary}`;
-      })),
+          const score = opportunity.score;
+          const scoreSummary = score
+            ? ` applicability ${formatScore(score.applicability)}, impact ${formatScore(score.impact)}, confidence ${formatScore(score.confidence)}`
+            : "";
+          const acceptance = acceptanceById.get(opportunity.id);
+          const acceptanceSummary = acceptance
+            ? `\n   ${readBoolean(acceptance, "accepted") ? "Accepted" : "Rejected"}: ${readString(acceptance, "reason")}`
+            : "";
+          return `${index + 1}. **${opportunity.title}**${scoreSummary}\n   ${opportunity.projectChange}${acceptanceSummary}`;
+        })),
   ];
 }
 
@@ -205,7 +248,7 @@ function collectPlanSummaries(state: MacroWorkflowRunStateLike): PlanArtifactSum
   for (const result of state.nodeResults) {
     const payloadPlans = result.payload?.plans;
     if (Array.isArray(payloadPlans)) {
-      plans.push(...payloadPlans as PlanArtifactSummary[]);
+      plans.push(...(payloadPlans as PlanArtifactSummary[]));
       continue;
     }
     const plan = result.payload?.plan;
@@ -224,12 +267,20 @@ function collectPlanSummaries(state: MacroWorkflowRunStateLike): PlanArtifactSum
   });
 }
 
-function getPayloadValue<T>(state: MacroWorkflowRunStateLike, nodeId: string, key: string): T | undefined {
-  return state.nodeResults.find((result) => result.nodeId === nodeId)?.payload?.[key] as T | undefined;
+function getPayloadValue<T>(
+  state: MacroWorkflowRunStateLike,
+  nodeId: string,
+  key: string,
+): T | undefined {
+  return state.nodeResults.find((result) => result.nodeId === nodeId)?.payload?.[key] as
+    | T
+    | undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function readString(record: Record<string, unknown>, key: string): string {
@@ -243,7 +294,9 @@ function readBoolean(record: Record<string, unknown>, key: string): boolean {
 
 function readStringArray(record: Record<string, unknown>, key: string): string[] {
   const value = record[key];
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0) : [];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
 }
 
 function renderList(items: string[]): string[] {
@@ -254,14 +307,20 @@ function formatScore(value: number): string {
   return Number.isFinite(value) ? value.toFixed(2) : "n/a";
 }
 
-export async function writeMacroWorkflowStateArtifact(outputDir: string, state: MacroWorkflowRunStateLike): Promise<string> {
+export async function writeMacroWorkflowStateArtifact(
+  outputDir: string,
+  state: MacroWorkflowRunStateLike,
+): Promise<string> {
   await mkdir(outputDir, { recursive: true });
   const statePath = join(outputDir, "workflow-state.json");
   await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
   return statePath;
 }
 
-export async function appendWorkflowReplayEvent(outputDir: string, event: WorkflowReplayEvent): Promise<string> {
+export async function appendWorkflowReplayEvent(
+  outputDir: string,
+  event: WorkflowReplayEvent,
+): Promise<string> {
   await mkdir(outputDir, { recursive: true });
   const eventLogPath = join(outputDir, "workflow-events.jsonl");
   await appendFile(eventLogPath, `${JSON.stringify(event)}\n`, "utf8");

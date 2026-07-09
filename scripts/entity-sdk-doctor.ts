@@ -2,8 +2,19 @@
 import { existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { loadTypedWeavekitConfig, SupportedPluginId, type CopilotDefaults, type PluginConfigs, type ToolingDefaults } from "../src/config.js";
-import { formatEntityValidationErrors, loadEntityCatalog, validateEntityCatalog, validateSkillReference } from "../src/entities/index.js";
+import {
+  loadTypedWeavekitConfig,
+  SupportedPluginId,
+  type CopilotDefaults,
+  type PluginConfigs,
+  type ToolingDefaults,
+} from "../src/config.js";
+import {
+  formatEntityValidationErrors,
+  loadEntityCatalog,
+  validateEntityCatalog,
+  validateSkillReference,
+} from "../src/entities/index.js";
 import { ensureAgentNativeSkillInstalled } from "../src/macro-workflow/sourceToProject/harnesses.js";
 import { materializeWorkflowPlan } from "../src/macro-workflow/templates.js";
 import type { WorkflowPluginCommandCapability } from "../src/macro-workflow/types.js";
@@ -43,7 +54,9 @@ type EntitySdkDoctorSession = {
       list?: () => Promise<{ plugins?: PluginListItem[] } | PluginListItem[]>;
     };
     commands?: {
-      list?: () => Promise<{ commands?: Array<CommandListItem | string> } | Array<CommandListItem | string>>;
+      list?: () => Promise<
+        { commands?: Array<CommandListItem | string> } | Array<CommandListItem | string>
+      >;
     };
   };
   disconnect(): Promise<void>;
@@ -136,7 +149,13 @@ function findPlatformCliPathInVirtualStore(virtualStoreDir: string): string | un
       .sort()
       .reverse();
     for (const entry of entries) {
-      const candidate = join(virtualStoreDir, entry, "node_modules", ...packageName.split("/"), "index.js");
+      const candidate = join(
+        virtualStoreDir,
+        entry,
+        "node_modules",
+        ...packageName.split("/"),
+        "index.js",
+      );
       if (existsSync(candidate)) {
         return candidate;
       }
@@ -164,16 +183,22 @@ export function resolveCopilotCliPathFromSdkModuleUrl(sdkModuleUrl: string): str
 
 async function createLiveCopilotClient(copilot: CopilotDefaults): Promise<EntitySdkDoctorClient> {
   const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
-  const CopilotClientCtor = CopilotClient as unknown as new (options?: unknown) => EntitySdkDoctorClient;
+  const CopilotClientCtor = CopilotClient as unknown as new (
+    options?: unknown,
+  ) => EntitySdkDoctorClient;
   const runtimeUrl = copilot.runtimeUrl ?? copilot.cliUrl;
-  const cliPath = copilot.cliPath ?? resolveCopilotCliPathFromSdkModuleUrl(import.meta.resolve("@github/copilot-sdk"));
+  const cliPath =
+    copilot.cliPath ??
+    resolveCopilotCliPathFromSdkModuleUrl(import.meta.resolve("@github/copilot-sdk"));
   const clientOptions: Record<string, unknown> = {};
   if (runtimeUrl) {
     clientOptions.connection = RuntimeConnection.forUri(runtimeUrl);
   } else if (cliPath) {
     clientOptions.connection = RuntimeConnection.forStdio({ path: cliPath });
   }
-  return Object.keys(clientOptions).length > 0 ? new CopilotClientCtor(clientOptions) : new CopilotClientCtor();
+  return Object.keys(clientOptions).length > 0
+    ? new CopilotClientCtor(clientOptions)
+    : new CopilotClientCtor();
 }
 
 function discoveryDirectoryForSkillPath(skillPath: string): string {
@@ -218,13 +243,19 @@ async function withTimeout<T>(label: string, timeoutMs: number, promise: Promise
   }
 }
 
-function collectEntitySkillChecks(options: { repoRoot: string; entityId?: string }): EntitySkillCheck[] {
+function collectEntitySkillChecks(options: {
+  repoRoot: string;
+  entityId?: string;
+}): EntitySkillCheck[] {
   const catalog = loadEntityCatalog(options.repoRoot);
   const checks = catalog.entities.flatMap((entity): EntitySkillCheck[] => {
     if (options.entityId && entity.id !== options.entityId) {
       return [];
     }
-    if (entity.execution.mode !== "harness_then_baml" || entity.execution.harness !== "copilot-sdk") {
+    if (
+      entity.execution.mode !== "harness_then_baml" ||
+      entity.execution.harness !== "copilot-sdk"
+    ) {
       return [];
     }
     const skillNames = entity.capabilities?.skills ?? [];
@@ -243,12 +274,14 @@ function collectEntitySkillChecks(options: { repoRoot: string; entityId?: string
       .filter((skillName) => !enabledSkillNames.has(skillName))
       .sort();
 
-    return [{
-      entityId: entity.id,
-      skillNames,
-      skillDirectories: uniqueSkillDirectories,
-      disabledSkills,
-    }];
+    return [
+      {
+        entityId: entity.id,
+        skillNames,
+        skillDirectories: uniqueSkillDirectories,
+        disabledSkills,
+      },
+    ];
   });
 
   if (options.entityId && checks.length === 0) {
@@ -288,15 +321,17 @@ function collectWorkflowPluginCommandChecks(options: {
     mode: "advisory",
   });
   return plan.nodes.flatMap((node) => {
-    return (node.capabilities?.pluginCommands ?? []).map((capability: WorkflowPluginCommandCapability) => {
-      const plugin = supportedPluginId(capability.plugin);
-      return {
-        nodeId: node.id,
-        plugin,
-        command: capability.command,
-        pluginDirectory: pluginDirectoryForCommand({ plugin, plugins: options.plugins }),
-      };
-    });
+    return (node.capabilities?.pluginCommands ?? []).map(
+      (capability: WorkflowPluginCommandCapability) => {
+        const plugin = supportedPluginId(capability.plugin);
+        return {
+          nodeId: node.id,
+          plugin,
+          command: capability.command,
+          pluginDirectory: pluginDirectoryForCommand({ plugin, plugins: options.plugins }),
+        };
+      },
+    );
   });
 }
 
@@ -307,11 +342,18 @@ function assertSkillListContainsEnabledSkill(args: {
 }): void {
   const skill = args.skills.find((candidate) => candidate.name === args.skillName);
   if (!skill) {
-    const available = args.skills.map((candidate) => candidate.name).sort().join(", ");
-    throw new Error(`Copilot SDK session did not list skill ${args.skillName} for entity ${args.entityId}. Available skills: ${available || "<none>"}.`);
+    const available = args.skills
+      .map((candidate) => candidate.name)
+      .sort()
+      .join(", ");
+    throw new Error(
+      `Copilot SDK session did not list skill ${args.skillName} for entity ${args.entityId}. Available skills: ${available || "<none>"}.`,
+    );
   }
   if (skill.enabled === false) {
-    throw new Error(`Copilot SDK session listed skill ${args.skillName} for entity ${args.entityId}, but it is disabled.`);
+    throw new Error(
+      `Copilot SDK session listed skill ${args.skillName} for entity ${args.entityId}, but it is disabled.`,
+    );
   }
 }
 
@@ -333,10 +375,18 @@ function assertPluginListContainsEnabledPlugin(args: {
   plugin: SupportedPluginId;
   plugins: PluginListItem[];
 }): void {
-  const plugin = args.plugins.find((candidate) => candidate.id === args.plugin || candidate.name === args.plugin);
+  const plugin = args.plugins.find(
+    (candidate) => candidate.id === args.plugin || candidate.name === args.plugin,
+  );
   if (!plugin) {
-    const available = args.plugins.map((candidate) => candidate.id ?? candidate.name).filter(Boolean).sort().join(", ");
-    throw new Error(`Copilot SDK session did not list plugin ${args.plugin}. Available plugins: ${available || "<none>"}.`);
+    const available = args.plugins
+      .map((candidate) => candidate.id ?? candidate.name)
+      .filter(Boolean)
+      .sort()
+      .join(", ");
+    throw new Error(
+      `Copilot SDK session did not list plugin ${args.plugin}. Available plugins: ${available || "<none>"}.`,
+    );
   }
   if (plugin.enabled === false) {
     throw new Error(`Copilot SDK session listed plugin ${args.plugin}, but it is disabled.`);
@@ -352,7 +402,9 @@ function assertCommandListContainsCommand(args: {
     return;
   }
   const available = args.commands.map(commandName).filter(Boolean).sort().join(", ");
-  throw new Error(`Copilot SDK session did not list command ${args.command} for source-to-project/${args.nodeId}. Available commands: ${available || "<none>"}.`);
+  throw new Error(
+    `Copilot SDK session did not list command ${args.command} for source-to-project/${args.nodeId}. Available commands: ${available || "<none>"}.`,
+  );
 }
 
 async function verifyEntitySkillsInSession(args: {
@@ -367,25 +419,39 @@ async function verifyEntitySkillsInSession(args: {
   }
 
   args.onProgress?.(`Checking ${args.check.entityId} configured skill loading...`);
-  const session = await withTimeout(`${args.check.entityId} skill SDK session`, args.timeoutMs, args.client.createSession({
-    ...(args.model ? { model: args.model } : {}),
-    skillDirectories: args.check.skillDirectories,
-    disabledSkills: args.check.disabledSkills,
-  }));
+  const session = await withTimeout(
+    `${args.check.entityId} skill SDK session`,
+    args.timeoutMs,
+    args.client.createSession({
+      ...(args.model ? { model: args.model } : {}),
+      skillDirectories: args.check.skillDirectories,
+      disabledSkills: args.check.disabledSkills,
+    }),
+  );
   try {
     if (!session.rpc?.skills?.ensureLoaded || !session.rpc.skills.list) {
       throw new Error("Copilot SDK session does not expose rpc.skills.ensureLoaded/list.");
     }
-    await withTimeout(`${args.check.entityId} skills.ensureLoaded`, args.timeoutMs, session.rpc.skills.ensureLoaded());
+    await withTimeout(
+      `${args.check.entityId} skills.ensureLoaded`,
+      args.timeoutMs,
+      session.rpc.skills.ensureLoaded(),
+    );
     const diagnostics = await withTimeout(
       `${args.check.entityId} skills.reload`,
       args.timeoutMs,
       session.rpc.skills.reload?.() ?? Promise.resolve(undefined),
     );
     if (diagnostics?.errors?.length) {
-      throw new Error(`Copilot SDK skill reload failed for ${args.check.entityId}: ${diagnostics.errors.join("; ")}`);
+      throw new Error(
+        `Copilot SDK skill reload failed for ${args.check.entityId}: ${diagnostics.errors.join("; ")}`,
+      );
     }
-    const listed = await withTimeout(`${args.check.entityId} skills.list`, args.timeoutMs, session.rpc.skills.list());
+    const listed = await withTimeout(
+      `${args.check.entityId} skills.list`,
+      args.timeoutMs,
+      session.rpc.skills.list(),
+    );
     const skills = listed.skills ?? [];
     for (const skillName of args.check.skillNames) {
       await withTimeout(
@@ -395,9 +461,15 @@ async function verifyEntitySkillsInSession(args: {
       );
       assertSkillListContainsEnabledSkill({ entityId: args.check.entityId, skillName, skills });
     }
-    return args.check.skillNames.map((skillName) => `${args.check.entityId}: skill ${skillName} loaded`);
+    return args.check.skillNames.map(
+      (skillName) => `${args.check.entityId}: skill ${skillName} loaded`,
+    );
   } finally {
-    await withTimeout(`${args.check.entityId} SDK session disconnect`, args.timeoutMs, session.disconnect());
+    await withTimeout(
+      `${args.check.entityId} SDK session disconnect`,
+      args.timeoutMs,
+      session.disconnect(),
+    );
   }
 }
 
@@ -413,16 +485,32 @@ async function verifyWorkflowPluginCommandsInSession(args: {
   }
   const pluginDirectories = unique(args.checks.map((check) => check.pluginDirectory));
   args.onProgress?.("Checking source-to-project plugin command discovery...");
-  const session = await withTimeout("source-to-project plugin command SDK session", args.timeoutMs, args.client.createSession({
-    ...(args.model ? { model: args.model } : {}),
-    pluginDirectories,
-  }));
+  const session = await withTimeout(
+    "source-to-project plugin command SDK session",
+    args.timeoutMs,
+    args.client.createSession({
+      ...(args.model ? { model: args.model } : {}),
+      pluginDirectories,
+    }),
+  );
   try {
     if (!session.rpc?.plugins?.list || !session.rpc?.commands?.list) {
       throw new Error("Copilot SDK session does not expose rpc.plugins.list/rpc.commands.list.");
     }
-    const listedPlugins = listResultItems(await withTimeout("source-to-project plugins.list", args.timeoutMs, session.rpc.plugins.list()));
-    const listedCommands = listResultItems(await withTimeout("source-to-project commands.list", args.timeoutMs, session.rpc.commands.list()));
+    const listedPlugins = listResultItems(
+      await withTimeout(
+        "source-to-project plugins.list",
+        args.timeoutMs,
+        session.rpc.plugins.list(),
+      ),
+    );
+    const listedCommands = listResultItems(
+      await withTimeout(
+        "source-to-project commands.list",
+        args.timeoutMs,
+        session.rpc.commands.list(),
+      ),
+    );
     const plugins = unique(args.checks.map((check) => check.plugin)) as SupportedPluginId[];
     for (const plugin of plugins) {
       assertPluginListContainsEnabledPlugin({ plugin, plugins: listedPlugins });
@@ -434,11 +522,15 @@ async function verifyWorkflowPluginCommandsInSession(args: {
         commands: listedCommands,
       });
     }
-    return args.checks.map((check) =>
-      `source-to-project/${check.nodeId}: plugin command ${check.command} discovered`
+    return args.checks.map(
+      (check) => `source-to-project/${check.nodeId}: plugin command ${check.command} discovered`,
     );
   } finally {
-    await withTimeout("source-to-project plugin command SDK session disconnect", args.timeoutMs, session.disconnect());
+    await withTimeout(
+      "source-to-project plugin command SDK session disconnect",
+      args.timeoutMs,
+      session.disconnect(),
+    );
   }
 }
 
@@ -479,44 +571,54 @@ export async function runEntitySdkDoctor(options: EntitySdkDoctorOptions = {}): 
 
   const lines: string[] = [];
   const skillChecks = checks.filter((check) => check.skillNames.length > 0);
-  lines.push(...checks
-    .filter((check) => check.skillNames.length === 0)
-    .map((check) => `${check.entityId}: no capabilities.skills configured`));
+  lines.push(
+    ...checks
+      .filter((check) => check.skillNames.length === 0)
+      .map((check) => `${check.entityId}: no capabilities.skills configured`),
+  );
   if (!options.entityId) {
     progress(options, "Checking source-to-project visual-plan installer dry run...");
-    lines.push(await verifySourceToProjectVisualPlanInstaller({
-      repoRoot,
-      tooling: config.tooling,
-      shell: options.shell,
-      timeoutMs,
-    }));
+    lines.push(
+      await verifySourceToProjectVisualPlanInstaller({
+        repoRoot,
+        tooling: config.tooling,
+        shell: options.shell,
+        timeoutMs,
+      }),
+    );
   }
   if (skillChecks.length === 0 && workflowPluginChecks.length === 0) {
     return formatDoctorOutput(lines.length ? lines : ["No copilot-sdk entities configured."]);
   }
 
   progress(options, "Starting Copilot SDK doctor client...");
-  const client = await (options.clientFactory ? options.clientFactory() : createLiveCopilotClient(config.copilot));
+  const client = await (options.clientFactory
+    ? options.clientFactory()
+    : createLiveCopilotClient(config.copilot));
   const model = options.model ?? config.copilot.sdkDoctorModel;
   await withTimeout("Copilot SDK client start", timeoutMs, client.start());
   let primaryError: unknown;
   try {
     for (const check of skillChecks) {
-      lines.push(...await verifyEntitySkillsInSession({
+      lines.push(
+        ...(await verifyEntitySkillsInSession({
+          client,
+          check,
+          model,
+          timeoutMs,
+          onProgress: options.onProgress,
+        })),
+      );
+    }
+    lines.push(
+      ...(await verifyWorkflowPluginCommandsInSession({
         client,
-        check,
+        checks: workflowPluginChecks,
         model,
         timeoutMs,
         onProgress: options.onProgress,
-      }));
-    }
-    lines.push(...await verifyWorkflowPluginCommandsInSession({
-      client,
-      checks: workflowPluginChecks,
-      model,
-      timeoutMs,
-      onProgress: options.onProgress,
-    }));
+      })),
+    );
   } catch (error) {
     primaryError = error;
   } finally {
@@ -525,8 +627,11 @@ export async function runEntitySdkDoctor(options: EntitySdkDoctorOptions = {}): 
     if (stopErrors?.length && !primaryError) {
       primaryError = stopErrors[0];
     } else if (stopErrors?.length) {
-      const stopErrorMessage = stopErrors[0] instanceof Error ? stopErrors[0].message : String(stopErrors[0]);
-      process.stderr.write(`Copilot SDK client stop failed (suppressed in favor of primary error): ${stopErrorMessage}\n`);
+      const stopErrorMessage =
+        stopErrors[0] instanceof Error ? stopErrors[0].message : String(stopErrors[0]);
+      process.stderr.write(
+        `Copilot SDK client stop failed (suppressed in favor of primary error): ${stopErrorMessage}\n`,
+      );
     }
   }
   if (primaryError) {

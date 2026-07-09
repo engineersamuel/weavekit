@@ -26,8 +26,13 @@ import { TelegramInquiry } from "../src/telegram/inquiry.js";
 import { startPoller } from "../src/telegram/poller.js";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
-const chatId = process.env.TELEGRAM_OWNER_CHAT_ID ? Number(process.env.TELEGRAM_OWNER_CHAT_ID) : undefined;
-const proxyBase = (process.env.COPILOT_PROXY_BASE_URL ?? "http://127.0.0.1:8080/v1").replace(/\/$/, "");
+const chatId = process.env.TELEGRAM_OWNER_CHAT_ID
+  ? Number(process.env.TELEGRAM_OWNER_CHAT_ID)
+  : undefined;
+const proxyBase = (process.env.COPILOT_PROXY_BASE_URL ?? "http://127.0.0.1:8080/v1").replace(
+  /\/$/,
+  "",
+);
 const proxyKey = process.env.COPILOT_PROXY_API_KEY ?? "anything";
 
 // Spans from the "weavekit" tracer are exported to Langfuse by the repo's bootstrap.
@@ -59,14 +64,21 @@ async function suggestSides(mainCourse: string): Promise<{ text: string; model: 
   if (!res.ok) {
     throw new Error(`model proxy ${res.status} ${res.statusText}`);
   }
-  const json = (await res.json()) as { model?: string; choices?: Array<{ message?: { content?: string } }> };
+  const json = (await res.json()) as {
+    model?: string;
+    choices?: Array<{ message?: { content?: string } }>;
+  };
   return {
     text: json.choices?.[0]?.message?.content?.trim() ?? "(no suggestion returned)",
     model: json.model ?? requestedModel,
   };
 }
 
-async function runDinnerFlow(inquiry: TelegramInquiry, client: TelegramClient, label: string): Promise<void> {
+async function runDinnerFlow(
+  inquiry: TelegramInquiry,
+  client: TelegramClient,
+  label: string,
+): Promise<void> {
   await tracer.startActiveSpan(`dinner-flow.${label}`, async (span) => {
     span.setAttribute("langfuse.observation.type", "span");
     setJson(span, "langfuse.observation.input", { flow: label });
@@ -86,7 +98,9 @@ async function runDinnerFlow(inquiry: TelegramInquiry, client: TelegramClient, l
             askSpan.setStatus({ code: SpanStatusCode.OK });
             return answer;
           } catch (waitErr) {
-            askSpan.recordException(waitErr instanceof Error ? waitErr : new Error(String(waitErr)));
+            askSpan.recordException(
+              waitErr instanceof Error ? waitErr : new Error(String(waitErr)),
+            );
             askSpan.setStatus({ code: SpanStatusCode.ERROR, message: "no reply" });
             throw waitErr;
           } finally {
@@ -95,7 +109,10 @@ async function runDinnerFlow(inquiry: TelegramInquiry, client: TelegramClient, l
         });
       } catch {
         // No reply in time: skip this flow cleanly (the human-may-skip layer of ADR 0004).
-        await client.sendMessage(chatId!, `\u23ED\uFE0F [${label}] No reply in time \u2014 skipping.`);
+        await client.sendMessage(
+          chatId!,
+          `\u23ED\uFE0F [${label}] No reply in time \u2014 skipping.`,
+        );
         span.setAttribute("weavekit.elicitation.answered", false);
         setJson(span, "langfuse.observation.output", { skipped: true, reason: "no-reply" });
         span.setStatus({ code: SpanStatusCode.OK });
@@ -129,7 +146,10 @@ async function runDinnerFlow(inquiry: TelegramInquiry, client: TelegramClient, l
         }
       });
 
-      await client.sendMessage(chatId!, `\u{1F957} [${label}] Best sides for ${mainCourse}:\n\n${sides}`);
+      await client.sendMessage(
+        chatId!,
+        `\u{1F957} [${label}] Best sides for ${mainCourse}:\n\n${sides}`,
+      );
       setJson(span, "langfuse.observation.output", { mainCourse, sides });
       span.setStatus({ code: SpanStatusCode.OK });
     } catch (err) {
@@ -163,8 +183,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  const exporting = telemetryEnabled() && Boolean(process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY);
-  console.log(exporting ? "Langfuse export: ON" : "Langfuse export: OFF (set LANGFUSE_PUBLIC_KEY/SECRET_KEY to enable)");
+  const exporting =
+    telemetryEnabled() &&
+    Boolean(process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY);
+  console.log(
+    exporting
+      ? "Langfuse export: ON"
+      : "Langfuse export: OFF (set LANGFUSE_PUBLIC_KEY/SECRET_KEY to enable)",
+  );
 
   const telemetry = await startTelemetry("weavekit");
   const client = new TelegramClient(token);
@@ -180,7 +206,10 @@ async function main(): Promise<void> {
       console.log(`Trace id: ${traceId}`);
       console.log("Two questions sent to Telegram. Reply to BOTH (long-press each \u2192 Reply).");
       try {
-        await Promise.all([runDinnerFlow(inquiry, client, "A"), runDinnerFlow(inquiry, client, "B")]);
+        await Promise.all([
+          runDinnerFlow(inquiry, client, "A"),
+          runDinnerFlow(inquiry, client, "B"),
+        ]);
         root.setStatus({ code: SpanStatusCode.OK });
       } finally {
         root.end();

@@ -11,10 +11,10 @@ routing decision.
 - **The plumbing already exists.** BAML lets you override the client per call by name
   (`b.Fn(args, { client: "CopilotProxyGpt5Mini" })`) or fully customize a client at
   runtime (`ClientRegistry.addLlmClient(name, provider, { model, reasoning_effort, ... })`
-  + `setPrimary`). The Copilot SDK takes `model` **and** a first-class
-  `reasoningEffort: "low" | "medium" | "high" | "xhigh"` in `createSession(...)`. No
-  forking or low-level work is needed — routing is a thin layer that *selects* these
-  values and passes them in.
+  - `setPrimary`). The Copilot SDK takes `model` **and** a first-class
+    `reasoningEffort: "low" | "medium" | "high" | "xhigh"` in `createSession(...)`. No
+    forking or low-level work is needed — routing is a thin layer that _selects_ these
+    values and passes them in.
 - **The router model must be NON-reasoning (or minimum effort).** The single biggest
   latency trap: for reasoning models, time-to-first-token (TTFT) includes "thinking"
   time. GPT-5 mini at `high` effort measures **61–79 s** TTFT; Claude Haiku 4.5 in
@@ -31,7 +31,7 @@ routing decision.
   back to the policy default. This guarantees < 5 s and keeps known calls deterministic.
 - **Two caveats to verify in planning:** (1) every model here is reached through the
   **local Copilot proxy at `127.0.0.1:8080`**, not the public API, so the published
-  TTFT/TPS numbers below are *relative* guidance — confirm with a local micro-benchmark;
+  TTFT/TPS numbers below are _relative_ guidance — confirm with a local micro-benchmark;
   (2) the `safe-gale` branch is **mid-rename and does not currently build** — establish a
   green baseline before layering the router.
 
@@ -59,11 +59,11 @@ Two distinct concerns:
 
 `baml_src/council.baml` defines three functions, each hardcoded to `client DefaultClient`:
 
-| Function | Job | Natural model tier |
-| --- | --- | --- |
-| `NormalizePersonaCritique` | Structured extraction of one persona's text into a schema | Fast / cheap, low effort |
-| `AssessCouncilRound` (Judge) | Decide continue/stop from the round's critiques | Mid reasoning |
-| `CreateCouncilReport` | Synthesize the final decision-ready report + Markdown | Strong model, higher effort |
+| Function                     | Job                                                       | Natural model tier          |
+| ---------------------------- | --------------------------------------------------------- | --------------------------- |
+| `NormalizePersonaCritique`   | Structured extraction of one persona's text into a schema | Fast / cheap, low effort    |
+| `AssessCouncilRound` (Judge) | Decide continue/stop from the round's critiques           | Mid reasoning               |
+| `CreateCouncilReport`        | Synthesize the final decision-ready report + Markdown     | Strong model, higher effort |
 
 They are invoked in `src/decision-council/bamlAdapters.ts` via the generated client `b`:
 
@@ -104,16 +104,16 @@ There is **no per-persona model/effort selection today** — `runner.ts` constru
 ~45 `CopilotProxy*` clients are already defined, all pointing at the local proxy. The
 fast-tier candidates relevant to the **router model** decision:
 
-| Client name (clients.baml) | Model id | Class |
-| --- | --- | --- |
-| `CopilotProxyClaudeHaiku45` | `claude-haiku-4-5` | Anthropic Haiku (fast) |
-| `CopilotProxyClaude35Haiku` | `claude-3-5-haiku` | Anthropic Haiku (older, fast) |
-| `CopilotProxyGrokCodeFast1` | `grok-code-fast-1` | xAI speed-tuned coder |
-| `CopilotProxyGemini3FlashPreview` | `gemini-3-flash-preview` | Google Flash |
-| `CopilotProxyGpt5Mini` | `gpt-5-mini` | OpenAI mini (reasoning) |
-| `CopilotProxyRaptorMini` | `raptor-mini` | MS fine-tuned GPT-5 mini |
+| Client name (clients.baml)        | Model id                 | Class                         |
+| --------------------------------- | ------------------------ | ----------------------------- |
+| `CopilotProxyClaudeHaiku45`       | `claude-haiku-4-5`       | Anthropic Haiku (fast)        |
+| `CopilotProxyClaude35Haiku`       | `claude-3-5-haiku`       | Anthropic Haiku (older, fast) |
+| `CopilotProxyGrokCodeFast1`       | `grok-code-fast-1`       | xAI speed-tuned coder         |
+| `CopilotProxyGemini3FlashPreview` | `gemini-3-flash-preview` | Google Flash                  |
+| `CopilotProxyGpt5Mini`            | `gpt-5-mini`             | OpenAI mini (reasoning)       |
+| `CopilotProxyRaptorMini`          | `raptor-mini`            | MS fine-tuned GPT-5 mini      |
 
-Stronger tiers also available for the *target* of routing: `CopilotProxyClaudeSonnet46`,
+Stronger tiers also available for the _target_ of routing: `CopilotProxyClaudeSonnet46`,
 `CopilotProxyClaudeOpus48`, `CopilotProxyGpt55`, `CopilotProxyGpt53Codex`,
 `CopilotProxyGemini3ProPreview`, etc.
 
@@ -146,7 +146,7 @@ Two ways to route:
 ```ts
 const critique = await b.NormalizePersonaCritique(
   { personaId, text },
-  { client: "CopilotProxyGrokCodeFast1" },   // any client name, or "openai/gpt-5-mini" shorthand
+  { client: "CopilotProxyGrokCodeFast1" }, // any client name, or "openai/gpt-5-mini" shorthand
 );
 ```
 
@@ -160,10 +160,12 @@ cr.addLlmClient("RoutedReport", "openai-generic", {
   base_url: "http://127.0.0.1:8080/v1",
   api_key: process.env.COPILOT_PROXY_API_KEY,
   model: "gpt-5.5",
-  reasoning_effort: "high",            // passthrough option (see caveat §8)
+  reasoning_effort: "high", // passthrough option (see caveat §8)
 });
 cr.setPrimary("RoutedReport");
-const report = await b.CreateCouncilReport(critiques, assessments, failures, { clientRegistry: cr });
+const report = await b.CreateCouncilReport(critiques, assessments, failures, {
+  clientRegistry: cr,
+});
 ```
 
 `client` takes precedence over `clientRegistry` if both are supplied. `b.withOptions({ client })`
@@ -171,7 +173,7 @@ applies a default client across many calls. (Sources: BAML docs — client-optio
 client-registry, with_options; native `ClientRegistry.addLlmClient(name, provider, options)`.)
 
 **Implication:** effort control on the BAML path = use a `ClientRegistry` dynamic client
-with a `reasoning_effort` option (passthrough), *or* pre-declare effort-specific clients
+with a `reasoning_effort` option (passthrough), _or_ pre-declare effort-specific clients
 in `clients.baml`. The simple `{ client: name }` form only swaps the model, not effort.
 
 ---
@@ -210,27 +212,27 @@ only change is threading routed values into `CopilotPersonaWorker`.
 
 ### 5.1 The decisive constraint: avoid "thinking" before the answer
 
-Artificial Analysis (AA) and others define TTFT as *seconds to first token after the
-request is sent*, and **for reasoning models this includes the model's thinking time.**
+Artificial Analysis (AA) and others define TTFT as _seconds to first token after the
+request is sent_, and **for reasoning models this includes the model's thinking time.**
 That single fact dominates the router-model choice:
 
-| Candidate | Mode | Output speed (tok/s) | TTFT | Notes |
-| --- | --- | --- | --- | --- |
-| **claude-haiku-4-5** | **non-reasoning** | ~94–123 | **~0.5–0.84 s** | Best TTFT; "fastest, most efficient" Anthropic model |
-| claude-haiku-4-5 | reasoning | ~110–133 | 14–17 s | Effort kills TTFT — do **not** use for router |
-| claude-3-5-haiku | non-reasoning | ~45–65 | sub-second | Older, lower TPS; viable fallback |
-| **grok-code-fast-1** | speed-tuned | ~92–195 (src-dependent) | 3.65–7.48 s @10k in | Cheap, agentic, strong structured output; TTFT figures are at 10k input |
-| **gemini-3-flash-preview** | non-reasoning | **~163** | 1.42 s (provider) / 34.8 s (model-page @10k) | Highest raw TPS; TTFT inconsistent across sources — verify |
-| gemini-3-flash-preview | reasoning | ~174–185 | 7.36 s | Avoid for router |
-| gpt-5-mini | high effort | ~95–115 | **61–79 s** | Reasoning — unusable as router at high effort |
-| gpt-5-mini | medium effort | ~90–100 | 13–17 s | Still too slow for a router |
-| gpt-5-mini | low/minimal | ~72–180 | ~0.15–1 s (cited) | Only acceptable if effort forced to minimum |
-| raptor-mini | fine-tuned GPT-5 mini | (fast completions) | low (unverified) | GA, "fast accurate inline suggestions/explanations"; verify JSON + latency |
+| Candidate                  | Mode                  | Output speed (tok/s)    | TTFT                                         | Notes                                                                      |
+| -------------------------- | --------------------- | ----------------------- | -------------------------------------------- | -------------------------------------------------------------------------- |
+| **claude-haiku-4-5**       | **non-reasoning**     | ~94–123                 | **~0.5–0.84 s**                              | Best TTFT; "fastest, most efficient" Anthropic model                       |
+| claude-haiku-4-5           | reasoning             | ~110–133                | 14–17 s                                      | Effort kills TTFT — do **not** use for router                              |
+| claude-3-5-haiku           | non-reasoning         | ~45–65                  | sub-second                                   | Older, lower TPS; viable fallback                                          |
+| **grok-code-fast-1**       | speed-tuned           | ~92–195 (src-dependent) | 3.65–7.48 s @10k in                          | Cheap, agentic, strong structured output; TTFT figures are at 10k input    |
+| **gemini-3-flash-preview** | non-reasoning         | **~163**                | 1.42 s (provider) / 34.8 s (model-page @10k) | Highest raw TPS; TTFT inconsistent across sources — verify                 |
+| gemini-3-flash-preview     | reasoning             | ~174–185                | 7.36 s                                       | Avoid for router                                                           |
+| gpt-5-mini                 | high effort           | ~95–115                 | **61–79 s**                                  | Reasoning — unusable as router at high effort                              |
+| gpt-5-mini                 | medium effort         | ~90–100                 | 13–17 s                                      | Still too slow for a router                                                |
+| gpt-5-mini                 | low/minimal           | ~72–180                 | ~0.15–1 s (cited)                            | Only acceptable if effort forced to minimum                                |
+| raptor-mini                | fine-tuned GPT-5 mini | (fast completions)      | low (unverified)                             | GA, "fast accurate inline suggestions/explanations"; verify JSON + latency |
 
 Numbers are public-API measurements (AA, OpenRouter, xAI, vendor docs) and are **relative
 guidance only** — see §8 proxy caveat.
 
-### 5.2 Why TTFT matters more than TPS *for a router*
+### 5.2 Why TTFT matters more than TPS _for a router_
 
 The router output is tiny — a small JSON like `{ clientName, model, reasoningEffort }`,
 ~30–50 tokens. At ~100 tok/s that is ~0.3–0.5 s of generation. So:
@@ -260,7 +262,7 @@ entire thinking window to TTFT and can exceed 60 s.
    and that it reliably emits the router schema.
 
 **Final selection should be the winner of a local micro-benchmark** (§8) among #1–#4. For
-the router *call itself*, force the cheapest/fastest setting: non-reasoning (or
+the router _call itself_, force the cheapest/fastest setting: non-reasoning (or
 `reasoningEffort: "low"`) and a small max-output cap.
 
 ---
@@ -268,41 +270,44 @@ the router *call itself*, force the cheapest/fastest setting: non-reasoning (or
 ## 6. Routing architecture — options and recommendation
 
 ### Option A — Pure fast-LLM router (what the request literally describes)
+
 One BAML function `RouteModelCall(taskKind, summary, candidates) -> RoutingDecision` on a
 fast client, called before every routed call.
-*Pros:* flexible, handles any dynamic intent. *Cons:* adds an LLM round-trip to *every*
+_Pros:_ flexible, handles any dynamic intent. _Cons:_ adds an LLM round-trip to _every_
 call; non-deterministic for fixed internal tasks; needs a timeout/fallback to be safe.
 
 ### Option B — Deterministic policy table only
-A static map: call-site/task-kind → `{ model, effort }`. *Pros:* ~0 ms, deterministic,
-trivially testable. *Cons:* no adaptivity for novel/dynamic intents.
+
+A static map: call-site/task-kind → `{ model, effort }`. _Pros:_ ~0 ms, deterministic,
+trivially testable. _Cons:_ no adaptivity for novel/dynamic intents.
 
 ### Option C — Hybrid (RECOMMENDED)
+
 A single `ModelRouter` interface backed by:
 
 1. **Deterministic policy table** for the known call sites (the 3 BAML functions +
    persona tiers). Instant, deterministic, unit-testable. This is the default and the
    fallback.
-2. **Fast-LLM `RouteModelCall`** (Option A) for *dynamic/ambiguous* intent only, running
+2. **Fast-LLM `RouteModelCall`** (Option A) for _dynamic/ambiguous_ intent only, running
    on the §5 router client, guarded by an **`AbortSignal` hard timeout (~3.5 s)**. On
    timeout/parse-failure/error it returns the policy default.
 3. **Decision cache** keyed by `(taskKind, coarse input shape)` to avoid repeat LLM
    routing within a run.
 
-Rationale: the council's internal calls are *fixed* tasks — an LLM router adds latency and
+Rationale: the council's internal calls are _fixed_ tasks — an LLM router adds latency and
 nondeterminism with little benefit there, so route them by policy. Reserve the fast LLM for
 genuinely dynamic decisions, and never let it threaten the 5 s budget because the
 deterministic default is always available underneath.
 
 ### 6.1 Suggested capability/cost policy (starting defaults)
 
-| Call site / task kind | Default client | Effort |
-| --- | --- | --- |
-| `NormalizePersonaCritique` | `CopilotProxyClaudeHaiku45` or `CopilotProxyGpt5Mini` | low / none |
-| `AssessCouncilRound` (Judge) | `CopilotProxyClaudeSonnet46` or `CopilotProxyGpt54` | medium |
-| `CreateCouncilReport` | `CopilotProxyClaudeSonnet46` / `CopilotProxyClaudeOpus48` | high |
-| Persona debate (Copilot SDK) | persona-tier (e.g. `claude-sonnet-4.6` / `gpt-5.4`) | medium |
-| Router itself | `CopilotProxyClaudeHaiku45` | low / non-reasoning |
+| Call site / task kind        | Default client                                            | Effort              |
+| ---------------------------- | --------------------------------------------------------- | ------------------- |
+| `NormalizePersonaCritique`   | `CopilotProxyClaudeHaiku45` or `CopilotProxyGpt5Mini`     | low / none          |
+| `AssessCouncilRound` (Judge) | `CopilotProxyClaudeSonnet46` or `CopilotProxyGpt54`       | medium              |
+| `CreateCouncilReport`        | `CopilotProxyClaudeSonnet46` / `CopilotProxyClaudeOpus48` | high                |
+| Persona debate (Copilot SDK) | persona-tier (e.g. `claude-sonnet-4.6` / `gpt-5.4`)       | medium              |
+| Router itself                | `CopilotProxyClaudeHaiku45`                               | low / non-reasoning |
 
 (Defaults are a starting point; tune after a quality/latency pass.)
 
@@ -320,6 +325,7 @@ Hybrid path budget (worst case, LLM router engaged):
 ```
 
 Mechanisms to enforce it:
+
 - BAML: pass `signal` (AbortSignal) in `__baml_options__`
   (`src/generated/baml_client/async_client.ts:49`); on abort, use policy default.
 - Copilot SDK: `sendAndWait(message, timeoutMs)` already supports a timeout
@@ -331,10 +337,10 @@ Mechanisms to enforce it:
 
 ## 8. Open questions / verification steps (for planning)
 
-1. **Local proxy latency (highest priority).** Public TTFT/TPS are *relative* — every
+1. **Local proxy latency (highest priority).** Public TTFT/TPS are _relative_ — every
    client here hits `http://127.0.0.1:8080/v1`. Write a tiny benchmark that sends one
    fixed ~50-token routing prompt to each §5 candidate via the proxy and records
-   wall-clock TTFT + total. Pick the router client from *measured* results.
+   wall-clock TTFT + total. Pick the router client from _measured_ results.
 2. **BAML `reasoning_effort` passthrough.** Confirm the local proxy forwards
    `reasoning_effort` for `openai-generic` clients. If it doesn't, BAML-side effort control
    reduces to "choose a different model client," while the Copilot SDK path keeps native
@@ -366,7 +372,7 @@ Build a thin, well-tested routing layer; do not modify BAML/SDK internals.
    `{ clientName?: string; model: string; reasoningEffort?: "low"|"medium"|"high"|"xhigh"; rationale: string }`.
    Implementations: `PolicyModelRouter` (table from §6.1) and `LlmModelRouter`
    (calls a new `RouteModelCall` BAML fn on the §5 router client, with AbortSignal timeout
-   + fallback to `PolicyModelRouter`). Compose as `HybridModelRouter`.
+   - fallback to `PolicyModelRouter`). Compose as `HybridModelRouter`.
 2. **New `baml_src/router.baml`:** `RouteModelCall(...) -> RoutingDecision` pinned to the
    fast router client (start with `CopilotProxyClaudeHaiku45`). Add an effort-tuned or
    dynamic client only if the proxy honors `reasoning_effort`.
@@ -389,9 +395,9 @@ Codebase: `baml_src/clients.baml`, `baml_src/council.baml`,
 `src/decision-council/runner.ts`, `src/generated/baml_client/async_client.ts`
 (lines `42-52`, `100-134`, `212-214`).
 
-BAML runtime client selection: BAML docs — *Client Registry*
-(`docs.boundaryml.com/ref/baml_client/client-registry`), *client option* and
-*with_options* (BoundaryML/baml `fern/03-reference/baml_client/*`); native
+BAML runtime client selection: BAML docs — _Client Registry_
+(`docs.boundaryml.com/ref/baml_client/client-registry`), _client option_ and
+_with_options_ (BoundaryML/baml `fern/03-reference/baml_client/*`); native
 `ClientRegistry.addLlmClient(name, provider, options)`.
 
 Copilot SDK: `@github/copilot-sdk` README (`createSession` config —
@@ -400,6 +406,6 @@ Copilot SDK: `@github/copilot-sdk` README (`createSession` config —
 
 Model speeds: Artificial Analysis (Claude 4.5 Haiku, Gemini 3 Flash, GPT-5 mini,
 Grok Code Fast 1 providers/model pages); xAI Grok Code Fast 1 announcement; OpenRouter
-model pages; GitHub Docs — *Supported AI models in Copilot* and *AI model comparison*
+model pages; GitHub Docs — _Supported AI models in Copilot_ and _AI model comparison_
 (raptor-mini = "Fine-tuned GPT-5 mini", GA); GitHub Changelog (raptor-mini preview,
 2025-11-10).

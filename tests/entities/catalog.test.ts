@@ -20,16 +20,22 @@ describe("entity catalog validation", () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-entities-"));
     const result = validateEntityCatalog(root);
     expect(result.valid).toBe(false);
-    expect(result.errors).toContainEqual(expect.objectContaining({
-      code: "catalog.missing_entities_dir",
-      fieldPath: "entities",
-      repairHint: "Create repo-local entities/personas, entities/artifacts, and entities/elicitation directories.",
-    }));
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        code: "catalog.missing_entities_dir",
+        fieldPath: "entities",
+        repairHint:
+          "Create repo-local entities/personas, entities/artifacts, and entities/elicitation directories.",
+      }),
+    );
   });
 
   it("collects duplicate id and filename mismatch errors in one result", async () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-entities-"));
-    await writeManifest(root, "entities/personas/wrong-name.yaml", `
+    await writeManifest(
+      root,
+      "entities/personas/wrong-name.yaml",
+      `
 id: duplicated
 kind: persona
 name: First
@@ -46,9 +52,13 @@ execution:
   promptRef: ./wrong-name.md
   output:
     normalizeWithBamlFunction: NormalizePersonaCritique
-`);
+`,
+    );
     await writeManifest(root, "entities/personas/wrong-name.md", "Prompt");
-    await writeManifest(root, "entities/artifacts/duplicated.yaml", `
+    await writeManifest(
+      root,
+      "entities/artifacts/duplicated.yaml",
+      `
 id: duplicated
 kind: artifact
 name: Source Analysis
@@ -56,14 +66,14 @@ description: Duplicate id artifact.
 execution:
   mode: baml_direct
   bamlFunction: DistillSourceAnalysis
-`);
+`,
+    );
 
     const result = validateEntityCatalog(root);
     expect(result.valid).toBe(false);
-    expect(result.errors.map((error) => error.code)).toEqual(expect.arrayContaining([
-      "catalog.filename_id_mismatch",
-      "catalog.duplicate_id",
-    ]));
+    expect(result.errors.map((error) => error.code)).toEqual(
+      expect.arrayContaining(["catalog.filename_id_mismatch", "catalog.duplicate_id"]),
+    );
   });
 
   it("throws one formatted error containing all validation failures", async () => {
@@ -74,7 +84,10 @@ execution:
 
   it("loads runtime personas from sibling Markdown prompt prose", async () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-entities-"));
-    await writeManifest(root, "entities/personas/pragmatic.yaml", `
+    await writeManifest(
+      root,
+      "entities/personas/pragmatic.yaml",
+      `
 id: pragmatic
 kind: persona
 name: Pragmatic Builder
@@ -92,11 +105,16 @@ execution:
   promptRef: ./pragmatic.md
   output:
     normalizeWithBamlFunction: NormalizePersonaCritique
-`);
+`,
+    );
     await writeManifest(root, "entities/personas/pragmatic.md", "Prompt prose");
     const catalog = loadEntityCatalog(root);
     expect(catalog.personas).toEqual([
-      expect.objectContaining({ id: "pragmatic", prompt: "Prompt prose", useWhen: ["Use for incremental delivery."] }),
+      expect.objectContaining({
+        id: "pragmatic",
+        prompt: "Prompt prose",
+        useWhen: ["Use for incremental delivery."],
+      }),
     ]);
   });
 });
@@ -105,7 +123,11 @@ describe("shipped entity catalog", () => {
   it("validates the repo-local entities catalog", () => {
     const result = validateEntityCatalog(process.cwd());
     expect(result.errors).toEqual([]);
-    expect(loadEntityCatalog(process.cwd()).personas.map((persona) => persona.id).sort()).toEqual([
+    expect(
+      loadEntityCatalog(process.cwd())
+        .personas.map((persona) => persona.id)
+        .sort(),
+    ).toEqual([
       "deep-module-dry",
       "dialectic-adversary",
       "dialectic-advocate",

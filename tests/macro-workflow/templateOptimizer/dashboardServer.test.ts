@@ -73,14 +73,20 @@ describe("template optimizer dashboard server", () => {
     const bundleResponse = await fetch(new URL("/dist/main.js", server.url));
     const bundle = await bundleResponse.text();
     const stylesResponse = await fetch(new URL("/styles.css", server.url));
-    const reactFlowCssResponse = await fetch(new URL("/node_modules/@xyflow/react/dist/style.css", server.url));
+    const reactFlowCssResponse = await fetch(
+      new URL("/node_modules/@xyflow/react/dist/style.css", server.url),
+    );
     const runsResponse = await fetch(new URL("/api/runs", server.url));
     const runsPayload = await runsResponse.json();
     const runResponse = await fetch(new URL("/api/run?runId=run-123", server.url));
     const runPayload = await runResponse.json();
-    const summaryResponse = await fetch(new URL("/api/artifact?runId=run-123&file=summary.md", server.url));
+    const summaryResponse = await fetch(
+      new URL("/api/artifact?runId=run-123&file=summary.md", server.url),
+    );
     const summary = await summaryResponse.text();
-    const traversalResponse = await fetch(new URL("/api/artifact?runId=run-123&file=../optimizer-run.json", server.url));
+    const traversalResponse = await fetch(
+      new URL("/api/artifact?runId=run-123&file=../optimizer-run.json", server.url),
+    );
 
     expect(htmlResponse.status).toBe(200);
     expect(html).toContain("Source-to-project template optimizer");
@@ -181,7 +187,11 @@ async function writeOptimizerRunFixture(
 ) {
   const runDir = join(runsRoot, options.runId);
   await mkdir(runDir, { recursive: true });
-  await writeFile(join(runDir, "optimizer-run.json"), `${JSON.stringify(createRunArtifact(options), null, 2)}\n`, "utf8");
+  await writeFile(
+    join(runDir, "optimizer-run.json"),
+    `${JSON.stringify(createRunArtifact(options), null, 2)}\n`,
+    "utf8",
+  );
   await writeFile(join(runDir, "summary.md"), `# Summary ${options.runId}\n`, "utf8");
   await writeFile(join(runDir, "apply-dry-run.md"), `# Apply ${options.runId}\n`, "utf8");
 }
@@ -243,7 +253,8 @@ function createRunArtifact(options: {
           challengerAggregateScore: 0.5 + options.scoreDelta,
           scoreDelta: options.scoreDelta,
           criticalRegressionCount: options.rejectedMoves.length,
-          replacementDecision: options.status === "candidate-ready" ? "replace-with-challenger" : "keep-incumbent",
+          replacementDecision:
+            options.status === "candidate-ready" ? "replace-with-challenger" : "keep-incumbent",
           rationale: "The challenger improves fixture coverage.",
           rejectedMoveSummary: options.rejectedMoves.join("; ") || undefined,
           decisionConfidence: 0.82,
@@ -274,7 +285,8 @@ function createRunArtifact(options: {
     ],
     finalRecommendation: {
       candidateId: `candidate-${options.runId}`,
-      recommendation: options.status === "candidate-ready" ? "adopt-candidate" : "keep-current-template",
+      recommendation:
+        options.status === "candidate-ready" ? "adopt-candidate" : "keep-current-template",
       rationale: "Fixture recommendation.",
     },
     generatedAt: options.generatedAt,

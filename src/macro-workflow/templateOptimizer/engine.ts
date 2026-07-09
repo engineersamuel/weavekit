@@ -80,7 +80,9 @@ export interface TemplateOptimizerResult {
   leaderboard: TemplateCandidate[];
 }
 
-export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<TemplateOptimizerResult> {
+export async function optimizeTemplate(
+  args: TemplateOptimizerArgs,
+): Promise<TemplateOptimizerResult> {
   if (args.fixtures.length === 0) {
     throw new Error("Template optimizer requires at least one fixture.");
   }
@@ -91,7 +93,11 @@ export async function optimizeTemplate(args: TemplateOptimizerArgs): Promise<Tem
   const leaderboard: TemplateCandidate[] = [args.baseline];
 
   for (let index = 0; index < args.iterations; index += 1) {
-    for (let candidateIndex = 0; candidateIndex < args.candidatesPerIteration; candidateIndex += 1) {
+    for (
+      let candidateIndex = 0;
+      candidateIndex < args.candidatesPerIteration;
+      candidateIndex += 1
+    ) {
       const strategy =
         args.strategies[(index + candidateIndex) % args.strategies.length] ?? "coverage-focused";
       const challenger = await args.deps.generateChallenger({

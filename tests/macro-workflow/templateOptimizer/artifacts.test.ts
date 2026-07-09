@@ -88,7 +88,11 @@ describe("template optimizer artifacts", () => {
     const optimizerRun = JSON.parse(optimizerRunJson) as {
       status?: unknown;
       finalIncumbent?: { id?: unknown };
-      liveDecision?: { incumbentScore?: unknown; challengerScore?: unknown; adoptionDecision?: unknown };
+      liveDecision?: {
+        incumbentScore?: unknown;
+        challengerScore?: unknown;
+        adoptionDecision?: unknown;
+      };
       liveRejectedMoves?: unknown[];
     };
     expect(optimizerRun.status).toBe("live-candidate-rejected");

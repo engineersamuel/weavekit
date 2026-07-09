@@ -15,7 +15,9 @@ type BamlClientOverride = {
 
 const GENERATE_RESEARCH_QUESTIONS_OPTIONS: BamlClientOverride = { client: "CopilotProxyGpt55" };
 const ASSESS_RESEARCH_ITERATION_OPTIONS: BamlClientOverride = { client: "CopilotProxyGpt55" };
-const COMPILE_DEEP_RESEARCH_REPORT_OPTIONS: BamlClientOverride = { client: "CopilotProxyClaudeOpus48" };
+const COMPILE_DEEP_RESEARCH_REPORT_OPTIONS: BamlClientOverride = {
+  client: "CopilotProxyClaudeOpus48",
+};
 
 const DEEP_RESEARCH_METHOD_MODELS = {
   GenerateResearchQuestions: "gpt-5.5",
@@ -24,9 +26,23 @@ const DEEP_RESEARCH_METHOD_MODELS = {
 } as const;
 
 export type DeepResearchBamlClient = {
-  GenerateResearchQuestions(prompt: string, priorState: DeepResearchPriorState, config: DeepResearchConfig, options?: unknown): Promise<ResearchQuestionSet>;
-  AssessResearchIteration(questionSet: ResearchQuestionSet, evidence: DeepResearchEvidence[], priorState: DeepResearchPriorState, options?: unknown): Promise<ResearchIterationAssessment>;
-  CompileDeepResearchReport(prompt: string, finalState: DeepResearchPriorState, options?: unknown): Promise<DeepResearchCompiledReport>;
+  GenerateResearchQuestions(
+    prompt: string,
+    priorState: DeepResearchPriorState,
+    config: DeepResearchConfig,
+    options?: unknown,
+  ): Promise<ResearchQuestionSet>;
+  AssessResearchIteration(
+    questionSet: ResearchQuestionSet,
+    evidence: DeepResearchEvidence[],
+    priorState: DeepResearchPriorState,
+    options?: unknown,
+  ): Promise<ResearchIterationAssessment>;
+  CompileDeepResearchReport(
+    prompt: string,
+    finalState: DeepResearchPriorState,
+    options?: unknown,
+  ): Promise<DeepResearchCompiledReport>;
 };
 
 export type GeneratedDeepResearchBamlAdapterOptions = {
@@ -60,10 +76,8 @@ export class GeneratedDeepResearchBamlAdapter implements DeepResearchBamlClient 
     evidence: DeepResearchEvidence[],
     priorState: DeepResearchPriorState,
   ): Promise<ResearchIterationAssessment> {
-    return this.invoke(
-      "AssessResearchIteration",
-      ASSESS_RESEARCH_ITERATION_OPTIONS,
-      (options) => this.client.AssessResearchIteration(questionSet, evidence, priorState, options),
+    return this.invoke("AssessResearchIteration", ASSESS_RESEARCH_ITERATION_OPTIONS, (options) =>
+      this.client.AssessResearchIteration(questionSet, evidence, priorState, options),
     );
   }
 
@@ -102,8 +116,10 @@ export class GeneratedDeepResearchBamlAdapter implements DeepResearchBamlClient 
   }
 }
 
-export function createLiveDeepResearchBamlClient(options: {
-  usageCollector?: WorkflowUsageCollector;
-} = {}): DeepResearchBamlClient {
+export function createLiveDeepResearchBamlClient(
+  options: {
+    usageCollector?: WorkflowUsageCollector;
+  } = {},
+): DeepResearchBamlClient {
   return new GeneratedDeepResearchBamlAdapter(options);
 }

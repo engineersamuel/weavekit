@@ -5,7 +5,11 @@ import type {
   WorkflowReplayViewState,
 } from "./types.js";
 
-export type { WorkflowReplayEvent, WorkflowReplayNodeView, WorkflowReplayViewState } from "./types.js";
+export type {
+  WorkflowReplayEvent,
+  WorkflowReplayNodeView,
+  WorkflowReplayViewState,
+} from "./types.js";
 export { WorkflowReplayEventKind } from "./types.js";
 
 export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): WorkflowReplayViewState {
@@ -19,7 +23,9 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
 
       if (event.kind === "planning-complete") {
         ensurePlanningNode(view, event.node);
-        const planningNode = view.nodes.find((node) => node.id === (event.node?.id ?? event.nodeId ?? "workflow-planning"));
+        const planningNode = view.nodes.find(
+          (node) => node.id === (event.node?.id ?? event.nodeId ?? "workflow-planning"),
+        );
         if (planningNode) {
           planningNode.status = "passed";
         }
@@ -50,7 +56,9 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
         if (node) {
           node.exists = false;
         }
-        view.edges = view.edges.filter((edge) => edge.source !== event.nodeId && edge.target !== event.nodeId);
+        view.edges = view.edges.filter(
+          (edge) => edge.source !== event.nodeId && edge.target !== event.nodeId,
+        );
       }
 
       if (event.kind === "edge-added" && event.sourceNodeId && event.targetNodeId) {
@@ -58,7 +66,9 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
       }
 
       if (event.kind === "edge-removed" && event.sourceNodeId && event.targetNodeId) {
-        view.edges = view.edges.filter((edge) => edge.source !== event.sourceNodeId || edge.target !== event.targetNodeId);
+        view.edges = view.edges.filter(
+          (edge) => edge.source !== event.sourceNodeId || edge.target !== event.targetNodeId,
+        );
       }
 
       if (event.kind === "replan-applied" && event.patch) {
@@ -69,7 +79,9 @@ export function replayViewStateFromEvents(events: WorkflowReplayEvent[]): Workfl
           }
         }
         const removedIds = new Set(event.patch.replaceRemainingNodeIds);
-        view.edges = view.edges.filter((edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target));
+        view.edges = view.edges.filter(
+          (edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target),
+        );
         for (const node of event.patch.newNodes) {
           upsertNode(view, node, "pending");
           for (const dependencyId of node.dependsOn) {
@@ -126,7 +138,11 @@ function ensurePlanningNode(view: WorkflowReplayViewState, node?: WorkflowReplay
   });
 }
 
-function upsertNode(view: WorkflowReplayViewState, node: WorkflowReplayNode, status: WorkflowReplayNodeView["status"]) {
+function upsertNode(
+  view: WorkflowReplayViewState,
+  node: WorkflowReplayNode,
+  status: WorkflowReplayNodeView["status"],
+) {
   const existing = view.nodes.find((candidate) => candidate.id === node.id);
   if (existing) {
     existing.kind = node.kind;

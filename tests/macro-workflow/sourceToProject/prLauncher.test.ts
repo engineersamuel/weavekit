@@ -108,11 +108,15 @@ describe("source-to-project manual PR launcher", () => {
       cwd: "/repo/weavekit",
     });
     expect(commands[2]?.args.at(-1)).toContain("Requirements:");
-    expect(commands[2]?.args.at(-1)).not.toContain("Implement the reviewed source-to-project opportunity and open a PR.");
+    expect(commands[2]?.args.at(-1)).not.toContain(
+      "Implement the reviewed source-to-project opportunity and open a PR.",
+    );
     expect(commands[2]?.args.at(-1)).not.toContain("Start agents from the CLI context");
     expect(commands[2]?.args.at(-1)).toContain("https://plan.agent-native.com/local-plans/opp-1");
     expect(commands[2]?.args.at(-1)).toContain("nub run typecheck");
-    expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(false);
+    expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(
+      false,
+    );
   });
 
   it("skips plan mode and asks the agent to implement directly when initialPromptMode is 'implement'", async () => {
@@ -151,11 +155,16 @@ describe("source-to-project manual PR launcher", () => {
       },
     });
 
-    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    const paneRunCommand = commands.find(
+      (command) =>
+        command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run",
+    );
     expect(paneRunCommand?.args[2]).toBe("wP:p1");
     expect(paneRunCommand?.args[3]).not.toContain("/plan\n");
     expect(paneRunCommand?.args[3]).not.toContain("Start agents from the CLI context");
-    expect(paneRunCommand?.args[3]).toContain("Implement this reviewed source-to-project opportunity directly.");
+    expect(paneRunCommand?.args[3]).toContain(
+      "Implement this reviewed source-to-project opportunity directly.",
+    );
     expect(paneRunCommand?.args[3]).not.toContain("no plan-mode approval step");
     expect(paneRunCommand?.args[3]).not.toContain("subagent-driven development");
     expect(paneRunCommand?.args[3]).toContain("Requirements:");
@@ -197,7 +206,10 @@ describe("source-to-project manual PR launcher", () => {
       },
     });
 
-    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    const paneRunCommand = commands.find(
+      (command) =>
+        command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run",
+    );
     expect(paneRunCommand?.args[3]).toContain(
       "Use subagent-driven development to implement this reviewed source-to-project opportunity directly.",
     );
@@ -240,7 +252,10 @@ describe("source-to-project manual PR launcher", () => {
       },
     });
 
-    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    const paneRunCommand = commands.find(
+      (command) =>
+        command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run",
+    );
     expect(paneRunCommand?.args[3]).toContain(
       "Implement this reviewed source-to-project opportunity directly (no plan-mode approval step; it was already planned and reviewed upstream in the workflow).",
     );
@@ -282,14 +297,21 @@ describe("source-to-project manual PR launcher", () => {
       },
     });
 
-    const paneRunCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run");
+    const paneRunCommand = commands.find(
+      (command) =>
+        command.command === "herdr" && command.args[0] === "pane" && command.args[1] === "run",
+    );
     expect(paneRunCommand?.args[2]).toBe("wP:p1");
     expect(paneRunCommand?.args[3]).toContain("/Users/smendenhall/.local/bin/codex");
     expect(paneRunCommand?.args[3]).toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(paneRunCommand?.args[3]).toContain("/plan");
     expect(paneRunCommand?.args[3]).toContain("Requirements:");
-    expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent start")).toBe(false);
-    expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(false);
+    expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent start")).toBe(
+      false,
+    );
+    expect(commands.some((command) => command.args.slice(0, 2).join(" ") === "agent send")).toBe(
+      false,
+    );
   });
 
   it("falls back to the configured split when Herdr does not return a worktree workspace", async () => {
@@ -322,7 +344,10 @@ describe("source-to-project manual PR launcher", () => {
       },
     });
 
-    const startCommand = commands.find((command) => command.command === "herdr" && command.args[0] === "agent" && command.args[1] === "start");
+    const startCommand = commands.find(
+      (command) =>
+        command.command === "herdr" && command.args[0] === "agent" && command.args[1] === "start",
+    );
     expect(startCommand?.args).toContain("--split");
     expect(startCommand?.args).toContain("down");
     expect(startCommand?.args).not.toContain("--workspace");
@@ -364,7 +389,9 @@ describe("source-to-project manual PR launcher", () => {
     });
 
     expect(result.worktreePath).toBe("/Users/smendenhall/.herdr/worktrees/weavekit/existing");
-    expect(commands.map((command) => command.args.slice(0, 2).join(" "))).toContain("worktree open");
+    expect(commands.map((command) => command.args.slice(0, 2).join(" "))).toContain(
+      "worktree open",
+    );
   });
 
   it("renders the target project research brief explicitly in the agent prompt", () => {
@@ -373,7 +400,8 @@ describe("source-to-project manual PR launcher", () => {
       projectBrief: {
         projectId: "path-override",
         displayName: "Path override",
-        architecture: "Keep Runs in-process with isolated worktrees and single-writer maker/checker enforcement.",
+        architecture:
+          "Keep Runs in-process with isolated worktrees and single-writer maker/checker enforcement.",
         constraints: [
           "No durable work queues or cross-run persistent worktrees.",
           "No scheduler or always-on agents.",
@@ -382,17 +410,9 @@ describe("source-to-project manual PR launcher", () => {
           "Strengthen per-Run isolation.",
           "Make maker/checker separation explicit at runtime.",
         ],
-        changeSurfaces: [
-          "src/worktree.ts",
-          "src/harnesses.ts",
-        ],
-        validationCommands: [
-          "nub run typecheck",
-          "nub run test",
-        ],
-        risks: [
-          "Fail-closed guards may break misconfigured plans.",
-        ],
+        changeSurfaces: ["src/worktree.ts", "src/harnesses.ts"],
+        validationCommands: ["nub run typecheck", "nub run test"],
+        risks: ["Fail-closed guards may break misconfigured plans."],
         evidence: [
           {
             id: "p-architecture",
@@ -404,7 +424,9 @@ describe("source-to-project manual PR launcher", () => {
     });
 
     expect(prompt).toContain("Target project research brief:");
-    expect(prompt).toContain("Architecture: Keep Runs in-process with isolated worktrees and single-writer maker/checker enforcement.");
+    expect(prompt).toContain(
+      "Architecture: Keep Runs in-process with isolated worktrees and single-writer maker/checker enforcement.",
+    );
     expect(prompt).toContain("Constraints:");
     expect(prompt).toContain("- No durable work queues or cross-run persistent worktrees.");
     expect(prompt).toContain("Goals:");
@@ -416,7 +438,9 @@ describe("source-to-project manual PR launcher", () => {
     expect(prompt).toContain("Project risks:");
     expect(prompt).toContain("- Fail-closed guards may break misconfigured plans.");
     expect(prompt).toContain("Project evidence:");
-    expect(prompt).toContain("- p-architecture: Project brief: architecture - Keep Runs as in-process, single-machine executions.");
+    expect(prompt).toContain(
+      "- p-architecture: Project brief: architecture - Keep Runs as in-process, single-machine executions.",
+    );
     expect(prompt).not.toContain("Path override");
   });
 });

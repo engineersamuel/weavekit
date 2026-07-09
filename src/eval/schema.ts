@@ -37,10 +37,9 @@ export const CorpusItemSchema = z.object({
   rubric: z
     .array(RubricCriterionSchema)
     .min(1)
-    .refine(
-      (rubric) => Math.abs(rubric.reduce((sum, c) => sum + c.weight, 0) - 1) < 1e-3,
-      { message: "rubric weights must sum to 1.0" },
-    ),
+    .refine((rubric) => Math.abs(rubric.reduce((sum, c) => sum + c.weight, 0) - 1) < 1e-3, {
+      message: "rubric weights must sum to 1.0",
+    }),
 });
 
 export type CorpusItem = z.infer<typeof CorpusItemSchema>;

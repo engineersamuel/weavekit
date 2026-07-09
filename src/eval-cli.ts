@@ -48,7 +48,11 @@ export function parseEvalArgs(argv: string[]): ParsedEvalArgs {
     }
   }
 
-  if (!sawConcurrencyFlag && process.env.EVAL_MAX_CONCURRENCY !== undefined && process.env.EVAL_MAX_CONCURRENCY.trim() !== "") {
+  if (
+    !sawConcurrencyFlag &&
+    process.env.EVAL_MAX_CONCURRENCY !== undefined &&
+    process.env.EVAL_MAX_CONCURRENCY.trim() !== ""
+  ) {
     maxConcurrency = parseConcurrency(process.env.EVAL_MAX_CONCURRENCY, "EVAL_MAX_CONCURRENCY");
   }
 

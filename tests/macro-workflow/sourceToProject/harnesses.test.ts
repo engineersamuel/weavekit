@@ -17,7 +17,8 @@ import {
   stripPlanningAgentPreamble,
 } from "../../../src/macro-workflow/sourceToProject/harnesses.js";
 
-const HOSTED_VISUAL_PLAN_ARTIFACT = "Published visual-plan MDX artifact: https://plan.agent-native.com/builder/o5-visual-plan";
+const HOSTED_VISUAL_PLAN_ARTIFACT =
+  "Published visual-plan MDX artifact: https://plan.agent-native.com/builder/o5-visual-plan";
 const HOSTED_VISUAL_PLAN_ARTIFACT_URL = "https://plan.agent-native.com/builder/o5-visual-plan";
 
 describe("source-to-project harness registry", () => {
@@ -27,7 +28,11 @@ describe("source-to-project harness registry", () => {
 
   it("distills source reading output into typed payload", async () => {
     process.env.BAML_MODEL = "baml-distill-model";
-    const copilotCalls: Array<{ prompt: string; maxToolCalls?: number; capabilityScope?: unknown }> = [];
+    const copilotCalls: Array<{
+      prompt: string;
+      maxToolCalls?: number;
+      capabilityScope?: unknown;
+    }> = [];
     const registry = createSourceToProjectHarnessRegistry({
       source: "https://example.com/post",
       project: {
@@ -45,11 +50,24 @@ describe("source-to-project harness registry", () => {
       mode: "advisory",
       sourceToProject: {
         maxOpportunities: 1,
-        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        thresholds: {
+          minApplicability: 0.7,
+          minConfidence: 0.65,
+          minImpact: 0.5,
+          minAcceptanceAverage: 0.85,
+          maxRisk: 0.8,
+        },
         mode: "advisory",
         offline: false,
         copilotModel: "copilot-research-model",
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
+        prLauncher: {
+          provider: "herdr",
+          agentCommand: "codex",
+          agentArgs: [],
+          split: "right",
+          agentOptions: [],
+        },
+        autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -76,17 +94,20 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "source-reading",
-      kind: "research",
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Read source",
-      prompt: "Read",
-      dependsOn: [],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads: new Map(), artifacts: new Map() });
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "source-reading",
+        kind: "research",
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Read source",
+        prompt: "Read",
+        dependsOn: [],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads: new Map(), artifacts: new Map() },
+    );
 
     expect(result.status).toBe("passed");
     expect(result.payload?.sourceAnalysis).toMatchObject({ sourceId: "source-1", title: "Post" });
@@ -142,7 +163,11 @@ describe("source-to-project harness registry", () => {
       clientFactory: () => client,
     });
 
-    const result = await copilot.run({ cwd: "/tmp/project", prompt: "Research project", mode: "research" });
+    const result = await copilot.run({
+      cwd: "/tmp/project",
+      prompt: "Research project",
+      mode: "research",
+    });
 
     expect(copilot.model).toBe("gpt-test");
     expect(result).toBe("live response");
@@ -201,7 +226,7 @@ describe("source-to-project harness registry", () => {
       pluginDirectories: ["/plugins/hve-core"],
     });
     expect(messages).toEqual([
-      "/hve-core:task-research topic=\"Research project\\nUse source evidence.\" subagents=auto",
+      '/hve-core:task-research topic="Research project\\nUse source evidence." subagents=auto',
     ]);
   });
 
@@ -299,18 +324,22 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await expect(copilot.run({
-      cwd: "/tmp/project",
-      prompt: "Research project",
-      mode: "research",
-    })).rejects.toThrow("client factory failed");
-
-    expect(logs).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        phase: "session-error",
-        message: expect.stringContaining("client factory failed"),
+    await expect(
+      copilot.run({
+        cwd: "/tmp/project",
+        prompt: "Research project",
+        mode: "research",
       }),
-    ]));
+    ).rejects.toThrow("client factory failed");
+
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: "session-error",
+          message: expect.stringContaining("client factory failed"),
+        }),
+      ]),
+    );
   });
 
   it("emits Copilot SDK skill reload warnings before sending a skill-scoped prompt", async () => {
@@ -350,24 +379,28 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await expect(copilot.run({
-      cwd: "/tmp/project",
-      prompt: "Create a local plan.",
-      mode: "plan",
-      capabilityScope: {
-        kind: "skill",
-        skillName: "visual-plan",
-        skillDirectories: ["/skills"],
-      },
-    })).resolves.toBe("skill response");
-
-    expect(logs).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        phase: "skills-warning",
-        skillName: "visual-plan",
-        message: "auth pending",
+    await expect(
+      copilot.run({
+        cwd: "/tmp/project",
+        prompt: "Create a local plan.",
+        mode: "plan",
+        capabilityScope: {
+          kind: "skill",
+          skillName: "visual-plan",
+          skillDirectories: ["/skills"],
+        },
       }),
-    ]));
+    ).resolves.toBe("skill response");
+
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: "skills-warning",
+          skillName: "visual-plan",
+          message: "auth pending",
+        }),
+      ]),
+    );
   });
 
   it("denies foreground visual-plan local serve commands so SDK runs do not hang", async () => {
@@ -393,21 +426,31 @@ describe("source-to-project harness registry", () => {
     const client = {
       async start() {},
       async createSession(config: unknown) {
-        const hook = (config as {
-          hooks?: { onPreToolUse?: (input: { toolName?: string; toolArgs?: unknown }) => unknown };
-        }).hooks?.onPreToolUse;
-        decisions.push(hook?.({
-          toolName: "shell",
-          toolArgs: {
-            command: "nubx @agent-native/core@latest plan local serve --dir plans/o3 --kind plan --open 2>&1 | tail -30",
-          },
-        }));
-        decisions.push(hook?.({
-          toolName: "shell",
-          toolArgs: {
-            command: "nohup nubx @agent-native/core@latest plan local serve --dir plans/o3 --kind plan --open > /tmp/o3.log 2>&1 &",
-          },
-        }));
+        const hook = (
+          config as {
+            hooks?: {
+              onPreToolUse?: (input: { toolName?: string; toolArgs?: unknown }) => unknown;
+            };
+          }
+        ).hooks?.onPreToolUse;
+        decisions.push(
+          hook?.({
+            toolName: "shell",
+            toolArgs: {
+              command:
+                "nubx @agent-native/core@latest plan local serve --dir plans/o3 --kind plan --open 2>&1 | tail -30",
+            },
+          }),
+        );
+        decisions.push(
+          hook?.({
+            toolName: "shell",
+            toolArgs: {
+              command:
+                "nohup nubx @agent-native/core@latest plan local serve --dir plans/o3 --kind plan --open > /tmp/o3.log 2>&1 &",
+            },
+          }),
+        );
         return session;
       },
       async stop() {
@@ -419,16 +462,18 @@ describe("source-to-project harness registry", () => {
       clientFactory: () => client,
     });
 
-    await expect(copilot.run({
-      cwd: "/tmp/project",
-      prompt: "/visual-plan Create a local plan.",
-      mode: "plan",
-      capabilityScope: {
-        kind: "skill",
-        skillName: "visual-plan",
-        skillDirectories: ["/skills"],
-      },
-    })).resolves.toBe("skill response");
+    await expect(
+      copilot.run({
+        cwd: "/tmp/project",
+        prompt: "/visual-plan Create a local plan.",
+        mode: "plan",
+        capabilityScope: {
+          kind: "skill",
+          skillName: "visual-plan",
+          skillDirectories: ["/skills"],
+        },
+      }),
+    ).resolves.toBe("skill response");
 
     expect(decisions[0]).toMatchObject({
       permissionDecision: "deny",
@@ -460,12 +505,14 @@ describe("source-to-project harness registry", () => {
   it("resolves the Copilot CLI binary from a Nub SDK package layout", async () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-copilot-cli-layout-"));
     try {
-      const platformPackage = process.platform === "linux"
-        ? `@github+copilot-linux-${process.arch}@1.0.65-b`
-        : `@github+copilot-${process.platform}-${process.arch}@1.0.65-b`;
-      const platformPackageName = process.platform === "linux"
-        ? `copilot-linux-${process.arch}`
-        : `copilot-${process.platform}-${process.arch}`;
+      const platformPackage =
+        process.platform === "linux"
+          ? `@github+copilot-linux-${process.arch}@1.0.65-b`
+          : `@github+copilot-${process.platform}-${process.arch}@1.0.65-b`;
+      const platformPackageName =
+        process.platform === "linux"
+          ? `copilot-linux-${process.arch}`
+          : `copilot-${process.platform}-${process.arch}`;
       const sdkIndex = join(
         root,
         "node_modules",
@@ -540,7 +587,10 @@ describe("source-to-project harness registry", () => {
         return undefined;
       },
     };
-    const copilot = createCopilotSdkHarnessClient({ model: "gpt-default", clientFactory: () => client });
+    const copilot = createCopilotSdkHarnessClient({
+      model: "gpt-default",
+      clientFactory: () => client,
+    });
 
     await copilot.run({ prompt: "Implement", mode: "implement", model: "gpt-5.3-codex" });
 
@@ -568,11 +618,24 @@ describe("source-to-project harness registry", () => {
       clientFactory: () => client,
       sourceToProject: {
         maxOpportunities: 1,
-        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        thresholds: {
+          minApplicability: 0.7,
+          minConfidence: 0.65,
+          minImpact: 0.5,
+          minAcceptanceAverage: 0.85,
+          maxRisk: 0.8,
+        },
         mode: "advisory",
         offline: false,
         timeoutMs: 600000,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
+        prLauncher: {
+          provider: "herdr",
+          agentCommand: "codex",
+          agentArgs: [],
+          split: "right",
+          agentOptions: [],
+        },
+        autoImplementOnReport: false,
       },
     });
 
@@ -589,11 +652,24 @@ describe("source-to-project harness registry", () => {
       mode: "advisory",
       sourceToProject: {
         maxOpportunities: 1,
-        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        thresholds: {
+          minApplicability: 0.7,
+          minConfidence: 0.65,
+          minImpact: 0.5,
+          minAcceptanceAverage: 0.85,
+          maxRisk: 0.8,
+        },
         mode: "advisory",
         offline: false,
         sourceReadingMaxToolCalls: 12,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
+        prLauncher: {
+          provider: "herdr",
+          agentCommand: "codex",
+          agentArgs: [],
+          split: "right",
+          agentOptions: [],
+        },
+        autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -608,17 +684,20 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "source-reading",
-      kind: "research",
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Read source",
-      prompt: "Read",
-      dependsOn: [],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads: new Map(), artifacts: new Map() });
+    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "source-reading",
+        kind: "research",
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Read source",
+        prompt: "Read",
+        dependsOn: [],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads: new Map(), artifacts: new Map() },
+    );
 
     expect(maxToolCalls).toEqual([12]);
   });
@@ -643,19 +722,24 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "source-reading",
-      kind: "research",
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Read source",
-      prompt: "Read",
-      dependsOn: [],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads: new Map(), artifacts: new Map() });
+    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "source-reading",
+        kind: "research",
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Read source",
+        prompt: "Read",
+        dependsOn: [],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads: new Map(), artifacts: new Map() },
+    );
 
-    expect(prompts[0]).toContain("Use the prefetched X post markdown below as the primary Source artifact.");
+    expect(prompts[0]).toContain(
+      "Use the prefetched X post markdown below as the primary Source artifact.",
+    );
     expect(prompts[0]).toContain("Source URL: https://x.com/alice/status/12345");
     expect(prompts[0]).toContain("# Alice Post\n\nFetched source body.");
   });
@@ -668,11 +752,24 @@ describe("source-to-project harness registry", () => {
       mode: "advisory",
       sourceToProject: {
         maxOpportunities: 1,
-        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        thresholds: {
+          minApplicability: 0.7,
+          minConfidence: 0.65,
+          minImpact: 0.5,
+          minAcceptanceAverage: 0.85,
+          maxRisk: 0.8,
+        },
         mode: "advisory",
         offline: false,
         projectResearchMaxToolCalls: 24,
-        prLauncher: { provider: "herdr", agentCommand: "codex", agentArgs: [], split: "right", agentOptions: [] }, autoImplementOnReport: false,
+        prLauncher: {
+          provider: "herdr",
+          agentCommand: "codex",
+          agentArgs: [],
+          split: "right",
+          agentOptions: [],
+        },
+        autoImplementOnReport: false,
       },
       copilot: {
         async run(args) {
@@ -687,17 +784,20 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "project-research",
-      kind: "research",
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Research target project",
-      prompt: "Research",
-      dependsOn: ["source-corroboration"],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads: new Map(), artifacts: new Map(), objective: "Apply source" });
+    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "project-research",
+        kind: "research",
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Research target project",
+        prompt: "Research",
+        dependsOn: ["source-corroboration"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads: new Map(), artifacts: new Map(), objective: "Apply source" },
+    );
 
     expect(maxToolCalls).toEqual([24]);
   });
@@ -726,25 +826,30 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "project-research",
-      kind: "research",
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Research target project",
-      prompt: "Research",
-      capabilities: {
-        pluginCommands: [{
-          plugin: "hve-core",
-          command: "hve-core:task-research",
-          promptInputName: "topic",
-          args: { subagents: "auto" },
-        }],
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "project-research",
+        kind: "research",
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Research target project",
+        prompt: "Research",
+        capabilities: {
+          pluginCommands: [
+            {
+              plugin: "hve-core",
+              command: "hve-core:task-research",
+              promptInputName: "topic",
+              args: { subagents: "auto" },
+            },
+          ],
+        },
+        dependsOn: ["source-corroboration"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
       },
-      dependsOn: ["source-corroboration"],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads: new Map(), artifacts: new Map(), objective: "Apply source" });
+      { payloads: new Map(), artifacts: new Map(), objective: "Apply source" },
+    );
 
     expect(copilotCalls[0]?.capabilityScope).toEqual({
       kind: "plugin-command",
@@ -780,30 +885,40 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "project-research",
-      kind: "research",
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Research target project",
-      prompt: "Research",
-      dependsOn: ["source-corroboration"],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads: new Map(), artifacts: new Map(), objective: "Apply source" });
+    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "project-research",
+        kind: "research",
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Research target project",
+        prompt: "Research",
+        dependsOn: ["source-corroboration"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads: new Map(), artifacts: new Map(), objective: "Apply source" },
+    );
 
     expect(copilotCalls[0]?.capabilityScope).toBeUndefined();
   });
 
   it("denies Copilot SDK tool calls after the configured tool-call budget", async () => {
-    const logs: Array<{ phase: string; toolCallCount?: number; maxToolCalls?: number; toolName?: string }> = [];
+    const logs: Array<{
+      phase: string;
+      toolCallCount?: number;
+      maxToolCalls?: number;
+      toolName?: string;
+    }> = [];
     const decisions: unknown[] = [];
     const client = {
       async start() {},
       async createSession(config: unknown) {
-        const hook = (config as {
-          hooks?: { onPreToolUse?: (input: { toolName?: string }) => unknown };
-        }).hooks?.onPreToolUse;
+        const hook = (
+          config as {
+            hooks?: { onPreToolUse?: (input: { toolName?: string }) => unknown };
+          }
+        ).hooks?.onPreToolUse;
         decisions.push(hook?.({ toolName: "glob" }));
         decisions.push(hook?.({ toolName: "view" }));
         decisions.push(hook?.({ toolName: "glob" }));
@@ -831,38 +946,52 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await expect(copilot.run({ prompt: "Read source", mode: "research" })).resolves.toBe("live response");
+    await expect(copilot.run({ prompt: "Read source", mode: "research" })).resolves.toBe(
+      "live response",
+    );
 
     expect(decisions.slice(0, 2)).toEqual([undefined, undefined]);
     expect(decisions[2]).toMatchObject({
       permissionDecision: "deny",
       permissionDecisionReason: expect.stringContaining("2-tool research budget"),
     });
-    expect(logs).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        phase: "tool-budget",
-        toolName: "glob",
-        toolCallCount: 3,
-        maxToolCalls: 2,
-      }),
-    ]));
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: "tool-budget",
+          toolName: "glob",
+          toolCallCount: 3,
+          maxToolCalls: 2,
+        }),
+      ]),
+    );
   });
 
   it("uses the last assistant message when the SDK never emits session idle", async () => {
-    const logs: Array<{ phase: string; eventType?: string; contentLength?: number; timeoutMs?: number }> = [];
+    const logs: Array<{
+      phase: string;
+      eventType?: string;
+      contentLength?: number;
+      timeoutMs?: number;
+    }> = [];
     const session = {
       handlers: [] as Array<(event: { type: string; data?: { content?: string } }) => void>,
       async send(message: { prompt: string }) {
         queueMicrotask(() => {
           for (const handler of this.handlers) {
-            handler({ type: "assistant.message", data: { content: `partial for ${message.prompt}` } });
+            handler({
+              type: "assistant.message",
+              data: { content: `partial for ${message.prompt}` },
+            });
           }
         });
         return "message-1";
       },
       on(_eventHandler: unknown, maybeHandler?: unknown) {
         const handler = typeof maybeHandler === "function" ? maybeHandler : _eventHandler;
-        this.handlers.push(handler as (event: { type: string; data?: { content?: string } }) => void);
+        this.handlers.push(
+          handler as (event: { type: string; data?: { content?: string } }) => void,
+        );
         return () => {
           this.handlers = this.handlers.filter((candidate) => candidate !== handler);
         };
@@ -891,7 +1020,9 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await expect(copilot.run({ prompt: "Read source", mode: "research" })).resolves.toBe("partial for Read source");
+    await expect(copilot.run({ prompt: "Read source", mode: "research" })).resolves.toBe(
+      "partial for Read source",
+    );
     expect(logs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ phase: "client-create" }),
@@ -908,7 +1039,9 @@ describe("source-to-project harness registry", () => {
   it("suppresses raw Copilot SDK session-event logs by default", async () => {
     const logs: Array<{ phase: string; eventType?: string; contentLength?: number }> = [];
     const session = {
-      handlers: [] as Array<(event: { type: string; data?: { content?: string; toolName?: string } }) => void>,
+      handlers: [] as Array<
+        (event: { type: string; data?: { content?: string; toolName?: string } }) => void
+      >,
       async send() {
         queueMicrotask(() => {
           for (const handler of this.handlers) {
@@ -928,7 +1061,12 @@ describe("source-to-project harness registry", () => {
       },
       on(_eventHandler: unknown, maybeHandler?: unknown) {
         const handler = typeof maybeHandler === "function" ? maybeHandler : _eventHandler;
-        this.handlers.push(handler as (event: { type: string; data?: { content?: string; toolName?: string } }) => void);
+        this.handlers.push(
+          handler as (event: {
+            type: string;
+            data?: { content?: string; toolName?: string };
+          }) => void,
+        );
         return () => {
           this.handlers = this.handlers.filter((candidate) => candidate !== handler);
         };
@@ -955,30 +1093,36 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await expect(copilot.run({ prompt: "Read source", mode: "research" })).resolves.toBe("final answer");
+    await expect(copilot.run({ prompt: "Read source", mode: "research" })).resolves.toBe(
+      "final answer",
+    );
     expect(logs.some((log) => log.phase === "session-event")).toBe(false);
-    expect(logs.map((log) => log.eventType)).not.toEqual(expect.arrayContaining([
-      "tool.execution_start",
-      "hook.start",
-      "hook.end",
-      "permission.requested",
-      "permission.completed",
-      "assistant.streaming_delta",
-      "assistant.message_delta",
-      "assistant.message",
-      "tool.execution_complete",
-      "session.idle",
-    ]));
-    expect(logs).toEqual(expect.arrayContaining([
-      expect.objectContaining({ phase: "session-idle" }),
-    ]));
+    expect(logs.map((log) => log.eventType)).not.toEqual(
+      expect.arrayContaining([
+        "tool.execution_start",
+        "hook.start",
+        "hook.end",
+        "permission.requested",
+        "permission.completed",
+        "assistant.streaming_delta",
+        "assistant.message_delta",
+        "assistant.message",
+        "tool.execution_complete",
+        "session.idle",
+      ]),
+    );
+    expect(logs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ phase: "session-idle" })]),
+    );
     expect(logs.some((log) => log.phase === "assistant-message")).toBe(false);
   });
 
   it("emits raw Copilot SDK session-event logs when verbose events are enabled", async () => {
     const logs: Array<{ eventType?: string }> = [];
     const session = {
-      handlers: [] as Array<(event: { type: string; data?: { content?: string; toolName?: string } }) => void>,
+      handlers: [] as Array<
+        (event: { type: string; data?: { content?: string; toolName?: string } }) => void
+      >,
       async send() {
         queueMicrotask(() => {
           for (const handler of this.handlers) {
@@ -996,7 +1140,12 @@ describe("source-to-project harness registry", () => {
       },
       on(_eventHandler: unknown, maybeHandler?: unknown) {
         const handler = typeof maybeHandler === "function" ? maybeHandler : _eventHandler;
-        this.handlers.push(handler as (event: { type: string; data?: { content?: string; toolName?: string } }) => void);
+        this.handlers.push(
+          handler as (event: {
+            type: string;
+            data?: { content?: string; toolName?: string };
+          }) => void,
+        );
         return () => {
           this.handlers = this.handlers.filter((candidate) => candidate !== handler);
         };
@@ -1020,17 +1169,21 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await expect(copilot.run({ prompt: "Read source", mode: "research" })).resolves.toBe("final answer");
-    expect(logs.map((log) => log.eventType)).toEqual(expect.arrayContaining([
-      "tool.execution_start",
-      "hook.start",
-      "permission.requested",
-      "assistant.streaming_delta",
-      "assistant.message_delta",
-      "assistant.message",
-      "tool.execution_complete",
-      "session.idle",
-    ]));
+    await expect(copilot.run({ prompt: "Read source", mode: "research" })).resolves.toBe(
+      "final answer",
+    );
+    expect(logs.map((log) => log.eventType)).toEqual(
+      expect.arrayContaining([
+        "tool.execution_start",
+        "hook.start",
+        "permission.requested",
+        "assistant.streaming_delta",
+        "assistant.message_delta",
+        "assistant.message",
+        "tool.execution_complete",
+        "session.idle",
+      ]),
+    );
   });
 
   it("emits Copilot SDK token usage from assistant usage events", async () => {
@@ -1064,7 +1217,9 @@ describe("source-to-project harness registry", () => {
       },
       on(_eventHandler: unknown, maybeHandler?: unknown) {
         const handler = typeof maybeHandler === "function" ? maybeHandler : _eventHandler;
-        this.handlers.push(handler as (event: { type: string; data?: Record<string, unknown> }) => void);
+        this.handlers.push(
+          handler as (event: { type: string; data?: Record<string, unknown> }) => void,
+        );
         return () => {
           this.handlers = this.handlers.filter((candidate) => candidate !== handler);
         };
@@ -1094,11 +1249,13 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await expect(copilot.run({
-      prompt: "Read source",
-      mode: "research",
-      operation: "source-reading",
-    })).resolves.toBe("final answer");
+    await expect(
+      copilot.run({
+        prompt: "Read source",
+        mode: "research",
+        operation: "source-reading",
+      }),
+    ).resolves.toBe("final answer");
 
     expect(usageEvents).toEqual([
       {
@@ -1115,9 +1272,11 @@ describe("source-to-project harness registry", () => {
     const client = {
       async start() {},
       async createSession(config: unknown) {
-        const handler = (config as {
-          onUserInputRequest?: (request: { question: string }) => Promise<unknown>;
-        }).onUserInputRequest;
+        const handler = (
+          config as {
+            onUserInputRequest?: (request: { question: string }) => Promise<unknown>;
+          }
+        ).onUserInputRequest;
         await handler?.({ question: "Can I ask the user what to inspect?" });
         return {
           async sendAndWait() {
@@ -1167,12 +1326,12 @@ describe("source-to-project harness registry", () => {
       maxRisk: 0.8,
     });
 
-    expect(acceptances.filter((acceptance) => acceptance.accepted).map((acceptance) => acceptance.id)).toEqual([
-      "opp-1",
-      "opp-3",
-      "opp-4",
-    ]);
-    expect(acceptances.find((acceptance) => acceptance.id === "opp-2")?.reason).toContain("speculative");
+    expect(
+      acceptances.filter((acceptance) => acceptance.accepted).map((acceptance) => acceptance.id),
+    ).toEqual(["opp-1", "opp-3", "opp-4"]);
+    expect(acceptances.find((acceptance) => acceptance.id === "opp-2")?.reason).toContain(
+      "speculative",
+    );
   });
 
   it("verifies the visual-plan installer as a source-to-project preflight", async () => {
@@ -1197,23 +1356,28 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "visual-plan-preflight",
-      kind: WorkflowNodeKind.VERIFICATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Verify visual-plan capability",
-      prompt: "Verify visual-plan",
-      dependsOn: [],
-      gates: ["verification"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads: new Map(), artifacts: new Map() });
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "visual-plan-preflight",
+        kind: WorkflowNodeKind.VERIFICATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Verify visual-plan capability",
+        prompt: "Verify visual-plan",
+        dependsOn: [],
+        gates: ["verification"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads: new Map(), artifacts: new Map() },
+    );
 
-    expect(shellCalls).toEqual([{
-      command: "nub",
-      args: ["x", "@agent-native/skills@0.2.249", "add", "--skill", "visual-plan"],
-      cwd: "/tmp/secondbrain",
-    }]);
+    expect(shellCalls).toEqual([
+      {
+        command: "nub",
+        args: ["x", "@agent-native/skills@0.2.249", "add", "--skill", "visual-plan"],
+        cwd: "/tmp/secondbrain",
+      },
+    ]);
     expect(result).toMatchObject({
       status: "passed",
       output: "visual-plan preflight complete.",
@@ -1260,17 +1424,24 @@ describe("source-to-project harness registry", () => {
     const state = await runMacroWorkflow(plan, { harnesses: registry });
 
     expect(state.status).toBe("failed");
-    expect(state.nodeResults.map((result) => result.nodeId)).toEqual(["visual-plan-preflight", "source-reading"]);
+    expect(state.nodeResults.map((result) => result.nodeId)).toEqual([
+      "visual-plan-preflight",
+      "source-reading",
+    ]);
     expect(state.nodeResults[0]).toMatchObject({
       status: "passed",
     });
     expect(state.nodeResults[0]?.output).toContain("visual-plan preflight warning");
-    const visualPlanPreflight = state.nodeResults[0]?.payload?.visualPlanPreflight as { skillInstall?: unknown } | undefined;
+    const visualPlanPreflight = state.nodeResults[0]?.payload?.visualPlanPreflight as
+      | { skillInstall?: unknown }
+      | undefined;
     expect(visualPlanPreflight?.skillInstall).toMatchObject({
       usable: false,
       skipped: true,
     });
-    expect(state.nodeResults[1]?.error).toContain("source-reading ran after non-fatal visual-plan preflight warning");
+    expect(state.nodeResults[1]?.error).toContain(
+      "source-reading ran after non-fatal visual-plan preflight warning",
+    );
   });
 
   it("fails source-to-project before source reading when visual-plan preflight fails", async () => {
@@ -1384,15 +1555,20 @@ describe("source-to-project harness registry", () => {
     });
     const review: OpportunityCouncilReview = {
       ...latestRunCouncilReviewFixture(),
-      bundles: [{
-        id: "bundle-loop-budgeting",
-        opportunityIds: ["opp-1", "opp-3", "opp-4"],
-        rationale: "These accepted opportunities share one loop-budgeting change surface and should be planned together.",
-        sharedChangeSurface: "workflow templates, runner, verifier",
-        combinedUserValue: "A single coherent budgeting workflow improvement instead of three duplicate plans.",
-        separationRisk: "Separate implementation plans would repeat the same score and budget plumbing.",
-        maxPrScope: "Update the loop template, telemetry, and verifier rules together.",
-      }],
+      bundles: [
+        {
+          id: "bundle-loop-budgeting",
+          opportunityIds: ["opp-1", "opp-3", "opp-4"],
+          rationale:
+            "These accepted opportunities share one loop-budgeting change surface and should be planned together.",
+          sharedChangeSurface: "workflow templates, runner, verifier",
+          combinedUserValue:
+            "A single coherent budgeting workflow improvement instead of three duplicate plans.",
+          separationRisk:
+            "Separate implementation plans would repeat the same score and budget plumbing.",
+          maxPrScope: "Update the loop template, telemetry, and verifier rules together.",
+        },
+      ],
     };
 
     const nodes = await expander({
@@ -1448,15 +1624,17 @@ describe("source-to-project harness registry", () => {
     });
     const review: OpportunityCouncilReview = {
       ...latestRunCouncilReviewFixture(),
-      bundles: [{
-        id: "bundle-with-rejected-member",
-        opportunityIds: ["opp-1", "opp-2", "opp-3"],
-        rationale: "This bundle incorrectly includes a speculative opportunity.",
-        sharedChangeSurface: "workflow templates and harnesses",
-        combinedUserValue: "One joined change.",
-        separationRisk: "Plans could overlap.",
-        maxPrScope: "Update the accepted and speculative changes together.",
-      }],
+      bundles: [
+        {
+          id: "bundle-with-rejected-member",
+          opportunityIds: ["opp-1", "opp-2", "opp-3"],
+          rationale: "This bundle incorrectly includes a speculative opportunity.",
+          sharedChangeSurface: "workflow templates and harnesses",
+          combinedUserValue: "One joined change.",
+          separationRisk: "Plans could overlap.",
+          maxPrScope: "Update the accepted and speculative changes together.",
+        },
+      ],
     };
 
     const nodes = await expander({
@@ -1538,20 +1716,32 @@ describe("source-to-project harness registry", () => {
       mode: "advisory",
     });
 
-    const execution = await registry.get(WorkflowHarnessKind.COPILOT_SDK)?.prepareExecution?.(planNode!, {
-      payloads: new Map([["council-review", { councilReview }]]),
-      artifacts: new Map(),
-    });
+    const execution = await registry
+      .get(WorkflowHarnessKind.COPILOT_SDK)
+      ?.prepareExecution?.(planNode!, {
+        payloads: new Map([["council-review", { councilReview }]]),
+        artifacts: new Map(),
+      });
 
-    expect(execution?.prompt).toContain("Create an implementation plan for this single selected source-to-project candidate.");
+    expect(execution?.prompt).toContain(
+      "Create an implementation plan for this single selected source-to-project candidate.",
+    );
     expect(execution?.prompt).toContain("Selected candidate JSON:");
-    expect(execution?.prompt).toContain("Add a conservative loop-engineering-starter advisory template");
+    expect(execution?.prompt).toContain(
+      "Add a conservative loop-engineering-starter advisory template",
+    );
     expect(execution?.prompt).toContain("Project JSON:");
     expect(execution?.calls?.[0]?.prompt).toBe(execution?.prompt);
   });
 
   it("publishes a markdown report and feeds it into the visual-plan design node", async () => {
-    const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string; capabilityScope?: unknown }> = [];
+    const copilotCalls: Array<{
+      cwd?: string;
+      prompt: string;
+      mode: string;
+      model?: string;
+      capabilityScope?: unknown;
+    }> = [];
     const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
     const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
       minApplicability: 0.7,
@@ -1596,65 +1786,83 @@ describe("source-to-project harness registry", () => {
 
     const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
       payloads: new Map([
-        ["review-opportunity-opp-1", {
-          finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
-          plan: planSummaryFixture("Loop init plan"),
-        }],
+        [
+          "review-opportunity-opp-1",
+          {
+            finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+            plan: planSummaryFixture("Loop init plan"),
+          },
+        ],
       ]),
       artifacts: new Map(),
     });
 
     expect(reportResult.status).toBe("passed");
     expect(reportResult.output).toContain("# Source-to-Project Report: opp-1");
-    expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain("## Implementation Outline");
+    expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain(
+      "## Implementation Outline",
+    );
     expect(reportResult.execution).toMatchObject({
       executor: WorkflowHarnessKind.REPORTER,
       mode: "report",
       prompt: "Report",
       model: "deterministic",
-      calls: [{
-        executor: WorkflowHarnessKind.REPORTER,
-        mode: "report",
-        prompt: "Report",
-        model: "deterministic",
-      }],
+      calls: [
+        {
+          executor: WorkflowHarnessKind.REPORTER,
+          mode: "report",
+          prompt: "Report",
+          model: "deterministic",
+        },
+      ],
     });
 
-    const visualResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "visual-design-opportunity-opp-1",
-      kind: WorkflowNodeKind.VISUALIZATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Visual design opp-1",
-      prompt: "Visual design",
-      input: {
-        opportunity: acceptance.opportunity,
-        opportunityAcceptance: acceptance,
+    const visualResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "visual-design-opportunity-opp-1",
+        kind: WorkflowNodeKind.VISUALIZATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Visual design opp-1",
+        prompt: "Visual design",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["report-opportunity-opp-1"],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
       },
-      dependsOn: ["report-opportunity-opp-1"],
-      gates: ["output-contract" as const],
-      writeMode: "read-only" as const,
-      replanPolicy: "never" as const,
-    }, {
-      payloads: new Map([
-        ["report-opportunity-opp-1", reportResult.payload!],
-      ]),
-      artifacts: new Map(),
-    });
+      {
+        payloads: new Map([["report-opportunity-opp-1", reportResult.payload!]]),
+        artifacts: new Map(),
+      },
+    );
 
-    expect(shellCalls).toEqual([{
-      command: "nub",
-      args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
-      cwd: "/tmp/secondbrain",
-    }]);
+    expect(shellCalls).toEqual([
+      {
+        command: "nub",
+        args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+        cwd: "/tmp/secondbrain",
+      },
+    ]);
     expect(copilotCalls).toHaveLength(1);
-    expect(copilotCalls[0]).toMatchObject({ cwd: "/tmp/secondbrain", mode: "plan", model: "claude-opus-4.8" });
+    expect(copilotCalls[0]).toMatchObject({
+      cwd: "/tmp/secondbrain",
+      mode: "plan",
+      model: "claude-opus-4.8",
+    });
     expect(copilotCalls[0]?.capabilityScope).toMatchObject({
       kind: "skill",
       skillName: "visual-plan",
     });
-    expect(copilotCalls[0]?.prompt).toContain("/visual-plan Create an actual visual design artifact");
+    expect(copilotCalls[0]?.prompt).toContain(
+      "/visual-plan Create an actual visual design artifact",
+    );
     expect(copilotCalls[0]?.prompt).toContain("Use Agent-Native Plans local-files privacy mode.");
-    expect(copilotCalls[0]?.prompt).toContain("do not run `plan local serve` as a foreground command");
+    expect(copilotCalls[0]?.prompt).toContain(
+      "do not run `plan local serve` as a foreground command",
+    );
     expect(copilotCalls[0]?.prompt).toContain("# Source-to-Project Report: opp-1");
     expect(visualResult.execution?.calls?.[1]).toMatchObject({
       executor: "copilot-sdk",
@@ -1676,7 +1884,13 @@ describe("source-to-project harness registry", () => {
       minAcceptanceAverage: 0.85,
       maxRisk: 0.8,
     }).find((candidate) => candidate.id === "opp-1")!;
-    const launchCalls: Array<Parameters<NonNullable<Parameters<typeof createSourceToProjectHarnessRegistry>[0]["prLauncher"]>["launch"]>[0]> = [];
+    const launchCalls: Array<
+      Parameters<
+        NonNullable<
+          Parameters<typeof createSourceToProjectHarnessRegistry>[0]["prLauncher"]
+        >["launch"]
+      >[0]
+    > = [];
     const registry = createSourceToProjectHarnessRegistry({
       source: "https://example.com/loops",
       project: { ...projectFixture(), autonomousPrAllowed: true },
@@ -1717,10 +1931,13 @@ describe("source-to-project harness registry", () => {
 
     const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
       payloads: new Map([
-        ["review-opportunity-opp-1", {
-          finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
-          plan: planSummaryFixture("Loop init plan"),
-        }],
+        [
+          "review-opportunity-opp-1",
+          {
+            finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+            plan: planSummaryFixture("Loop init plan"),
+          },
+        ],
       ]),
       artifacts: new Map(),
       outputDir: "/tmp/runs/run-1",
@@ -1734,7 +1951,9 @@ describe("source-to-project harness registry", () => {
       opportunityId: "opp-1",
       initialPromptMode: "implement",
     });
-    expect(launchCalls[0]?.context.reportMarkdown).toBe(reportResult.payload?.sourceToProjectReportMarkdown);
+    expect(launchCalls[0]?.context.reportMarkdown).toBe(
+      reportResult.payload?.sourceToProjectReportMarkdown,
+    );
     expect(reportResult.payload?.autoImplementLaunch).toEqual({
       status: "launched",
       worktreePath: "/Users/smendenhall/.herdr/worktrees/secondbrain/worktree-opp-1",
@@ -1768,10 +1987,13 @@ describe("source-to-project harness registry", () => {
       replanPolicy: "never" as const,
     };
     const payloads = new Map([
-      ["review-opportunity-opp-1", {
-        finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
-        plan: planSummaryFixture("Loop init plan"),
-      }],
+      [
+        "review-opportunity-opp-1",
+        {
+          finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+          plan: planSummaryFixture("Loop init plan"),
+        },
+      ],
     ]);
 
     // auto-implement disabled (default)
@@ -1780,9 +2002,18 @@ describe("source-to-project harness registry", () => {
       source: "https://example.com/loops",
       project: { ...projectFixture(), autonomousPrAllowed: true },
       mode: "advisory",
-      prLauncher: { async launch() { launched = true; return {} as never; } },
+      prLauncher: {
+        async launch() {
+          launched = true;
+          return {} as never;
+        },
+      },
     });
-    let reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, { payloads, artifacts: new Map(), outputDir: "/tmp/runs/run-1" });
+    let reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
+      payloads,
+      artifacts: new Map(),
+      outputDir: "/tmp/runs/run-1",
+    });
     expect(launched).toBe(false);
     expect(reportResult.payload?.autoImplementLaunch).toBeUndefined();
 
@@ -1792,9 +2023,18 @@ describe("source-to-project harness registry", () => {
       project: { ...projectFixture(), autonomousPrAllowed: false },
       mode: "advisory",
       sourceToProject: { ...defaultSourceToProjectDefaultsFixture(), autoImplementOnReport: true },
-      prLauncher: { async launch() { launched = true; return {} as never; } },
+      prLauncher: {
+        async launch() {
+          launched = true;
+          return {} as never;
+        },
+      },
     });
-    reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, { payloads, artifacts: new Map(), outputDir: "/tmp/runs/run-1" });
+    reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
+      payloads,
+      artifacts: new Map(),
+      outputDir: "/tmp/runs/run-1",
+    });
     expect(launched).toBe(false);
     expect(reportResult.payload?.autoImplementLaunch).toBeUndefined();
 
@@ -1804,14 +2044,25 @@ describe("source-to-project harness registry", () => {
       project: { ...projectFixture(), autonomousPrAllowed: true },
       mode: "advisory",
       sourceToProject: { ...defaultSourceToProjectDefaultsFixture(), autoImplementOnReport: true },
-      prLauncher: { async launch() { launched = true; return {} as never; } },
+      prLauncher: {
+        async launch() {
+          launched = true;
+          return {} as never;
+        },
+      },
     });
     reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
       payloads: new Map([
-        ["review-opportunity-opp-1", {
-          finalRecommendationReview: { ...acceptedFinalRecommendationReviewFixture(), status: "rejected" as const },
-          plan: planSummaryFixture("Loop init plan"),
-        }],
+        [
+          "review-opportunity-opp-1",
+          {
+            finalRecommendationReview: {
+              ...acceptedFinalRecommendationReviewFixture(),
+              status: "rejected" as const,
+            },
+            plan: planSummaryFixture("Loop init plan"),
+          },
+        ],
       ]),
       artifacts: new Map(),
       outputDir: "/tmp/runs/run-1",
@@ -1859,74 +2110,95 @@ describe("source-to-project harness registry", () => {
       ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
       ["source-corroboration", { corroboration: corroborationFixture() }],
       ["project-research", { projectBrief: projectBriefFixture() }],
-      ["council-review", { councilReview: latestRunCouncilReviewFixture(), opportunityAcceptances: [acceptance] }],
+      [
+        "council-review",
+        { councilReview: latestRunCouncilReviewFixture(), opportunityAcceptances: [acceptance] },
+      ],
     ]);
     const artifacts = new Map();
 
-    const planResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "plan-opportunity-branch-accepted-opportunity",
-      kind: WorkflowNodeKind.PLANNING,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Plan candidate branch",
-      prompt: "Plan",
-      input: sharedInput,
-      dependsOn: ["council-review"],
-      gates: ["verification"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads, artifacts });
+    const planResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "plan-opportunity-branch-accepted-opportunity",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Plan candidate branch",
+        prompt: "Plan",
+        input: sharedInput,
+        dependsOn: ["council-review"],
+        gates: ["verification"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads, artifacts },
+    );
     payloads.set("plan-opportunity-branch-accepted-opportunity", planResult.payload ?? {});
 
-    const fanInResult = await registry.get(WorkflowHarnessKind.DECISION_COUNCIL)!({
-      id: "fan-in-opportunity-selection",
-      kind: WorkflowNodeKind.DELIBERATION,
-      harness: WorkflowHarnessKind.DECISION_COUNCIL,
-      title: "Fan in",
-      prompt: "Fan in",
-      dependsOn: ["plan-opportunity-branch-accepted-opportunity"],
-      gates: ["review-accepted"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads, artifacts });
+    const fanInResult = await registry.get(WorkflowHarnessKind.DECISION_COUNCIL)!(
+      {
+        id: "fan-in-opportunity-selection",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Fan in",
+        prompt: "Fan in",
+        dependsOn: ["plan-opportunity-branch-accepted-opportunity"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads, artifacts },
+    );
     payloads.set("fan-in-opportunity-selection", fanInResult.payload ?? {});
 
-    const packageResult = await registry.get(WorkflowHarnessKind.RESEARCH)!({
-      id: "recommended-advisory-package",
-      kind: WorkflowNodeKind.PLANNING,
-      harness: WorkflowHarnessKind.RESEARCH,
-      title: "Package",
-      prompt: "Package",
-      dependsOn: ["fan-in-opportunity-selection"],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads, artifacts });
+    const packageResult = await registry.get(WorkflowHarnessKind.RESEARCH)!(
+      {
+        id: "recommended-advisory-package",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Package",
+        prompt: "Package",
+        dependsOn: ["fan-in-opportunity-selection"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads, artifacts },
+    );
     payloads.set("recommended-advisory-package", packageResult.payload ?? {});
 
-    const finalReviewResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "final-recommendation-review-multiple-opportunities",
-      kind: WorkflowNodeKind.DELIBERATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Final review",
-      prompt: "Review",
-      dependsOn: ["recommended-advisory-package"],
-      gates: ["review-accepted"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads, artifacts });
-    payloads.set("final-recommendation-review-multiple-opportunities", finalReviewResult.payload ?? {});
+    const finalReviewResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "final-recommendation-review-multiple-opportunities",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Final review",
+        prompt: "Review",
+        dependsOn: ["recommended-advisory-package"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads, artifacts },
+    );
+    payloads.set(
+      "final-recommendation-review-multiple-opportunities",
+      finalReviewResult.payload ?? {},
+    );
 
-    const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!({
-      id: "report-multiple-opportunities",
-      kind: WorkflowNodeKind.REPORT,
-      harness: WorkflowHarnessKind.REPORTER,
-      title: "Report multiple",
-      prompt: "Report",
-      dependsOn: ["final-recommendation-review-multiple-opportunities"],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, { payloads, artifacts });
+    const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(
+      {
+        id: "report-multiple-opportunities",
+        kind: WorkflowNodeKind.REPORT,
+        harness: WorkflowHarnessKind.REPORTER,
+        title: "Report multiple",
+        prompt: "Report",
+        dependsOn: ["final-recommendation-review-multiple-opportunities"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      { payloads, artifacts },
+    );
 
     expect(planResult.output).not.toContain("skipped unsupported node");
     expect(fanInResult.output).not.toContain("skipped unsupported node");
@@ -1936,7 +2208,9 @@ describe("source-to-project harness registry", () => {
     expect(planResult.payload?.plan).toMatchObject({ title: "Candidate branch plan" });
     expect(fanInResult.payload?.plans).toHaveLength(1);
     expect(packageResult.payload?.plans).toHaveLength(1);
-    expect(finalReviewResult.payload?.finalRecommendationReview).toMatchObject({ status: "accepted" });
+    expect(finalReviewResult.payload?.finalRecommendationReview).toMatchObject({
+      status: "accepted",
+    });
     expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain("Candidate branch plan");
   });
 
@@ -1966,38 +2240,44 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "visual-design-opportunity-opp-1",
-      kind: WorkflowNodeKind.VISUALIZATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Visual design opp-1",
-      prompt: "Visual design",
-      input: {
-        opportunity: acceptance.opportunity,
-        opportunityAcceptance: acceptance,
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "visual-design-opportunity-opp-1",
+        kind: WorkflowNodeKind.VISUALIZATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Visual design opp-1",
+        prompt: "Visual design",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["report-opportunity-opp-1"],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
       },
-      dependsOn: ["report-opportunity-opp-1"],
-      gates: ["output-contract" as const],
-      writeMode: "read-only" as const,
-      replanPolicy: "never" as const,
-    }, {
-      payloads: new Map([
-        ["visual-plan-preflight", {
-          visualPlanPreflight: {
-            skill: "visual-plan",
-            skillInstall: {
-              skill: "visual-plan",
-              command: "nub",
-              args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
-              output: "visual-plan installed during preflight",
-              skipped: false,
+      {
+        payloads: new Map([
+          [
+            "visual-plan-preflight",
+            {
+              visualPlanPreflight: {
+                skill: "visual-plan",
+                skillInstall: {
+                  skill: "visual-plan",
+                  command: "nub",
+                  args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+                  output: "visual-plan installed during preflight",
+                  skipped: false,
+                },
+              },
             },
-          },
-        }],
-        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
-      ]),
-      artifacts: new Map(),
-    });
+          ],
+          ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
 
     expect(copilotCalls).toHaveLength(1);
     expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
@@ -2035,49 +2315,62 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "visual-design-opportunity-opp-1",
-      kind: WorkflowNodeKind.VISUALIZATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Visual design opp-1",
-      prompt: "Visual design",
-      input: {
-        opportunity: acceptance.opportunity,
-        opportunityAcceptance: acceptance,
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "visual-design-opportunity-opp-1",
+        kind: WorkflowNodeKind.VISUALIZATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Visual design opp-1",
+        prompt: "Visual design",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["report-opportunity-opp-1"],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
       },
-      dependsOn: ["report-opportunity-opp-1"],
-      gates: ["output-contract" as const],
-      writeMode: "read-only" as const,
-      replanPolicy: "never" as const,
-    }, {
-      payloads: new Map([
-        ["visual-plan-preflight", {
-          visualPlanPreflight: {
-            skill: "visual-plan",
-            skillInstall: {
-              skill: "visual-plan",
-              command: "nub",
-              args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
-              output: "visual-plan hosted capability is not usable: Agent-Native Plan authentication is pending or was skipped.",
-              skipped: true,
-              usable: false,
-              warning: "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
+      {
+        payloads: new Map([
+          [
+            "visual-plan-preflight",
+            {
+              visualPlanPreflight: {
+                skill: "visual-plan",
+                skillInstall: {
+                  skill: "visual-plan",
+                  command: "nub",
+                  args: ["x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+                  output:
+                    "visual-plan hosted capability is not usable: Agent-Native Plan authentication is pending or was skipped.",
+                  skipped: true,
+                  usable: false,
+                  warning:
+                    "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
+                },
+              },
             },
-          },
-        }],
-        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
-      ]),
-      artifacts: new Map(),
-    });
+          ],
+          ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
 
     expect(copilotCalls).toHaveLength(1);
-    expect(copilotCalls[0]).toMatchObject({ cwd: "/tmp/secondbrain", mode: "plan", model: "claude-opus-4.8" });
+    expect(copilotCalls[0]).toMatchObject({
+      cwd: "/tmp/secondbrain",
+      mode: "plan",
+      model: "claude-opus-4.8",
+    });
     expect(copilotCalls[0]?.prompt).toContain("Use Agent-Native Plans local-files privacy mode.");
     expect(result.output).toBe("Visual design complete for opportunity opp-1.");
     expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
       skillInstall: {
         usable: false,
-        warning: "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
+        warning:
+          "Agent-Native Plan authentication is pending or was skipped; local visual-plan mode will still be attempted for this advisory run.",
       },
       rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
       hostedArtifactUrl: HOSTED_VISUAL_PLAN_ARTIFACT_URL,
@@ -2111,26 +2404,31 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    await expect(registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "visual-design-opportunity-opp-1",
-      kind: WorkflowNodeKind.VISUALIZATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Visual design opp-1",
-      prompt: "Visual design",
-      input: {
-        opportunity: acceptance.opportunity,
-        opportunityAcceptance: acceptance,
-      },
-      dependsOn: ["report-opportunity-opp-1"],
-      gates: ["output-contract" as const],
-      writeMode: "read-only" as const,
-      replanPolicy: "never" as const,
-    }, {
-      payloads: new Map([
-        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
-      ]),
-      artifacts: new Map(),
-    })).rejects.toThrow("local HTML fallback");
+    await expect(
+      registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "visual-design-opportunity-opp-1",
+          kind: WorkflowNodeKind.VISUALIZATION,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Visual design opp-1",
+          prompt: "Visual design",
+          input: {
+            opportunity: acceptance.opportunity,
+            opportunityAcceptance: acceptance,
+          },
+          dependsOn: ["report-opportunity-opp-1"],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+        {
+          payloads: new Map([
+            ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+          ]),
+          artifacts: new Map(),
+        },
+      ),
+    ).rejects.toThrow("local HTML fallback");
   });
 
   it("schedules cleanup for local visual-plan bridge URLs", async () => {
@@ -2172,33 +2470,40 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "visual-design-opportunity-opp-1",
-      kind: WorkflowNodeKind.VISUALIZATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Visual design opp-1",
-      prompt: "Visual design",
-      input: {
-        opportunity: acceptance.opportunity,
-        opportunityAcceptance: acceptance,
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "visual-design-opportunity-opp-1",
+        kind: WorkflowNodeKind.VISUALIZATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Visual design opp-1",
+        prompt: "Visual design",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["report-opportunity-opp-1"],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
       },
-      dependsOn: ["report-opportunity-opp-1"],
-      gates: ["output-contract" as const],
-      writeMode: "read-only" as const,
-      replanPolicy: "never" as const,
-    }, {
-      payloads: new Map([
-        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
-      ]),
-      artifacts: new Map(),
-    });
+      {
+        payloads: new Map([
+          ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
 
-    expect(cleanupCalls).toEqual([{
-      hostedArtifactUrl: "https://plan.agent-native.com/local-plans/o3-run-readiness-scorer?bridge=http%3A%2F%2F127.0.0.1%3A57044%2Flocal-plan.json%3Ftoken%3Dfixture",
-      cleanupAfterMs: 60_000,
-    }]);
+    expect(cleanupCalls).toEqual([
+      {
+        hostedArtifactUrl:
+          "https://plan.agent-native.com/local-plans/o3-run-readiness-scorer?bridge=http%3A%2F%2F127.0.0.1%3A57044%2Flocal-plan.json%3Ftoken%3Dfixture",
+        cleanupAfterMs: 60_000,
+      },
+    ]);
     expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
-      hostedArtifactUrl: "https://plan.agent-native.com/local-plans/o3-run-readiness-scorer?bridge=http%3A%2F%2F127.0.0.1%3A57044%2Flocal-plan.json%3Ftoken%3Dfixture",
+      hostedArtifactUrl:
+        "https://plan.agent-native.com/local-plans/o3-run-readiness-scorer?bridge=http%3A%2F%2F127.0.0.1%3A57044%2Flocal-plan.json%3Ftoken%3Dfixture",
       bridgeCleanup: {
         status: "scheduled",
         port: 57044,
@@ -2238,26 +2543,29 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "visual-design-opportunity-opp-1",
-      kind: WorkflowNodeKind.VISUALIZATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Visual design opp-1",
-      prompt: "Visual design",
-      input: {
-        opportunity: acceptance.opportunity,
-        opportunityAcceptance: acceptance,
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "visual-design-opportunity-opp-1",
+        kind: WorkflowNodeKind.VISUALIZATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Visual design opp-1",
+        prompt: "Visual design",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["report-opportunity-opp-1"],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
       },
-      dependsOn: ["report-opportunity-opp-1"],
-      gates: ["output-contract" as const],
-      writeMode: "read-only" as const,
-      replanPolicy: "never" as const,
-    }, {
-      payloads: new Map([
-        ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
-      ]),
-      artifacts: new Map(),
-    });
+      {
+        payloads: new Map([
+          ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
 
     expect(shellCalls).toEqual([
       {
@@ -2267,7 +2575,16 @@ describe("source-to-project harness registry", () => {
       },
       {
         command: "mise",
-        args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+        args: [
+          "exec",
+          "--",
+          "nub",
+          "x",
+          "@agent-native/skills@latest",
+          "add",
+          "--skill",
+          "visual-plan",
+        ],
         cwd: "/tmp/secondbrain",
       },
     ]);
@@ -2275,7 +2592,16 @@ describe("source-to-project harness registry", () => {
     expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
       skillInstall: {
         command: "mise",
-        args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+        args: [
+          "exec",
+          "--",
+          "nub",
+          "x",
+          "@agent-native/skills@latest",
+          "add",
+          "--skill",
+          "visual-plan",
+        ],
         output: "visual-plan installed through mise",
       },
       rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
@@ -2325,26 +2651,29 @@ describe("source-to-project harness registry", () => {
         },
       });
 
-      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-        id: "visual-design-opportunity-opp-1",
-        kind: WorkflowNodeKind.VISUALIZATION,
-        harness: WorkflowHarnessKind.COPILOT_SDK,
-        title: "Visual design opp-1",
-        prompt: "Visual design",
-        input: {
-          opportunity: acceptance.opportunity,
-          opportunityAcceptance: acceptance,
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "visual-design-opportunity-opp-1",
+          kind: WorkflowNodeKind.VISUALIZATION,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Visual design opp-1",
+          prompt: "Visual design",
+          input: {
+            opportunity: acceptance.opportunity,
+            opportunityAcceptance: acceptance,
+          },
+          dependsOn: ["report-opportunity-opp-1"],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
         },
-        dependsOn: ["report-opportunity-opp-1"],
-        gates: ["output-contract" as const],
-        writeMode: "read-only" as const,
-        replanPolicy: "never" as const,
-      }, {
-        payloads: new Map([
-          ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
-        ]),
-        artifacts: new Map(),
-      });
+        {
+          payloads: new Map([
+            ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+          ]),
+          artifacts: new Map(),
+        },
+      );
 
       expect(shellCalls).toEqual([
         {
@@ -2354,12 +2683,30 @@ describe("source-to-project harness registry", () => {
         },
         {
           command: "mise",
-          args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+          args: [
+            "exec",
+            "--",
+            "nub",
+            "x",
+            "@agent-native/skills@latest",
+            "add",
+            "--skill",
+            "visual-plan",
+          ],
           cwd: "/tmp/secondbrain",
         },
         {
           command: configuredMise,
-          args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+          args: [
+            "exec",
+            "--",
+            "nub",
+            "x",
+            "@agent-native/skills@latest",
+            "add",
+            "--skill",
+            "visual-plan",
+          ],
           cwd: "/tmp/secondbrain",
         },
       ]);
@@ -2367,7 +2714,16 @@ describe("source-to-project harness registry", () => {
       expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
         skillInstall: {
           command: configuredMise,
-          args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+          args: [
+            "exec",
+            "--",
+            "nub",
+            "x",
+            "@agent-native/skills@latest",
+            "add",
+            "--skill",
+            "visual-plan",
+          ],
           output: "visual-plan installed through absolute mise",
         },
         rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
@@ -2392,7 +2748,8 @@ describe("source-to-project harness registry", () => {
       const staleConfiguredMise = join(tempDir, "missing", "mise");
 
       const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
-      const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string }> = [];
+      const copilotCalls: Array<{ cwd?: string; prompt: string; mode: string; model?: string }> =
+        [];
       const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
         minApplicability: 0.7,
         minConfidence: 0.65,
@@ -2431,26 +2788,29 @@ describe("source-to-project harness registry", () => {
         },
       });
 
-      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-        id: "visual-design-opportunity-opp-1",
-        kind: WorkflowNodeKind.VISUALIZATION,
-        harness: WorkflowHarnessKind.COPILOT_SDK,
-        title: "Visual design opp-1",
-        prompt: "Visual design",
-        input: {
-          opportunity: acceptance.opportunity,
-          opportunityAcceptance: acceptance,
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "visual-design-opportunity-opp-1",
+          kind: WorkflowNodeKind.VISUALIZATION,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Visual design opp-1",
+          prompt: "Visual design",
+          input: {
+            opportunity: acceptance.opportunity,
+            opportunityAcceptance: acceptance,
+          },
+          dependsOn: ["report-opportunity-opp-1"],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
         },
-        dependsOn: ["report-opportunity-opp-1"],
-        gates: ["output-contract" as const],
-        writeMode: "read-only" as const,
-        replanPolicy: "never" as const,
-      }, {
-        payloads: new Map([
-          ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
-        ]),
-        artifacts: new Map(),
-      });
+        {
+          payloads: new Map([
+            ["report-opportunity-opp-1", { sourceToProjectReportMarkdown: "# Report" }],
+          ]),
+          artifacts: new Map(),
+        },
+      );
 
       expect(shellCalls).toEqual([
         {
@@ -2460,12 +2820,30 @@ describe("source-to-project harness registry", () => {
         },
         {
           command: "mise",
-          args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+          args: [
+            "exec",
+            "--",
+            "nub",
+            "x",
+            "@agent-native/skills@latest",
+            "add",
+            "--skill",
+            "visual-plan",
+          ],
           cwd: "/tmp/secondbrain",
         },
         {
           command: discoveredMise,
-          args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+          args: [
+            "exec",
+            "--",
+            "nub",
+            "x",
+            "@agent-native/skills@latest",
+            "add",
+            "--skill",
+            "visual-plan",
+          ],
           cwd: "/tmp/secondbrain",
         },
       ]);
@@ -2473,7 +2851,16 @@ describe("source-to-project harness registry", () => {
       expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
         skillInstall: {
           command: discoveredMise,
-          args: ["exec", "--", "nub", "x", "@agent-native/skills@latest", "add", "--skill", "visual-plan"],
+          args: [
+            "exec",
+            "--",
+            "nub",
+            "x",
+            "@agent-native/skills@latest",
+            "add",
+            "--skill",
+            "visual-plan",
+          ],
           output: "visual-plan installed through discovered mise",
         },
         rawVisualPlan: HOSTED_VISUAL_PLAN_ARTIFACT,
@@ -2497,7 +2884,11 @@ describe("source-to-project harness registry", () => {
       mode: "advisory",
       copilot: {
         async run(args) {
-          copilotCalls.push({ prompt: args.prompt, model: args.model, maxToolCalls: args.maxToolCalls });
+          copilotCalls.push({
+            prompt: args.prompt,
+            model: args.model,
+            maxToolCalls: args.maxToolCalls,
+          });
           return "raw project research";
         },
       },
@@ -2508,30 +2899,37 @@ describe("source-to-project harness registry", () => {
       },
     });
 
-    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-      id: "project-research",
-      kind: "research",
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Research target project",
-      prompt: "Research target project in relation to source findings: secondbrain",
-      dependsOn: ["source-corroboration"],
-      gates: ["output-contract"],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, {
-      objective: "Read KG source for how it applies to Second Brain",
-      payloads: new Map([
-        ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
-        ["source-corroboration", { corroboration: corroborationFixture() }],
-      ]),
-      artifacts: new Map(),
-    });
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "project-research",
+        kind: "research",
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Research target project",
+        prompt: "Research target project in relation to source findings: secondbrain",
+        dependsOn: ["source-corroboration"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        objective: "Read KG source for how it applies to Second Brain",
+        payloads: new Map([
+          ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
+          ["source-corroboration", { corroboration: corroborationFixture() }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
 
     expect(result.status).toBe("passed");
     expect(copilotCalls[0]).toMatchObject({ model: "claude-sonnet-5", maxToolCalls: 60 });
     expect(copilotCalls[0]?.prompt).toContain("Do not produce a generic repository overview");
-    expect(copilotCalls[0]?.prompt).toContain("Hard budget: use at most 60 tool calls for target project research");
-    expect(copilotCalls[0]?.prompt).toContain("Original objective:\nRead KG source for how it applies to Second Brain");
+    expect(copilotCalls[0]?.prompt).toContain(
+      "Hard budget: use at most 60 tool calls for target project research",
+    );
+    expect(copilotCalls[0]?.prompt).toContain(
+      "Original objective:\nRead KG source for how it applies to Second Brain",
+    );
     expect(copilotCalls[0]?.prompt).toContain("Source analysis so far:");
     expect(copilotCalls[0]?.prompt).toContain("chunk, extract triples, standardize entities");
     expect(copilotCalls[0]?.prompt).toContain("Corroboration so far:");
@@ -2570,7 +2968,10 @@ describe("source-to-project harness registry", () => {
       status: "selected",
       selectedCandidate: { id: "opp-1", kind: "opportunity", opportunityIds: ["opp-1"] },
     });
-    expect(result.execution?.calls?.map((call) => call.model)).toEqual(["claude-opus-4.8", "gpt-5-mini"]);
+    expect(result.execution?.calls?.map((call) => call.model)).toEqual([
+      "claude-opus-4.8",
+      "gpt-5-mini",
+    ]);
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("selected source-to-project candidate");
     expect(prompts[0]).toContain("knowledge graph");
@@ -2602,47 +3003,53 @@ describe("source-to-project harness registry", () => {
         baml: {
           async DistillPlanArtifact(...args: string[]) {
             distillCalls.push(args);
-            const { rawPlanArtifactPath: _rawPlanArtifactPath, ...summary } = planSummaryFixture("KG pipeline plan");
+            const { rawPlanArtifactPath: _rawPlanArtifactPath, ...summary } =
+              planSummaryFixture("KG pipeline plan");
             return summary;
           },
         },
       });
 
-      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!({
-        id: "plan-opportunity-opp-1",
-        kind: WorkflowNodeKind.PLANNING,
-        harness: WorkflowHarnessKind.COPILOT_SDK,
-        title: "Plan opp-1",
-        prompt: "Plan",
-        input: {
-          opportunity: acceptance.opportunity,
-          opportunityAcceptance: acceptance,
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "plan-opportunity-opp-1",
+          kind: WorkflowNodeKind.PLANNING,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Plan opp-1",
+          prompt: "Plan",
+          input: {
+            opportunity: acceptance.opportunity,
+            opportunityAcceptance: acceptance,
+          },
+          dependsOn: ["council-review"],
+          gates: ["verification"],
+          writeMode: "read-only",
+          replanPolicy: "never",
         },
-        dependsOn: ["council-review"],
-        gates: ["verification"],
-        writeMode: "read-only",
-        replanPolicy: "never",
-      }, {
-        payloads: new Map([
-          ["council-review", { councilReview }],
-        ]),
-        artifacts: new Map(),
-        outputDir,
-      });
+        {
+          payloads: new Map([["council-review", { councilReview }]]),
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
 
       expect(result.status).toBe("passed");
       expect(distillCalls).toHaveLength(1);
       expect(distillCalls[0]?.[1]).toBe(rawMarkdown);
       expect(distillCalls[0]?.[2]).toBe("raw-plans/plan-opportunity-opp-1.md");
-      await expect(readFile(join(outputDir, "raw-plans", "plan-opportunity-opp-1.md"), "utf8")).resolves.toBe(rawMarkdown);
+      await expect(
+        readFile(join(outputDir, "raw-plans", "plan-opportunity-opp-1.md"), "utf8"),
+      ).resolves.toBe(rawMarkdown);
       expect(result.payload?.plan).toMatchObject({
         rawPlanArtifactPath: "raw-plans/plan-opportunity-opp-1.md",
       });
-      expect(result.artifacts).toEqual([{
-        kind: "markdown",
-        path: "raw-plans/plan-opportunity-opp-1.md",
-        description: "Raw Copilot plan markdown for plan-opportunity-opp-1.",
-      }]);
+      expect(result.artifacts).toEqual([
+        {
+          kind: "markdown",
+          path: "raw-plans/plan-opportunity-opp-1.md",
+          description: "Raw Copilot plan markdown for plan-opportunity-opp-1.",
+        },
+      ]);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
@@ -2686,7 +3093,14 @@ describe("source-to-project harness registry", () => {
       project: projectFixture(),
       mode: "advisory",
       baml: {
-        async ReviewFinalRecommendation(originalPrompt, source, _sourceAnalysis, _corroboration, _projectBrief, plans) {
+        async ReviewFinalRecommendation(
+          originalPrompt,
+          source,
+          _sourceAnalysis,
+          _corroboration,
+          _projectBrief,
+          plans,
+        ) {
           expect(originalPrompt).toContain("Second Brain");
           expect(source).toBe("https://example.com/kg");
           expect(plans[0]?.recommendation).toContain("KG extraction");
@@ -2719,7 +3133,10 @@ describe("source-to-project harness registry", () => {
     expect(result.status).toBe("passed");
     expect(result.payload?.finalRecommendationReview).toMatchObject({ status: "accepted" });
     expect(result.payload?.notification).toBeUndefined();
-    expect(result.execution?.calls?.[0]).toMatchObject({ executor: "baml", operation: "ReviewFinalRecommendation" });
+    expect(result.execution?.calls?.[0]).toMatchObject({
+      executor: "baml",
+      operation: "ReviewFinalRecommendation",
+    });
   });
 
   it("records rejected final recommendations and notifies through the injected notifier", async () => {
@@ -2800,14 +3217,17 @@ describe("source-to-project harness registry", () => {
         ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
         ["source-corroboration", { corroboration: corroborationFixture() }],
         ["project-research", { projectBrief: projectBriefFixture() }],
-        ["plan-selected-opportunities", {
-          plans: [],
-          planSelection: {
-            status: "rejected",
-            reason: "No opportunity met the quality gate.",
-            candidatesConsidered: [],
+        [
+          "plan-selected-opportunities",
+          {
+            plans: [],
+            planSelection: {
+              status: "rejected",
+              reason: "No opportunity met the quality gate.",
+              candidatesConsidered: [],
+            },
           },
-        }],
+        ],
       ]),
       artifacts: new Map(),
     });
@@ -2836,7 +3256,8 @@ describe("stripPlanningAgentPreamble", () => {
   });
 
   it("strips a preamble variant with no explicit persisted path", () => {
-    const raw = "Plan saved and todos tracked. Here is the final implementation plan.\n\n---\n\n# Implementation Plan — O1\n";
+    const raw =
+      "Plan saved and todos tracked. Here is the final implementation plan.\n\n---\n\n# Implementation Plan — O1\n";
 
     expect(stripPlanningAgentPreamble(raw)).toBe("# Implementation Plan — O1\n");
   });
@@ -2895,10 +3316,13 @@ describe("report node exposes the exact plan markdown embedded in the herdr laun
 
       const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(reportNode, {
         payloads: new Map([
-          ["review-opportunity-opp-1", {
-            finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
-            plan: { ...planSummaryFixture("Loop init plan"), rawPlanArtifactPath },
-          }],
+          [
+            "review-opportunity-opp-1",
+            {
+              finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+              plan: { ...planSummaryFixture("Loop init plan"), rawPlanArtifactPath },
+            },
+          ],
         ]),
         artifacts: new Map(),
         outputDir,
@@ -2907,12 +3331,16 @@ describe("report node exposes the exact plan markdown embedded in the herdr laun
       expect(reportResult.status).toBe("passed");
       // The UI's plan card renders payload.rawPlanMarkdown. Confirm it is the harness-preamble-free
       // plan text...
-      expect(reportResult.payload?.rawPlanMarkdown).toBe("# Plan — opp-1: do the thing\n\nBody content describing the change.");
+      expect(reportResult.payload?.rawPlanMarkdown).toBe(
+        "# Plan — opp-1: do the thing\n\nBody content describing the change.",
+      );
       // ...and that this exact string is embedded verbatim inside sourceToProjectReportMarkdown, which
       // is byte-identical to the report text a manual/auto PR launch sends to herdr as context.reportMarkdown
       // (see "auto-launches an implementation agent..." test asserting launchCalls[0].context.reportMarkdown
       // === reportResult.payload.sourceToProjectReportMarkdown).
-      expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain(reportResult.payload!.rawPlanMarkdown as string);
+      expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain(
+        reportResult.payload!.rawPlanMarkdown as string,
+      );
       expect(reportResult.output).toBe(reportResult.payload?.sourceToProjectReportMarkdown);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
@@ -2938,10 +3366,22 @@ function projectFixture() {
 function defaultSourceToProjectDefaultsFixture() {
   return {
     maxOpportunities: 1,
-    thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+    thresholds: {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    },
     mode: "advisory" as const,
     offline: false,
-    prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: [], split: "right" as const, agentOptions: [] },
+    prLauncher: {
+      provider: "herdr" as const,
+      agentCommand: "codex",
+      agentArgs: [],
+      split: "right" as const,
+      agentOptions: [],
+    },
     autoImplementOnReport: false,
   };
 }
@@ -2950,13 +3390,19 @@ function projectBriefFixture() {
   return {
     projectId: "secondbrain",
     displayName: "Second Brain",
-    architecture: "Obsidian markdown vault with Copilot CLI agent harness, source ingest, synthesized wiki pages, action review, and output artifacts.",
+    architecture:
+      "Obsidian markdown vault with Copilot CLI agent harness, source ingest, synthesized wiki pages, action review, and output artifacts.",
     constraints: ["Do not process restricted notes."],
-    goals: ["Create navigable wiki synthesis from source material.", "Surface reviewable actions and briefings."],
+    goals: [
+      "Create navigable wiki synthesis from source material.",
+      "Surface reviewable actions and briefings.",
+    ],
     changeSurfaces: ["07-wiki", "08-actions", "09-outputs"],
     validationCommands: ["scripts/vault-health-check.sh"],
     risks: ["Sensitive content must stay local."],
-    evidence: [{ id: "p1", source: "README.md", quote: "Copilot CLI is the supported agent harness." }],
+    evidence: [
+      { id: "p1", source: "README.md", quote: "Copilot CLI is the supported agent harness." },
+    ],
   };
 }
 
@@ -2965,7 +3411,8 @@ function sourceAnalysisFixture() {
     sourceId: "https://example.com/kg",
     title: "KG source",
     accessLevel: "public",
-    summary: "A source about chunk, extract triples, standardize entities, infer relationships, and visualize a knowledge graph.",
+    summary:
+      "A source about chunk, extract triples, standardize entities, infer relationships, and visualize a knowledge graph.",
     claims: ["The source extracts SPO triples."],
     transferableLessons: ["Use a chunk, extract triples, standardize entities pipeline."],
     evidence: [{ id: "s1", source: "README.md", quote: "knowledge graph" }],
@@ -3016,7 +3463,8 @@ function planSummaryFixture(title: string) {
     title,
     recommendation: "Build a KG extraction pipeline for readable vault notes.",
     problemSolved: "The vault lacks a structured relationship artifact for synthesized knowledge.",
-    sourceLessonApplied: "Chunk, extract triples, standardize entities, infer relationships, and visualize.",
+    sourceLessonApplied:
+      "Chunk, extract triples, standardize entities, infer relationships, and visualize.",
     targetChange: "Add a read-only KG artifact generator for non-restricted notes.",
     expectedUserValue: "Maintainers can inspect relationships and candidate wiki updates.",
     implementationOutline: ["Extract triples", "Standardize entities", "Write review artifacts"],
@@ -3048,10 +3496,18 @@ function mixedCouncilReviewFixture() {
       {
         id: "opp-1",
         title: "Add source-to-wiki knowledge graph artifacts",
-        lesson: "A practical pipeline pattern: chunk, extract SPO triples, standardize entities, infer, visualize.",
-        projectChange: "Create a knowledge graph artifact from readable vault notes and link reviewable summaries into 07-wiki.",
+        lesson:
+          "A practical pipeline pattern: chunk, extract SPO triples, standardize entities, infer, visualize.",
+        projectChange:
+          "Create a knowledge graph artifact from readable vault notes and link reviewable summaries into 07-wiki.",
         changeSurface: "07-wiki, 08-actions, 09-outputs",
-        score: { applicability: 0.9, impact: 0.9, confidence: 0.82, implementationCost: 0.6, risk: 0.35 },
+        score: {
+          applicability: 0.9,
+          impact: 0.9,
+          confidence: 0.82,
+          implementationCost: 0.6,
+          risk: 0.35,
+        },
         evidence: [{ id: "e1", source: "README.md", quote: "knowledge graph" }],
         speculative: false,
       },
@@ -3061,7 +3517,13 @@ function mixedCouncilReviewFixture() {
         lesson: "Combine rule-based entity standardization with optional LLM inference.",
         projectChange: "Write candidate entity merges to review notes before mutating wiki pages.",
         changeSurface: "08-actions, 09-outputs",
-        score: { applicability: 0.9, impact: 0.82, confidence: 0.8, implementationCost: 0.5, risk: 0.25 },
+        score: {
+          applicability: 0.9,
+          impact: 0.82,
+          confidence: 0.8,
+          implementationCost: 0.5,
+          risk: 0.25,
+        },
         evidence: [{ id: "e2", source: "entity_standardization.py", quote: "standardize" }],
         speculative: false,
       },
@@ -3106,9 +3568,16 @@ function adapterOpportunityFixture() {
     id: "opp-3",
     title: "LLM adapter layer",
     lesson: "Works with any OpenAI-compatible endpoint.",
-    projectChange: "Implement an LLM adapter layer, response-shape parsing, local-only flags, and raw LLM logging.",
+    projectChange:
+      "Implement an LLM adapter layer, response-shape parsing, local-only flags, and raw LLM logging.",
     changeSurface: "00-system LLM client plumbing",
-    score: { applicability: 0.95, impact: 0.8, confidence: 0.9, implementationCost: 0.45, risk: 0.25 },
+    score: {
+      applicability: 0.95,
+      impact: 0.8,
+      confidence: 0.9,
+      implementationCost: 0.45,
+      risk: 0.25,
+    },
     evidence: [{ id: "e3", source: "llm.py", quote: "OpenAI-compatible endpoint" }],
     speculative: false,
   };
@@ -3124,7 +3593,13 @@ function latestRunCouncilReviewFixture() {
         lesson: "Start with advisory loop templates.",
         projectChange: "Add a bounded advisory workflow template.",
         changeSurface: "workflow templates",
-        score: { applicability: 0.95, impact: 0.7, confidence: 0.9, implementationCost: 0.3, risk: 0.2 },
+        score: {
+          applicability: 0.95,
+          impact: 0.7,
+          confidence: 0.9,
+          implementationCost: 0.3,
+          risk: 0.2,
+        },
         evidence,
         speculative: false,
       },
@@ -3134,7 +3609,13 @@ function latestRunCouncilReviewFixture() {
         lesson: "Estimate loop costs.",
         projectChange: "Add cost estimation harness adapters.",
         changeSurface: "harnesses",
-        score: { applicability: 0.9, impact: 0.85, confidence: 0.8, implementationCost: 0.5, risk: 0.3 },
+        score: {
+          applicability: 0.9,
+          impact: 0.85,
+          confidence: 0.8,
+          implementationCost: 0.5,
+          risk: 0.3,
+        },
         evidence,
         speculative: true,
       },
@@ -3144,7 +3625,13 @@ function latestRunCouncilReviewFixture() {
         lesson: "Record budgets for loops.",
         projectChange: "Record cost telemetry and safe throttling budgets.",
         changeSurface: "runner",
-        score: { applicability: 0.95, impact: 0.9, confidence: 0.85, implementationCost: 0.6, risk: 0.5 },
+        score: {
+          applicability: 0.95,
+          impact: 0.9,
+          confidence: 0.85,
+          implementationCost: 0.6,
+          risk: 0.5,
+        },
         evidence,
         speculative: false,
       },
@@ -3154,7 +3641,13 @@ function latestRunCouncilReviewFixture() {
         lesson: "Verify budget boundaries.",
         projectChange: "Add verifier rules for cost, iteration, and verification budgets.",
         changeSurface: "verifier",
-        score: { applicability: 0.9, impact: 0.9, confidence: 0.8, implementationCost: 0.45, risk: 0.35 },
+        score: {
+          applicability: 0.9,
+          impact: 0.9,
+          confidence: 0.8,
+          implementationCost: 0.45,
+          risk: 0.35,
+        },
         evidence,
         speculative: false,
       },
@@ -3164,7 +3657,13 @@ function latestRunCouncilReviewFixture() {
         lesson: "Document loop scenarios.",
         projectChange: "Add starter checklists and audit readiness docs.",
         changeSurface: "docs",
-        score: { applicability: 0.85, impact: 0.6, confidence: 0.8, implementationCost: 0.3, risk: 0.1 },
+        score: {
+          applicability: 0.85,
+          impact: 0.6,
+          confidence: 0.8,
+          implementationCost: 0.3,
+          risk: 0.1,
+        },
         evidence,
         speculative: false,
       },
@@ -3174,7 +3673,13 @@ function latestRunCouncilReviewFixture() {
         lesson: "Snapshot loops for replay.",
         projectChange: "Add snapshot-friendly replan boundaries and audit trails.",
         changeSurface: "replay",
-        score: { applicability: 0.88, impact: 0.75, confidence: 0.75, implementationCost: 0.55, risk: 0.25 },
+        score: {
+          applicability: 0.88,
+          impact: 0.75,
+          confidence: 0.75,
+          implementationCost: 0.55,
+          risk: 0.25,
+        },
         evidence,
         speculative: false,
       },

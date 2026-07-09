@@ -69,11 +69,21 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
       continue;
     }
     if (arg === "--iterations") {
-      parsed.iterations = readBoundedInteger(readNext(argv, ++index, arg), "--iterations", 1, MAX_ITERATIONS);
+      parsed.iterations = readBoundedInteger(
+        readNext(argv, ++index, arg),
+        "--iterations",
+        1,
+        MAX_ITERATIONS,
+      );
       continue;
     }
     if (arg === "--candidates-per-iteration") {
-      parsed.candidatesPerIteration = readBoundedInteger(readNext(argv, ++index, arg), "--candidates-per-iteration", 1, MAX_CANDIDATES_PER_ITERATION);
+      parsed.candidatesPerIteration = readBoundedInteger(
+        readNext(argv, ++index, arg),
+        "--candidates-per-iteration",
+        1,
+        MAX_CANDIDATES_PER_ITERATION,
+      );
       continue;
     }
     if (arg === "--judge-model") {
@@ -93,11 +103,21 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
       continue;
     }
     if (arg === "--min-decision-confidence") {
-      parsed.minDecisionConfidence = readNumber(readNext(argv, ++index, arg), "--min-decision-confidence", 0, 1);
+      parsed.minDecisionConfidence = readNumber(
+        readNext(argv, ++index, arg),
+        "--min-decision-confidence",
+        0,
+        1,
+      );
       continue;
     }
     if (arg === "--max-live-trials") {
-      parsed.maxLiveTrials = readBoundedInteger(readNext(argv, ++index, arg), "--max-live-trials", 0, MAX_LIVE_TRIALS);
+      parsed.maxLiveTrials = readBoundedInteger(
+        readNext(argv, ++index, arg),
+        "--max-live-trials",
+        0,
+        MAX_LIVE_TRIALS,
+      );
       continue;
     }
     if (arg === "--min-live-delta") {
@@ -105,7 +125,12 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
       continue;
     }
     if (arg === "--min-live-decision-confidence") {
-      parsed.minLiveDecisionConfidence = readNumber(readNext(argv, ++index, arg), "--min-live-decision-confidence", 0, 1);
+      parsed.minLiveDecisionConfidence = readNumber(
+        readNext(argv, ++index, arg),
+        "--min-live-decision-confidence",
+        0,
+        1,
+      );
       continue;
     }
     if (arg === "--output-root") {
@@ -125,13 +150,17 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
     throw new Error(`Unsupported template "${parsed.template}". V1 supports source-to-project.`);
   }
   if (parsed.mode !== "advisory") {
-    throw new Error("Autonomous PR template optimization is represented in the schema but not enabled until fixtures exist.");
+    throw new Error(
+      "Autonomous PR template optimization is represented in the schema but not enabled until fixtures exist.",
+    );
   }
 
   return parsed;
 }
 
-export async function runOptimizeTemplate(args: OptimizeTemplateArgs): Promise<{ runId: string; outputDir: string }> {
+export async function runOptimizeTemplate(
+  args: OptimizeTemplateArgs,
+): Promise<{ runId: string; outputDir: string }> {
   await execFileAsync("mise", ["run", "doctor"], { cwd: process.cwd() });
   assertRunnableOptimizeTemplateArgs(args);
 
@@ -187,7 +216,10 @@ function readNext(argv: string[], index: number, flag: string): string {
 
 function assertRunnableOptimizeTemplateArgs(
   args: OptimizeTemplateArgs,
-): asserts args is OptimizeTemplateArgs & { template: OptimizeTemplateId; mode: OptimizeTemplateMode } {
+): asserts args is OptimizeTemplateArgs & {
+  template: OptimizeTemplateId;
+  mode: OptimizeTemplateMode;
+} {
   if (!args.template) {
     throw new Error(usage("Missing required --template <id>."));
   }
@@ -198,7 +230,9 @@ function assertRunnableOptimizeTemplateArgs(
     throw new Error(`Unsupported template "${args.template}". V1 supports source-to-project.`);
   }
   if (args.mode !== "advisory") {
-    throw new Error("Autonomous PR template optimization is represented in the schema but not enabled until fixtures exist.");
+    throw new Error(
+      "Autonomous PR template optimization is represented in the schema but not enabled until fixtures exist.",
+    );
   }
   validateDefaultModelFlag(args.judgeModel, "--judge-model", DEFAULT_JUDGE_MODEL);
   validateDefaultModelFlag(args.generatorModel, "--generator-model", DEFAULT_GENERATOR_MODEL);
@@ -219,7 +253,9 @@ function readDefaultModelFlag(value: string, flag: string, defaultModel: string)
 
 function validateDefaultModelFlag(value: string, flag: string, defaultModel: string): void {
   if (value !== defaultModel) {
-    throw new Error(`${flag} only supports ${defaultModel} until BAML model override wiring exists.`);
+    throw new Error(
+      `${flag} only supports ${defaultModel} until BAML model override wiring exists.`,
+    );
   }
 }
 

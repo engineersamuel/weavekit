@@ -12,17 +12,36 @@
     "planning": {
       "name": "Planning",
       "description": "Full planning and execution workflow (upstream definition; lacks mckinsey-strategist).",
-      "skills": ["brainstorming", "writing-plans", "executing-plans", "grill-me", "agent-skill-orchestrator"],
+      "skills": [
+        "brainstorming",
+        "writing-plans",
+        "executing-plans",
+        "grill-me",
+        "agent-skill-orchestrator"
+      ],
       "target": "Developers, architects"
     },
     "all": {
       "name": "All Skills",
       "description": "Complete claude-superskills toolkit (the only upstream bundle that includes mckinsey-strategist).",
       "skills": [
-        "skill-creator", "agent-skill-discovery", "agent-skill-orchestrator",
-        "brainstorming", "writing-plans", "executing-plans", "prompt-engineer", "grill-me",
-        "deep-research", "us-program-research", "senior-solution-architect", "webpage-reader",
-        "youtube-summarizer", "audio-transcriber", "pptx-translator", "document-converter", "storytelling-expert",
+        "skill-creator",
+        "agent-skill-discovery",
+        "agent-skill-orchestrator",
+        "brainstorming",
+        "writing-plans",
+        "executing-plans",
+        "prompt-engineer",
+        "grill-me",
+        "deep-research",
+        "us-program-research",
+        "senior-solution-architect",
+        "webpage-reader",
+        "youtube-summarizer",
+        "audio-transcriber",
+        "pptx-translator",
+        "document-converter",
+        "storytelling-expert",
         "mckinsey-strategist"
       ],
       "target": "All users"

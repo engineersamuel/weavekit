@@ -4,7 +4,7 @@ Status: accepted
 
 Builds on [ADR 0003](0003-elicitation-vs-verification-gates.md), which sanctions elicitation
 (the human as a source of input). Every clarifying question still needs an answer, and the
-*source* of that answer should be selectable per run so a Run can be attended (a human answers),
+_source_ of that answer should be selectable per run so a Run can be attended (a human answers),
 fully unattended (project context/goals answer), or strictly non-interactive (no answering at
 all). The goal is to automate decision making — let the council resolve its own clarifying
 questions against documented goals without a human present — while never reintroducing a hard
@@ -25,12 +25,12 @@ skip**. Each tier may answer or defer to the next:
 
 Named modes are presets over this chain:
 
-| Mode | Chain | Use |
-|---|---|---|
-| `off` (default) | skip | today's fully-automated Run |
-| `human` | human → skip | attended |
-| `auto` | context → skip | unattended automation |
-| `auto+human` | context → human → skip | unattended with human fallback |
+| Mode            | Chain                  | Use                            |
+| --------------- | ---------------------- | ------------------------------ |
+| `off` (default) | skip                   | today's fully-automated Run    |
+| `human`         | human → skip           | attended                       |
+| `auto`          | context → skip         | unattended automation          |
+| `auto+human`    | context → human → skip | unattended with human fallback |
 
 ## CLI surface
 
@@ -58,7 +58,7 @@ auditable after the fact.
 2. **Context-only automation with no human tier — rejected as the sole design.** It is a preset
    (`auto`) of the chain, not a separate mechanism.
 3. **Load the doc as standing context only, no resolver — rejected as insufficient.** Feeding the
-   doc into run context reduces but does not *answer* questions. Still allowed as an orthogonal
+   doc into run context reduces but does not _answer_ questions. Still allowed as an orthogonal
    convenience (`--elicit-context` may also be appended to run context).
 4. **Human-only — rejected as the default.** Keeps every Run attended, defeating the automation
    goal; available as the `human` preset.

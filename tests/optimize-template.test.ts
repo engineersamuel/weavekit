@@ -44,20 +44,18 @@ describe("optimize-template args", () => {
   });
 
   it("bounds the live trial budget for cost control", () => {
-    expect(() =>
-      parseOptimizeTemplateArgs([...requiredArgs, "--max-live-trials", "6"]),
-    ).toThrow("--max-live-trials must be an integer between 0 and 5.");
+    expect(() => parseOptimizeTemplateArgs([...requiredArgs, "--max-live-trials", "6"])).toThrow(
+      "--max-live-trials must be an integer between 0 and 5.",
+    );
   });
 
   it("rejects non-default model flags until BAML override wiring exists", () => {
-    expect(() =>
-      parseOptimizeTemplateArgs([...requiredArgs, "--judge-model", "gpt-5.4"]),
-    ).toThrow("--judge-model only supports gpt-5.5 until BAML model override wiring exists.");
+    expect(() => parseOptimizeTemplateArgs([...requiredArgs, "--judge-model", "gpt-5.4"])).toThrow(
+      "--judge-model only supports gpt-5.5 until BAML model override wiring exists.",
+    );
 
     expect(() =>
       parseOptimizeTemplateArgs([...requiredArgs, "--generator-model", "claude-opus-4.8"]),
-    ).toThrow(
-      "--generator-model only supports gpt-5.5 until BAML model override wiring exists.",
-    );
+    ).toThrow("--generator-model only supports gpt-5.5 until BAML model override wiring exists.");
   });
 });

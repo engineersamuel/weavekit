@@ -18,7 +18,9 @@ describe("source-to-project CLI run", () => {
     tempDirs.push(root);
     const outputRoot = join(root, "runs");
     const configPath = join(root, "config.toml");
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 [source_to_project]
 offline = true
 
@@ -30,7 +32,9 @@ remote = "origin"
 context_docs = ["CONTEXT.md"]
 validation_commands = ["nub run typecheck"]
 autonomous_pr_allowed = false
-`, "utf8");
+`,
+      "utf8",
+    );
 
     await runWorkflowCli({
       command: "run",
@@ -61,8 +65,11 @@ autonomous_pr_allowed = false
     tempDirs.push(root);
     const outputRoot = join(root, "runs");
     const configPath = join(root, "config.toml");
-    const prompt = "Use the team's internal loop maturity notes to identify weavekit workflow improvements.";
-    await writeFile(configPath, `
+    const prompt =
+      "Use the team's internal loop maturity notes to identify weavekit workflow improvements.";
+    await writeFile(
+      configPath,
+      `
 [source_to_project]
 offline = true
 
@@ -74,7 +81,9 @@ remote = "origin"
 context_docs = ["CONTEXT.md"]
 validation_commands = []
 autonomous_pr_allowed = false
-`, "utf8");
+`,
+      "utf8",
+    );
 
     await runWorkflowCli({
       command: "run",
@@ -105,12 +114,15 @@ autonomous_pr_allowed = false
     const binDir = join(root, "bin");
     const grokPath = join(binDir, "grok");
     await mkdir(binDir);
-    await writeFile(grokPath, [
-      "#!/bin/sh",
-      "printf '# X Post\\n\\nFetched X source content.\\n'",
-    ].join("\n"), "utf8");
+    await writeFile(
+      grokPath,
+      ["#!/bin/sh", "printf '# X Post\\n\\nFetched X source content.\\n'"].join("\n"),
+      "utf8",
+    );
     await chmod(grokPath, 0o755);
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 [source_to_project]
 offline = true
 
@@ -122,7 +134,9 @@ remote = "origin"
 context_docs = ["CONTEXT.md"]
 validation_commands = []
 autonomous_pr_allowed = false
-`, "utf8");
+`,
+      "utf8",
+    );
     const originalPath = process.env.PATH;
     process.env.PATH = originalPath ? `${binDir}${delimiter}${originalPath}` : binDir;
 
@@ -153,6 +167,8 @@ autonomous_pr_allowed = false
     expect(state).toContain("## Resolved X Post Sources");
     expect(state).toContain("https://x.com/alice/status/12345");
     expect(state).toContain("Fetched X source content.");
-    expect(state).toContain("Use the prefetched X post markdown below as the primary Source artifact.");
+    expect(state).toContain(
+      "Use the prefetched X post markdown below as the primary Source artifact.",
+    );
   });
 });

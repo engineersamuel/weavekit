@@ -184,14 +184,20 @@ export function resolveWeavekitPluginDirectory(
   return defaultPluginDirectory(plugin);
 }
 
-export function loadLocalEnvFiles(cwd = process.cwd(), env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function loadLocalEnvFiles(
+  cwd = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
   return {
     ...loadEnvFile(join(cwd, ".env"), env, parseDotEnvLine),
     ...loadEnvFile(join(cwd, ".env.fish"), env, parseFishEnvLine),
   };
 }
 
-export function loadWeavekitConfig(configPath = getDefaultWeavekitConfigPath(), env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+export function loadWeavekitConfig(
+  configPath = getDefaultWeavekitConfigPath(),
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
   if (!existsSync(configPath)) {
     return {};
   }
@@ -259,7 +265,9 @@ function parseFishEnvLine(line: string): [string, string] | undefined {
   if (tokens[0] !== "set" || tokens.length < 4) {
     return undefined;
   }
-  const flagIndex = tokens.findIndex((token) => token === "-gx" || token === "-x" || token === "--global" || token === "--export");
+  const flagIndex = tokens.findIndex(
+    (token) => token === "-gx" || token === "-x" || token === "--global" || token === "--export",
+  );
   if (flagIndex === -1) {
     return undefined;
   }
@@ -273,7 +281,7 @@ function parseFishEnvLine(line: string): [string, string] | undefined {
 function tokenizeFishSet(input: string): string[] {
   const tokens: string[] = [];
   let current = "";
-  let quote: "'" | "\"" | undefined;
+  let quote: "'" | '"' | undefined;
   for (let index = 0; index < input.length; index++) {
     const char = input[index]!;
     if (quote) {
@@ -284,7 +292,7 @@ function tokenizeFishSet(input: string): string[] {
       }
       continue;
     }
-    if (char === "'" || char === "\"") {
+    if (char === "'" || char === '"') {
       quote = char;
       continue;
     }
@@ -306,7 +314,7 @@ function tokenizeFishSet(input: string): string[] {
 function unquoteEnvValue(value: string): string {
   const withoutComment = value.replace(/\s+#.*$/, "").trim();
   if (
-    (withoutComment.startsWith("\"") && withoutComment.endsWith("\"")) ||
+    (withoutComment.startsWith('"') && withoutComment.endsWith('"')) ||
     (withoutComment.startsWith("'") && withoutComment.endsWith("'"))
   ) {
     return withoutComment.slice(1, -1);
@@ -314,7 +322,10 @@ function unquoteEnvValue(value: string): string {
   return withoutComment;
 }
 
-export function loadTypedWeavekitConfig(configPath = getDefaultWeavekitConfigPath(), env: NodeJS.ProcessEnv = process.env): WeavekitConfig {
+export function loadTypedWeavekitConfig(
+  configPath = getDefaultWeavekitConfigPath(),
+  env: NodeJS.ProcessEnv = process.env,
+): WeavekitConfig {
   const loadedEnv = loadWeavekitConfig(configPath, env);
   if (!existsSync(configPath)) {
     return {
@@ -339,10 +350,23 @@ export function loadTypedWeavekitConfig(configPath = getDefaultWeavekitConfigPat
   const verificationOptimizer = readVerificationOptimizerDefaults(parsed.verification_optimizer);
   const plugins = readPluginConfigs(parsed.plugins, env);
   const projects = readProjectCatalog(parsed.projects);
-  return { env: loadedEnv, copilot, flue, tooling, sourceToProject, deepResearch, verificationOptimizer, plugins, projects };
+  return {
+    env: loadedEnv,
+    copilot,
+    flue,
+    tooling,
+    sourceToProject,
+    deepResearch,
+    verificationOptimizer,
+    plugins,
+    projects,
+  };
 }
 
-export function resolveProjectCatalogEntry(config: WeavekitConfig, projectId: string): ProjectCatalogEntry {
+export function resolveProjectCatalogEntry(
+  config: WeavekitConfig,
+  projectId: string,
+): ProjectCatalogEntry {
   const project = config.projects[projectId];
   if (!project) {
     throw new Error(`Unknown project id: ${projectId}`);
@@ -353,7 +377,13 @@ export function resolveProjectCatalogEntry(config: WeavekitConfig, projectId: st
 function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
   return {
     maxOpportunities: 0,
-    thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+    thresholds: {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    },
     mode: "advisory",
     offline: false,
     prLauncher: {
@@ -362,7 +392,12 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
       agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
       split: "right",
       agentOptions: [
-        { id: "codex", label: "Codex", agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"] },
+        {
+          id: "codex",
+          label: "Codex",
+          agentCommand: "codex",
+          agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+        },
         { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
       ],
     },
@@ -372,7 +407,11 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
 
 function defaultDeepResearchDefaults(): DeepResearchDefaults {
   return {
-    providers: [DeepResearchProvider.GROK, DeepResearchProvider.EXA, DeepResearchProvider.COPILOT_LAST30DAYS],
+    providers: [
+      DeepResearchProvider.GROK,
+      DeepResearchProvider.EXA,
+      DeepResearchProvider.COPILOT_LAST30DAYS,
+    ],
     maxIterations: 3,
     questionsPerIteration: 5,
     maxResultsPerQuestion: 5,
@@ -410,7 +449,9 @@ function defaultFlueDefaults(): FlueDefaults {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function readNumber(value: unknown, fallback: number): number {
@@ -422,7 +463,9 @@ function readString(value: unknown, fallback: string): string {
 }
 
 function readStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }
 
 function readBoolean(value: unknown, fallback: boolean): boolean {
@@ -454,36 +497,62 @@ function readEnvPositiveInteger(env: NodeJS.ProcessEnv, name: string): number | 
 function readEnvStringArray(env: NodeJS.ProcessEnv, name: string): string[] | undefined {
   const value = env[name]?.trim();
   if (!value) return undefined;
-  return value.split(",").map((entry) => entry.trim()).filter(Boolean);
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function readNotificationPolicy(value: unknown): NotificationPolicy {
   return value === "telegram" ? "telegram" : "cli";
 }
 
-function readSourceToProjectDefaults(value: unknown, env: NodeJS.ProcessEnv): SourceToProjectDefaults {
+function readSourceToProjectDefaults(
+  value: unknown,
+  env: NodeJS.ProcessEnv,
+): SourceToProjectDefaults {
   const defaults = defaultSourceToProjectDefaults();
   const record = asRecord(value);
   const mode = record.mode === "autonomous-pr" ? "autonomous-pr" : "advisory";
   return {
-    maxOpportunities: Math.max(0, Math.floor(readNumber(record.max_opportunities, defaults.maxOpportunities))),
+    maxOpportunities: Math.max(
+      0,
+      Math.floor(readNumber(record.max_opportunities, defaults.maxOpportunities)),
+    ),
     mode,
-    offline: readBoolean(record.offline, readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE") ?? defaults.offline),
-    copilotModel: (readOptionalString(record.copilot_model) ?? env.WEAVEKIT_SOURCE_TO_PROJECT_MODEL?.trim()) || undefined,
-    timeoutMs: readOptionalInteger(record.timeout_ms) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS"),
-    maxToolCalls: readOptionalInteger(record.max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS"),
-    sourceReadingMaxToolCalls: readOptionalInteger(record.source_reading_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS"),
-    projectResearchMaxToolCalls: readOptionalInteger(record.project_research_max_tool_calls) ?? readEnvPositiveInteger(env, "WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS"),
+    offline: readBoolean(
+      record.offline,
+      readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_OFFLINE") ?? defaults.offline,
+    ),
+    copilotModel:
+      (readOptionalString(record.copilot_model) ?? env.WEAVEKIT_SOURCE_TO_PROJECT_MODEL?.trim()) ||
+      undefined,
+    timeoutMs:
+      readOptionalInteger(record.timeout_ms) ??
+      readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_TO_PROJECT_TIMEOUT_MS"),
+    maxToolCalls:
+      readOptionalInteger(record.max_tool_calls) ??
+      readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_TO_PROJECT_MAX_TOOL_CALLS"),
+    sourceReadingMaxToolCalls:
+      readOptionalInteger(record.source_reading_max_tool_calls) ??
+      readEnvPositiveInteger(env, "WEAVEKIT_SOURCE_READING_MAX_TOOL_CALLS"),
+    projectResearchMaxToolCalls:
+      readOptionalInteger(record.project_research_max_tool_calls) ??
+      readEnvPositiveInteger(env, "WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS"),
     prLauncher: readSourceToProjectPrLauncherConfig(record.pr_launcher, defaults.prLauncher),
     autoImplementOnReport: readBoolean(
       record.auto_implement_on_report,
-      readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_AUTO_IMPLEMENT_ON_REPORT") ?? defaults.autoImplementOnReport,
+      readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_AUTO_IMPLEMENT_ON_REPORT") ??
+        defaults.autoImplementOnReport,
     ),
     thresholds: {
       minApplicability: readNumber(record.min_applicability, defaults.thresholds.minApplicability),
       minConfidence: readNumber(record.min_confidence, defaults.thresholds.minConfidence),
       minImpact: readNumber(record.min_impact, defaults.thresholds.minImpact),
-      minAcceptanceAverage: readNumber(record.min_acceptance_average, defaults.thresholds.minAcceptanceAverage),
+      minAcceptanceAverage: readNumber(
+        record.min_acceptance_average,
+        defaults.thresholds.minAcceptanceAverage,
+      ),
       maxRisk: readNumber(record.max_risk, defaults.thresholds.maxRisk),
     },
   };
@@ -500,16 +569,36 @@ function readDeepResearchDefaults(value: unknown, env: NodeJS.ProcessEnv): DeepR
   );
   return {
     providers: configuredProviders,
-    maxIterations: readOptionalInteger(record.max_iterations) ?? readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_MAX_ITERATIONS") ?? defaults.maxIterations,
-    questionsPerIteration: readOptionalInteger(record.questions_per_iteration) ?? readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_QUESTIONS_PER_ITERATION") ?? defaults.questionsPerIteration,
-    maxResultsPerQuestion: readOptionalInteger(record.max_results_per_question) ?? readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_MAX_RESULTS_PER_QUESTION") ?? defaults.maxResultsPerQuestion,
-    providerRetryAttempts: readOptionalInteger(record.provider_retry_attempts) ?? readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_PROVIDER_RETRY_ATTEMPTS") ?? defaults.providerRetryAttempts,
-    visualize: readBoolean(record.visualize, readEnvBoolean(env, "WEAVEKIT_DEEP_RESEARCH_VISUALIZE") ?? defaults.visualize),
+    maxIterations:
+      readOptionalInteger(record.max_iterations) ??
+      readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_MAX_ITERATIONS") ??
+      defaults.maxIterations,
+    questionsPerIteration:
+      readOptionalInteger(record.questions_per_iteration) ??
+      readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_QUESTIONS_PER_ITERATION") ??
+      defaults.questionsPerIteration,
+    maxResultsPerQuestion:
+      readOptionalInteger(record.max_results_per_question) ??
+      readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_MAX_RESULTS_PER_QUESTION") ??
+      defaults.maxResultsPerQuestion,
+    providerRetryAttempts:
+      readOptionalInteger(record.provider_retry_attempts) ??
+      readEnvPositiveInteger(env, "WEAVEKIT_DEEP_RESEARCH_PROVIDER_RETRY_ATTEMPTS") ??
+      defaults.providerRetryAttempts,
+    visualize: readBoolean(
+      record.visualize,
+      readEnvBoolean(env, "WEAVEKIT_DEEP_RESEARCH_VISUALIZE") ?? defaults.visualize,
+    ),
   };
 }
 
-function readDeepResearchProviders(value: string[] | undefined, fallback: DeepResearchProvider[]): DeepResearchProvider[] {
-  const providers = (value ?? []).flatMap((provider) => normalizeDeepResearchProvider(provider) ?? []);
+function readDeepResearchProviders(
+  value: string[] | undefined,
+  fallback: DeepResearchProvider[],
+): DeepResearchProvider[] {
+  const providers = (value ?? []).flatMap(
+    (provider) => normalizeDeepResearchProvider(provider) ?? [],
+  );
   return providers.length > 0 ? uniqueDeepResearchProviders(providers) : fallback;
 }
 
@@ -519,7 +608,8 @@ function normalizeDeepResearchProvider(provider: string): DeepResearchProvider |
   if (normalized === DeepResearchProvider.GROK) return DeepResearchProvider.GROK;
   if (normalized === DeepResearchProvider.TAVILY) return DeepResearchProvider.TAVILY;
   if (normalized === DeepResearchProvider.PERPLEXITY) return DeepResearchProvider.PERPLEXITY;
-  if (normalized === DeepResearchProvider.COPILOT_LAST30DAYS) return DeepResearchProvider.COPILOT_LAST30DAYS;
+  if (normalized === DeepResearchProvider.COPILOT_LAST30DAYS)
+    return DeepResearchProvider.COPILOT_LAST30DAYS;
   return undefined;
 }
 
@@ -538,10 +628,24 @@ function readVerificationOptimizerDefaults(value: unknown): VerificationOptimize
       minConfidence: readNumber(record.min_confidence, defaults.thresholds.minConfidence),
       minImpact: readNumber(record.min_impact, defaults.thresholds.minImpact),
       maxRisk: readNumber(record.max_risk, defaults.thresholds.maxRisk),
-      maxImplementationCost: readNumber(record.max_implementation_cost, defaults.thresholds.maxImplementationCost),
-      minEvidenceReferences: Math.max(0, Math.floor(readNumber(record.min_evidence_references, defaults.thresholds.minEvidenceReferences))),
-      requireNonSpeculative: readBoolean(record.require_non_speculative, defaults.thresholds.requireNonSpeculative),
-      requireProofCommands: readBoolean(record.require_proof_commands, defaults.thresholds.requireProofCommands),
+      maxImplementationCost: readNumber(
+        record.max_implementation_cost,
+        defaults.thresholds.maxImplementationCost,
+      ),
+      minEvidenceReferences: Math.max(
+        0,
+        Math.floor(
+          readNumber(record.min_evidence_references, defaults.thresholds.minEvidenceReferences),
+        ),
+      ),
+      requireNonSpeculative: readBoolean(
+        record.require_non_speculative,
+        defaults.thresholds.requireNonSpeculative,
+      ),
+      requireProofCommands: readBoolean(
+        record.require_proof_commands,
+        defaults.thresholds.requireProofCommands,
+      ),
     },
   };
 }
@@ -554,9 +658,14 @@ function readSourceToProjectPrLauncherConfig(
   return {
     provider: record.provider === "herdr" ? "herdr" : defaults.provider,
     agentCommand: readString(record.agent_command, defaults.agentCommand),
-    agentArgs: Array.isArray(record.agent_args) ? readStringArray(record.agent_args) : defaults.agentArgs,
+    agentArgs: Array.isArray(record.agent_args)
+      ? readStringArray(record.agent_args)
+      : defaults.agentArgs,
     split: record.split === "down" ? "down" : "right",
-    agentOptions: readSourceToProjectPrLauncherAgentOptions(record.agent_options, defaults.agentOptions),
+    agentOptions: readSourceToProjectPrLauncherAgentOptions(
+      record.agent_options,
+      defaults.agentOptions,
+    ),
   };
 }
 
@@ -586,16 +695,28 @@ function readSourceToProjectPrLauncherAgentOptions(
   return options.length > 0 ? options : defaults;
 }
 
-function readCopilotDefaults(value: unknown, env: NodeJS.ProcessEnv = process.env): CopilotDefaults {
+function readCopilotDefaults(
+  value: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): CopilotDefaults {
   const defaults = defaultCopilotDefaults();
   const record = asRecord(value);
   return {
-    verboseEvents: readBoolean(record.verbose_events, readEnvBoolean(env, "WEAVEKIT_COPILOT_VERBOSE_EVENTS") ?? defaults.verboseEvents),
+    verboseEvents: readBoolean(
+      record.verbose_events,
+      readEnvBoolean(env, "WEAVEKIT_COPILOT_VERBOSE_EVENTS") ?? defaults.verboseEvents,
+    ),
     model: (readOptionalString(record.model) ?? env.COPILOT_MODEL?.trim()) || undefined,
-    runtimeUrl: (readOptionalString(record.runtime_url) ?? env.COPILOT_RUNTIME_URL?.trim()) || undefined,
+    runtimeUrl:
+      (readOptionalString(record.runtime_url) ?? env.COPILOT_RUNTIME_URL?.trim()) || undefined,
     cliUrl: (readOptionalString(record.cli_url) ?? env.COPILOT_CLI_URL?.trim()) || undefined,
-    cliPath: expandOptionalPath(readOptionalString(record.cli_path) ?? env.COPILOT_CLI_PATH?.trim()),
-    sdkDoctorModel: (readOptionalString(record.sdk_doctor_model) ?? env.WEAVEKIT_ENTITY_SDK_DOCTOR_MODEL?.trim()) || undefined,
+    cliPath: expandOptionalPath(
+      readOptionalString(record.cli_path) ?? env.COPILOT_CLI_PATH?.trim(),
+    ),
+    sdkDoctorModel:
+      (readOptionalString(record.sdk_doctor_model) ??
+        env.WEAVEKIT_ENTITY_SDK_DOCTOR_MODEL?.trim()) ||
+      undefined,
   };
 }
 
@@ -610,10 +731,19 @@ function readFlueDefaults(value: unknown, env: NodeJS.ProcessEnv): FlueDefaults 
 function readToolingDefaults(value: unknown, env: NodeJS.ProcessEnv): ToolingDefaults {
   const record = asRecord(value);
   return {
-    skillsDirectory: expandOptionalPath(readOptionalString(record.skills_directory) ?? env.WEAVEKIT_SKILLS_DIR?.trim()),
-    agentNativeSkillsInstaller: expandOptionalPath(readOptionalString(record.agent_native_skills_installer) ?? env.WEAVEKIT_AGENT_NATIVE_SKILLS_INSTALLER?.trim()),
-    agentNativeSkillsPackage: readOptionalString(record.agent_native_skills_package) ?? env.WEAVEKIT_AGENT_NATIVE_SKILLS_PACKAGE?.trim(),
-    miseBin: expandOptionalPath(readOptionalString(record.mise_bin) ?? env.WEAVEKIT_MISE_BIN?.trim()),
+    skillsDirectory: expandOptionalPath(
+      readOptionalString(record.skills_directory) ?? env.WEAVEKIT_SKILLS_DIR?.trim(),
+    ),
+    agentNativeSkillsInstaller: expandOptionalPath(
+      readOptionalString(record.agent_native_skills_installer) ??
+        env.WEAVEKIT_AGENT_NATIVE_SKILLS_INSTALLER?.trim(),
+    ),
+    agentNativeSkillsPackage:
+      readOptionalString(record.agent_native_skills_package) ??
+      env.WEAVEKIT_AGENT_NATIVE_SKILLS_PACKAGE?.trim(),
+    miseBin: expandOptionalPath(
+      readOptionalString(record.mise_bin) ?? env.WEAVEKIT_MISE_BIN?.trim(),
+    ),
   };
 }
 
@@ -624,42 +754,54 @@ function expandOptionalPath(path: string | undefined): string | undefined {
 function readPluginConfigs(value: unknown, env: NodeJS.ProcessEnv): PluginConfigs {
   const plugins = asRecord(value);
   const hveCore = asRecord(plugins[SupportedPluginId.HVE_CORE]);
-  const configuredDirectory = typeof hveCore.directory === "string" && hveCore.directory.trim()
-    ? hveCore.directory
-    : undefined;
+  const configuredDirectory =
+    typeof hveCore.directory === "string" && hveCore.directory.trim()
+      ? hveCore.directory
+      : undefined;
   return {
     [SupportedPluginId.HVE_CORE]: {
       directory: expandHomePath(
-        configuredDirectory
-          ?? env.WEAVEKIT_HVE_CORE_PLUGIN_DIR?.trim()
-          ?? defaultPluginDirectory(SupportedPluginId.HVE_CORE),
+        configuredDirectory ??
+          env.WEAVEKIT_HVE_CORE_PLUGIN_DIR?.trim() ??
+          defaultPluginDirectory(SupportedPluginId.HVE_CORE),
       ),
     },
   };
 }
 
 function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry> {
-  return Object.fromEntries(Object.entries(asRecord(value)).map(([id, raw]) => {
-    const record = asRecord(raw);
-    const thresholds: Partial<SourceToProjectThresholds> = {};
-    if (typeof record.min_applicability === "number") thresholds.minApplicability = record.min_applicability;
-    if (typeof record.min_confidence === "number") thresholds.minConfidence = record.min_confidence;
-    if (typeof record.min_impact === "number") thresholds.minImpact = record.min_impact;
-    if (typeof record.min_acceptance_average === "number") thresholds.minAcceptanceAverage = record.min_acceptance_average;
-    if (typeof record.max_risk === "number") thresholds.maxRisk = record.max_risk;
-    return [id, {
-      id,
-      displayName: readString(record.display_name, id),
-      workingTree: expandHomePath(readString(record.working_tree, "")),
-      mainline: readString(record.mainline, "origin main"),
-      remote: readString(record.remote, "origin"),
-      contextDocs: readStringArray(record.context_docs),
-      validationCommands: readStringArray(record.validation_commands),
-      autonomousPrAllowed: readBoolean(record.autonomous_pr_allowed, false),
-      maxOpportunities: typeof record.max_opportunities === "number" ? Math.max(0, Math.floor(record.max_opportunities)) : undefined,
-      thresholds,
-      notification: readNotificationPolicy(record.notification),
-      knowledgeExport: record.knowledge_export === "sanitized" ? "sanitized" : "off",
-    }];
-  }));
+  return Object.fromEntries(
+    Object.entries(asRecord(value)).map(([id, raw]) => {
+      const record = asRecord(raw);
+      const thresholds: Partial<SourceToProjectThresholds> = {};
+      if (typeof record.min_applicability === "number")
+        thresholds.minApplicability = record.min_applicability;
+      if (typeof record.min_confidence === "number")
+        thresholds.minConfidence = record.min_confidence;
+      if (typeof record.min_impact === "number") thresholds.minImpact = record.min_impact;
+      if (typeof record.min_acceptance_average === "number")
+        thresholds.minAcceptanceAverage = record.min_acceptance_average;
+      if (typeof record.max_risk === "number") thresholds.maxRisk = record.max_risk;
+      return [
+        id,
+        {
+          id,
+          displayName: readString(record.display_name, id),
+          workingTree: expandHomePath(readString(record.working_tree, "")),
+          mainline: readString(record.mainline, "origin main"),
+          remote: readString(record.remote, "origin"),
+          contextDocs: readStringArray(record.context_docs),
+          validationCommands: readStringArray(record.validation_commands),
+          autonomousPrAllowed: readBoolean(record.autonomous_pr_allowed, false),
+          maxOpportunities:
+            typeof record.max_opportunities === "number"
+              ? Math.max(0, Math.floor(record.max_opportunities))
+              : undefined,
+          thresholds,
+          notification: readNotificationPolicy(record.notification),
+          knowledgeExport: record.knowledge_export === "sanitized" ? "sanitized" : "off",
+        },
+      ];
+    }),
+  );
 }

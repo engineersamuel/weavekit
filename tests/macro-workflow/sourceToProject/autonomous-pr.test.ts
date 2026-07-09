@@ -42,7 +42,12 @@ describe("source-to-project autonomous PR mode", () => {
       worktree: {
         async prepare() {
           calls.push("prepare-worktree");
-          return { worktreePath: "/tmp/wt", branchName: "source-to-project/opp-1", baselineCommit: "abc123", copiedEnvFiles: [".env"] };
+          return {
+            worktreePath: "/tmp/wt",
+            branchName: "source-to-project/opp-1",
+            baselineCommit: "abc123",
+            copiedEnvFiles: [".env"],
+          };
         },
       },
       shell: {
@@ -61,6 +66,8 @@ describe("source-to-project autonomous PR mode", () => {
 
     expect(state.status).toBe("passed");
     expect(calls.indexOf("prepare-worktree")).toBeLessThan(calls.indexOf("implement"));
-    expect(state.nodeResults.find((result) => result.nodeId === "open-pr")?.payload).toEqual({ prUrl: "https://example.com/pr/1" });
+    expect(state.nodeResults.find((result) => result.nodeId === "open-pr")?.payload).toEqual({
+      prUrl: "https://example.com/pr/1",
+    });
   });
 });

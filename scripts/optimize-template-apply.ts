@@ -37,7 +37,9 @@ export function parseApplyArgs(argv: string[]): ApplyArgs {
   }
 
   if (!parsed.runId) {
-    throw new Error("Missing run id.\nUsage: nub scripts/optimize-template-apply.ts <run-id> [--dry-run] [--candidate <id>]");
+    throw new Error(
+      "Missing run id.\nUsage: nub scripts/optimize-template-apply.ts <run-id> [--dry-run] [--candidate <id>]",
+    );
   }
 
   return parsed;
@@ -45,7 +47,9 @@ export function parseApplyArgs(argv: string[]): ApplyArgs {
 
 export async function runApply(args: ApplyArgs): Promise<{ summaryPath: string; dryRun: boolean }> {
   if (!args.dryRun) {
-    throw new Error("Template optimizer live repository modification is not implemented, use --dry-run.");
+    throw new Error(
+      "Template optimizer live repository modification is not implemented, use --dry-run.",
+    );
   }
 
   const result = await dryRunApplyTemplateOptimizerPackage({
@@ -68,7 +72,9 @@ const isMain = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[
 if (isMain) {
   runApply(parseApplyArgs(process.argv.slice(2)))
     .then((result) => {
-      process.stdout.write(`[weavekit] Template optimizer ${result.dryRun ? "dry-run" : "apply"} summary: ${result.summaryPath}\n`);
+      process.stdout.write(
+        `[weavekit] Template optimizer ${result.dryRun ? "dry-run" : "apply"} summary: ${result.summaryPath}\n`,
+      );
     })
     .catch((error: unknown) => {
       process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

@@ -192,9 +192,9 @@ Set `streaming: true` in SessionConfig:
 
 ```typescript
 const session = await client.createSession({
-    onPermissionRequest: approveAll,
-    model: "gpt-5",
-    streaming: true,
+  onPermissionRequest: approveAll,
+  model: "gpt-5",
+  streaming: true,
 });
 ```
 
@@ -246,8 +246,8 @@ Use `defineTool` for type-safe tool definitions:
 import { defineTool } from "@github/copilot-sdk";
 
 const session = await client.createSession({
-    onPermissionRequest: approveAll,
-    model: "gpt-5",
+  onPermissionRequest: approveAll,
+  model: "gpt-5",
   tools: [
     defineTool({
       name: "lookup_issue",
@@ -276,7 +276,7 @@ The SDK supports Zod schemas for parameters:
 import { z } from "zod";
 
 const session = await client.createSession({
-    onPermissionRequest: approveAll,
+  onPermissionRequest: approveAll,
   tools: [
     defineTool({
       name: "get_weather",
@@ -321,8 +321,8 @@ When Copilot invokes a tool, the client automatically:
 
 ```typescript
 const session = await client.createSession({
-    onPermissionRequest: approveAll,
-    model: "gpt-5",
+  onPermissionRequest: approveAll,
+  model: "gpt-5",
   systemMessage: {
     mode: "append",
     content: `
@@ -339,8 +339,8 @@ const session = await client.createSession({
 
 ```typescript
 const session = await client.createSession({
-    onPermissionRequest: approveAll,
-    model: "gpt-5",
+  onPermissionRequest: approveAll,
+  model: "gpt-5",
   systemMessage: {
     mode: "replace",
     content: "You are a helpful assistant.",
@@ -385,12 +385,12 @@ Sessions are independent and can run concurrently:
 
 ```typescript
 const session1 = await client.createSession({
-    onPermissionRequest: approveAll,
-    model: "gpt-5",
+  onPermissionRequest: approveAll,
+  model: "gpt-5",
 });
 const session2 = await client.createSession({
-    onPermissionRequest: approveAll,
-    model: "claude-sonnet-4.5",
+  onPermissionRequest: approveAll,
+  model: "claude-sonnet-4.5",
 });
 
 await Promise.all([
@@ -405,7 +405,7 @@ Use custom API providers via `provider`:
 
 ```typescript
 const session = await client.createSession({
-    onPermissionRequest: approveAll,
+  onPermissionRequest: approveAll,
   provider: {
     type: "openai",
     baseUrl: "https://api.openai.com/v1",
@@ -505,9 +505,7 @@ try {
 ### Cleanup Function Pattern
 
 ```typescript
-async function withClient<T>(
-  fn: (client: CopilotClient) => Promise<T>,
-): Promise<T> {
+async function withClient<T>(fn: (client: CopilotClient) => Promise<T>): Promise<T> {
   const client = new CopilotClient();
   try {
     await client.start();
@@ -638,7 +636,7 @@ interface UserInfo {
 }
 
 const session = await client.createSession({
-    onPermissionRequest: approveAll,
+  onPermissionRequest: approveAll,
   tools: [
     defineTool({
       name: "get_user",

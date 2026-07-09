@@ -1,9 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState, memo } from "react";
 import { createRoot } from "react-dom/client";
-import { Background, ConnectionLineType, Controls, MiniMap, ReactFlow, Handle, Position } from "@xyflow/react";
+import {
+  Background,
+  ConnectionLineType,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  Handle,
+  Position,
+} from "@xyflow/react";
 import { layoutWorkflowGraph } from "./layout.ts";
 import { createWorkflowViewportFitKey, shouldFitWorkflowViewport } from "./viewport.ts";
-import { resolveBlockedNodeDisplay, resolveNodeExecutionDisplay, resolveNodeModelDisplay } from "./executionContext.ts";
+import {
+  resolveBlockedNodeDisplay,
+  resolveNodeExecutionDisplay,
+  resolveNodeModelDisplay,
+} from "./executionContext.ts";
 import { buildNodeArtifactLinks } from "./artifactLinks.ts";
 import {
   buildDeepResearchQuestionBatchSummary,
@@ -40,16 +52,18 @@ const WorkflowNode = memo(({ data }) => {
   const isDecisionCouncil = data.harness === "decision-council";
   const nodeStatus = data.status ?? DEFAULT_STATUS;
   const prLaunchState = data.prLaunchState;
-  
+
   // Personas representing the Decision Council
-  const personas = isDecisionCouncil ? [
-    { name: "Socratic", color: "#60a5fa" },
-    { name: "Deep Module DRY", color: "#34d399" },
-    { name: "Pragmatic", color: "#fb7185" },
-    { name: "Skeptic", color: "#a78bfa" },
-    { name: "Sun Tzu", color: "#f59e0b" },
-    { name: "McKinsey", color: "#10b981" }
-  ] : [];
+  const personas = isDecisionCouncil
+    ? [
+        { name: "Socratic", color: "#60a5fa" },
+        { name: "Deep Module DRY", color: "#34d399" },
+        { name: "Pragmatic", color: "#fb7185" },
+        { name: "Skeptic", color: "#a78bfa" },
+        { name: "Sun Tzu", color: "#f59e0b" },
+        { name: "McKinsey", color: "#10b981" },
+      ]
+    : [];
 
   return (
     <div
@@ -73,7 +87,9 @@ const WorkflowNode = memo(({ data }) => {
         </div>
       ) : data.autoImplementLaunch?.status === "failed" ? (
         <div className="node-inline-actions nodrag">
-          <span className="node-action-error">Auto-implement launch failed: {data.autoImplementLaunch.error}</span>
+          <span className="node-action-error">
+            Auto-implement launch failed: {data.autoImplementLaunch.error}
+          </span>
         </div>
       ) : null}
       {data.canCreatePr && data.autoImplementLaunch?.status !== "launched" ? (
@@ -90,7 +106,9 @@ const WorkflowNode = memo(({ data }) => {
               onClick={(event) => event.stopPropagation()}
             >
               {data.agentOptions.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
               ))}
             </select>
           ) : null}
@@ -103,18 +121,28 @@ const WorkflowNode = memo(({ data }) => {
               data.onCreatePr?.(data.sourceNode?.id);
             }}
           >
-            {prLaunchState?.status === "running" ? "Creating..." : prLaunchState?.status === "passed" ? "PR Agent Started" : "Create PR"}
+            {prLaunchState?.status === "running"
+              ? "Creating..."
+              : prLaunchState?.status === "passed"
+                ? "PR Agent Started"
+                : "Create PR"}
           </button>
-          {prLaunchState?.status === "failed" ? <span className="node-action-error">{prLaunchState.message}</span> : null}
+          {prLaunchState?.status === "failed" ? (
+            <span className="node-action-error">{prLaunchState.message}</span>
+          ) : null}
         </div>
       ) : null}
-      
+
       {isDecisionCouncil && (
         <div className="persona-list-container">
           <div className="persona-list-title">Council Personas</div>
           <div className="persona-grid">
             {personas.map((p) => (
-              <span key={p.name} className="persona-badge" style={{ borderColor: p.color, color: p.color }}>
+              <span
+                key={p.name}
+                className="persona-badge"
+                style={{ borderColor: p.color, color: p.color }}
+              >
                 {p.name}
               </span>
             ))}
@@ -163,10 +191,12 @@ function buildGraph(state) {
       return 0;
     }
 
-    const dependencyRank = Math.max(...node.dependsOn.map((dependencyId) => {
-      const dependency = visibleNodes.find((candidate) => candidate.id === dependencyId);
-      return dependency ? rank(dependency) + 1 : 0;
-    }));
+    const dependencyRank = Math.max(
+      ...node.dependsOn.map((dependencyId) => {
+        const dependency = visibleNodes.find((candidate) => candidate.id === dependencyId);
+        return dependency ? rank(dependency) + 1 : 0;
+      }),
+    );
 
     rankLookup.set(node.id, dependencyRank);
     return dependencyRank;
@@ -245,17 +275,20 @@ function buildReplayGraph(history, state, replayIndex) {
       return 0;
     }
 
-    const dependencies = node.dependsOn?.filter((dependencyId) => visibleNodeIds.has(dependencyId)) ?? [];
+    const dependencies =
+      node.dependsOn?.filter((dependencyId) => visibleNodeIds.has(dependencyId)) ?? [];
     if (dependencies.length === 0) {
       const nodeRank = visibleNodeIds.has(PLANNING_NODE_ID) ? 1 : 0;
       rankLookup.set(node.id, nodeRank);
       return nodeRank;
     }
 
-    const dependencyRank = Math.max(...dependencies.map((dependencyId) => {
-      const dependency = visibleReplayNodes.find((candidate) => candidate.id === dependencyId);
-      return dependency ? rank(dependency) + 1 : 0;
-    }));
+    const dependencyRank = Math.max(
+      ...dependencies.map((dependencyId) => {
+        const dependency = visibleReplayNodes.find((candidate) => candidate.id === dependencyId);
+        return dependency ? rank(dependency) + 1 : 0;
+      }),
+    );
 
     rankLookup.set(node.id, dependencyRank);
     return dependencyRank;
@@ -346,7 +379,8 @@ function buildReplayView(events) {
       title: "DAG Planning",
       description: "Plan the workflow DAG from the objective and template.",
       model: "claude-opus-4.8",
-      modelRationale: "Workflow DAG planning uses the strongest available planning synthesis model.",
+      modelRationale:
+        "Workflow DAG planning uses the strongest available planning synthesis model.",
       harness: "workflow-planner",
       dependsOn: [],
     };
@@ -503,7 +537,9 @@ function MarkdownOutput({ markdown }) {
 }
 
 function parseMarkdownBlocks(markdown) {
-  const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
+  const lines = String(markdown ?? "")
+    .replace(/\r\n/g, "\n")
+    .split("\n");
   const blocks = [];
   let paragraph = [];
   let list = null;
@@ -629,7 +665,16 @@ function renderMarkdownBlock(block, index) {
     );
   }
   if (block.type === "quote") {
-    return <blockquote key={index}>{block.text.split("\n").map((line, lineIndex) => <React.Fragment key={lineIndex}>{lineIndex > 0 ? <br /> : null}{renderInlineMarkdown(line)}</React.Fragment>)}</blockquote>;
+    return (
+      <blockquote key={index}>
+        {block.text.split("\n").map((line, lineIndex) => (
+          <React.Fragment key={lineIndex}>
+            {lineIndex > 0 ? <br /> : null}
+            {renderInlineMarkdown(line)}
+          </React.Fragment>
+        ))}
+      </blockquote>
+    );
   }
   if (block.type === "code") {
     return (
@@ -706,7 +751,10 @@ function extractFullPlanSection(markdown) {
   if (index === -1) {
     return undefined;
   }
-  const after = text.slice(index + FULL_PLAN_HEADING_MARKER.length).replace(/^\s*\n+/, "").trimEnd();
+  const after = text
+    .slice(index + FULL_PLAN_HEADING_MARKER.length)
+    .replace(/^\s*\n+/, "")
+    .trimEnd();
   return after ? stripPlanningAgentPreamble(after) : undefined;
 }
 
@@ -715,12 +763,17 @@ function buildRawPlanEntries(payload, output) {
     return [];
   }
   if (typeof payload.rawPlanMarkdown === "string" && payload.rawPlanMarkdown.trim()) {
-    return [{ title: payload.plan?.title, markdown: stripPlanningAgentPreamble(payload.rawPlanMarkdown) }];
+    return [
+      { title: payload.plan?.title, markdown: stripPlanningAgentPreamble(payload.rawPlanMarkdown) },
+    ];
   }
   if (Array.isArray(payload.rawPlanMarkdownByPlanIndex)) {
     const plans = Array.isArray(payload.plans) ? payload.plans : [];
     const entries = payload.rawPlanMarkdownByPlanIndex
-      .map((markdown, index) => ({ title: plans[index]?.title, markdown: stripPlanningAgentPreamble(markdown) }))
+      .map((markdown, index) => ({
+        title: plans[index]?.title,
+        markdown: stripPlanningAgentPreamble(markdown),
+      }))
       .filter((entry) => typeof entry.markdown === "string" && entry.markdown.trim());
     if (entries.length > 0) {
       return entries;
@@ -750,8 +803,16 @@ function RawPlanCard({ title, markdown }) {
           <div className="output-panel-eyebrow">Plan sent to herdr</div>
           <h3>{title || "Full plan (as written by the planning agent)"}</h3>
         </div>
-        <button type="button" className="node-action-button raw-plan-copy-button" onClick={handleCopy}>
-          {copyState === "copied" ? "Copied!" : copyState === "failed" ? "Copy failed" : "Copy plan"}
+        <button
+          type="button"
+          className="node-action-button raw-plan-copy-button"
+          onClick={handleCopy}
+        >
+          {copyState === "copied"
+            ? "Copied!"
+            : copyState === "failed"
+              ? "Copy failed"
+              : "Copy plan"}
         </button>
       </div>
       <div className="raw-plan-card-body">
@@ -762,8 +823,12 @@ function RawPlanCard({ title, markdown }) {
 }
 
 function RichNodeOutput({ result }) {
-  const rawPlanEntries = useMemo(() => buildRawPlanEntries(result?.payload, result?.output), [result?.payload, result?.output]);
-  const summaryMarkdown = rawPlanEntries.length > 0 ? stripFullPlanSection(result?.output) : (result?.output ?? "");
+  const rawPlanEntries = useMemo(
+    () => buildRawPlanEntries(result?.payload, result?.output),
+    [result?.payload, result?.output],
+  );
+  const summaryMarkdown =
+    rawPlanEntries.length > 0 ? stripFullPlanSection(result?.output) : (result?.output ?? "");
 
   if (result?.payload && Object.keys(result.payload).length > 0) {
     return (
@@ -813,18 +878,16 @@ function PayloadHighlights({ payload }) {
     return <DeepResearchQuestionBatchHighlights summary={questionBatch} />;
   }
 
-  const plans = Array.isArray(payload?.plans)
-    ? payload.plans
-    : payload?.plan
-      ? [payload.plan]
-      : [];
+  const plans = Array.isArray(payload?.plans) ? payload.plans : payload?.plan ? [payload.plan] : [];
   if (plans.length > 0) {
     return <PlanHighlights plans={plans} />;
   }
 
   const councilReview = payload?.councilReview ?? payload?.councilInputReview;
   if (Array.isArray(councilReview?.opportunities) && councilReview.opportunities.length > 0) {
-    return <OpportunityHighlights review={councilReview} acceptances={payload?.opportunityAcceptances} />;
+    return (
+      <OpportunityHighlights review={councilReview} acceptances={payload?.opportunityAcceptances} />
+    );
   }
 
   return null;
@@ -839,10 +902,14 @@ function PlanHighlights({ plans }) {
           const title = plan.title || `Plan ${index + 1}`;
           const recommendation = plan.recommendation || plan.targetChange || plan.scope || title;
           const expectedUserValue = plan.expectedUserValue || "";
-          const outline = Array.isArray(plan.implementationOutline) ? plan.implementationOutline : [];
+          const outline = Array.isArray(plan.implementationOutline)
+            ? plan.implementationOutline
+            : [];
           return (
             <article className="highlight-card" key={`${title}-${index}`}>
-              <div className="highlight-kicker">{(plan.opportunityIds ?? []).join(", ") || `Plan ${index + 1}`}</div>
+              <div className="highlight-kicker">
+                {(plan.opportunityIds ?? []).join(", ") || `Plan ${index + 1}`}
+              </div>
               <h4>{title}</h4>
               <p>{recommendation}</p>
               {plan.problemSolved ? (
@@ -873,7 +940,9 @@ function PlanHighlights({ plans }) {
                 <div className="highlight-field">
                   <span>First Steps</span>
                   <ol>
-                    {outline.slice(0, 4).map((step, stepIndex) => <li key={stepIndex}>{step}</li>)}
+                    {outline.slice(0, 4).map((step, stepIndex) => (
+                      <li key={stepIndex}>{step}</li>
+                    ))}
                   </ol>
                 </div>
               ) : null}
@@ -892,16 +961,27 @@ function VerificationOpportunityAdvancementHighlights({ summary }) {
         <h3>Verification Opportunities</h3>
         <div className="highlight-badge-row">
           <span className="workflow-badge advanced">{summary.capLabel}</span>
-          {summary.notAdvancedCount > 0 ? <span className="workflow-badge muted">{summary.notAdvancedCount} not advanced</span> : null}
+          {summary.notAdvancedCount > 0 ? (
+            <span className="workflow-badge muted">{summary.notAdvancedCount} not advanced</span>
+          ) : null}
         </div>
       </div>
-      {summary.rankingRationale ? <p className="highlight-rationale">{summary.rankingRationale}</p> : null}
+      {summary.rankingRationale ? (
+        <p className="highlight-rationale">{summary.rankingRationale}</p>
+      ) : null}
       <div className="highlight-grid">
         {summary.opportunities.map((opportunity, index) => (
-          <article className={`highlight-card compact opportunity-card ${opportunity.status}`} key={opportunity.id}>
+          <article
+            className={`highlight-card compact opportunity-card ${opportunity.status}`}
+            key={opportunity.id}
+          >
             <div className="highlight-card-topline">
-              <div className="highlight-kicker">#{index + 1} · {opportunity.id}</div>
-              <span className={`workflow-badge ${opportunity.status === "advanced" ? "advanced" : "muted"}`}>
+              <div className="highlight-kicker">
+                #{index + 1} · {opportunity.id}
+              </div>
+              <span
+                className={`workflow-badge ${opportunity.status === "advanced" ? "advanced" : "muted"}`}
+              >
                 {opportunity.badgeLabel}
               </span>
             </div>
@@ -936,7 +1016,11 @@ function VerificationOpportunityAdvancementHighlights({ summary }) {
               <div className="highlight-field">
                 <span>Proof Commands</span>
                 <ul className="compact-code-list">
-                  {opportunity.proofCommands.map((command) => <li key={command}><code>{command}</code></li>)}
+                  {opportunity.proofCommands.map((command) => (
+                    <li key={command}>
+                      <code>{command}</code>
+                    </li>
+                  ))}
                 </ul>
               </div>
             ) : null}
@@ -953,8 +1037,12 @@ function DeepResearchProviderFailureHighlights({ summary }) {
       <div className="highlight-header">
         <h3>Provider Research Degraded</h3>
         <div className="highlight-badge-row">
-          <span className="workflow-badge degraded">{summary.failureCount} provider {summary.failureCount === 1 ? "failure" : "failures"}</span>
-          <span className="workflow-badge neutral">{summary.evidenceCount} evidence items from this node</span>
+          <span className="workflow-badge degraded">
+            {summary.failureCount} provider {summary.failureCount === 1 ? "failure" : "failures"}
+          </span>
+          <span className="workflow-badge neutral">
+            {summary.evidenceCount} evidence items from this node
+          </span>
         </div>
       </div>
       {summary.runId ? (
@@ -965,14 +1053,24 @@ function DeepResearchProviderFailureHighlights({ summary }) {
       ) : null}
       <div className="highlight-grid">
         {summary.failures.map((failure) => (
-          <article className="highlight-card compact provider-failure-card" key={`${failure.provider}-${failure.iteration}`}>
+          <article
+            className="highlight-card compact provider-failure-card"
+            key={`${failure.provider}-${failure.iteration}`}
+          >
             <div className="highlight-card-topline">
-              <div className="highlight-kicker">{failure.provider} · iteration {failure.iteration}</div>
-              <span className="workflow-badge degraded">{failure.retryCount} {failure.retryCount === 1 ? "retry" : "retries"}</span>
+              <div className="highlight-kicker">
+                {failure.provider} · iteration {failure.iteration}
+              </div>
+              <span className="workflow-badge degraded">
+                {failure.retryCount} {failure.retryCount === 1 ? "retry" : "retries"}
+              </span>
             </div>
             <p>{failure.message}</p>
             <div className="highlight-badge-row">
-              <span className="workflow-badge muted">{failure.questionCount} {failure.questionCount === 1 ? "question" : "questions"} affected</span>
+              <span className="workflow-badge muted">
+                {failure.questionCount} {failure.questionCount === 1 ? "question" : "questions"}{" "}
+                affected
+              </span>
             </div>
           </article>
         ))}
@@ -989,7 +1087,9 @@ function DeepResearchQuestionBatchHighlights({ summary }) {
         <div className="highlight-badge-row">
           <span className="workflow-badge advanced">{summary.questionCount} questions</span>
           <span className="workflow-badge neutral">iteration {summary.iteration}</span>
-          {summary.providerCount > 0 ? <span className="workflow-badge neutral">{summary.providerCount} providers</span> : null}
+          {summary.providerCount > 0 ? (
+            <span className="workflow-badge neutral">{summary.providerCount} providers</span>
+          ) : null}
         </div>
       </div>
       {summary.runId ? (
@@ -1000,32 +1100,56 @@ function DeepResearchQuestionBatchHighlights({ summary }) {
       ) : null}
       {summary.providerStrategy.length > 0 ? (
         <div className="provider-strategy-list">
-          {summary.providerStrategy.map((strategy) => <span className="workflow-badge strategy" key={strategy}>{strategy}</span>)}
+          {summary.providerStrategy.map((strategy) => (
+            <span className="workflow-badge strategy" key={strategy}>
+              {strategy}
+            </span>
+          ))}
         </div>
       ) : null}
       <div className="highlight-grid question-grid">
         {summary.questions.map((question, index) => (
           <article className="highlight-card compact question-card" key={question.id}>
             <div className="highlight-card-topline">
-              <div className="highlight-kicker">Question {index + 1} · {question.id}</div>
+              <div className="highlight-kicker">
+                Question {index + 1} · {question.id}
+              </div>
               <div className="highlight-badge-row">
-                {question.researchModeLabel ? <span className={`workflow-badge mode ${modeBadgeClass(question.researchMode)}`}>{question.researchModeLabel}</span> : null}
-                <span className="workflow-badge neutral">{question.queryCount} {question.queryCount === 1 ? "query" : "queries"}</span>
+                {question.researchModeLabel ? (
+                  <span className={`workflow-badge mode ${modeBadgeClass(question.researchMode)}`}>
+                    {question.researchModeLabel}
+                  </span>
+                ) : null}
+                <span className="workflow-badge neutral">
+                  {question.queryCount} {question.queryCount === 1 ? "query" : "queries"}
+                </span>
               </div>
             </div>
             <p>{question.text}</p>
-            {question.researchModeRationale ? <p className="question-routing-rationale">{question.researchModeRationale}</p> : null}
+            {question.researchModeRationale ? (
+              <p className="question-routing-rationale">{question.researchModeRationale}</p>
+            ) : null}
             <div className="highlight-field">
               <span>Advances To</span>
               <div className="highlight-badge-row">
-                {question.routedProviders.length > 0
-                  ? question.routedProviders.map((provider) => <span className="workflow-badge advanced" key={provider}>{provider}</span>)
-                  : <span className="workflow-badge muted">No external provider</span>}
+                {question.routedProviders.length > 0 ? (
+                  question.routedProviders.map((provider) => (
+                    <span className="workflow-badge advanced" key={provider}>
+                      {provider}
+                    </span>
+                  ))
+                ) : (
+                  <span className="workflow-badge muted">No external provider</span>
+                )}
               </div>
             </div>
             {question.providerHints.length > 0 ? (
               <div className="highlight-badge-row">
-                {question.providerHints.map((hint) => <span className="workflow-badge muted" key={hint}>{hint}</span>)}
+                {question.providerHints.map((hint) => (
+                  <span className="workflow-badge muted" key={hint}>
+                    {hint}
+                  </span>
+                ))}
               </div>
             ) : null}
           </article>
@@ -1053,15 +1177,28 @@ function modeBadgeClass(mode) {
 
 function OpportunityHighlights({ review, acceptances }) {
   const opportunities = review.opportunities.slice(0, 6);
-  const acceptanceById = new Map((Array.isArray(acceptances) ? acceptances : []).map((acceptance) => [acceptance.id, acceptance]));
+  const acceptanceById = new Map(
+    (Array.isArray(acceptances) ? acceptances : []).map((acceptance) => [
+      acceptance.id,
+      acceptance,
+    ]),
+  );
   return (
     <section className="payload-highlights">
       <h3>Ranked Opportunities</h3>
-      {review.rankingRationale ? <p className="highlight-rationale">{review.rankingRationale}</p> : null}
+      {review.rankingRationale ? (
+        <p className="highlight-rationale">{review.rankingRationale}</p>
+      ) : null}
       <div className="highlight-grid">
         {opportunities.map((opportunity, index) => (
-          <article className="highlight-card compact" key={opportunity.id ?? `${opportunity.title}-${index}`}>
-            <div className="highlight-kicker">#{index + 1}{opportunity.id ? ` · ${opportunity.id}` : ""}</div>
+          <article
+            className="highlight-card compact"
+            key={opportunity.id ?? `${opportunity.title}-${index}`}
+          >
+            <div className="highlight-kicker">
+              #{index + 1}
+              {opportunity.id ? ` · ${opportunity.id}` : ""}
+            </div>
             <h4>{opportunity.title ?? `Opportunity ${index + 1}`}</h4>
             {opportunity.projectChange ? <p>{opportunity.projectChange}</p> : null}
             {opportunity.lesson ? (
@@ -1078,9 +1215,13 @@ function OpportunityHighlights({ review, acceptances }) {
               </div>
             ) : null}
             {acceptanceById.has(opportunity.id) ? (
-              <div className={`acceptance-row ${acceptanceById.get(opportunity.id).accepted ? "accepted" : "rejected"}`}>
+              <div
+                className={`acceptance-row ${acceptanceById.get(opportunity.id).accepted ? "accepted" : "rejected"}`}
+              >
                 <span>{acceptanceById.get(opportunity.id).accepted ? "Accepted" : "Rejected"}</span>
-                <span>Avg {formatScoreValue(acceptanceById.get(opportunity.id).acceptanceAverage)}</span>
+                <span>
+                  Avg {formatScoreValue(acceptanceById.get(opportunity.id).acceptanceAverage)}
+                </span>
               </div>
             ) : null}
           </article>
@@ -1096,7 +1237,11 @@ function formatScoreValue(value) {
 
 function NodeExecutionContext({ node, result, state }) {
   const isPlanningNode = node?.id === PLANNING_NODE_ID;
-  const { plannedPrompt, execution, calls, hasActualExecution } = resolveNodeExecutionDisplay({ node, result, state });
+  const { plannedPrompt, execution, calls, hasActualExecution } = resolveNodeExecutionDisplay({
+    node,
+    result,
+    state,
+  });
 
   return (
     <section className="execution-context">
@@ -1104,7 +1249,11 @@ function NodeExecutionContext({ node, result, state }) {
       <dl className="execution-fields">
         <div>
           <dt>{isPlanningNode ? "Planner" : "Configured Harness"}</dt>
-          <dd>{isPlanningNode ? "workflow-planner" : node?.harness ?? execution?.executor ?? "unknown"}</dd>
+          <dd>
+            {isPlanningNode
+              ? "workflow-planner"
+              : (node?.harness ?? execution?.executor ?? "unknown")}
+          </dd>
         </div>
         <div>
           <dt>Node Kind</dt>
@@ -1129,7 +1278,10 @@ function NodeExecutionContext({ node, result, state }) {
           </div>
         ) : null}
       </dl>
-      <PromptBlock title={isPlanningNode ? "Original Request" : "Planned Node Prompt"} prompt={plannedPrompt} />
+      <PromptBlock
+        title={isPlanningNode ? "Original Request" : "Planned Node Prompt"}
+        prompt={plannedPrompt}
+      />
       {calls.length > 0 ? (
         <div className="execution-calls">
           <h4>Execution Calls</h4>
@@ -1186,7 +1338,10 @@ function BlockedNodeNotice({ display }) {
       {display.failedDependencies.length > 0 ? (
         <div className="highlight-grid">
           {display.failedDependencies.map((dependency) => (
-            <article className="highlight-card compact provider-failure-card" key={dependency.nodeId}>
+            <article
+              className="highlight-card compact provider-failure-card"
+              key={dependency.nodeId}
+            >
               <div className="highlight-kicker">{dependency.nodeId}</div>
               <h4>{dependency.title}</h4>
               {dependency.error ? <p>{dependency.error}</p> : null}
@@ -1233,15 +1388,25 @@ function ArtifactModal({ artifact, onClose }) {
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="artifact-modal" role="dialog" aria-modal="true" aria-labelledby="artifact-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+      <section
+        className="artifact-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="artifact-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <header className="artifact-modal-header">
           <div>
             <div className="output-panel-eyebrow">{artifact.file}</div>
             <h2 id="artifact-modal-title">{artifact.label}</h2>
           </div>
           <div className="artifact-modal-actions">
-            <a href={artifact.href} target="_blank" rel="noreferrer">Open raw</a>
-            <button type="button" onClick={onClose}>Close</button>
+            <a href={artifact.href} target="_blank" rel="noreferrer">
+              Open raw
+            </a>
+            <button type="button" onClick={onClose}>
+              Close
+            </button>
           </div>
         </header>
         <div className="artifact-modal-body">
@@ -1397,7 +1562,12 @@ function StructuredArray({ value, path, depth }) {
       {value.map((item, index) => (
         <article className="structured-item" key={`${path}.${index}`}>
           <div className="structured-item-title">{itemTitle(item, index)}</div>
-          <StructuredValue value={item} title={`Item ${index + 1}`} path={`${path}.${index}`} depth={depth + 1} />
+          <StructuredValue
+            value={item}
+            title={`Item ${index + 1}`}
+            path={`${path}.${index}`}
+            depth={depth + 1}
+          />
         </article>
       ))}
     </div>
@@ -1409,7 +1579,13 @@ function isPlainObject(value) {
 }
 
 function isScalarValue(value) {
-  return value === null || value === undefined || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+  return (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
 }
 
 function renderScalarValue(value) {
@@ -1433,7 +1609,14 @@ function itemTitle(item, index) {
   if (!isPlainObject(item)) {
     return `Item ${index + 1}`;
   }
-  return item.title ?? item.displayName ?? item.id ?? item.sourceId ?? item.projectId ?? `Item ${index + 1}`;
+  return (
+    item.title ??
+    item.displayName ??
+    item.id ??
+    item.sourceId ??
+    item.projectId ??
+    `Item ${index + 1}`
+  );
 }
 
 function humanizeKey(key) {
@@ -1499,12 +1682,12 @@ function App() {
     }
 
     fetch("/api/replay")
-      .then((response) => response.ok ? response.json() : null)
+      .then((response) => (response.ok ? response.json() : null))
       .then((payload) => applyPayload(payload))
       .catch(() => undefined);
 
     fetch("/api/runs")
-      .then((response) => response.ok ? response.json() : null)
+      .then((response) => (response.ok ? response.json() : null))
       .then((payload) => applyPayload(payload, { onlyRuns: true }))
       .catch(() => undefined);
 
@@ -1533,7 +1716,7 @@ function App() {
       setAutoTrackNewRuns(true);
       setReplayIndex(null);
       void fetch("/api/replay")
-        .then((response) => response.ok ? response.json() : null)
+        .then((response) => (response.ok ? response.json() : null))
         .then((payload) => {
           if (!payload) {
             return;
@@ -1550,7 +1733,7 @@ function App() {
     setAutoTrackNewRuns(false);
     setReplayIndex(null);
     void fetch(`/api/replay?runId=${encodeURIComponent(runId)}`)
-      .then((response) => response.ok ? response.json() : null)
+      .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!payload) {
           return;
@@ -1620,7 +1803,9 @@ function App() {
         ...current,
         [launchKey]: {
           status: "passed",
-          message: payload.launch?.agentName ? `Started ${payload.launch.agentName}` : "PR agent started.",
+          message: payload.launch?.agentName
+            ? `Started ${payload.launch.agentName}`
+            : "PR agent started.",
           launch: payload.launch,
         },
       }));
@@ -1646,7 +1831,10 @@ function App() {
   }
 
   const hasHistory = history.length > 0;
-  const effectiveReplayIndex = Math.min(replayIndex === null ? history.length : replayIndex, history.length);
+  const effectiveReplayIndex = Math.min(
+    replayIndex === null ? history.length : replayIndex,
+    history.length,
+  );
   const replayEvents = useMemo(
     () => history.slice(0, Math.min(effectiveReplayIndex, history.length)),
     [effectiveReplayIndex, history],
@@ -1660,50 +1848,61 @@ function App() {
     }
     return buildGraph(snapshot.state);
   }, [effectiveReplayIndex, hasHistory, replayEvents, snapshot]);
-  const graphWithActions = useMemo(() => ({
-    ...graph,
-    nodes: graph.nodes.map((node) => {
-      const sourceNode = node.data?.sourceNode;
-      const runId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
-      const launchKey = prLaunchKey(runId, node.id);
-      const nodeResult = snapshot?.state?.nodeResults?.find((entry) => entry.nodeId === node.id);
-      const canCreatePr = Boolean(
-        runId
-        && snapshot?.state?.templateId === "source-to-project"
-        && sourceNode?.kind === "report"
-        && sourceNode?.id?.startsWith("report-opportunity-")
-        && node.data?.status === "passed"
-        && nodeResult?.status === "passed",
-      );
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          canCreatePr,
-          prLaunchState: prLaunches[launchKey],
-          onCreatePr: createPrForNode,
-          autoImplementLaunch: nodeResult?.payload?.autoImplementLaunch,
-          agentOptions,
-          selectedAgentId: selectedAgentByNode[node.id] ?? defaultAgentId,
-          onSelectAgent: (agentId) => setSelectedAgentByNode((current) => ({ ...current, [node.id]: agentId })),
-        },
-      };
+  const graphWithActions = useMemo(
+    () => ({
+      ...graph,
+      nodes: graph.nodes.map((node) => {
+        const sourceNode = node.data?.sourceNode;
+        const runId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
+        const launchKey = prLaunchKey(runId, node.id);
+        const nodeResult = snapshot?.state?.nodeResults?.find((entry) => entry.nodeId === node.id);
+        const canCreatePr = Boolean(
+          runId &&
+          snapshot?.state?.templateId === "source-to-project" &&
+          sourceNode?.kind === "report" &&
+          sourceNode?.id?.startsWith("report-opportunity-") &&
+          node.data?.status === "passed" &&
+          nodeResult?.status === "passed",
+        );
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            canCreatePr,
+            prLaunchState: prLaunches[launchKey],
+            onCreatePr: createPrForNode,
+            autoImplementLaunch: nodeResult?.payload?.autoImplementLaunch,
+            agentOptions,
+            selectedAgentId: selectedAgentByNode[node.id] ?? defaultAgentId,
+            onSelectAgent: (agentId) =>
+              setSelectedAgentByNode((current) => ({ ...current, [node.id]: agentId })),
+          },
+        };
+      }),
     }),
-  }), [graph, prLaunches, snapshot, agentOptions, defaultAgentId, selectedAgentByNode]);
+    [graph, prLaunches, snapshot, agentOptions, defaultAgentId, selectedAgentByNode],
+  );
   const activeRunId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
-  const viewportFitKey = useMemo(() => createWorkflowViewportFitKey({
-    runId: activeRunId,
-    nodes: graphWithActions.nodes,
-    edges: graphWithActions.edges,
-  }), [activeRunId, graphWithActions.nodes, graphWithActions.edges]);
+  const viewportFitKey = useMemo(
+    () =>
+      createWorkflowViewportFitKey({
+        runId: activeRunId,
+        nodes: graphWithActions.nodes,
+        edges: graphWithActions.edges,
+      }),
+    [activeRunId, graphWithActions.nodes, graphWithActions.edges],
+  );
 
   useEffect(() => {
-    if (!flowInstance || !shouldFitWorkflowViewport({
-      autoTrackNewRuns,
-      nodeCount: graphWithActions.nodes.length,
-      fitKey: viewportFitKey,
-      previousFitKey: lastViewportFitKey.current,
-    })) {
+    if (
+      !flowInstance ||
+      !shouldFitWorkflowViewport({
+        autoTrackNewRuns,
+        nodeCount: graphWithActions.nodes.length,
+        fitKey: viewportFitKey,
+        previousFitKey: lastViewportFitKey.current,
+      })
+    ) {
       return;
     }
 
@@ -1741,9 +1940,12 @@ function App() {
     }
     return graphWithActions.nodes.find((node) => node.id === selectedNodeId) ?? null;
   }, [graphWithActions.nodes, selectedNodeId]);
-  const selectedNodeStatus = selectedGraphNode?.data?.status
-    ?? selectedResult?.status
-    ?? (selectedNode ? resolveNodeStatus(selectedNode, snapshot?.state ?? { nodeResults: [] }) : DEFAULT_STATUS);
+  const selectedNodeStatus =
+    selectedGraphNode?.data?.status ??
+    selectedResult?.status ??
+    (selectedNode
+      ? resolveNodeStatus(selectedNode, snapshot?.state ?? { nodeResults: [] })
+      : DEFAULT_STATUS);
   const selectedBlockedDisplay = useMemo(() => {
     return resolveBlockedNodeDisplay(selectedNode, snapshot?.state);
   }, [selectedNode, snapshot]);
@@ -1752,13 +1954,17 @@ function App() {
   const objective = snapshot?.state?.objective ?? "Waiting for workflow to start";
   const planId = snapshot?.state?.planId ?? "";
   const runName = snapshot?.run?.runName ?? snapshot?.state?.runName ?? "No run selected";
-  const activePhase = graph.replayView?.activePhase ?? (workflowStatus === "idle" ? "waiting" : "live");
+  const activePhase =
+    graph.replayView?.activePhase ?? (workflowStatus === "idle" ? "waiting" : "live");
   const replayEvent = hasHistory ? history[Math.max(0, effectiveReplayIndex - 1)] : null;
   const recentEvents = hasHistory
     ? history.slice(Math.max(0, effectiveReplayIndex - 5), effectiveReplayIndex).reverse()
     : [];
   const selectedOutput = selectedResult?.output?.trim() ?? "";
-  const canRenderSelectedOutput = selectedNodeStatus === "passed" && selectedResult?.status === "passed" && selectedOutput.length > 0;
+  const canRenderSelectedOutput =
+    selectedNodeStatus === "passed" &&
+    selectedResult?.status === "passed" &&
+    selectedOutput.length > 0;
   const isPlanningSelection = selectedNode?.id === PLANNING_NODE_ID;
 
   return (
@@ -1766,7 +1972,19 @@ function App() {
       <aside className="sidebar">
         <div>
           <h1>Workflow Dashboard</h1>
-          <div className={`status-pill`} style={{ color: workflowStatus === "passed" ? "#34d399" : workflowStatus === "failed" ? "#fb7185" : workflowStatus === "running" ? "#fb923c" : "#cbd5e1" }}>
+          <div
+            className={`status-pill`}
+            style={{
+              color:
+                workflowStatus === "passed"
+                  ? "#34d399"
+                  : workflowStatus === "failed"
+                    ? "#fb7185"
+                    : workflowStatus === "running"
+                      ? "#fb923c"
+                      : "#cbd5e1",
+            }}
+          >
             {workflowStatus}
           </div>
         </div>
@@ -1789,10 +2007,18 @@ function App() {
           <h2>Objective</h2>
           <p>{objective}</p>
           <div className="meta-grid">
-            <div><strong>Plan:</strong> {planId}</div>
-            <div><strong>Nodes:</strong> {graphWithActions.nodes.length}</div>
-            <div><strong>Replans:</strong> {snapshot?.state?.replans?.length ?? 0}</div>
-            <div><strong>Phase:</strong> {activePhase}</div>
+            <div>
+              <strong>Plan:</strong> {planId}
+            </div>
+            <div>
+              <strong>Nodes:</strong> {graphWithActions.nodes.length}
+            </div>
+            <div>
+              <strong>Replans:</strong> {snapshot?.state?.replans?.length ?? 0}
+            </div>
+            <div>
+              <strong>Phase:</strong> {activePhase}
+            </div>
           </div>
         </div>
         <div className="card replay-panel">
@@ -1833,20 +2059,32 @@ function App() {
             }}
           />
           <div className="replay-meta">
-            <span>{hasHistory ? `${effectiveReplayIndex} / ${history.length}` : "No replay history"}</span>
+            <span>
+              {hasHistory ? `${effectiveReplayIndex} / ${history.length}` : "No replay history"}
+            </span>
             <span>{replayEvent?.ts ?? "live state"}</span>
           </div>
-          <div className="replay-current-event">{hasHistory ? eventTitle(replayEvent) : "Streaming live dashboard state"}</div>
+          <div className="replay-current-event">
+            {hasHistory ? eventTitle(replayEvent) : "Streaming live dashboard state"}
+          </div>
         </div>
         <div className="card detail-panel">
           <h2>Selection</h2>
           {selectedNode ? (
             <>
               <div className="meta-grid">
-                <div><strong>Node:</strong> {selectedNode.title}</div>
-                <div><strong>Harness:</strong> {selectedNode.harness}</div>
-                <div><strong>Kind:</strong> {selectedNode.kind}</div>
-                <div><strong>Status:</strong> {selectedNodeStatus}</div>
+                <div>
+                  <strong>Node:</strong> {selectedNode.title}
+                </div>
+                <div>
+                  <strong>Harness:</strong> {selectedNode.harness}
+                </div>
+                <div>
+                  <strong>Kind:</strong> {selectedNode.kind}
+                </div>
+                <div>
+                  <strong>Status:</strong> {selectedNodeStatus}
+                </div>
               </div>
             </>
           ) : (
@@ -1866,7 +2104,9 @@ function App() {
             ) : snapshot?.event ? (
               <div className="event-item">
                 <strong>{eventTitle(snapshot.event)}</strong>
-                <div>{selectedNode?.title ? `Node ${selectedNode.title}` : "Workflow state updated"}</div>
+                <div>
+                  {selectedNode?.title ? `Node ${selectedNode.title}` : "Workflow state updated"}
+                </div>
               </div>
             ) : (
               <div className="event-item">Waiting for the first event.</div>
@@ -1894,16 +2134,29 @@ function App() {
         <aside className="output-panel" aria-label="Node output">
           <div className="output-panel-header">
             <div>
-              <div className="output-panel-eyebrow">{selectedNode.kind} · {selectedNodeStatus}</div>
+              <div className="output-panel-eyebrow">
+                {selectedNode.kind} · {selectedNodeStatus}
+              </div>
               <h2>{selectedNode.title}</h2>
             </div>
-            <button type="button" onClick={() => setSelectedNodeId(null)}>Close</button>
+            <button type="button" onClick={() => setSelectedNodeId(null)}>
+              Close
+            </button>
           </div>
           <div className="output-panel-body">
-            <NodeExecutionContext node={selectedNode} result={selectedResult} state={snapshot?.state} />
+            <NodeExecutionContext
+              node={selectedNode}
+              result={selectedResult}
+              state={snapshot?.state}
+            />
             {isPlanningSelection ? (
-              <StructuredValue value={buildPlanningPayload(snapshot?.state)} title="Planned DAG" path="plannedDag" />
-            ) : canRenderSelectedOutput || (selectedNodeStatus === "passed" && selectedResult?.payload) ? (
+              <StructuredValue
+                value={buildPlanningPayload(snapshot?.state)}
+                title="Planned DAG"
+                path="plannedDag"
+              />
+            ) : canRenderSelectedOutput ||
+              (selectedNodeStatus === "passed" && selectedResult?.payload) ? (
               <RichNodeOutput result={selectedResult} />
             ) : selectedResult?.error ? (
               <pre className="output-error">Error: {selectedResult.error}</pre>
@@ -1914,7 +2167,12 @@ function App() {
             ) : (
               <p className="output-empty">No output recorded.</p>
             )}
-            <NodeArtifactLinks node={selectedNode} result={selectedResult} snapshot={snapshot} onOpenArtifact={openArtifact} />
+            <NodeArtifactLinks
+              node={selectedNode}
+              result={selectedResult}
+              snapshot={snapshot}
+              onOpenArtifact={openArtifact}
+            />
           </div>
         </aside>
       ) : null}

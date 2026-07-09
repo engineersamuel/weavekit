@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  verifyWorkflowPlan as rootVerifyWorkflowPlan,
-} from "../../src/index.js";
+import { verifyWorkflowPlan as rootVerifyWorkflowPlan } from "../../src/index.js";
 import {
   WorkflowGateKind,
   WorkflowHarnessKind,
@@ -97,9 +95,7 @@ describe("macro workflow verifier", () => {
     const result = verifyWorkflowPlan(plan);
 
     expect(result.valid).toBe(false);
-    expect(result.issues).toContainEqual(
-      expect.objectContaining({ code: "cycle-detected" }),
-    );
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "cycle-detected" }));
   });
 
   it("rejects parallel single-writer nodes", () => {
@@ -119,9 +115,7 @@ describe("macro workflow verifier", () => {
     const result = verifyWorkflowPlan(plan);
 
     expect(result.valid).toBe(false);
-    expect(result.issues).toContainEqual(
-      expect.objectContaining({ code: "parallel-writers" }),
-    );
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "parallel-writers" }));
   });
 
   it("rejects implementation plans without a downstream verification node", () => {
@@ -132,49 +126,55 @@ describe("macro workflow verifier", () => {
     const result = verifyWorkflowPlan(plan);
 
     expect(result.valid).toBe(false);
-    expect(result.issues).toContainEqual(
-      expect.objectContaining({ code: "missing-verification" }),
-    );
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: "missing-verification" }));
   });
 
   it("rejects plugin command capabilities for unsupported plugins", () => {
     const plan = validPlan();
     plan.nodes[0]!.capabilities = {
-      pluginCommands: [{
-        plugin: "unknown-plugin",
-        command: "unknown-plugin:research",
-        promptInputName: "topic",
-        args: {},
-      }],
+      pluginCommands: [
+        {
+          plugin: "unknown-plugin",
+          command: "unknown-plugin:research",
+          promptInputName: "topic",
+          args: {},
+        },
+      ],
     };
 
     const result = verifyWorkflowPlan(plan);
 
     expect(result.valid).toBe(false);
-    expect(result.issues).toContainEqual(expect.objectContaining({
-      code: "invalid-plugin-command-capability",
-      nodeId: "research",
-      message: expect.stringContaining("Unsupported plugin unknown-plugin"),
-    }));
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({
+        code: "invalid-plugin-command-capability",
+        nodeId: "research",
+        message: expect.stringContaining("Unsupported plugin unknown-plugin"),
+      }),
+    );
   });
 
   it("rejects plugin command capabilities missing required command fields", () => {
     const plan = validPlan();
     plan.nodes[0]!.capabilities = {
-      pluginCommands: [{
-        plugin: "hve-core",
-        promptInputName: "topic",
-        args: {},
-      }],
+      pluginCommands: [
+        {
+          plugin: "hve-core",
+          promptInputName: "topic",
+          args: {},
+        },
+      ],
     } as never;
 
     const result = verifyWorkflowPlan(plan);
 
     expect(result.valid).toBe(false);
-    expect(result.issues).toContainEqual(expect.objectContaining({
-      code: "invalid-plugin-command-capability",
-      nodeId: "research",
-      message: expect.stringContaining("requires a non-empty command"),
-    }));
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({
+        code: "invalid-plugin-command-capability",
+        nodeId: "research",
+        message: expect.stringContaining("requires a non-empty command"),
+      }),
+    );
   });
 });

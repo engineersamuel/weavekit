@@ -2,14 +2,35 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { DeepResearchProvider, expandHomePath, loadLocalEnvFiles, loadTypedWeavekitConfig, loadWeavekitConfig, resolveProjectCatalogEntry, type DeepResearchDefaults, type ProjectCatalogEntry } from "./config.js";
+import {
+  DeepResearchProvider,
+  expandHomePath,
+  loadLocalEnvFiles,
+  loadTypedWeavekitConfig,
+  loadWeavekitConfig,
+  resolveProjectCatalogEntry,
+  type DeepResearchDefaults,
+  type ProjectCatalogEntry,
+} from "./config.js";
 import { DecisionCouncilRunFailedError } from "./decision-council/errors.js";
 import type { DecisionCouncilInput } from "./decision-council/types.js";
 import type { DecisionCouncilLogger } from "./decision-council/logger.js";
 import type { TelemetryHandle } from "./telemetry/bootstrap.js";
-import { WorkflowHarnessKind, WorkflowNodeStatus, type MacroWorkflowRunStateLike, type RuntimeWorkflowNode, type WorkflowArtifactRef, type WorkflowPlanTemplateId, type WorkflowReplayEvent } from "./macro-workflow/types.js";
+import {
+  WorkflowHarnessKind,
+  WorkflowNodeStatus,
+  type MacroWorkflowRunStateLike,
+  type RuntimeWorkflowNode,
+  type WorkflowArtifactRef,
+  type WorkflowPlanTemplateId,
+  type WorkflowReplayEvent,
+} from "./macro-workflow/types.js";
 import { MacroWorkflowEventKind } from "./macro-workflow/logger.js";
-import { extractXPostUrls, preprocessWorkflowPrompt, type XPostFetchResult } from "./macro-workflow/promptPreprocessor.js";
+import {
+  extractXPostUrls,
+  preprocessWorkflowPrompt,
+  type XPostFetchResult,
+} from "./macro-workflow/promptPreprocessor.js";
 
 export type LogFormat = "pretty" | "json" | "silent";
 
@@ -66,7 +87,8 @@ export function parseEntityCliArgs(argv: string[]): EntityCliArgs {
 }
 
 export async function runEntityCli(_args: EntityCliArgs): Promise<string> {
-  const { formatEntityValidationErrors, validateEntityCatalog } = await import("./entities/index.js");
+  const { formatEntityValidationErrors, validateEntityCatalog } =
+    await import("./entities/index.js");
   const result = validateEntityCatalog(process.cwd());
   if (!result.valid) {
     throw new Error(formatEntityValidationErrors(result.errors));
@@ -80,13 +102,16 @@ export async function runEntityCli(_args: EntityCliArgs): Promise<string> {
   });
   const workflowValidation = verifyWorkflowPlan(sourceToProjectPlan);
   if (!workflowValidation.valid) {
-    throw new Error([
-      `Workflow metadata validation failed with ${workflowValidation.issues.length} error(s).`,
-      "",
-      ...workflowValidation.issues.map((issue, index) =>
-        `${index + 1}. ${issue.nodeId ?? "<plan>"} ${issue.code}: ${issue.message}`
-      ),
-    ].join("\n"));
+    throw new Error(
+      [
+        `Workflow metadata validation failed with ${workflowValidation.issues.length} error(s).`,
+        "",
+        ...workflowValidation.issues.map(
+          (issue, index) =>
+            `${index + 1}. ${issue.nodeId ?? "<plan>"} ${issue.code}: ${issue.message}`,
+        ),
+      ].join("\n"),
+    );
   }
   const verificationOptimizerPlan = materializeWorkflowPlan("verification-optimizer", {
     objective: "Validate verification-optimizer workflow metadata",
@@ -95,13 +120,16 @@ export async function runEntityCli(_args: EntityCliArgs): Promise<string> {
   });
   const verificationOptimizerValidation = verifyWorkflowPlan(verificationOptimizerPlan);
   if (!verificationOptimizerValidation.valid) {
-    throw new Error([
-      `Verification optimizer workflow metadata validation failed with ${verificationOptimizerValidation.issues.length} error(s).`,
-      "",
-      ...verificationOptimizerValidation.issues.map((issue, index) =>
-        `${index + 1}. ${issue.nodeId ?? "<plan>"} ${issue.code}: ${issue.message}`
-      ),
-    ].join("\n"));
+    throw new Error(
+      [
+        `Verification optimizer workflow metadata validation failed with ${verificationOptimizerValidation.issues.length} error(s).`,
+        "",
+        ...verificationOptimizerValidation.issues.map(
+          (issue, index) =>
+            `${index + 1}. ${issue.nodeId ?? "<plan>"} ${issue.code}: ${issue.message}`,
+        ),
+      ].join("\n"),
+    );
   }
   return "Entity catalog valid.\n";
 }
@@ -139,7 +167,9 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
 
   const removedNamedSelectionFlag = `--persona${"-set"}`;
   if (argv.includes(removedNamedSelectionFlag)) {
-    throw new Error("Static persona sets are not supported. Usage: weavekit decision-council run --input <path> [--output <dir>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>]");
+    throw new Error(
+      "Static persona sets are not supported. Usage: weavekit decision-council run --input <path> [--output <dir>] [--max-rounds <n>] [--smoke] [--log-format <pretty|json|silent>]",
+    );
   }
 
   // --smoke is a runtime preset only: dynamic selection still chooses personas.
@@ -149,7 +179,7 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
 
   return {
     inputPath: argv[inputIndex + 1]!,
-    outputDir: outputIndex === -1 ? "runs/latest" : argv[outputIndex + 1] ?? "runs/latest",
+    outputDir: outputIndex === -1 ? "runs/latest" : (argv[outputIndex + 1] ?? "runs/latest"),
     logFormat,
     maxRounds,
     smoke,
@@ -158,12 +188,16 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
 
 export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (argv[0] !== "workflow") {
-    throw new Error("Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]");
+    throw new Error(
+      "Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]",
+    );
   }
 
   const command = argv[1];
   if (command !== "plan" && command !== "run" && command !== "dashboard") {
-    throw new Error("Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]");
+    throw new Error(
+      "Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]",
+    );
   }
 
   const outputIndex = argv.indexOf("--output");
@@ -246,7 +280,12 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   const isSourceToProject = template === "source-to-project";
   const isVerificationOptimizer = template === "verification-optimizer";
   const isProjectScopedTemplate = isSourceToProject || isVerificationOptimizer;
-  if (command !== "dashboard" && inputIndex === -1 && promptIndex === -1 && !isProjectScopedTemplate) {
+  if (
+    command !== "dashboard" &&
+    inputIndex === -1 &&
+    promptIndex === -1 &&
+    !isProjectScopedTemplate
+  ) {
     throw new Error("Missing required --input <path> or --prompt <text> argument.");
   }
   if (command !== "dashboard" && inputIndex !== -1 && !argv[inputIndex + 1]) {
@@ -255,19 +294,29 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (command !== "dashboard" && inputIndex !== -1 && promptIndex !== -1) {
     throw new Error("Use either --input <path> or --prompt <text>, not both.");
   }
-  if (command !== "dashboard" && isProjectScopedTemplate && projectIndex === -1 && projectPathIndex === -1) {
+  if (
+    command !== "dashboard" &&
+    isProjectScopedTemplate &&
+    projectIndex === -1 &&
+    projectPathIndex === -1
+  ) {
     throw new Error("Missing required --project <id> or --project-path <path> argument.");
   }
 
   const dryRun = command === "plan" || argv.includes("--dry-run");
   const portValue = portIndex === -1 ? undefined : Number(argv[portIndex + 1]);
-  const dashboardPortValue = dashboardPortIndex === -1 ? portValue : Number(argv[dashboardPortIndex + 1]);
-  const dashboard = command !== "dashboard" && (argv.includes("--dashboard") || dashboardPortValue !== undefined);
+  const dashboardPortValue =
+    dashboardPortIndex === -1 ? portValue : Number(argv[dashboardPortIndex + 1]);
+  const dashboard =
+    command !== "dashboard" && (argv.includes("--dashboard") || dashboardPortValue !== undefined);
   const dashboardUrl = dashboardUrlIndex === -1 ? undefined : argv[dashboardUrlIndex + 1];
   const watchDir = watchDirIndex === -1 ? undefined : argv[watchDirIndex + 1];
   const mode = modeIndex === -1 ? undefined : argv[modeIndex + 1];
 
-  if (dashboardPortValue !== undefined && (!Number.isInteger(dashboardPortValue) || dashboardPortValue < 1 || dashboardPortValue > 65535)) {
+  if (
+    dashboardPortValue !== undefined &&
+    (!Number.isInteger(dashboardPortValue) || dashboardPortValue < 1 || dashboardPortValue > 65535)
+  ) {
     throw new Error("Invalid --dashboard-port value. Expected an integer between 1 and 65535.");
   }
   if (mode !== undefined && mode !== "advisory" && mode !== "autonomous-pr") {
@@ -276,7 +325,7 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
 
   const parsed: WorkflowCliArgs = {
     command,
-    outputDir: outputIndex === -1 ? "runs" : argv[outputIndex + 1] ?? "runs",
+    outputDir: outputIndex === -1 ? "runs" : (argv[outputIndex + 1] ?? "runs"),
     staticTemplate: template !== undefined,
     dryRun,
   };
@@ -320,8 +369,10 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   const deepResearch = parseDeepResearchCliConfig({
     providers: providersIndex === -1 ? undefined : argv[providersIndex + 1],
     maxIterations: maxIterationsIndex === -1 ? undefined : argv[maxIterationsIndex + 1],
-    questionsPerIteration: questionsPerIterationIndex === -1 ? undefined : argv[questionsPerIterationIndex + 1],
-    maxResultsPerQuestion: maxResultsPerQuestionIndex === -1 ? undefined : argv[maxResultsPerQuestionIndex + 1],
+    questionsPerIteration:
+      questionsPerIterationIndex === -1 ? undefined : argv[questionsPerIterationIndex + 1],
+    maxResultsPerQuestion:
+      maxResultsPerQuestionIndex === -1 ? undefined : argv[maxResultsPerQuestionIndex + 1],
     visualize: argv.includes("--visualize") ? true : undefined,
   });
   if (Object.keys(deepResearch).length > 0) {
@@ -339,12 +390,17 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   return parsed;
 }
 
-export async function readDecisionCouncilInputFile(inputPath: string): Promise<DecisionCouncilInput> {
+export async function readDecisionCouncilInputFile(
+  inputPath: string,
+): Promise<DecisionCouncilInput> {
   const prompt = await readFile(inputPath, "utf8");
   return { prompt, context: [], constraints: [] };
 }
 
-export function formatDecisionCouncilSuccessMessage(args: { recommendation: string; outputDir: string }): string {
+export function formatDecisionCouncilSuccessMessage(args: {
+  recommendation: string;
+  outputDir: string;
+}): string {
   return [
     args.recommendation,
     `Markdown report: ${join(args.outputDir, "DecisionCouncilReport.md")}`,
@@ -353,8 +409,14 @@ export function formatDecisionCouncilSuccessMessage(args: { recommendation: stri
   ].join("\n");
 }
 
-export async function createDecisionCouncilLogger(format: LogFormat): Promise<DecisionCouncilLogger> {
-  const { createConsoleDecisionCouncilLogger, createJsonDecisionCouncilLogger, createSilentDecisionCouncilLogger } = await import("./decision-council/logger.js");
+export async function createDecisionCouncilLogger(
+  format: LogFormat,
+): Promise<DecisionCouncilLogger> {
+  const {
+    createConsoleDecisionCouncilLogger,
+    createJsonDecisionCouncilLogger,
+    createSilentDecisionCouncilLogger,
+  } = await import("./decision-council/logger.js");
   if (format === "json") return createJsonDecisionCouncilLogger();
   if (format === "silent") return createSilentDecisionCouncilLogger();
   return createConsoleDecisionCouncilLogger();
@@ -364,11 +426,16 @@ export function formatWorkflowCliSuccessMessage(args: { outputDir: string }): st
   return [`Macro workflow plan: ${args.outputDir}`, ""].join("\n");
 }
 
-export function formatWorkflowRunStartedMessage(args: { runId: string; outputDir: string }): string {
-  return [
-    `[weavekit] Workflow run id: ${args.runId}`,
-    `[weavekit] Workflow output: ${args.outputDir}`,
-  ].join("\n") + "\n";
+export function formatWorkflowRunStartedMessage(args: {
+  runId: string;
+  outputDir: string;
+}): string {
+  return (
+    [
+      `[weavekit] Workflow run id: ${args.runId}`,
+      `[weavekit] Workflow output: ${args.outputDir}`,
+    ].join("\n") + "\n"
+  );
 }
 
 export function formatWorkflowNodeFailureMessage(args: {
@@ -393,11 +460,15 @@ export function formatWorkflowNodeStartedMessage(args: {
   harness?: string;
   kind?: string;
 }): string {
-  return [
-    `[weavekit] Node started: ${formatWorkflowNodeLabel(args.nodeId, args.title)}`,
-    args.harness ? `harness=${args.harness}` : undefined,
-    args.kind ? `kind=${args.kind}` : undefined,
-  ].filter((part): part is string => Boolean(part)).join(" ") + "\n";
+  return (
+    [
+      `[weavekit] Node started: ${formatWorkflowNodeLabel(args.nodeId, args.title)}`,
+      args.harness ? `harness=${args.harness}` : undefined,
+      args.kind ? `kind=${args.kind}` : undefined,
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(" ") + "\n"
+  );
 }
 
 export function formatWorkflowNodeWarningMessage(args: {
@@ -405,10 +476,14 @@ export function formatWorkflowNodeWarningMessage(args: {
   title?: string;
   warning?: string;
 }): string {
-  return [
-    `[weavekit][warn] Workflow node warning: ${formatWorkflowNodeLabel(args.nodeId, args.title)}`,
-    args.warning ? `[weavekit][warn] Warning: ${args.warning}` : undefined,
-  ].filter((line): line is string => Boolean(line)).join("\n") + "\n";
+  return (
+    [
+      `[weavekit][warn] Workflow node warning: ${formatWorkflowNodeLabel(args.nodeId, args.title)}`,
+      args.warning ? `[weavekit][warn] Warning: ${args.warning}` : undefined,
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n") + "\n"
+  );
 }
 
 export function formatWorkflowNodeCompletedMessage(args: {
@@ -422,15 +497,21 @@ export function formatWorkflowNodeCompletedMessage(args: {
     [
       `[weavekit] Node ${args.status ?? "completed"}: ${formatWorkflowNodeLabel(args.nodeId, args.title)}`,
       args.output ? `output=${truncateOneLine(args.output, 220)}` : undefined,
-    ].filter((part): part is string => Boolean(part)).join(" "),
-    ...(args.artifacts ?? []).map((artifact) =>
-      `[weavekit]   artifact ${artifact.kind}: ${artifact.path} - ${artifact.description}`
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(" "),
+    ...(args.artifacts ?? []).map(
+      (artifact) =>
+        `[weavekit]   artifact ${artifact.kind}: ${artifact.path} - ${artifact.description}`,
     ),
   ];
   return `${lines.join("\n")}\n`;
 }
 
-export function formatWorkflowRunCompletedMessage(args: { status?: string; outputDir: string }): string {
+export function formatWorkflowRunCompletedMessage(args: {
+  status?: string;
+  outputDir: string;
+}): string {
   return `[weavekit] Workflow completed with status=${args.status ?? "unknown"} output=${args.outputDir}\n`;
 }
 
@@ -440,10 +521,15 @@ function formatWorkflowNodeLabel(nodeId: string, title: string | undefined): str
 
 function truncateOneLine(value: string, maxLength: number): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trimEnd()}...` : normalized;
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength - 3).trimEnd()}...`
+    : normalized;
 }
 
-export function createWorkflowRunDescriptor(outputRoot: string, objective: string): WorkflowRunDescriptor {
+export function createWorkflowRunDescriptor(
+  outputRoot: string,
+  objective: string,
+): WorkflowRunDescriptor {
   const runId = randomUUID();
   const normalizedRoot = basename(outputRoot) === "latest" ? dirname(outputRoot) : outputRoot;
   return {
@@ -476,14 +562,24 @@ function generateWorkflowRunName(objective: string): string {
   if (words.length === 0) {
     return "Workflow Run";
   }
-  return words.map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1).toLowerCase()}`).join(" ");
+  return words
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1).toLowerCase()}`)
+    .join(" ");
 }
 
-function resolveWorkflowTemplateId(template: string | undefined): WorkflowPlanTemplateId | undefined {
+function resolveWorkflowTemplateId(
+  template: string | undefined,
+): WorkflowPlanTemplateId | undefined {
   if (template === undefined) {
     return undefined;
   }
-  if (template !== "implementation-review" && template !== "source-to-project" && template !== "verification-optimizer" && template !== "x-article-summary" && template !== "deep-research") {
+  if (
+    template !== "implementation-review" &&
+    template !== "source-to-project" &&
+    template !== "verification-optimizer" &&
+    template !== "x-article-summary" &&
+    template !== "deep-research"
+  ) {
     throw new Error(`Unknown workflow template: ${template}`);
   }
   return template;
@@ -498,15 +594,22 @@ function parseDeepResearchCliConfig(args: {
 }): Partial<DeepResearchDefaults> {
   const config: Partial<DeepResearchDefaults> = {};
   if (args.providers !== undefined) {
-    const providers = args.providers.split(",").map((provider) => provider.trim()).filter(Boolean).map((provider) => {
-      const normalized = provider.toLowerCase();
-      if (normalized === DeepResearchProvider.EXA) return DeepResearchProvider.EXA;
-      if (normalized === DeepResearchProvider.GROK) return DeepResearchProvider.GROK;
-      if (normalized === DeepResearchProvider.TAVILY) return DeepResearchProvider.TAVILY;
-      if (normalized === DeepResearchProvider.PERPLEXITY) return DeepResearchProvider.PERPLEXITY;
-      if (normalized === DeepResearchProvider.COPILOT_LAST30DAYS) return DeepResearchProvider.COPILOT_LAST30DAYS;
-      throw new Error(`Invalid --providers value: ${provider}. Expected exa, grok, tavily, perplexity, or copilot-last30days.`);
-    });
+    const providers = args.providers
+      .split(",")
+      .map((provider) => provider.trim())
+      .filter(Boolean)
+      .map((provider) => {
+        const normalized = provider.toLowerCase();
+        if (normalized === DeepResearchProvider.EXA) return DeepResearchProvider.EXA;
+        if (normalized === DeepResearchProvider.GROK) return DeepResearchProvider.GROK;
+        if (normalized === DeepResearchProvider.TAVILY) return DeepResearchProvider.TAVILY;
+        if (normalized === DeepResearchProvider.PERPLEXITY) return DeepResearchProvider.PERPLEXITY;
+        if (normalized === DeepResearchProvider.COPILOT_LAST30DAYS)
+          return DeepResearchProvider.COPILOT_LAST30DAYS;
+        throw new Error(
+          `Invalid --providers value: ${provider}. Expected exa, grok, tavily, perplexity, or copilot-last30days.`,
+        );
+      });
     if (providers.length === 0) {
       throw new Error("Invalid --providers value. Expected at least one provider.");
     }
@@ -516,10 +619,16 @@ function parseDeepResearchCliConfig(args: {
     config.maxIterations = parsePositiveIntegerFlag("--max-iterations", args.maxIterations);
   }
   if (args.questionsPerIteration !== undefined) {
-    config.questionsPerIteration = parsePositiveIntegerFlag("--questions-per-iteration", args.questionsPerIteration);
+    config.questionsPerIteration = parsePositiveIntegerFlag(
+      "--questions-per-iteration",
+      args.questionsPerIteration,
+    );
   }
   if (args.maxResultsPerQuestion !== undefined) {
-    config.maxResultsPerQuestion = parsePositiveIntegerFlag("--max-results-per-question", args.maxResultsPerQuestion);
+    config.maxResultsPerQuestion = parsePositiveIntegerFlag(
+      "--max-results-per-question",
+      args.maxResultsPerQuestion,
+    );
   }
   if (args.visualize !== undefined) {
     config.visualize = args.visualize;
@@ -555,11 +664,15 @@ function findWorkflowNode(
   originalPlan: { nodes: RuntimeWorkflowNode[] },
   nodeId: string,
 ): RuntimeWorkflowNode | undefined {
-  return currentPlan.nodes.find((node) => node.id === nodeId)
-    ?? originalPlan.nodes.find((node) => node.id === nodeId);
+  return (
+    currentPlan.nodes.find((node) => node.id === nodeId) ??
+    originalPlan.nodes.find((node) => node.id === nodeId)
+  );
 }
 
-export function createWorkflowProgressReporter(stream: Pick<NodeJS.WritableStream, "write"> = process.stderr) {
+export function createWorkflowProgressReporter(
+  stream: Pick<NodeJS.WritableStream, "write"> = process.stderr,
+) {
   let timer: NodeJS.Timeout | undefined;
 
   return {
@@ -645,10 +758,15 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     process.stdout.write(`Workflow dashboard: ${dashboardServer.url}\n`);
     await new Promise<void>((resolve) => {
       const stopDashboard = () => {
-        dashboardServer.stop().then(() => resolve()).catch((error) => {
-          process.stderr.write(`Dashboard shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`);
-          resolve();
-        });
+        dashboardServer
+          .stop()
+          .then(() => resolve())
+          .catch((error) => {
+            process.stderr.write(
+              `Dashboard shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`,
+            );
+            resolve();
+          });
       };
       process.once("SIGINT", stopDashboard);
       process.once("SIGTERM", stopDashboard);
@@ -659,7 +777,12 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   const { assertValidEntityCatalog } = await import("./entities/index.js");
   assertValidEntityCatalog(process.cwd());
 
-  if (!args.inputPath && !args.prompt && args.template !== "source-to-project" && args.template !== "verification-optimizer") {
+  if (
+    !args.inputPath &&
+    !args.prompt &&
+    args.template !== "source-to-project" &&
+    args.template !== "verification-optimizer"
+  ) {
     throw new Error("Missing required --input <path> or --prompt <text> argument.");
   }
   if (args.inputPath && args.prompt) {
@@ -667,14 +790,27 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   }
 
   const promptWasUserProvided = Boolean(args.prompt || args.inputPath);
-  const rawPrompt = args.prompt ?? (args.inputPath ? await readFile(args.inputPath, "utf8") : `Source: ${args.source ?? ""}\nProject: ${args.project ?? args.projectPath ?? ""}`);
-  const xPostUrlsToResolve = extractXPostUrls([rawPrompt, args.source].filter((part): part is string => Boolean(part)).join("\n"));
+  const rawPrompt =
+    args.prompt ??
+    (args.inputPath
+      ? await readFile(args.inputPath, "utf8")
+      : `Source: ${args.source ?? ""}\nProject: ${args.project ?? args.projectPath ?? ""}`);
+  const xPostUrlsToResolve = extractXPostUrls(
+    [rawPrompt, args.source].filter((part): part is string => Boolean(part)).join("\n"),
+  );
   if (xPostUrlsToResolve.length > 0) {
-    process.stderr.write(`[weavekit] Resolving ${xPostUrlsToResolve.length} X post source${xPostUrlsToResolve.length === 1 ? "" : "s"} with grok...\n`);
+    process.stderr.write(
+      `[weavekit] Resolving ${xPostUrlsToResolve.length} X post source${xPostUrlsToResolve.length === 1 ? "" : "s"} with grok...\n`,
+    );
   }
-  const preprocessedPrompt = await preprocessWorkflowPrompt({ prompt: rawPrompt, source: args.source });
+  const preprocessedPrompt = await preprocessWorkflowPrompt({
+    prompt: rawPrompt,
+    source: args.source,
+  });
   if (xPostUrlsToResolve.length > 0) {
-    process.stderr.write(`[weavekit] X post source${xPostUrlsToResolve.length === 1 ? "" : "s"} resolved.\n`);
+    process.stderr.write(
+      `[weavekit] X post source${xPostUrlsToResolve.length === 1 ? "" : "s"} resolved.\n`,
+    );
   }
   const prompt = preprocessedPrompt.prompt;
   const fetchedXPosts = preprocessedPrompt.fetchedXPosts;
@@ -683,7 +819,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   const isSourceToProject = args.template === "source-to-project";
   const isVerificationOptimizer = args.template === "verification-optimizer";
   const resolvedSource = isSourceToProject
-    ? args.source ?? inferSourceReferenceFromPrompt(prompt) ?? (promptWasUserProvided ? prompt.trim() : undefined)
+    ? (args.source ??
+      inferSourceReferenceFromPrompt(prompt) ??
+      (promptWasUserProvided ? prompt.trim() : undefined))
     : args.source;
   let sourceToProjectProject: ProjectCatalogEntry | undefined;
   let sourceToProjectMode: "advisory" | "autonomous-pr" | undefined;
@@ -691,7 +829,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   let verificationOptimizerMode: "advisory" | "autonomous-pr" | undefined;
   if (isSourceToProject) {
     if (!resolvedSource) {
-      throw new Error("Missing source-to-project source. Provide --source <url-or-path>, include a URL/source:/blog: line in the prompt/input, or pass the source text directly as --prompt/--input.");
+      throw new Error(
+        "Missing source-to-project source. Provide --source <url-or-path>, include a URL/source:/blog: line in the prompt/input, or pass the source text directly as --prompt/--input.",
+      );
     }
     if (!args.project && !args.projectPath) {
       throw new Error("Missing required --project <id> or --project-path <path> argument.");
@@ -712,8 +852,13 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       ? resolveProjectCatalogEntry(typedConfig, args.project)
       : createProjectCatalogEntryFromPath(args.projectPath!);
     verificationOptimizerMode = args.mode ?? typedConfig.verificationOptimizer.mode;
-    if (verificationOptimizerMode === "autonomous-pr" && (!args.project || !verificationOptimizerProject.autonomousPrAllowed)) {
-      throw new Error(`Autonomous PR mode is disabled for project ${verificationOptimizerProject.id}.`);
+    if (
+      verificationOptimizerMode === "autonomous-pr" &&
+      (!args.project || !verificationOptimizerProject.autonomousPrAllowed)
+    ) {
+      throw new Error(
+        `Autonomous PR mode is disabled for project ${verificationOptimizerProject.id}.`,
+      );
     }
   }
   const prefetchedSourceContent = isSourceToProject
@@ -759,38 +904,48 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   };
   const progress = createWorkflowProgressReporter();
   let plan;
-  let templateCandidate: Awaited<ReturnType<typeof workflowTemplateCandidateModule.loadTemplateOptimizerCandidatePlan>> | undefined;
+  let templateCandidate:
+    | Awaited<ReturnType<typeof workflowTemplateCandidateModule.loadTemplateOptimizerCandidatePlan>>
+    | undefined;
 
   progress.start("Planning workflow DAG with the BAML planner...");
   try {
     if (args.templateCandidateRunId) {
       templateCandidate = await workflowTemplateCandidateModule.loadTemplateOptimizerCandidatePlan({
-          runsRoot: args.templateCandidateRunsRoot ?? join("evals", "template-optimizer", "runs"),
-          runId: args.templateCandidateRunId,
-          candidateId: args.templateCandidateId,
+        runsRoot: args.templateCandidateRunsRoot ?? join("evals", "template-optimizer", "runs"),
+        runId: args.templateCandidateRunId,
+        candidateId: args.templateCandidateId,
       });
     }
     plan = templateCandidate
       ? workflowTemplateCandidateModule.materializeTemplateOptimizerCandidatePlan({
-        candidate: templateCandidate,
-        objective,
-        runId: args.templateCandidateRunId!,
-      })
+          candidate: templateCandidate,
+          objective,
+          runId: args.templateCandidateRunId!,
+        })
       : templateId
         ? workflowTemplatesModule.materializeWorkflowPlan(templateId, {
-        objective,
-        source: resolvedSource,
-        project: args.project,
-        projectPath: args.projectPath,
-        mode: sourceToProjectMode ?? verificationOptimizerMode ?? args.mode,
-        externalResearch: isVerificationOptimizer ? typedConfig.verificationOptimizer.externalResearch : undefined,
-        providers: isDeepResearch ? deepResearchConfig.providers : undefined,
-        maxIterations: isDeepResearch ? deepResearchConfig.maxIterations : undefined,
-        questionsPerIteration: isDeepResearch ? deepResearchConfig.questionsPerIteration : undefined,
-        maxResultsPerQuestion: isDeepResearch ? deepResearchConfig.maxResultsPerQuestion : undefined,
-        providerRetryAttempts: isDeepResearch ? deepResearchConfig.providerRetryAttempts : undefined,
-        visualize: isDeepResearch ? deepResearchConfig.visualize : undefined,
-      })
+            objective,
+            source: resolvedSource,
+            project: args.project,
+            projectPath: args.projectPath,
+            mode: sourceToProjectMode ?? verificationOptimizerMode ?? args.mode,
+            externalResearch: isVerificationOptimizer
+              ? typedConfig.verificationOptimizer.externalResearch
+              : undefined,
+            providers: isDeepResearch ? deepResearchConfig.providers : undefined,
+            maxIterations: isDeepResearch ? deepResearchConfig.maxIterations : undefined,
+            questionsPerIteration: isDeepResearch
+              ? deepResearchConfig.questionsPerIteration
+              : undefined,
+            maxResultsPerQuestion: isDeepResearch
+              ? deepResearchConfig.maxResultsPerQuestion
+              : undefined,
+            providerRetryAttempts: isDeepResearch
+              ? deepResearchConfig.providerRetryAttempts
+              : undefined,
+            visualize: isDeepResearch ? deepResearchConfig.visualize : undefined,
+          })
         : await planner.planWorkflow({ objective, prompt, templateId: "implementation-review" });
     progress.stop("Workflow plan generated.");
   } catch (error) {
@@ -799,27 +954,34 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   }
 
   if (args.command === "plan" || args.dryRun) {
-    await workflowArtifactsModule.writeMacroWorkflowArtifacts({ outputDir: runDescriptor.outputDir, state: {
-      runId: runDescriptor.runId,
-      runName: runDescriptor.runName,
-      planId: plan.id,
-      objective: plan.objective,
-      templateId: plan.templateId,
-      status: "passed",
-      startedAt: new Date(),
-      completedAt: new Date(),
-      plan,
-      currentPlan: plan,
-      nodeResults: [],
-      replans: [],
-      activeNodeId: undefined,
-      usage: usageCollector.summarize(),
-    }});
+    await workflowArtifactsModule.writeMacroWorkflowArtifacts({
+      outputDir: runDescriptor.outputDir,
+      state: {
+        runId: runDescriptor.runId,
+        runName: runDescriptor.runName,
+        planId: plan.id,
+        objective: plan.objective,
+        templateId: plan.templateId,
+        status: "passed",
+        startedAt: new Date(),
+        completedAt: new Date(),
+        plan,
+        currentPlan: plan,
+        nodeResults: [],
+        replans: [],
+        activeNodeId: undefined,
+        usage: usageCollector.summarize(),
+      },
+    });
     return formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir });
   }
 
-  let dashboardServer: Awaited<ReturnType<typeof workflowDashboardModule.createWorkflowDashboardServer>> | undefined;
-  let dashboardPublisher: Awaited<ReturnType<typeof workflowDashboardModule.createWorkflowDashboardPublisher>> | undefined;
+  let dashboardServer:
+    | Awaited<ReturnType<typeof workflowDashboardModule.createWorkflowDashboardServer>>
+    | undefined;
+  let dashboardPublisher:
+    | Awaited<ReturnType<typeof workflowDashboardModule.createWorkflowDashboardPublisher>>
+    | undefined;
   const replayEvents: WorkflowReplayEvent[] = [];
   let replayEventWrite = Promise.resolve();
   let stateSnapshotWrite = Promise.resolve();
@@ -838,19 +1000,30 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     activeNodeId: undefined,
   };
   stateSnapshotWrite = stateSnapshotWrite.then(async () => {
-    await workflowArtifactsModule.writeMacroWorkflowStateArtifact(runDescriptor.outputDir, initialRunState);
+    await workflowArtifactsModule.writeMacroWorkflowStateArtifact(
+      runDescriptor.outputDir,
+      initialRunState,
+    );
   });
   if (args.dashboard) {
-    dashboardServer = await workflowDashboardModule.createWorkflowDashboardServer(initialRunState, { port: args.dashboardPort, watchDir: args.outputDir, configPath: args.configPath });
+    dashboardServer = await workflowDashboardModule.createWorkflowDashboardServer(initialRunState, {
+      port: args.dashboardPort,
+      watchDir: args.outputDir,
+      configPath: args.configPath,
+    });
   } else if (args.dashboardUrl) {
-    dashboardPublisher = await workflowDashboardModule.createWorkflowDashboardPublisher(args.dashboardUrl);
+    dashboardPublisher = await workflowDashboardModule.createWorkflowDashboardPublisher(
+      args.dashboardUrl,
+    );
   }
 
   const sourceToProjectNotifier = isSourceToProject
     ? workflowSourceToProjectModule.createDefaultSourceToProjectNotifier()
     : undefined;
 
-  const needsDeepResearchRuntime = isDeepResearch || (isVerificationOptimizer && typedConfig.verificationOptimizer.externalResearch);
+  const needsDeepResearchRuntime =
+    isDeepResearch ||
+    (isVerificationOptimizer && typedConfig.verificationOptimizer.externalResearch);
   const deepResearchExaMcp = needsDeepResearchRuntime
     ? await workflowDeepResearchModule.createDefaultDeepResearchExaMcpConnection()
     : undefined;
@@ -858,86 +1031,33 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   try {
     const harnesses = isSourceToProject
       ? workflowSourceToProjectModule.createSourceToProjectHarnessRegistry({
-        source: resolvedSource!,
-        originalPrompt: prompt,
-        prefetchedSourceContent,
-        project: sourceToProjectProject!,
-        mode: sourceToProjectMode!,
-        maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
-        thresholds: {
-          ...typedConfig.sourceToProject.thresholds,
-          ...sourceToProjectProject!.thresholds,
-        },
-        sourceToProject: typedConfig.sourceToProject,
-        tooling: typedConfig.tooling,
-        plugins: typedConfig.plugins,
-        notifier: sourceToProjectNotifier,
-        copilot: typedConfig.sourceToProject.offline
-          ? workflowSourceToProjectModule.createOfflineSourceToProjectHarnessClient()
-          : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
-            copilot: typedConfig.copilot,
-            sourceToProject: typedConfig.sourceToProject,
-            onUserInputRequest: workflowSourceToProjectModule.createSourceToProjectUserInputRequestHandler({
-              project: sourceToProjectProject!,
-              source: resolvedSource!,
-              notifier: sourceToProjectNotifier!,
-            }),
-            onLog: (event) => {
-              process.stderr.write(formatWorkflowCopilotLog(event));
-            },
-            onUsage: (event) => {
-              usageCollector.record({
-                executor: "copilot-sdk",
-                operation: event.operation,
-                mode: event.mode,
-                model: event.model,
-                cwd: event.cwd,
-                nodeId: event.nodeId,
-                label: event.label,
-                ...event.usage,
-              });
-            },
-          }),
-        baml: typedConfig.sourceToProject.offline
-          ? undefined
-          : workflowSourceToProjectModule.createLiveSourceToProjectBamlClient({ usageCollector }),
-      })
-      : isDeepResearch
-        ? workflowDeepResearchModule.createDeepResearchHarnessRegistry({
-          config: deepResearchConfig,
-          exaMcp: deepResearchExaMcp?.client,
+          source: resolvedSource!,
+          originalPrompt: prompt,
+          prefetchedSourceContent,
+          project: sourceToProjectProject!,
+          mode: sourceToProjectMode!,
+          maxOpportunities:
+            sourceToProjectProject!.maxOpportunities ??
+            typedConfig.sourceToProject.maxOpportunities,
+          thresholds: {
+            ...typedConfig.sourceToProject.thresholds,
+            ...sourceToProjectProject!.thresholds,
+          },
+          sourceToProject: typedConfig.sourceToProject,
           tooling: typedConfig.tooling,
-          copilot: workflowSourceToProjectModule.createCopilotSdkHarnessClient({
-            model: typedConfig.copilot.model ?? "gpt-5.5",
-            copilot: typedConfig.copilot,
-            onLog: (event) => {
-              process.stderr.write(formatWorkflowCopilotLog(event));
-            },
-            onUsage: (event) => {
-              usageCollector.record({
-                executor: "copilot-sdk",
-                operation: event.operation,
-                mode: event.mode,
-                model: event.model,
-                cwd: event.cwd,
-                nodeId: event.nodeId,
-                label: event.label,
-                ...event.usage,
-              });
-            },
-          }),
-          baml: workflowDeepResearchModule.createLiveDeepResearchBamlClient({ usageCollector }),
-        })
-        : isVerificationOptimizer
-          ? workflowVerificationOptimizerModule.createVerificationOptimizerHarnessRegistry({
-            project: verificationOptimizerProject!,
-            mode: verificationOptimizerMode!,
-            verificationOptimizer: typedConfig.verificationOptimizer,
-            copilot: typedConfig.sourceToProject.offline
-              ? workflowVerificationOptimizerModule.createOfflineVerificationOptimizerHarnessClient()
-              : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+          plugins: typedConfig.plugins,
+          notifier: sourceToProjectNotifier,
+          copilot: typedConfig.sourceToProject.offline
+            ? workflowSourceToProjectModule.createOfflineSourceToProjectHarnessClient()
+            : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
                 copilot: typedConfig.copilot,
                 sourceToProject: typedConfig.sourceToProject,
+                onUserInputRequest:
+                  workflowSourceToProjectModule.createSourceToProjectUserInputRequestHandler({
+                    project: sourceToProjectProject!,
+                    source: resolvedSource!,
+                    notifier: sourceToProjectNotifier!,
+                  }),
                 onLog: (event) => {
                   process.stderr.write(formatWorkflowCopilotLog(event));
                 },
@@ -954,40 +1074,98 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
                   });
                 },
               }),
-            baml: typedConfig.sourceToProject.offline
-              ? undefined
-              : workflowVerificationOptimizerModule.createLiveVerificationOptimizerBamlClient(),
-            deepResearch: typedConfig.verificationOptimizer.externalResearch
-              ? {
-                config: deepResearchConfig,
-                exaMcp: deepResearchExaMcp?.client,
-                tooling: typedConfig.tooling,
-                copilot: workflowSourceToProjectModule.createCopilotSdkHarnessClient({
-                  model: typedConfig.copilot.model ?? "gpt-5.5",
-                  copilot: typedConfig.copilot,
-                  onLog: (event) => {
-                    process.stderr.write(formatWorkflowCopilotLog(event));
-                  },
-                  onUsage: (event) => {
-                    usageCollector.record({
-                      executor: "copilot-sdk",
-                      operation: event.operation,
-                      mode: event.mode,
-                      model: event.model,
-                      cwd: event.cwd,
-                      nodeId: event.nodeId,
-                      label: event.label,
-                      ...event.usage,
-                    });
-                  },
-                }),
-                baml: workflowDeepResearchModule.createLiveDeepResearchBamlClient({ usageCollector }),
-              }
-              : undefined,
+          baml: typedConfig.sourceToProject.offline
+            ? undefined
+            : workflowSourceToProjectModule.createLiveSourceToProjectBamlClient({ usageCollector }),
+        })
+      : isDeepResearch
+        ? workflowDeepResearchModule.createDeepResearchHarnessRegistry({
+            config: deepResearchConfig,
+            exaMcp: deepResearchExaMcp?.client,
+            tooling: typedConfig.tooling,
+            copilot: workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+              model: typedConfig.copilot.model ?? "gpt-5.5",
+              copilot: typedConfig.copilot,
+              onLog: (event) => {
+                process.stderr.write(formatWorkflowCopilotLog(event));
+              },
+              onUsage: (event) => {
+                usageCollector.record({
+                  executor: "copilot-sdk",
+                  operation: event.operation,
+                  mode: event.mode,
+                  model: event.model,
+                  cwd: event.cwd,
+                  nodeId: event.nodeId,
+                  label: event.label,
+                  ...event.usage,
+                });
+              },
+            }),
+            baml: workflowDeepResearchModule.createLiveDeepResearchBamlClient({ usageCollector }),
           })
-        : templateId === "x-article-summary"
-          ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)
-          : workflowHarnessModule.createStaticHarnessRegistry();
+        : isVerificationOptimizer
+          ? workflowVerificationOptimizerModule.createVerificationOptimizerHarnessRegistry({
+              project: verificationOptimizerProject!,
+              mode: verificationOptimizerMode!,
+              verificationOptimizer: typedConfig.verificationOptimizer,
+              copilot: typedConfig.sourceToProject.offline
+                ? workflowVerificationOptimizerModule.createOfflineVerificationOptimizerHarnessClient()
+                : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+                    copilot: typedConfig.copilot,
+                    sourceToProject: typedConfig.sourceToProject,
+                    onLog: (event) => {
+                      process.stderr.write(formatWorkflowCopilotLog(event));
+                    },
+                    onUsage: (event) => {
+                      usageCollector.record({
+                        executor: "copilot-sdk",
+                        operation: event.operation,
+                        mode: event.mode,
+                        model: event.model,
+                        cwd: event.cwd,
+                        nodeId: event.nodeId,
+                        label: event.label,
+                        ...event.usage,
+                      });
+                    },
+                  }),
+              baml: typedConfig.sourceToProject.offline
+                ? undefined
+                : workflowVerificationOptimizerModule.createLiveVerificationOptimizerBamlClient(),
+              deepResearch: typedConfig.verificationOptimizer.externalResearch
+                ? {
+                    config: deepResearchConfig,
+                    exaMcp: deepResearchExaMcp?.client,
+                    tooling: typedConfig.tooling,
+                    copilot: workflowSourceToProjectModule.createCopilotSdkHarnessClient({
+                      model: typedConfig.copilot.model ?? "gpt-5.5",
+                      copilot: typedConfig.copilot,
+                      onLog: (event) => {
+                        process.stderr.write(formatWorkflowCopilotLog(event));
+                      },
+                      onUsage: (event) => {
+                        usageCollector.record({
+                          executor: "copilot-sdk",
+                          operation: event.operation,
+                          mode: event.mode,
+                          model: event.model,
+                          cwd: event.cwd,
+                          nodeId: event.nodeId,
+                          label: event.label,
+                          ...event.usage,
+                        });
+                      },
+                    }),
+                    baml: workflowDeepResearchModule.createLiveDeepResearchBamlClient({
+                      usageCollector,
+                    }),
+                  }
+                : undefined,
+            })
+          : templateId === "x-article-summary"
+            ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)
+            : workflowHarnessModule.createStaticHarnessRegistry();
 
     const state = await workflowRunnerModule.runMacroWorkflow(plan, {
       harnesses,
@@ -996,34 +1174,36 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       expandAfterNode: isSourceToProject
         ? templateCandidate
           ? workflowTemplateCandidateModule.createTemplateOptimizerCandidateDynamicExpander({
-            candidate: templateCandidate,
-            mode: sourceToProjectMode!,
-            thresholds: {
-              ...typedConfig.sourceToProject.thresholds,
-              ...sourceToProjectProject!.thresholds,
-            },
-          })
+              candidate: templateCandidate,
+              mode: sourceToProjectMode!,
+              thresholds: {
+                ...typedConfig.sourceToProject.thresholds,
+                ...sourceToProjectProject!.thresholds,
+              },
+            })
           : workflowSourceToProjectModule.createSourceToProjectDynamicExpander({
-            source: resolvedSource!,
-            originalPrompt: prompt,
-            prefetchedSourceContent,
-            project: sourceToProjectProject!,
-            mode: sourceToProjectMode!,
-            maxOpportunities: sourceToProjectProject!.maxOpportunities ?? typedConfig.sourceToProject.maxOpportunities,
-            thresholds: {
-              ...typedConfig.sourceToProject.thresholds,
-              ...sourceToProjectProject!.thresholds,
-            },
-          })
+              source: resolvedSource!,
+              originalPrompt: prompt,
+              prefetchedSourceContent,
+              project: sourceToProjectProject!,
+              mode: sourceToProjectMode!,
+              maxOpportunities:
+                sourceToProjectProject!.maxOpportunities ??
+                typedConfig.sourceToProject.maxOpportunities,
+              thresholds: {
+                ...typedConfig.sourceToProject.thresholds,
+                ...sourceToProjectProject!.thresholds,
+              },
+            })
         : isDeepResearch
           ? workflowDeepResearchModule.createDeepResearchDynamicExpander()
           : isVerificationOptimizer
             ? workflowVerificationOptimizerModule.createVerificationOptimizerDynamicExpander({
-              project: verificationOptimizerProject!,
-              mode: verificationOptimizerMode!,
-              verificationOptimizer: typedConfig.verificationOptimizer,
-            })
-          : undefined,
+                project: verificationOptimizerProject!,
+                mode: verificationOptimizerMode!,
+                verificationOptimizer: typedConfig.verificationOptimizer,
+              })
+            : undefined,
       logger: workflowLoggerModule.createInMemoryMacroWorkflowLogger(),
       onStateChange: (nextState, event) => {
         const stateWithRun = {
@@ -1033,52 +1213,85 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         };
         const eventType = event.type ?? event.kind;
         if (eventType === MacroWorkflowEventKind.NODE_STARTED && event.nodeId) {
-          const startedNode = findWorkflowNode(stateWithRun.currentPlan, stateWithRun.plan, event.nodeId);
-          process.stderr.write(formatWorkflowNodeStartedMessage({
-            nodeId: event.nodeId,
-            title: startedNode?.title,
-            harness: startedNode?.harness,
-            kind: startedNode?.kind,
-          }));
+          const startedNode = findWorkflowNode(
+            stateWithRun.currentPlan,
+            stateWithRun.plan,
+            event.nodeId,
+          );
+          process.stderr.write(
+            formatWorkflowNodeStartedMessage({
+              nodeId: event.nodeId,
+              title: startedNode?.title,
+              harness: startedNode?.harness,
+              kind: startedNode?.kind,
+            }),
+          );
         }
         if (eventType === MacroWorkflowEventKind.NODE_WARNING && event.nodeId) {
-          const warningNode = findWorkflowNode(stateWithRun.currentPlan, stateWithRun.plan, event.nodeId);
-          process.stderr.write(formatWorkflowNodeWarningMessage({
-            nodeId: event.nodeId,
-            title: warningNode?.title,
-            warning: event.reason,
-          }));
+          const warningNode = findWorkflowNode(
+            stateWithRun.currentPlan,
+            stateWithRun.plan,
+            event.nodeId,
+          );
+          process.stderr.write(
+            formatWorkflowNodeWarningMessage({
+              nodeId: event.nodeId,
+              title: warningNode?.title,
+              warning: event.reason,
+            }),
+          );
         }
         if (eventType === MacroWorkflowEventKind.NODE_COMPLETED && event.nodeId) {
-          const completedResult = stateWithRun.nodeResults.find((result) => result.nodeId === event.nodeId);
-          const completedNode = findWorkflowNode(stateWithRun.currentPlan, stateWithRun.plan, event.nodeId);
-          process.stderr.write(formatWorkflowNodeCompletedMessage({
-            nodeId: event.nodeId,
-            title: completedNode?.title,
-            status: completedResult?.status ?? event.status,
-            output: completedResult?.output,
-            artifacts: completedResult?.artifacts,
-          }));
+          const completedResult = stateWithRun.nodeResults.find(
+            (result) => result.nodeId === event.nodeId,
+          );
+          const completedNode = findWorkflowNode(
+            stateWithRun.currentPlan,
+            stateWithRun.plan,
+            event.nodeId,
+          );
+          process.stderr.write(
+            formatWorkflowNodeCompletedMessage({
+              nodeId: event.nodeId,
+              title: completedNode?.title,
+              status: completedResult?.status ?? event.status,
+              output: completedResult?.output,
+              artifacts: completedResult?.artifacts,
+            }),
+          );
         }
         if (eventType === MacroWorkflowEventKind.NODE_FAILED && event.nodeId) {
-          const failedResult = stateWithRun.nodeResults.find((result) => result.nodeId === event.nodeId);
-          const failedNode = findWorkflowNode(stateWithRun.currentPlan, stateWithRun.plan, event.nodeId);
-          process.stderr.write(formatWorkflowNodeFailureMessage({
-            nodeId: event.nodeId,
-            title: failedNode?.title,
-            status: failedResult?.status ?? event.status,
-            error: failedResult?.error,
-            output: failedResult?.output,
-          }));
+          const failedResult = stateWithRun.nodeResults.find(
+            (result) => result.nodeId === event.nodeId,
+          );
+          const failedNode = findWorkflowNode(
+            stateWithRun.currentPlan,
+            stateWithRun.plan,
+            event.nodeId,
+          );
+          process.stderr.write(
+            formatWorkflowNodeFailureMessage({
+              nodeId: event.nodeId,
+              title: failedNode?.title,
+              status: failedResult?.status ?? event.status,
+              error: failedResult?.error,
+              output: failedResult?.output,
+            }),
+          );
         }
         if (eventType === MacroWorkflowEventKind.RUN_COMPLETED) {
-          process.stderr.write(formatWorkflowRunCompletedMessage({
-            status: event.status ?? stateWithRun.status,
-            outputDir: runDescriptor.outputDir,
-          }));
+          process.stderr.write(
+            formatWorkflowRunCompletedMessage({
+              status: event.status ?? stateWithRun.status,
+              outputDir: runDescriptor.outputDir,
+            }),
+          );
         }
         stateSnapshotWrite = stateSnapshotWrite.then(async () => {
-          await workflowArtifactsModule.writeMacroWorkflowStateArtifact(runDescriptor.outputDir, stateWithRun);
+          await workflowArtifactsModule.writeMacroWorkflowStateArtifact(
+            runDescriptor.outputDir,
+            stateWithRun,
+          );
         });
         if (dashboardServer) {
           dashboardServer.publishState(stateWithRun, event, replayEvents);
@@ -1086,7 +1299,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         }
         if (dashboardPublisher) {
           void dashboardPublisher.publishState(stateWithRun, event, replayEvents).catch((error) => {
-            process.stderr.write(`[weavekit] Dashboard update failed: ${error instanceof Error ? error.message : String(error)}\n`);
+            process.stderr.write(
+              `[weavekit] Dashboard update failed: ${error instanceof Error ? error.message : String(error)}\n`,
+            );
           });
         }
       },
@@ -1102,10 +1317,23 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     state.runId = runDescriptor.runId;
     state.runName = runDescriptor.runName;
     state.usage = usageCollector.summarize();
-    await workflowArtifactsModule.writeMacroWorkflowArtifacts({ outputDir: runDescriptor.outputDir, state, replayEvents });
+    await workflowArtifactsModule.writeMacroWorkflowArtifacts({
+      outputDir: runDescriptor.outputDir,
+      state,
+      replayEvents,
+    });
     process.stderr.write(workflowUsageModule.renderWorkflowUsageSummary(state.usage));
     assertWorkflowRunSucceeded(state);
-    return [formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir }), dashboardServer ? `Dashboard: ${dashboardServer.url}` : args.dashboardUrl ? `Dashboard: ${args.dashboardUrl}` : ""].filter(Boolean).join("\n");
+    return [
+      formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir }),
+      dashboardServer
+        ? `Dashboard: ${dashboardServer.url}`
+        : args.dashboardUrl
+          ? `Dashboard: ${args.dashboardUrl}`
+          : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   } finally {
     await deepResearchExaMcp?.close();
     if (dashboardServer) {
@@ -1114,18 +1342,26 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   }
 }
 
-export function assertWorkflowRunSucceeded(state: Pick<MacroWorkflowRunStateLike, "status" | "nodeResults">): void {
+export function assertWorkflowRunSucceeded(
+  state: Pick<MacroWorkflowRunStateLike, "status" | "nodeResults">,
+): void {
   if (state.status === WorkflowNodeStatus.PASSED) {
     return;
   }
-  const failedResult = state.nodeResults.find((result) => result.status !== WorkflowNodeStatus.PASSED && result.status !== WorkflowNodeStatus.SKIPPED);
+  const failedResult = state.nodeResults.find(
+    (result) =>
+      result.status !== WorkflowNodeStatus.PASSED && result.status !== WorkflowNodeStatus.SKIPPED,
+  );
   const failureDetail = failedResult
     ? `${failedResult.nodeId}: ${failedResult.error ?? failedResult.output}`
     : `status ${state.status}`;
   throw new Error(`Workflow failed at ${failureDetail}`);
 }
 
-function findPrefetchedXPostContent(fetchedXPosts: XPostFetchResult[], source: string | undefined): string | undefined {
+function findPrefetchedXPostContent(
+  fetchedXPosts: XPostFetchResult[],
+  source: string | undefined,
+): string | undefined {
   if (!source || fetchedXPosts.length === 0) {
     return undefined;
   }
@@ -1134,7 +1370,9 @@ function findPrefetchedXPostContent(fetchedXPosts: XPostFetchResult[], source: s
   return fetchedXPosts.find((post) => sourceKeys.has(post.url))?.markdown;
 }
 
-function createXArticleSummaryHarnessRegistry(workflowHarnessModule: typeof import("./macro-workflow/harness.js")) {
+function createXArticleSummaryHarnessRegistry(
+  workflowHarnessModule: typeof import("./macro-workflow/harness.js"),
+) {
   return workflowHarnessModule.createStaticHarnessRegistry({
     [WorkflowHarnessKind.COPILOT_SDK]: async (node) => {
       const articleMarkdown = extractResolvedXArticleMarkdown(node.prompt) ?? node.prompt;
@@ -1189,7 +1427,9 @@ function summarizeMarkdown(markdown: string): string {
     .replace(/\s+/gu, " ")
     .trim();
   const clippedBody = body.length > 240 ? `${body.slice(0, 237).trimEnd()}...` : body;
-  return [title, clippedBody].filter(Boolean).join(": ") || "No resolved article content was available.";
+  return (
+    [title, clippedBody].filter(Boolean).join(": ") || "No resolved article content was available."
+  );
 }
 
 export async function main(): Promise<void> {
@@ -1229,7 +1469,12 @@ export async function main(): Promise<void> {
         logger: await createDecisionCouncilLogger(args.logFormat),
       });
 
-      process.stdout.write(formatDecisionCouncilSuccessMessage({ recommendation: report.recommendation, outputDir: args.outputDir }));
+      process.stdout.write(
+        formatDecisionCouncilSuccessMessage({
+          recommendation: report.recommendation,
+          outputDir: args.outputDir,
+        }),
+      );
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

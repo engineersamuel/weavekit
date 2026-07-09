@@ -1,9 +1,7 @@
 import type { McpServerConnection, ToolDefinition } from "@flue/runtime";
 import type { FlueDefaults } from "../config.js";
 import type { DecisionCouncilWorkflowDeps } from "../decision-council/workflow.js";
-import {
-  createDecisionCouncilWorkflow,
-} from "./decisionCouncilWorkflowDefinition.js";
+import { createDecisionCouncilWorkflow } from "./decisionCouncilWorkflowDefinition.js";
 import { getEnabledRemoteMcpSpecs } from "./mcpConfig.js";
 import { connectConfiguredMcpTools, type ConnectMcpServer } from "./mcpTools.js";
 
