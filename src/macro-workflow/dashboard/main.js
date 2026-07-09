@@ -1212,7 +1212,23 @@ function OpportunityHighlights({ review, acceptances }) {
                 <span>Applicability {formatScoreValue(opportunity.score.applicability)}</span>
                 <span>Impact {formatScoreValue(opportunity.score.impact)}</span>
                 <span>Confidence {formatScoreValue(opportunity.score.confidence)}</span>
+                <span>Risk {formatScoreValue(opportunity.score.risk)}</span>
+                <span>Cost {formatScoreValue(opportunity.score.implementationCost)}</span>
               </div>
+            ) : null}
+            {opportunity.score ? (
+              <dl className="score-reasoning-list">
+                <dt>Applicability</dt>
+                <dd>{opportunity.score.applicabilityReasoning}</dd>
+                <dt>Impact</dt>
+                <dd>{opportunity.score.impactReasoning}</dd>
+                <dt>Confidence</dt>
+                <dd>{opportunity.score.confidenceReasoning}</dd>
+                <dt>Risk</dt>
+                <dd>{opportunity.score.riskReasoning}</dd>
+                <dt>Implementation Cost</dt>
+                <dd>{opportunity.score.implementationCostReasoning}</dd>
+              </dl>
             ) : null}
             {acceptanceById.has(opportunity.id) ? (
               <div

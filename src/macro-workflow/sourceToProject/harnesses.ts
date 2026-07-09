@@ -133,9 +133,13 @@ export type OpportunityAcceptance = {
   acceptanceAverage: number;
   scores: {
     applicability: number;
+    applicabilityReasoning: string;
     impact: number;
+    impactReasoning: string;
     confidence: number;
+    confidenceReasoning: string;
     risk: number;
+    riskReasoning: string;
   };
   opportunity: Opportunity;
 };
@@ -2294,6 +2298,7 @@ export function createSourceToProjectHarnessRegistry(
       const rawPlanMarkdown = await readRawPlanMarkdownForReport(
         context.outputDir,
         plan?.rawPlanArtifactPath,
+        plan?.planFilePath,
       );
       const sourceToProjectReportMarkdown = buildOpportunityReportMarkdown({
         mode: options.mode,
@@ -2372,7 +2377,11 @@ export function createSourceToProjectHarnessRegistry(
       const plans = collectPlansFromDependencies(context, node);
       const rawPlanMarkdownByPlanIndex = await Promise.all(
         plans.map((plan) =>
-          readRawPlanMarkdownForReport(context.outputDir, plan.rawPlanArtifactPath),
+          readRawPlanMarkdownForReport(
+            context.outputDir,
+            plan.rawPlanArtifactPath,
+            plan.planFilePath,
+          ),
         ),
       );
       const sourceToProjectReportMarkdown = buildAggregateReportMarkdown({
@@ -2491,9 +2500,13 @@ export function selectAcceptedOpportunities(
     const acceptanceAverage = opportunityAcceptanceAverage(opportunity);
     const scores = {
       applicability: opportunity.score.applicability,
+      applicabilityReasoning: opportunity.score.applicabilityReasoning,
       impact: opportunity.score.impact,
+      impactReasoning: opportunity.score.impactReasoning,
       confidence: opportunity.score.confidence,
+      confidenceReasoning: opportunity.score.confidenceReasoning,
       risk: opportunity.score.risk,
+      riskReasoning: opportunity.score.riskReasoning,
     };
     if (opportunity.evidence.length === 0) {
       return {
@@ -2613,7 +2626,29 @@ function selectPromotedAcceptedCandidates(
       lesson: acceptedMemberOpportunities.map((opportunity) => opportunity.lesson).join("\n"),
       projectChange: candidate.bundle.maxPrScope,
       changeSurface: candidate.bundle.sharedChangeSurface,
-      score,
+      score: {
+        ...score,
+        applicabilityReasoning: summarizeBundleMemberReasoning(
+          acceptedMemberOpportunities,
+          (opportunity) => opportunity.score.applicabilityReasoning,
+        ),
+        impactReasoning: summarizeBundleMemberReasoning(
+          acceptedMemberOpportunities,
+          (opportunity) => opportunity.score.impactReasoning,
+        ),
+        confidenceReasoning: summarizeBundleMemberReasoning(
+          acceptedMemberOpportunities,
+          (opportunity) => opportunity.score.confidenceReasoning,
+        ),
+        implementationCostReasoning: summarizeBundleMemberReasoning(
+          acceptedMemberOpportunities,
+          (opportunity) => opportunity.score.implementationCostReasoning,
+        ),
+        riskReasoning: summarizeBundleMemberReasoning(
+          acceptedMemberOpportunities,
+          (opportunity) => opportunity.score.riskReasoning,
+        ),
+      },
       evidence,
       speculative: acceptedMemberOpportunities.every((opportunity) => opportunity.speculative),
     };
@@ -2686,9 +2721,13 @@ function bundleOpportunityAcceptance(
     acceptanceAverage,
     scores: {
       applicability: opportunity.score.applicability,
+      applicabilityReasoning: opportunity.score.applicabilityReasoning,
       impact: opportunity.score.impact,
+      impactReasoning: opportunity.score.impactReasoning,
       confidence: opportunity.score.confidence,
+      confidenceReasoning: opportunity.score.confidenceReasoning,
       risk: opportunity.score.risk,
+      riskReasoning: opportunity.score.riskReasoning,
     },
     opportunity,
   };
@@ -2976,7 +3015,19 @@ function withRawPlanArtifactPath(
 async function readRawPlanMarkdownForReport(
   outputDir: string | undefined,
   rawPlanArtifactPath: string | undefined | null,
+  planFilePath?: string | undefined | null,
 ): Promise<string | undefined> {
+  // Prefer the full Copilot session plan.md (planFilePath, already absolute) when it was
+  // captured -- the short rawPlanArtifactPath is often just the plan-mode agent's brief
+  // conversational acknowledgment (e.g. "Let me write the plan."), not the actual plan content.
+  if (planFilePath) {
+    try {
+      const fullPlanMarkdown = await readFile(planFilePath, "utf8");
+      return stripPlanningAgentPreamble(fullPlanMarkdown);
+    } catch {
+      // Fall through to the raw plan artifact below.
+    }
+  }
   if (!outputDir || !rawPlanArtifactPath) {
     return undefined;
   }
@@ -3518,6 +3569,14 @@ function buildOpportunityReportMarkdown(args: {
     `- Review status: ${args.status}`,
     `- Acceptance average: ${args.acceptance.acceptanceAverage.toFixed(2)}`,
     `- Acceptance rationale: ${args.acceptance.reason}`,
+    "",
+    "## Score Rationale",
+    "",
+    `- Applicability ${args.acceptance.scores.applicability.toFixed(2)}: ${args.acceptance.scores.applicabilityReasoning}`,
+    `- Impact ${args.acceptance.scores.impact.toFixed(2)}: ${args.acceptance.scores.impactReasoning}`,
+    `- Confidence ${args.acceptance.scores.confidence.toFixed(2)}: ${args.acceptance.scores.confidenceReasoning}`,
+    `- Risk ${args.acceptance.scores.risk.toFixed(2)}: ${args.acceptance.scores.riskReasoning}`,
+    `- Implementation Cost ${args.opportunity.score.implementationCost.toFixed(2)}: ${args.opportunity.score.implementationCostReasoning}`,
     "",
     "## Opportunity",
     "",
@@ -4130,6 +4189,15 @@ function averageOpportunityScore(opportunities: Opportunity[]): PlanCandidate["s
   return averageOpportunityScoreVector(opportunities.map((opportunity) => opportunity.score));
 }
 
+function summarizeBundleMemberReasoning(
+  opportunities: Opportunity[],
+  pickReasoning: (opportunity: Opportunity) => string,
+): string {
+  return opportunities
+    .map((opportunity) => `${opportunity.id}: ${pickReasoning(opportunity)}`)
+    .join(" | ");
+}
+
 function sourceCoreFitScore(text: string): number {
   const normalized = text.toLowerCase();
   const groups = [
@@ -4261,10 +4329,19 @@ function createDeterministicBamlClient(
             changeSurface: projectBrief.changeSurfaces[0] ?? "src",
             score: {
               applicability: 0.9,
+              applicabilityReasoning:
+                "The source lesson maps directly onto an existing project change surface.",
               impact: 0.86,
+              impactReasoning:
+                "Applying the lesson is expected to meaningfully improve the target change surface.",
               confidence: 0.85,
+              confidenceReasoning:
+                "The deterministic offline harness has consistent source and project evidence.",
               implementationCost: 0.4,
+              implementationCostReasoning:
+                "The change is scoped to a single matching project change surface.",
               risk: 0.3,
+              riskReasoning: "Low regression risk since the change surface is narrow and reviewed.",
             },
             evidence: [...sourceAnalysis.evidence, ...projectBrief.evidence],
             speculative: false,

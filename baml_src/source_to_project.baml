@@ -36,10 +36,15 @@ class ProjectBrief {
 
 class OpportunityScore {
   applicability float @description("How directly the source lesson applies to the target project.")
+  applicabilityReasoning string @description("One or two sentences justifying the applicability score, citing the specific source lesson and project-brief evidence (change surfaces, constraints, goals) that support or limit the fit.")
   impact float @description("Expected user or maintainer value if the opportunity is implemented.")
+  impactReasoning string @description("One or two sentences justifying the impact score, citing the concrete user/maintainer value or lack thereof, grounded in project evidence.")
   confidence float @description("Confidence that the source and project evidence support this opportunity.")
+  confidenceReasoning string @description("One or two sentences justifying the confidence score, citing how strong or weak the corroborating source and project evidence is.")
   implementationCost float @description("Estimated implementation effort and complexity cost.")
+  implementationCostReasoning string @description("One or two sentences justifying the implementation cost score, citing the scope of files/systems likely touched and any complexity drivers.")
   risk float @description("Risk of regressions, unnecessary complexity, or poor fit.")
+  riskReasoning string @description("One or two sentences justifying the risk score, citing specific regression, complexity, or poor-fit concerns from the evidence.")
 }
 
 class Opportunity {
@@ -177,6 +182,7 @@ function MapSourceToProject(
     Do not promote implementation plumbing, endpoint abstraction, adapter layers, logging, or safety controls unless the ProjectBrief evidence shows the target project currently has that exact problem.
     If a source lesson is only an implementation detail of the source and does not improve the target project's user workflow, put it in nonApplicableLessons.
     If no high-quality source-to-project improvement exists, return low scores or nonApplicableLessons instead of forcing a recommendation.
+    Every score field must be paired with its own one-or-two sentence *Reasoning field that cites specific evidence (source lesson content, project-brief facts, or change-surface constraints) rather than restating the score in words.
     CRITICAL: Opportunities must propose changes exclusively within the target project's working tree (identified by projectBrief.projectId and projectBrief.displayName). Never propose changes to the workflow automation tool that ran this analysis (e.g., weakekit), its orchestration scripts, its plans/ directory, its src/ code, its CI configuration, or any validation plan documents stored in the workflow runner's repository. Those are the runner, not the target project. If a lesson only reveals a problem with how the workflow runner processes or identifies the target project, put it in nonApplicableLessons rather than creating an opportunity.
 
     {{ _.role("user") }}

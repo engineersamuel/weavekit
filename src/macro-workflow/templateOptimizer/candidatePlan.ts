@@ -30,9 +30,13 @@ type CandidateOpportunityAcceptance = {
   acceptanceAverage: number;
   scores: {
     applicability: number;
+    applicabilityReasoning: string;
     impact: number;
+    impactReasoning: string;
     confidence: number;
+    confidenceReasoning: string;
     risk: number;
+    riskReasoning: string;
   };
   opportunity: Opportunity;
 };
@@ -205,9 +209,13 @@ function selectAcceptedOpportunities(
       3;
     const scores = {
       applicability: opportunity.score.applicability,
+      applicabilityReasoning: opportunity.score.applicabilityReasoning,
       impact: opportunity.score.impact,
+      impactReasoning: opportunity.score.impactReasoning,
       confidence: opportunity.score.confidence,
+      confidenceReasoning: opportunity.score.confidenceReasoning,
       risk: opportunity.score.risk,
+      riskReasoning: opportunity.score.riskReasoning,
     };
     if (opportunity.evidence.length === 0) {
       return {

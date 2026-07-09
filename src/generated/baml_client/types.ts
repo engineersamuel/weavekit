@@ -265,10 +265,15 @@ export interface OpportunityCouncilReview {
 
 export interface OpportunityScore {
   applicability: number
+  applicabilityReasoning: string
   impact: number
+  impactReasoning: string
   confidence: number
+  confidenceReasoning: string
   implementationCost: number
+  implementationCostReasoning: string
   risk: number
+  riskReasoning: string
   
 }
 
