@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DeepResearchProvider,
+  defaultCacheConfig,
   expandHomePath,
   loadLocalEnvFiles,
   loadTypedWeavekitConfig,
@@ -540,6 +541,7 @@ directory = "/config/hve-core"
           knowledgeExport: "off" as const,
         },
       },
+      cache: defaultCacheConfig(),
     };
 
     expect(resolveProjectCatalogEntry(config, "weavekit").workingTree).toBe("/tmp/weavekit");
