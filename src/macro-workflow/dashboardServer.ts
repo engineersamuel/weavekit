@@ -68,6 +68,19 @@ export type WorkflowDashboardServerOptions = {
   prLauncher?: SourceToProjectPrLauncher;
 };
 
+type DashboardSseClient = {
+  response: ServerResponse;
+  runId?: string;
+  ready: boolean;
+};
+
+type RunSnapshotEntry = {
+  state: MacroWorkflowRunStateLike;
+  event?: MacroWorkflowEvent;
+  history?: WorkflowReplayEvent[];
+  run?: WorkflowDashboardRunSummary;
+};
+
 const CONTENT_TYPES = new Map<string, string>([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -87,14 +100,105 @@ export async function createWorkflowDashboardServer(
 
   await ensureDashboardBundle(dashboardDir, repoRoot);
   const watchDir = options.watchDir ? resolve(options.watchDir) : undefined;
-  const clients = new Set<{ response: ServerResponse }>();
+  const clients = new Set<DashboardSseClient>();
+  const runSnapshots = new Map<string, RunSnapshotEntry>();
+  const runSnapshotVersions = new Map<string, string>();
 
-  let latestState: MacroWorkflowRunStateLike | undefined = initialState;
-  let latestEvent: MacroWorkflowEvent | undefined;
-  let latestHistory: WorkflowReplayEvent[] | undefined;
-  let latestRun: WorkflowDashboardRunSummary | undefined;
+  let latestRunId: string | undefined = initialState?.runId;
   let latestRuns: WorkflowDashboardRunSummary[] | undefined;
-  let latestWatchSnapshotVersion: string | undefined;
+
+  if (initialState?.runId) {
+    const run = summarizeWorkflowRun(initialState, "", new Date());
+    runSnapshots.set(initialState.runId, { state: initialState, run });
+  }
+
+  const snapshotForRun = (runId: string | undefined): WorkflowDashboardSnapshot => {
+    const selectedRunId = runId ?? latestRunId;
+    const entry = selectedRunId ? runSnapshots.get(selectedRunId) : undefined;
+    return toSerializablePayload(
+      entry?.state,
+      entry?.event,
+      entry?.history,
+      entry?.run,
+      latestRuns,
+    );
+  };
+
+  const resolveSnapshotForRun = async (
+    runId: string | undefined,
+  ): Promise<WorkflowDashboardSnapshot> => {
+    let snapshot = snapshotForRun(runId);
+    if (runId || !watchDir) {
+      return snapshot;
+    }
+    await refreshWorkflowSnapshot(watchDir, undefined, (refreshedSnapshot) => {
+      snapshot = rememberSnapshot(refreshedSnapshot, { markLatest: true });
+    }).catch((error: unknown) => {
+      logDashboardError(
+        `Dashboard state refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    return snapshot;
+  };
+
+  const rememberSnapshot = (
+    snapshot: WorkflowDashboardSnapshot,
+    options: { markLatest: boolean },
+  ): WorkflowDashboardSnapshot => {
+    if (snapshot.runs) {
+      latestRuns = snapshot.runs;
+    }
+    const runId = snapshot.run?.runId ?? snapshot.state?.runId;
+    if (!runId || !snapshot.state) {
+      return toSerializablePayload(
+        snapshot.state,
+        snapshot.event,
+        snapshot.history,
+        snapshot.run,
+        latestRuns,
+      );
+    }
+
+    const existing = runSnapshots.get(runId);
+    const run =
+      snapshot.run ??
+      summarizeWorkflowRun(snapshot.state, existing?.run?.statePath ?? "", new Date());
+    const entry: RunSnapshotEntry = {
+      state: snapshot.state,
+      event: snapshot.event ?? existing?.event,
+      history: snapshot.history ?? existing?.history,
+      run,
+    };
+    runSnapshots.set(runId, entry);
+    if (options.markLatest) {
+      latestRunId = runId;
+    }
+    return toSerializablePayload(entry.state, entry.event, entry.history, entry.run, latestRuns);
+  };
+
+  const broadcastSnapshot = (snapshot: WorkflowDashboardSnapshot) => {
+    const runId = snapshot.activeRunId ?? snapshot.state?.runId;
+    if (!runId) {
+      return;
+    }
+    for (const client of clients) {
+      if (client.ready && (client.runId === runId || (!client.runId && latestRunId === runId))) {
+        writeSseEvent(client.response, "state", snapshot);
+      }
+    }
+  };
+
+  const closeSseClients = () => {
+    for (const client of clients) {
+      if (!client.response.writableEnded) {
+        client.response.end();
+      }
+      if (!client.response.destroyed) {
+        client.response.destroy();
+      }
+    }
+    clients.clear();
+  };
 
   const server = createServer(async (request, response) => {
     if (!request.url) {
@@ -105,12 +209,32 @@ export async function createWorkflowDashboardServer(
 
     const requestUrl = new URL(request.url, "http://127.0.0.1");
     if (requestUrl.pathname === "/events") {
-      const client = { response };
-      handleSseConnection(response, latestState, latestEvent, latestHistory);
-      clients.add(client);
-      request.on("close", () => {
+      const runId = requestUrl.searchParams.get("runId") ?? undefined;
+      const client: DashboardSseClient = { response, runId, ready: false };
+      let closed = false;
+      const cleanup = () => {
+        closed = true;
         clients.delete(client);
-      });
+      };
+      clients.add(client);
+      request.on("close", cleanup);
+      response.on("close", cleanup);
+      response.on("finish", cleanup);
+      if (watchDir) {
+        await refreshWorkflowSnapshot(watchDir, runId, (snapshot) => {
+          rememberSnapshot(snapshot, { markLatest: !runId });
+        }).catch((error: unknown) => {
+          logDashboardError(
+            `Dashboard SSE refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
+      if (closed || response.destroyed || response.writableEnded) {
+        cleanup();
+        return;
+      }
+      handleSseConnection(response, snapshotForRun(runId));
+      client.ready = true;
       return;
     }
 
@@ -138,23 +262,16 @@ export async function createWorkflowDashboardServer(
       }
 
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(
-        JSON.stringify(
-          toSerializablePayload(latestState, latestEvent, latestHistory, latestRun, latestRuns),
-        ),
-      );
+      response.end(JSON.stringify(await resolveSnapshotForRun(undefined)));
       return;
     }
 
     if (requestUrl.pathname === "/api/replay") {
+      const runId = requestUrl.searchParams.get("runId") ?? undefined;
+      let replaySnapshot: WorkflowDashboardSnapshot | undefined;
       if (watchDir) {
-        const runId = requestUrl.searchParams.get("runId") ?? undefined;
         await refreshWorkflowSnapshot(watchDir, runId, (snapshot) => {
-          latestState = snapshot.state;
-          latestEvent = snapshot.event;
-          latestHistory = snapshot.history;
-          latestRun = snapshot.run;
-          latestRuns = snapshot.runs;
+          replaySnapshot = rememberSnapshot(snapshot, { markLatest: !runId });
         }).catch((error: unknown) => {
           logDashboardError(
             `Dashboard replay refresh failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -162,23 +279,20 @@ export async function createWorkflowDashboardServer(
         });
       }
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(
-        JSON.stringify(
-          toSerializablePayload(latestState, latestEvent, latestHistory, latestRun, latestRuns),
-        ),
-      );
+      response.end(JSON.stringify(replaySnapshot ?? snapshotForRun(runId)));
       return;
     }
 
     if (requestUrl.pathname === "/api/runs") {
       if (watchDir) {
         latestRuns = await listWorkflowDashboardRuns(watchDir).catch(() => latestRuns);
+        latestRunId = latestRuns?.[0]?.runId ?? latestRunId;
       }
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(
         JSON.stringify({
           runs: latestRuns ?? [],
-          activeRunId: latestRun?.runId ?? latestState?.runId,
+          activeRunId: latestRunId,
         }),
       );
       return;
@@ -226,11 +340,12 @@ export async function createWorkflowDashboardServer(
       const body = await readRequestBody(request).catch(() => "");
       try {
         const payload = parsePrLaunchRequestBody(body);
+        const snapshot = snapshotForRun(payload.runId);
         const state = await readSelectedWorkflowStateForArtifact(
           watchDir,
           payload.runId,
-          latestState,
-          latestRun,
+          snapshot.state,
+          snapshot.run,
           latestRuns,
         );
         if (!state) {
@@ -268,18 +383,20 @@ export async function createWorkflowDashboardServer(
         return;
       }
 
+      const runId = requestUrl.searchParams.get("runId") ?? undefined;
+      const snapshot = snapshotForRun(runId);
       const filePath = await resolveRunArtifactRequest(
         requestUrl,
         watchDir,
-        latestRun,
+        snapshot.run,
         latestRuns,
       ).catch(() => undefined);
       if (!filePath) {
         const payloadArtifact = await resolveRunPayloadArtifactRequest(
           requestUrl,
           watchDir,
-          latestState,
-          latestRun,
+          snapshot.state,
+          snapshot.run,
           latestRuns,
         ).catch(() => undefined);
         if (payloadArtifact) {
@@ -364,42 +481,68 @@ export async function createWorkflowDashboardServer(
     event: MacroWorkflowEvent,
     history?: WorkflowReplayEvent[],
   ) => {
-    latestState = nextState;
-    latestEvent = event;
-    if (history) {
-      latestHistory = history;
+    if (!nextState.runId) {
+      return;
     }
-    if (nextState.runId) {
-      const existingRun =
-        latestRun?.runId === nextState.runId
-          ? latestRun
-          : latestRuns?.find((run) => run.runId === nextState.runId);
-      latestRun = summarizeWorkflowRun(nextState, existingRun?.statePath ?? "", new Date());
-    }
-    const snapshot = toSerializablePayload(nextState, event, latestHistory, latestRun, latestRuns);
-    for (const client of clients) {
-      writeSseEvent(client.response, "state", snapshot);
-    }
+    const existing = runSnapshots.get(nextState.runId);
+    const existingRun = existing?.run ?? latestRuns?.find((run) => run.runId === nextState.runId);
+    const run = summarizeWorkflowRun(nextState, existingRun?.statePath ?? "", new Date());
+    const snapshot = rememberSnapshot(
+      {
+        state: nextState,
+        event,
+        history: history ?? existing?.history,
+        run,
+        runs: latestRuns,
+        activeRunId: nextState.runId,
+      },
+      { markLatest: true },
+    );
+    broadcastSnapshot(snapshot);
   };
 
   let watchInterval: NodeJS.Timeout | undefined;
+  let watchRefreshInFlight = false;
   if (watchDir) {
+    const refreshWatchedSnapshots = async () => {
+      const subscribedRunIds = new Set(
+        [...clients]
+          .map((client) => client.runId)
+          .filter((runId): runId is string => Boolean(runId)),
+      );
+      const targets: Array<{ runId?: string; markLatest: boolean }> = [
+        { runId: undefined, markLatest: true },
+        ...[...subscribedRunIds].map((runId) => ({ runId, markLatest: false })),
+      ];
+
+      for (const target of targets) {
+        await refreshWorkflowSnapshot(watchDir, target.runId, (snapshot) => {
+          const remembered = rememberSnapshot(snapshot, { markLatest: target.markLatest });
+          const runId = remembered.activeRunId ?? remembered.state?.runId;
+          if (!runId) {
+            return;
+          }
+          const snapshotVersion = createWorkflowDashboardSnapshotVersion(remembered);
+          if (runSnapshotVersions.get(runId) === snapshotVersion) {
+            return;
+          }
+          runSnapshotVersions.set(runId, snapshotVersion);
+          broadcastSnapshot(remembered);
+        }).catch((error: unknown) => {
+          logDashboardError(
+            `Dashboard watch refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
+    };
+
     watchInterval = setInterval(() => {
-      void refreshWorkflowSnapshot(watchDir, undefined, (snapshot) => {
-        const snapshotVersion = createWorkflowDashboardSnapshotVersion(snapshot);
-        latestState = snapshot.state;
-        latestEvent = snapshot.event;
-        latestHistory = snapshot.history;
-        latestRun = snapshot.run;
-        latestRuns = snapshot.runs;
-        if (snapshot.state && snapshot.event && snapshotVersion !== latestWatchSnapshotVersion) {
-          latestWatchSnapshotVersion = snapshotVersion;
-          publishStateInternal(snapshot.state, snapshot.event, snapshot.history);
-        }
-      }).catch((error: unknown) => {
-        logDashboardError(
-          `Dashboard watch refresh failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+      if (watchRefreshInFlight) {
+        return;
+      }
+      watchRefreshInFlight = true;
+      void refreshWatchedSnapshots().finally(() => {
+        watchRefreshInFlight = false;
       });
     }, 1000);
   }
@@ -413,6 +556,7 @@ export async function createWorkflowDashboardServer(
       if (watchInterval) {
         clearInterval(watchInterval);
       }
+      closeSseClients();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
@@ -470,12 +614,7 @@ export async function createWorkflowDashboardPublisher(
   };
 }
 
-function handleSseConnection(
-  response: ServerResponse,
-  state: MacroWorkflowRunStateLike | undefined,
-  event: MacroWorkflowEvent | undefined,
-  history?: WorkflowReplayEvent[],
-) {
+function handleSseConnection(response: ServerResponse, snapshot: WorkflowDashboardSnapshot) {
   response.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -483,9 +622,8 @@ function handleSseConnection(
     "X-Accel-Buffering": "no",
   });
   response.write(": connected\n\n");
-  if (state) {
-    const run = state.runId ? summarizeWorkflowRun(state, "", new Date()) : undefined;
-    writeSseEvent(response, "state", toSerializablePayload(state, event, history, run));
+  if (snapshot.state) {
+    writeSseEvent(response, "state", snapshot);
   }
 }
 

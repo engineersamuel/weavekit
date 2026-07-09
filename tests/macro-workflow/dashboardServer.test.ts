@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { createServer as createTcpServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -208,6 +208,116 @@ describe("workflow dashboard replay bootstrap", () => {
       expect(replayPayload.activeRunId).toBe("run-1");
       expect(replayPayload.run.runName).toBe("First Run");
     } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not promote a pinned replay refresh to the latest run", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
+    try {
+      const runOneDir = await writeWorkflowRunFixture(rootDir, "run-1", "First Run", "passed");
+      const runTwoDir = await writeWorkflowRunFixture(rootDir, "run-2", "Second Run", "running");
+      await utimes(
+        join(runOneDir, "workflow-state.json"),
+        new Date("2026-06-30T00:00:00.000Z"),
+        new Date("2026-06-30T00:00:00.000Z"),
+      );
+      await utimes(
+        join(runTwoDir, "workflow-state.json"),
+        new Date("2026-06-30T00:00:02.000Z"),
+        new Date("2026-06-30T00:00:02.000Z"),
+      );
+      const server = await createWorkflowDashboardServer(undefined, { watchDir: rootDir });
+      servers.push(server);
+
+      const pinnedReplayResponse = await fetch(new URL("/api/replay?runId=run-1", server.url));
+      const pinnedReplayPayload = await pinnedReplayResponse.json();
+      const runsResponse = await fetch(new URL("/api/runs", server.url));
+      const runsPayload = await runsResponse.json();
+      const latestReplayResponse = await fetch(new URL("/api/replay", server.url));
+      const latestReplayPayload = await latestReplayResponse.json();
+
+      expect(pinnedReplayPayload.activeRunId).toBe("run-1");
+      expect(runsPayload.activeRunId).toBe("run-2");
+      expect(latestReplayPayload.activeRunId).toBe("run-2");
+      expect(latestReplayPayload.run.runName).toBe("Second Run");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves latest state after pinned-first replay", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
+    try {
+      const runOneDir = await writeWorkflowRunFixture(rootDir, "run-1", "First Run", "passed");
+      const runTwoDir = await writeWorkflowRunFixture(rootDir, "run-2", "Second Run", "running");
+      await utimes(
+        join(runOneDir, "workflow-state.json"),
+        new Date("2026-06-30T00:00:00.000Z"),
+        new Date("2026-06-30T00:00:00.000Z"),
+      );
+      await utimes(
+        join(runTwoDir, "workflow-state.json"),
+        new Date("2026-06-30T00:00:02.000Z"),
+        new Date("2026-06-30T00:00:02.000Z"),
+      );
+      const server = await createWorkflowDashboardServer(undefined, { watchDir: rootDir });
+      servers.push(server);
+
+      const pinnedReplayResponse = await fetch(new URL("/api/replay?runId=run-1", server.url));
+      const pinnedReplayPayload = await pinnedReplayResponse.json();
+      const stateResponse = await fetch(new URL("/api/state", server.url));
+      const statePayload = await stateResponse.json();
+
+      expect(pinnedReplayPayload.activeRunId).toBe("run-1");
+      expect(statePayload.activeRunId).toBe("run-2");
+      expect(statePayload.state).toMatchObject({ runId: "run-2", runName: "Second Run" });
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes latest state while only pinned SSE clients are connected", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
+    const pinnedController = new AbortController();
+    let pinnedResponse: Response | undefined;
+    try {
+      const runOneDir = await writeWorkflowRunFixture(rootDir, "run-1", "First Run", "passed");
+      const runTwoDir = await writeWorkflowRunFixture(rootDir, "run-2", "Second Run", "running");
+      await utimes(
+        join(runOneDir, "workflow-state.json"),
+        new Date("2026-06-30T00:00:00.000Z"),
+        new Date("2026-06-30T00:00:00.000Z"),
+      );
+      await utimes(
+        join(runTwoDir, "workflow-state.json"),
+        new Date("2026-06-30T00:00:02.000Z"),
+        new Date("2026-06-30T00:00:02.000Z"),
+      );
+      const server = await createWorkflowDashboardServer(undefined, { watchDir: rootDir });
+      servers.push(server);
+
+      const primedStateResponse = await fetch(new URL("/api/state", server.url));
+      const primedStatePayload = await primedStateResponse.json();
+      pinnedResponse = await fetch(new URL("/events?runId=run-1", server.url), {
+        signal: pinnedController.signal,
+      });
+      const runThreeDir = await writeWorkflowRunFixture(rootDir, "run-3", "Third Run", "running");
+      await utimes(
+        join(runThreeDir, "workflow-state.json"),
+        new Date("2026-06-30T00:00:04.000Z"),
+        new Date("2026-06-30T00:00:04.000Z"),
+      );
+
+      const latestArtifactText = await waitForLatestArtifact(server.url, "Third Run", "Second Run");
+
+      expect(pinnedResponse.body).toBeTruthy();
+      expect(primedStatePayload.activeRunId).toBe("run-2");
+      expect(latestArtifactText).toContain("Third Run");
+      expect(latestArtifactText).not.toContain("Second Run");
+    } finally {
+      await cancelResponseBody(pinnedResponse);
+      pinnedController.abort();
       await rm(rootDir, { recursive: true, force: true });
     }
   });
@@ -657,7 +767,92 @@ autonomous_pr_allowed = true
       expect(text).toContain('"history"');
       expect(text).toContain('"kind":"planning-started"');
     } finally {
+      await cancelResponseBody(response);
       controller.abort();
+    }
+  });
+
+  it("closes active SSE connections during stop", async () => {
+    const server = await createWorkflowDashboardServer(undefined);
+    const controller = new AbortController();
+    let response: Response | undefined;
+    let stopPromise: Promise<void> | undefined;
+
+    try {
+      response = await fetch(new URL("/events", server.url), { signal: controller.signal });
+      expect(response.body).toBeTruthy();
+
+      stopPromise = server.stop();
+      await expect(
+        Promise.race([stopPromise.then(() => "stopped"), sleep(250).then(() => "timed-out")]),
+      ).resolves.toBe("stopped");
+    } finally {
+      await cancelResponseBody(response);
+      controller.abort();
+      await stopPromise?.catch(() => undefined);
+    }
+  });
+
+  it("scopes SSE state payloads to the requested runId", async () => {
+    const server = await createWorkflowDashboardServer(undefined);
+    servers.push(server);
+
+    const runOneController = new AbortController();
+    const runTwoController = new AbortController();
+    const runOneResponse = await fetch(new URL("/events?runId=run-1", server.url), {
+      signal: runOneController.signal,
+    });
+    const runTwoResponse = await fetch(new URL("/events?runId=run-2", server.url), {
+      signal: runTwoController.signal,
+    });
+    expect(runOneResponse.body).toBeTruthy();
+    expect(runTwoResponse.body).toBeTruthy();
+
+    try {
+      const runOnePayload = readSseStatePayload(runOneResponse.body!);
+      const runTwoPayload = readSseStatePayload(runTwoResponse.body!);
+
+      await fetch(new URL("/api/state", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          state: createWorkflowState("run-1", "First Run", "running"),
+          history: await readWorkflowReplayEvents(fixtureEventsPath),
+          event: {
+            type: "macro-workflow.run.started",
+            planId: "plan-1",
+            timestamp: "2026-06-30T00:00:00.000Z",
+          },
+        }),
+      });
+
+      await fetch(new URL("/api/state", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          state: createWorkflowState("run-2", "Second Run", "running"),
+          history: await readWorkflowReplayEvents(fixtureEventsPath),
+          event: {
+            type: "macro-workflow.run.started",
+            planId: "plan-1",
+            timestamp: "2026-06-30T00:00:01.000Z",
+          },
+        }),
+      });
+
+      await expect(runOnePayload).resolves.toMatchObject({
+        activeRunId: "run-1",
+        state: { runId: "run-1", runName: "First Run" },
+      });
+      await expect(runTwoPayload).resolves.toMatchObject({
+        activeRunId: "run-2",
+        state: { runId: "run-2", runName: "Second Run" },
+      });
+    } finally {
+      await cancelResponseBody(runOneResponse);
+      await cancelResponseBody(runTwoResponse);
+      runOneController.abort();
+      runTwoController.abort();
     }
   });
 });
@@ -679,7 +874,7 @@ async function writeWorkflowRunFixture(
   );
   await writeFile(
     join(outputDir, "workflow-report.md"),
-    "# Macro Workflow Run Report\n\nFixture report.\n",
+    `# Macro Workflow Run Report\n\nFixture report for ${runName}.\n`,
     "utf8",
   );
   return outputDir;
@@ -898,17 +1093,71 @@ async function readUntil(body: ReadableStream<Uint8Array>, needle: string): Prom
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let text = "";
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const result = await reader.read();
-    if (result.done) {
-      break;
+  try {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const result = await reader.read();
+      if (result.done) {
+        break;
+      }
+      text += decoder.decode(result.value, { stream: true });
+      if (text.includes(needle)) {
+        return text;
+      }
     }
-    text += decoder.decode(result.value, { stream: true });
-    if (text.includes(needle)) {
-      return text;
-    }
+    return text;
+  } finally {
+    reader.releaseLock();
   }
-  return text;
+}
+
+async function readSseStatePayload(body: ReadableStream<Uint8Array>) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const result = await reader.read();
+      if (result.done) {
+        break;
+      }
+      text += decoder.decode(result.value, { stream: true });
+      const dataLine = text.split(/\r?\n/).find((line) => line.startsWith("data: "));
+      if (dataLine) {
+        return JSON.parse(dataLine.slice("data: ".length));
+      }
+    }
+    throw new Error(`SSE state payload was not received. Received: ${text}`);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForLatestArtifact(
+  serverUrl: string,
+  expectedText: string,
+  rejectedText: string,
+): Promise<string> {
+  const deadline = Date.now() + 5000;
+  let lastObservedText = "";
+  while (Date.now() < deadline) {
+    const response = await fetch(new URL("/api/artifact?file=workflow-report.md", serverUrl));
+    lastObservedText = await response.text();
+    if (lastObservedText.includes(expectedText) && !lastObservedText.includes(rejectedText)) {
+      return lastObservedText;
+    }
+    await sleep(150);
+  }
+  throw new Error(
+    `Timed out waiting for latest artifact to contain ${JSON.stringify(expectedText)} without ${JSON.stringify(rejectedText)}. Last observed: ${lastObservedText}`,
+  );
+}
+
+async function cancelResponseBody(response: Response | undefined): Promise<void> {
+  await response?.body?.cancel().catch(() => undefined);
 }
 
 function restoreEnv(name: "PORT" | "PORTLESS_URL", value: string | undefined) {
