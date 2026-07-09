@@ -57,6 +57,7 @@ export type WorkflowCliArgs = {
   outputDir: string;
   staticTemplate: boolean;
   dryRun: boolean;
+  noCache?: boolean;
   dashboard?: boolean;
   dashboardPort?: number;
   dashboardUrl?: string;
@@ -189,14 +190,14 @@ export function parseDecisionCouncilCliArgs(argv: string[]): DecisionCouncilCliA
 export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (argv[0] !== "workflow") {
     throw new Error(
-      "Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]",
+      "Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--no-cache] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]",
     );
   }
 
   const command = argv[1];
   if (command !== "plan" && command !== "run" && command !== "dashboard") {
     throw new Error(
-      "Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]",
+      "Usage: weavekit workflow <plan|run|dashboard> [--input <path>|--prompt <text>] [--output <dir>] [--template <id>] [--dry-run] [--no-cache] [--dashboard] [--dashboard-port <port>] [--dashboard-url <url>] [--watch-dir <dir>]",
     );
   }
 
@@ -304,6 +305,7 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   }
 
   const dryRun = command === "plan" || argv.includes("--dry-run");
+  const noCache = argv.includes("--no-cache");
   const portValue = portIndex === -1 ? undefined : Number(argv[portIndex + 1]);
   const dashboardPortValue =
     dashboardPortIndex === -1 ? portValue : Number(argv[dashboardPortIndex + 1]);
@@ -328,6 +330,7 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
     outputDir: outputIndex === -1 ? "runs" : (argv[outputIndex + 1] ?? "runs"),
     staticTemplate: template !== undefined,
     dryRun,
+    noCache,
   };
 
   if (command !== "dashboard" && inputIndex !== -1) {
@@ -806,6 +809,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   const preprocessedPrompt = await preprocessWorkflowPrompt({
     prompt: rawPrompt,
     source: args.source,
+    cache: { ...typedConfig.cache, enabled: typedConfig.cache.enabled && !args.noCache },
   });
   if (xPostUrlsToResolve.length > 0) {
     process.stderr.write(

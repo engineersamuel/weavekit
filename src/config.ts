@@ -106,6 +106,12 @@ export type ToolingDefaults = {
   miseBin?: string;
 };
 
+export type CacheConfig = {
+  enabled: boolean;
+  ttlHours: number;
+  dir: string;
+};
+
 export const SupportedPluginId = {
   HVE_CORE: "hve-core",
 } as const;
@@ -143,7 +149,18 @@ export type WeavekitConfig = {
   verificationOptimizer: VerificationOptimizerDefaults;
   plugins: PluginConfigs;
   projects: Record<string, ProjectCatalogEntry>;
+  cache: CacheConfig;
 };
+
+const DEFAULT_URL_CACHE_TTL_HOURS = 24 * 30;
+
+export function defaultCacheConfig(): CacheConfig {
+  return {
+    enabled: true,
+    ttlHours: DEFAULT_URL_CACHE_TTL_HOURS,
+    dir: join(homedir(), ".weavekit", "cache", "urls"),
+  };
+}
 
 export function getDefaultWeavekitConfigPath(): string {
   return join(homedir(), ".weavekit", "config.toml");
@@ -338,6 +355,7 @@ export function loadTypedWeavekitConfig(
       verificationOptimizer: readVerificationOptimizerDefaults(undefined),
       plugins: readPluginConfigs(undefined, env),
       projects: {},
+      cache: readCacheConfig(undefined, env),
     };
   }
 
@@ -350,6 +368,7 @@ export function loadTypedWeavekitConfig(
   const verificationOptimizer = readVerificationOptimizerDefaults(parsed.verification_optimizer);
   const plugins = readPluginConfigs(parsed.plugins, env);
   const projects = readProjectCatalog(parsed.projects);
+  const cache = readCacheConfig(parsed.cache, env);
   return {
     env: loadedEnv,
     copilot,
@@ -360,6 +379,18 @@ export function loadTypedWeavekitConfig(
     verificationOptimizer,
     plugins,
     projects,
+    cache,
+  };
+}
+
+function readCacheConfig(value: unknown, env: NodeJS.ProcessEnv): CacheConfig {
+  const defaults = defaultCacheConfig();
+  const record = asRecord(value);
+  const envDisabled = readEnvBoolean(env, "WEAVEKIT_NO_CACHE") === true;
+  return {
+    enabled: envDisabled ? false : readBoolean(record.enabled, defaults.enabled),
+    ttlHours: readNumber(record.ttl_hours, defaults.ttlHours),
+    dir: expandOptionalPath(readOptionalString(record.dir)) ?? defaults.dir,
   };
 }
 

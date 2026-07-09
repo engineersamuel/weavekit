@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn } from "node:child_process";
+import { createUrlCache, withUrlCache, type UrlCacheOptions } from "./urlCache.js";
 
 const DEFAULT_GROK_TIMEOUT_MS = 300_000;
 const X_POST_HOSTS = new Set(["x.com", "twitter.com"]);
@@ -37,6 +38,7 @@ export async function preprocessWorkflowPrompt(args: {
   prompt: string;
   source?: string;
   fetchXPost?: XPostFetcher;
+  cache?: UrlCacheOptions;
 }): Promise<{ prompt: string; fetchedXPosts: XPostFetchResult[] }> {
   const urls = extractXPostUrls(
     [args.prompt, args.source].filter((part): part is string => Boolean(part)).join("\n"),
@@ -45,7 +47,8 @@ export async function preprocessWorkflowPrompt(args: {
     return { prompt: args.prompt, fetchedXPosts: [] };
   }
 
-  const fetchXPost = args.fetchXPost ?? createGrokXPostFetcher();
+  const fetchXPost =
+    args.fetchXPost ?? withUrlCache(createGrokXPostFetcher(), createUrlCache(args.cache));
   const fetchedXPosts: XPostFetchResult[] = [];
   for (const url of urls) {
     const fetched = await fetchXPost(url);

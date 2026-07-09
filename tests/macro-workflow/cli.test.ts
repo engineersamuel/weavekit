@@ -299,6 +299,7 @@ describe("macro workflow CLI", () => {
       outputDir: "runs/workflow",
       staticTemplate: false,
       dryRun: true,
+      noCache: false,
     });
   });
 
@@ -318,6 +319,7 @@ describe("macro workflow CLI", () => {
       outputDir: "runs",
       staticTemplate: true,
       dryRun: false,
+      noCache: false,
       template: "implementation-review",
     });
   });
@@ -344,6 +346,7 @@ describe("macro workflow CLI", () => {
       outputDir: "runs",
       staticTemplate: true,
       dryRun: false,
+      noCache: false,
       template: "implementation-review",
     });
   });
@@ -374,6 +377,7 @@ describe("macro workflow CLI", () => {
       outputDir: "runs",
       staticTemplate: true,
       dryRun: false,
+      noCache: false,
       deepResearch: {
         providers: ["exa", "grok", "copilot-last30days"],
         maxIterations: 4,
@@ -676,6 +680,7 @@ autonomous_pr_allowed = false
       outputDir: "runs",
       staticTemplate: false,
       dryRun: false,
+      noCache: false,
       dashboardPort: 4321,
       watchDir: "runs",
     });
@@ -697,6 +702,7 @@ autonomous_pr_allowed = false
       outputDir: "runs",
       staticTemplate: false,
       dryRun: false,
+      noCache: false,
       dashboardUrl: "http://127.0.0.1:4321",
     });
   });
@@ -717,6 +723,7 @@ autonomous_pr_allowed = false
       outputDir: "runs",
       staticTemplate: false,
       dryRun: false,
+      noCache: false,
       dashboard: true,
       dashboardPort: 4321,
     });
@@ -788,6 +795,7 @@ autonomous_pr_allowed = false
         outputDir: outputRoot,
         staticTemplate: false,
         dryRun: true,
+        noCache: true,
       });
 
       const call = workflowPlanner.planWorkflow.mock.calls[0]?.[0];
@@ -828,6 +836,7 @@ autonomous_pr_allowed = false
         outputDir: outputRoot,
         staticTemplate: false,
         dryRun: true,
+        noCache: true,
       });
 
       expect(stderrWrites[0]).toContain("Resolving 1 X post source with grok");
@@ -877,6 +886,7 @@ autonomous_pr_allowed = false
         staticTemplate: true,
         dryRun: false,
         template: "x-article-summary",
+        noCache: true,
       });
 
       const [runDir] = await readdir(outputRoot);

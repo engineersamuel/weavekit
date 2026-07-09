@@ -152,6 +152,7 @@ autonomous_pr_allowed = false
         project: "weavekit",
         mode: "advisory",
         configPath,
+        noCache: true,
       });
     } finally {
       if (originalPath === undefined) {

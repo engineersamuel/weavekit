@@ -7,6 +7,7 @@ import {
   extractXPostUrls,
   preprocessWorkflowPrompt,
 } from "../../src/macro-workflow/promptPreprocessor.js";
+import { createUrlCache } from "../../src/macro-workflow/urlCache.js";
 
 const tempDirs: string[] = [];
 
@@ -15,6 +16,12 @@ afterEach(async () => {
     await rm(tempDirs.pop()!, { recursive: true, force: true });
   }
 });
+
+async function createTempCacheDir(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "weavekit-prompt-preprocessor-cache-"));
+  tempDirs.push(dir);
+  return dir;
+}
 
 describe("X post prompt preprocessing", () => {
   it("detects unique X and Twitter status URLs in encounter order", () => {
@@ -43,6 +50,28 @@ describe("X post prompt preprocessing", () => {
 
     expect(result).toEqual({ prompt: "Read this local source.", fetchedXPosts: [] });
     expect(calls).toEqual([]);
+  });
+
+  it("serves a warm cache entry without invoking the default grok fetcher", async () => {
+    const dir = await createTempCacheDir();
+    const cache = createUrlCache({ dir, ttlHours: 24 });
+    await cache.set("https://x.com/alice/status/12345", {
+      url: "https://x.com/alice/status/12345",
+      markdown: "# Cached Alice Post\n\nAlready fetched.",
+    });
+
+    const result = await preprocessWorkflowPrompt({
+      prompt: "Apply https://x.com/alice/status/12345.",
+      cache: { dir, ttlHours: 24 },
+    });
+
+    expect(result.fetchedXPosts).toEqual([
+      {
+        url: "https://x.com/alice/status/12345",
+        markdown: "# Cached Alice Post\n\nAlready fetched.",
+      },
+    ]);
+    expect(result.prompt).toContain("# Cached Alice Post");
   });
 
   it("fetches each unique status URL once and appends markdown sections to the prompt", async () => {
