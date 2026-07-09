@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildNodeArtifactLinks } from "../../src/macro-workflow/dashboard/artifactLinks.js";
-import { WorkflowHarnessKind, WorkflowNodeKind, WorkflowNodeStatus } from "../../src/macro-workflow/types.js";
+import {
+  WorkflowHarnessKind,
+  WorkflowNodeKind,
+  WorkflowNodeStatus,
+} from "../../src/macro-workflow/types.js";
 import type {
   MacroWorkflowRunStateLike,
   RuntimeWorkflowNode,
@@ -11,11 +15,13 @@ describe("dashboard artifact link helpers", () => {
   it("links node-produced report artifacts during running workflows instead of missing workflow reports", () => {
     const links = buildNodeArtifactLinks({
       node: reportNodeFixture(),
-      result: resultFixture([{
-        kind: "markdown",
-        path: "verification-research-opp-ci-workflow-DeepResearchReport.md",
-        description: "Deep research Markdown report.",
-      }]),
+      result: resultFixture([
+        {
+          kind: "markdown",
+          path: "verification-research-opp-ci-workflow-DeepResearchReport.md",
+          description: "Deep research Markdown report.",
+        },
+      ]),
       snapshot: snapshotFixture(WorkflowNodeStatus.RUNNING),
     });
 
@@ -31,11 +37,13 @@ describe("dashboard artifact link helpers", () => {
   it("includes the top-level workflow report after the run completes", () => {
     const links = buildNodeArtifactLinks({
       node: reportNodeFixture(),
-      result: resultFixture([{
-        kind: "markdown",
-        path: "verification-research-opp-ci-workflow-DeepResearchReport.md",
-        description: "Deep research Markdown report.",
-      }]),
+      result: resultFixture([
+        {
+          kind: "markdown",
+          path: "verification-research-opp-ci-workflow-DeepResearchReport.md",
+          description: "Deep research Markdown report.",
+        },
+      ]),
       snapshot: snapshotFixture(WorkflowNodeStatus.PASSED),
     });
 
@@ -60,7 +68,9 @@ function reportNodeFixture(): RuntimeWorkflowNode {
   };
 }
 
-function resultFixture(artifacts: WorkflowNodeExecutionResult["artifacts"]): WorkflowNodeExecutionResult {
+function resultFixture(
+  artifacts: WorkflowNodeExecutionResult["artifacts"],
+): WorkflowNodeExecutionResult {
   return {
     nodeId: "verification-research-opp-ci-workflow-report",
     status: WorkflowNodeStatus.PASSED,

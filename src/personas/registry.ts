@@ -2,10 +2,7 @@ import {
   getPersona as getEntityPersona,
   listPersonas as listEntityPersonas,
 } from "../entities/index.js";
-import {
-  PersonaDefinitionSchema,
-  type PersonaDefinition,
-} from "./schema.js";
+import { PersonaDefinitionSchema, type PersonaDefinition } from "./schema.js";
 
 export interface PersonaRegistry {
   getPersona(id: string): PersonaDefinition;
@@ -18,9 +15,7 @@ export function buildRegistry(repoRoot = process.cwd()): PersonaRegistry {
   }
 
   function listPersonas(): PersonaDefinition[] {
-    return listEntityPersonas(repoRoot).map((persona) =>
-      PersonaDefinitionSchema.parse(persona),
-    );
+    return listEntityPersonas(repoRoot).map((persona) => PersonaDefinitionSchema.parse(persona));
   }
 
   return { getPersona, listPersonas };

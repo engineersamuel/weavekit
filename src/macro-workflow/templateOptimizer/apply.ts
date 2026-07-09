@@ -6,7 +6,12 @@ type ApplyCandidate = Pick<TemplateCandidate, "id"> & {
   adoptionTasks: AdoptionTask[];
 };
 
-const adoptionTaskKinds = ["template", "expander", "test", "docs"] as const satisfies readonly AdoptionTask["kind"][];
+const adoptionTaskKinds = [
+  "template",
+  "expander",
+  "test",
+  "docs",
+] as const satisfies readonly AdoptionTask["kind"][];
 
 export async function dryRunApplyTemplateOptimizerPackage(args: {
   runsRoot: string;
@@ -31,8 +36,12 @@ function validateApplyCandidate(payload: unknown, runId: string): ApplyCandidate
   const root = requireRecord(payload, runId, "optimizer-run.json");
   const finalIncumbent = requireRecord(root.finalIncumbent, runId, "finalIncumbent");
   const id = requireNonEmptyString(finalIncumbent.id, runId, "finalIncumbent.id");
-  const adoptionTasks = requireArray(finalIncumbent.adoptionTasks, runId, "finalIncumbent.adoptionTasks").map(
-    (task, index) => validateAdoptionTask(task, runId, `finalIncumbent.adoptionTasks[${index}]`),
+  const adoptionTasks = requireArray(
+    finalIncumbent.adoptionTasks,
+    runId,
+    "finalIncumbent.adoptionTasks",
+  ).map((task, index) =>
+    validateAdoptionTask(task, runId, `finalIncumbent.adoptionTasks[${index}]`),
   );
   return { id, adoptionTasks };
 }
@@ -42,10 +51,18 @@ function validateAdoptionTask(task: unknown, runId: string, path: string): Adopt
   return {
     title: requireString(record.title, runId, `${path}.title`),
     kind: requireAdoptionTaskKind(record.kind, runId, `${path}.kind`),
-    filesLikelyTouched: requireStringArray(record.filesLikelyTouched, runId, `${path}.filesLikelyTouched`),
+    filesLikelyTouched: requireStringArray(
+      record.filesLikelyTouched,
+      runId,
+      `${path}.filesLikelyTouched`,
+    ),
     newFiles: requireStringArray(record.newFiles, runId, `${path}.newFiles`),
     description: requireString(record.description, runId, `${path}.description`),
-    acceptanceChecks: requireStringArray(record.acceptanceChecks, runId, `${path}.acceptanceChecks`),
+    acceptanceChecks: requireStringArray(
+      record.acceptanceChecks,
+      runId,
+      `${path}.acceptanceChecks`,
+    ),
   };
 }
 
@@ -77,9 +94,15 @@ function requireArray(value: unknown, runId: string, path: string): unknown[] {
   return value;
 }
 
-function requireAdoptionTaskKind(value: unknown, runId: string, path: string): AdoptionTask["kind"] {
+function requireAdoptionTaskKind(
+  value: unknown,
+  runId: string,
+  path: string,
+): AdoptionTask["kind"] {
   if (typeof value !== "string" || !isAdoptionTaskKind(value)) {
-    throw new Error(`Optimizer run ${runId} ${path} must be one of: ${adoptionTaskKinds.join(", ")}.`);
+    throw new Error(
+      `Optimizer run ${runId} ${path} must be one of: ${adoptionTaskKinds.join(", ")}.`,
+    );
   }
   return value;
 }
@@ -99,10 +122,7 @@ function isAdoptionTaskKind(value: string): value is AdoptionTask["kind"] {
   return adoptionTaskKinds.some((kind) => kind === value);
 }
 
-function renderDryRunSummary(args: {
-  runId: string;
-  candidate: ApplyCandidate;
-}): string {
+function renderDryRunSummary(args: { runId: string; candidate: ApplyCandidate }): string {
   return [
     "# Template Optimizer Apply Dry Run",
     "",

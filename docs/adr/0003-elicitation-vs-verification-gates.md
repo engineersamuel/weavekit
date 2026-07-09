@@ -8,10 +8,10 @@ face this conflicts with ADR 0001 and the glossary, which eliminate human gates 
 automated verification. The conflict dissolves once two different roles for the human are
 separated.
 
-- **Verification/approval gate** — the human as a *checkpoint on the council's output* ("approve
+- **Verification/approval gate** — the human as a _checkpoint on the council's output_ ("approve
   this before it proceeds/ships"). This is what ADR 0001's verifier thesis eliminates, replacing
   it with automated checks (types, lint, eval, schema) plus CI.
-- **Elicitation** — the human as a *source of input the model cannot infer* (requirements,
+- **Elicitation** — the human as a _source of input the model cannot infer_ (requirements,
   preferences, decisions). This is not a checkpoint on the machine's work; it feeds the machine.
 
 Decision: elicitation is sanctioned; verification/approval gates remain eliminated.

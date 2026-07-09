@@ -38,7 +38,9 @@ describe("Flue MCP config", () => {
 
   it("keeps Baton disabled unless local MCPs are explicitly included", () => {
     expect(getEnabledRemoteMcpSpecs({}).map((spec) => spec.name)).not.toContain("baton");
-    expect(getEnabledRemoteMcpSpecs({}, { includeLocalBaton: true }).map((spec) => spec.name)).toContain("baton");
+    expect(
+      getEnabledRemoteMcpSpecs({}, { includeLocalBaton: true }).map((spec) => spec.name),
+    ).toContain("baton");
   });
 
   it("marks awesome-copilot stdio as unsupported until a bridge exists", () => {
@@ -48,7 +50,8 @@ describe("Flue MCP config", () => {
       name: "awesome-copilot",
       kind: "unsupported",
       source: "stdio",
-      reason: "Installed Flue connectMcpServer supports remote MCP endpoints; bridge the Docker stdio server before exposing it as Flue tools.",
+      reason:
+        "Installed Flue connectMcpServer supports remote MCP endpoints; bridge the Docker stdio server before exposing it as Flue tools.",
     });
   });
 });

@@ -64,7 +64,10 @@ export type RawPersonaResult = z.infer<typeof RawPersonaResultSchema>;
 export const ClarifyingQuestionSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1),
-  choices: z.preprocess((value) => (value === null ? undefined : value), z.array(z.string().min(1)).optional()),
+  choices: z.preprocess(
+    (value) => (value === null ? undefined : value),
+    z.array(z.string().min(1)).optional(),
+  ),
   importance: z.enum(["blocking", "optional"]).optional(),
 });
 
@@ -80,7 +83,10 @@ export const DecisionRoundAssessmentSchema = z.object({
   diminishingReturns: z.boolean(),
   needsHumanInput: z.boolean().optional(),
   clarifyingQuestions: z.array(ClarifyingQuestionSchema).optional(),
-  nextRoundBrief: z.preprocess((value) => (value === null ? undefined : value), z.string().min(1).optional()),
+  nextRoundBrief: z.preprocess(
+    (value) => (value === null ? undefined : value),
+    z.string().min(1).optional(),
+  ),
 });
 
 export type DecisionRoundAssessment = z.infer<typeof DecisionRoundAssessmentSchema>;
@@ -128,7 +134,11 @@ export const DecisionCouncilRunStateSchema = z.object({
 
 export type DecisionCouncilRunState = z.infer<typeof DecisionCouncilRunStateSchema>;
 
-export function createInitialRunState(input: z.input<typeof DecisionCouncilInputSchema>, personaPool: CouncilPersonaSelectionPool, maxRounds = 3): DecisionCouncilRunState {
+export function createInitialRunState(
+  input: z.input<typeof DecisionCouncilInputSchema>,
+  personaPool: CouncilPersonaSelectionPool,
+  maxRounds = 3,
+): DecisionCouncilRunState {
   const parsedInput = DecisionCouncilInputSchema.parse(input);
   const parsedPersonas = z.array(PersonaDefinitionSchema).min(2).parse(personaPool.personas);
 

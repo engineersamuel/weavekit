@@ -56,9 +56,17 @@ export class GeneratedWorkflowPlannerAdapter implements WorkflowPlannerAdapter {
   private readonly client: PlannerClientLike;
   private readonly usageCollector?: WorkflowUsageCollector;
 
-  constructor(clientOrOptions: PlannerClientLike | GeneratedWorkflowPlannerAdapterOptions = b as unknown as PlannerClientLike) {
+  constructor(
+    clientOrOptions:
+      | PlannerClientLike
+      | GeneratedWorkflowPlannerAdapterOptions = b as unknown as PlannerClientLike,
+  ) {
     const maybeOptions = clientOrOptions as GeneratedWorkflowPlannerAdapterOptions;
-    if (maybeOptions && typeof maybeOptions === "object" && ("plannerClient" in maybeOptions || "usageCollector" in maybeOptions)) {
+    if (
+      maybeOptions &&
+      typeof maybeOptions === "object" &&
+      ("plannerClient" in maybeOptions || "usageCollector" in maybeOptions)
+    ) {
       this.client = maybeOptions.plannerClient ?? (b as unknown as PlannerClientLike);
       this.usageCollector = maybeOptions.usageCollector;
     } else {
@@ -67,21 +75,33 @@ export class GeneratedWorkflowPlannerAdapter implements WorkflowPlannerAdapter {
   }
 
   async planWorkflow(input: WorkflowPlannerInput): Promise<RuntimeWorkflowPlan> {
-    const plan = await invokePlannerMethod<Record<string, unknown>, BamlWorkflowPlan>(this.client, "PlanWorkflow", {
-      objective: input.objective,
-      templateId: input.templateId,
-      prompt: input.prompt,
-    }, PLAN_WORKFLOW_BAML_OPTIONS, this.usageCollector);
+    const plan = await invokePlannerMethod<Record<string, unknown>, BamlWorkflowPlan>(
+      this.client,
+      "PlanWorkflow",
+      {
+        objective: input.objective,
+        templateId: input.templateId,
+        prompt: input.prompt,
+      },
+      PLAN_WORKFLOW_BAML_OPTIONS,
+      this.usageCollector,
+    );
     return normalizeWorkflowPlan(plan);
   }
 
   async generateReplanPatch(input: WorkflowReplanInput): Promise<WorkflowReplanPatch> {
-    const patch = await invokePlannerMethod<Record<string, unknown>, BamlWorkflowReplanPatch>(this.client, "GenerateReplanPatch", {
-      reason: input.reason,
-      maxRemainingReplans: input.maxRemainingReplans,
-      completedNodeIds: input.completedNodeIds,
-      currentPlan: input.currentPlan,
-    }, GENERATE_REPLAN_PATCH_BAML_OPTIONS, this.usageCollector);
+    const patch = await invokePlannerMethod<Record<string, unknown>, BamlWorkflowReplanPatch>(
+      this.client,
+      "GenerateReplanPatch",
+      {
+        reason: input.reason,
+        maxRemainingReplans: input.maxRemainingReplans,
+        completedNodeIds: input.completedNodeIds,
+        currentPlan: input.currentPlan,
+      },
+      GENERATE_REPLAN_PATCH_BAML_OPTIONS,
+      this.usageCollector,
+    );
     return normalizeWorkflowReplanPatch(patch);
   }
 }
@@ -105,7 +125,13 @@ async function invokePlannerMethod<TArgs extends Record<string, unknown>, TResul
       return await boundMethod(args.objective, args.prompt, args.templateId, callOptions);
     }
 
-    return await boundMethod(args.reason, args.maxRemainingReplans, args.completedNodeIds, args.currentPlan, callOptions);
+    return await boundMethod(
+      args.reason,
+      args.maxRemainingReplans,
+      args.completedNodeIds,
+      args.currentPlan,
+      callOptions,
+    );
   } finally {
     if (collector) {
       usageCollector?.recordBamlCollector({
@@ -130,7 +156,9 @@ function normalizeWorkflowPlan(plan: BamlWorkflowPlan): RuntimeWorkflowPlan {
       title: node.title,
       description: node.description ?? node.prompt,
       model: node.model ?? inferNormalizedNodeModel(node.kind, node.harness),
-      modelRationale: node.modelRationale ?? "Default model inferred from normalized workflow node kind and harness.",
+      modelRationale:
+        node.modelRationale ??
+        "Default model inferred from normalized workflow node kind and harness.",
       prompt: node.prompt,
       dependsOn: node.dependsOn,
       gates: node.gates as Array<"output-contract" | "review-accepted" | "verification">,
@@ -151,7 +179,9 @@ function normalizeWorkflowReplanPatch(patch: BamlWorkflowReplanPatch): WorkflowR
       title: node.title,
       description: node.description ?? node.prompt,
       model: node.model ?? inferNormalizedNodeModel(node.kind, node.harness),
-      modelRationale: node.modelRationale ?? "Default model inferred from normalized workflow node kind and harness.",
+      modelRationale:
+        node.modelRationale ??
+        "Default model inferred from normalized workflow node kind and harness.",
       prompt: node.prompt,
       dependsOn: node.dependsOn,
       gates: node.gates as Array<"output-contract" | "review-accepted" | "verification">,

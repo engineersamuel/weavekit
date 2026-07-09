@@ -35,40 +35,45 @@ vi.mock("@opentelemetry/api", () => ({
   },
   trace: {
     getTracer: vi.fn(() => ({
-      startActiveSpan: vi.fn(async (name: string, fn: (span: {
-        setAttribute: (key: string, value: unknown) => void;
-        updateName: (value: string) => void;
-        setStatus: (value: unknown) => void;
-        recordException: (value: unknown) => void;
-        end: () => void;
-      }) => Promise<unknown>) => {
-        const span = {
-          name,
-          attributes: {} as Record<string, unknown>,
-          status: [] as unknown[],
-          exceptions: [] as unknown[],
-          ended: false,
-        };
-        spanState.startActiveSpanCalls.push(name);
-        spanState.spans.push(span);
-        return await fn({
-          setAttribute(key, value) {
-            span.attributes[key] = value;
-          },
-          updateName(value) {
-            span.name = value;
-          },
-          setStatus(value) {
-            span.status.push(value);
-          },
-          recordException(value) {
-            span.exceptions.push(value);
-          },
-          end() {
-            span.ended = true;
-          },
-        });
-      }),
+      startActiveSpan: vi.fn(
+        async (
+          name: string,
+          fn: (span: {
+            setAttribute: (key: string, value: unknown) => void;
+            updateName: (value: string) => void;
+            setStatus: (value: unknown) => void;
+            recordException: (value: unknown) => void;
+            end: () => void;
+          }) => Promise<unknown>,
+        ) => {
+          const span = {
+            name,
+            attributes: {} as Record<string, unknown>,
+            status: [] as unknown[],
+            exceptions: [] as unknown[],
+            ended: false,
+          };
+          spanState.startActiveSpanCalls.push(name);
+          spanState.spans.push(span);
+          return await fn({
+            setAttribute(key, value) {
+              span.attributes[key] = value;
+            },
+            updateName(value) {
+              span.name = value;
+            },
+            setStatus(value) {
+              span.status.push(value);
+            },
+            recordException(value) {
+              span.exceptions.push(value);
+            },
+            end() {
+              span.ended = true;
+            },
+          });
+        },
+      ),
     })),
   },
 }));
@@ -88,11 +93,13 @@ describe("bamlTelemetry", () => {
   });
 
   it("creates collector tag maps from defined values", () => {
-    expect(createCollectorTagMap({ runId: "run-1", roundNumber: 2, personaId: "skeptic" })).toEqual({
-      runId: "run-1",
-      roundNumber: "2",
-      personaId: "skeptic",
-    });
+    expect(createCollectorTagMap({ runId: "run-1", roundNumber: 2, personaId: "skeptic" })).toEqual(
+      {
+        runId: "run-1",
+        roundNumber: "2",
+        personaId: "skeptic",
+      },
+    );
     expect(createCollectorTagMap({})).toEqual({});
   });
 
@@ -104,7 +111,9 @@ describe("bamlTelemetry", () => {
         collectorName: string | undefined;
       }> {
         const options = createBamlTelemetryOptions({ personaId: "skeptic", roundNumber: 3 });
-        const collector = Array.isArray(options.collector) ? options.collector[0] : options.collector;
+        const collector = Array.isArray(options.collector)
+          ? options.collector[0]
+          : options.collector;
         return { options, collectorName: (collector as { name?: string } | undefined)?.name };
       }
     }
@@ -136,16 +145,19 @@ describe("bamlTelemetry", () => {
     expect(spanState.spans[0]?.name).toBe("run.council.baml.normalize");
   });
 
-  it.each(["report", "assess"] as const)("keeps non-normalize span names unchanged for %s", async (operation) => {
-    await runTracedBamlOperation(operation, [{ personaId: "skeptic" }], async () => {
-      const options = createBamlTelemetryOptions({ personaId: "skeptic" });
-      expect(options.tags).toEqual({ personaId: "skeptic" });
-      return "ok";
-    });
+  it.each(["report", "assess"] as const)(
+    "keeps non-normalize span names unchanged for %s",
+    async (operation) => {
+      await runTracedBamlOperation(operation, [{ personaId: "skeptic" }], async () => {
+        const options = createBamlTelemetryOptions({ personaId: "skeptic" });
+        expect(options.tags).toEqual({ personaId: "skeptic" });
+        return "ok";
+      });
 
-    expect(spanState.startActiveSpanCalls).toEqual([`run.council.baml.${operation}`]);
-    expect(spanState.spans[0]?.name).toBe(`run.council.baml.${operation}`);
-  });
+      expect(spanState.startActiveSpanCalls).toEqual([`run.council.baml.${operation}`]);
+      expect(spanState.spans[0]?.name).toBe(`run.council.baml.${operation}`);
+    },
+  );
 
   it("records exceptions on the span and rethrows", async () => {
     const failure = new Error("boom");
@@ -204,7 +216,10 @@ describe("bamlTelemetry", () => {
     const report = {
       recommendation: "Use TOML with environment variable overrides.",
       rationale: Array.from({ length: 10 }, (_, index) => `Rationale ${index}: ${"x".repeat(800)}`),
-      strongestObjections: Array.from({ length: 5 }, (_, index) => `Objection ${index}: ${"y".repeat(800)}`),
+      strongestObjections: Array.from(
+        { length: 5 },
+        (_, index) => `Objection ${index}: ${"y".repeat(800)}`,
+      ),
       unresolvedQuestions: [],
       confidence: 0.8,
       convergence: 0.9,

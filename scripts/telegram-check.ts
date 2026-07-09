@@ -82,7 +82,9 @@ async function main(): Promise<void> {
 
   console.log("Found chats \u2014 add the right id to .env as TELEGRAM_OWNER_CHAT_ID:");
   for (const [id, chat] of chats) {
-    const who = chat.username ? `@${chat.username}` : [chat.first_name, chat.last_name].filter(Boolean).join(" ");
+    const who = chat.username
+      ? `@${chat.username}`
+      : [chat.first_name, chat.last_name].filter(Boolean).join(" ");
     console.log(`  chat_id ${id}  (${chat.type}${who ? `, ${who}` : ""})`);
   }
 }

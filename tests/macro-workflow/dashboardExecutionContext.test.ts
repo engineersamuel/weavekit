@@ -4,7 +4,11 @@ import {
   resolveNodeExecutionDisplay,
   resolveNodeModelDisplay,
 } from "../../src/macro-workflow/dashboard/executionContext.js";
-import { WorkflowHarnessKind, WorkflowNodeKind, WorkflowNodeStatus } from "../../src/macro-workflow/types.js";
+import {
+  WorkflowHarnessKind,
+  WorkflowNodeKind,
+  WorkflowNodeStatus,
+} from "../../src/macro-workflow/types.js";
 import type {
   MacroWorkflowRunStateLike,
   RuntimeWorkflowNode,
@@ -53,14 +57,16 @@ describe("dashboard execution context helpers", () => {
 
     expect(display.hasActualExecution).toBe(true);
     expect(display.execution).toBe(liveExecution);
-    expect(display.calls).toEqual([{
-      executor: "copilot-sdk",
-      operation: undefined,
-      mode: "research",
-      prompt: "live actual prompt",
-      cwd: "/repo/project",
-      model: "gpt-live",
-    }]);
+    expect(display.calls).toEqual([
+      {
+        executor: "copilot-sdk",
+        operation: undefined,
+        mode: "research",
+        prompt: "live actual prompt",
+        cwd: "/repo/project",
+        model: "gpt-live",
+      },
+    ]);
   });
 
   it("does not synthesize the planned node prompt as an actual execution call", () => {
@@ -105,7 +111,7 @@ describe("dashboard execution context helpers", () => {
           },
         }),
         state: stateFixture(),
-      })
+      }),
     );
 
     expect(displays.every((display) => display.hasActualExecution)).toBe(true);
@@ -142,21 +148,25 @@ describe("dashboard execution context helpers", () => {
     });
     const state = stateFixture(undefined, {
       nodes: [failedProvider, assessNode],
-      nodeResults: [{
-        nodeId: "deep-research-grok-1",
-        status: WorkflowNodeStatus.FAILED,
-        output: "grok failed",
-        error: "Command failed: grok -p ...",
-      }],
+      nodeResults: [
+        {
+          nodeId: "deep-research-grok-1",
+          status: WorkflowNodeStatus.FAILED,
+          output: "grok failed",
+          error: "Command failed: grok -p ...",
+        },
+      ],
     });
 
     expect(resolveBlockedNodeDisplay(assessNode, state)).toEqual({
       blocked: true,
-      failedDependencies: [{
-        nodeId: "deep-research-grok-1",
-        title: "Research with grok",
-        error: "Command failed: grok -p ...",
-      }],
+      failedDependencies: [
+        {
+          nodeId: "deep-research-grok-1",
+          title: "Research with grok",
+          error: "Command failed: grok -p ...",
+        },
+      ],
       message: "This node did not run because 1 dependency failed.",
     });
   });

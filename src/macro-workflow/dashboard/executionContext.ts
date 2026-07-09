@@ -33,12 +33,15 @@ export function resolveNodeExecutionDisplay(args: {
 }): NodeExecutionDisplay {
   const isPlanningNode = args.node?.id === PLANNING_NODE_ID;
   const plannedPrompt = isPlanningNode
-    ? args.state?.objective ?? "No original prompt recorded."
-    : args.node?.prompt ?? "";
-  const execution = args.result?.execution ??
+    ? (args.state?.objective ?? "No original prompt recorded.")
+    : (args.node?.prompt ?? "");
+  const execution =
+    args.result?.execution ??
     (args.node?.id ? args.state?.activeNodeExecutions?.[args.node.id] : undefined) ??
     inferPreparedExecutionFromNode(args.node);
-  const calls = execution?.calls?.length ? execution.calls : inferExecutionCalls(args.node, execution);
+  const calls = execution?.calls?.length
+    ? execution.calls
+    : inferExecutionCalls(args.node, execution);
   return {
     plannedPrompt,
     execution,
@@ -47,8 +50,13 @@ export function resolveNodeExecutionDisplay(args: {
   };
 }
 
-export function resolveNodeModelDisplay(node: RuntimeWorkflowNode | undefined, state: MacroWorkflowRunStateLike | undefined): string {
-  const result = node?.id ? state?.nodeResults?.find((entry) => entry.nodeId === node.id) : undefined;
+export function resolveNodeModelDisplay(
+  node: RuntimeWorkflowNode | undefined,
+  state: MacroWorkflowRunStateLike | undefined,
+): string {
+  const result = node?.id
+    ? state?.nodeResults?.find((entry) => entry.nodeId === node.id)
+    : undefined;
   const liveExecution = node?.id ? state?.activeNodeExecutions?.[node.id] : undefined;
   const resultCallModel = result?.execution?.calls?.find((call) => call.model)?.model;
   const liveCallModel = liveExecution?.calls?.find((call) => call.model)?.model;
@@ -67,7 +75,11 @@ export function resolveNodeModelDisplay(node: RuntimeWorkflowNode | undefined, s
   if (node?.model) {
     return node.model;
   }
-  if (node?.harness === WorkflowHarnessKind.VERIFIER || node?.harness === WorkflowHarnessKind.REPORTER || node?.model === "deterministic") {
+  if (
+    node?.harness === WorkflowHarnessKind.VERIFIER ||
+    node?.harness === WorkflowHarnessKind.REPORTER ||
+    node?.model === "deterministic"
+  ) {
     return "deterministic";
   }
   return "Not recorded";
@@ -82,21 +94,25 @@ export function resolveBlockedNodeDisplay(
     if (result?.status !== WorkflowNodeStatus.FAILED) {
       return [];
     }
-    const dependencyNode = state?.currentPlan?.nodes.find((candidate) => candidate.id === dependencyId) ??
+    const dependencyNode =
+      state?.currentPlan?.nodes.find((candidate) => candidate.id === dependencyId) ??
       state?.plan?.nodes.find((candidate) => candidate.id === dependencyId);
-    return [{
-      nodeId: dependencyId,
-      title: dependencyNode?.title ?? dependencyId,
-      error: result.error ?? result.output,
-    }];
+    return [
+      {
+        nodeId: dependencyId,
+        title: dependencyNode?.title ?? dependencyId,
+        error: result.error ?? result.output,
+      },
+    ];
   });
   const count = failedDependencies.length;
   return {
     blocked: count > 0,
     failedDependencies,
-    message: count === 0
-      ? "This node is waiting for its dependencies."
-      : `This node did not run because ${count} ${count === 1 ? "dependency" : "dependencies"} failed.`,
+    message:
+      count === 0
+        ? "This node is waiting for its dependencies."
+        : `This node did not run because ${count} ${count === 1 ? "dependency" : "dependencies"} failed.`,
   };
 }
 
@@ -105,20 +121,27 @@ function inferExecutionCalls(
   execution: WorkflowExecutionMetadata | undefined,
 ): WorkflowExecutionCall[] {
   if (execution?.executor || execution?.prompt || execution?.operation || execution?.mode) {
-    return [{
-      executor: execution.executor ?? node?.harness ?? "unknown",
-      operation: execution.operation,
-      mode: execution.mode,
-      prompt: execution.prompt,
-      cwd: execution.cwd,
-      model: execution.model,
-    }];
+    return [
+      {
+        executor: execution.executor ?? node?.harness ?? "unknown",
+        operation: execution.operation,
+        mode: execution.mode,
+        prompt: execution.prompt,
+        cwd: execution.cwd,
+        model: execution.model,
+      },
+    ];
   }
   return [];
 }
 
-function inferPreparedExecutionFromNode(node: RuntimeWorkflowNode | undefined): WorkflowExecutionMetadata | undefined {
-  if (node?.harness !== WorkflowHarnessKind.RESEARCH || node.input?.deepResearchStep !== "provider-research") {
+function inferPreparedExecutionFromNode(
+  node: RuntimeWorkflowNode | undefined,
+): WorkflowExecutionMetadata | undefined {
+  if (
+    node?.harness !== WorkflowHarnessKind.RESEARCH ||
+    node.input?.deepResearchStep !== "provider-research"
+  ) {
     return undefined;
   }
   const provider = readString(node.input, "provider");
@@ -178,10 +201,16 @@ function buildDeepResearchProviderPrompt(args: {
       "Return a concise synthesis with concrete source names, URLs when available, disagreement, recency signals, and confidence limits.",
       "",
       "Questions:",
-      ...args.questions.map((question) => [
-        `- ${question.id}: ${question.text}`,
-        question.searchQueries.length > 0 ? `  Search queries: ${question.searchQueries.join("; ")}` : undefined,
-      ].filter(Boolean).join("\n")),
+      ...args.questions.map((question) =>
+        [
+          `- ${question.id}: ${question.text}`,
+          question.searchQueries.length > 0
+            ? `  Search queries: ${question.searchQueries.join("; ")}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ),
       "",
       "All provider-node search queries:",
       ...args.queries.map((query) => `- ${query}`),
@@ -194,10 +223,16 @@ function buildDeepResearchProviderPrompt(args: {
       `Provider result limit per question: ${args.maxResultsPerQuestion}`,
       "",
       "Questions:",
-      ...args.questions.map((question) => [
-        `- ${question.id}: ${question.text}`,
-        question.searchQueries.length > 0 ? `  Search queries: ${question.searchQueries.join("; ")}` : undefined,
-      ].filter(Boolean).join("\n")),
+      ...args.questions.map((question) =>
+        [
+          `- ${question.id}: ${question.text}`,
+          question.searchQueries.length > 0
+            ? `  Search queries: ${question.searchQueries.join("; ")}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ),
       "",
       "All provider-node search queries:",
       ...args.queries.map((query) => `- ${query}`),
@@ -216,7 +251,9 @@ function deepResearchProviderModel(provider: string): string {
   return "deterministic";
 }
 
-function readQuestionInputs(value: unknown): Array<{ id: string; text: string; searchQueries: string[] }> {
+function readQuestionInputs(
+  value: unknown,
+): Array<{ id: string; text: string; searchQueries: string[] }> {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -227,11 +264,13 @@ function readQuestionInputs(value: unknown): Array<{ id: string; text: string; s
     if (!id || !text) {
       return [];
     }
-    return [{
-      id,
-      text,
-      searchQueries: readStringArray(record.searchQueries),
-    }];
+    return [
+      {
+        id,
+        text,
+        searchQueries: readStringArray(record.searchQueries),
+      },
+    ];
   });
 }
 
@@ -246,9 +285,13 @@ function readNumber(record: Record<string, unknown> | undefined, key: string): n
 }
 
 function readStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }

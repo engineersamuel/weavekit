@@ -25,7 +25,8 @@ export function buildNodeArtifactLinks(args: {
   result?: WorkflowNodeExecutionResult;
   snapshot?: DashboardArtifactSnapshot;
 }): DashboardArtifactLink[] {
-  const runId = args.snapshot?.activeRunId ?? args.snapshot?.run?.runId ?? args.snapshot?.state?.runId;
+  const runId =
+    args.snapshot?.activeRunId ?? args.snapshot?.run?.runId ?? args.snapshot?.state?.runId;
   if (!runId || !args.node) {
     return [];
   }
@@ -42,29 +43,39 @@ export function artifactHref(runId: string, file: string): string {
   return `/api/artifact?runId=${encodeURIComponent(runId)}&file=${encodeURIComponent(file)}`;
 }
 
-function artifactRefLinks(runId: string, artifacts: WorkflowArtifactRef[] | undefined): DashboardArtifactLink[] {
+function artifactRefLinks(
+  runId: string,
+  artifacts: WorkflowArtifactRef[] | undefined,
+): DashboardArtifactLink[] {
   return (artifacts ?? []).flatMap((artifact) => {
     if (!artifact.path) {
       return [];
     }
-    return [{
-      label: artifactLabel(artifact),
-      file: artifact.path,
-      href: artifactHref(runId, artifact.path),
-    }];
+    return [
+      {
+        label: artifactLabel(artifact),
+        file: artifact.path,
+        href: artifactHref(runId, artifact.path),
+      },
+    ];
   });
 }
 
-function typedPayloadLinks(runId: string, result: WorkflowNodeExecutionResult | undefined): DashboardArtifactLink[] {
+function typedPayloadLinks(
+  runId: string,
+  result: WorkflowNodeExecutionResult | undefined,
+): DashboardArtifactLink[] {
   if (!result?.payload) {
     return [];
   }
   const file = `${result.nodeId}.payload.json`;
-  return [{
-    label: "Open typed payload JSON",
-    file,
-    href: artifactHref(runId, file),
-  }];
+  return [
+    {
+      label: "Open typed payload JSON",
+      file,
+      href: artifactHref(runId, file),
+    },
+  ];
 }
 
 function topLevelWorkflowReportLinks(
@@ -72,16 +83,19 @@ function topLevelWorkflowReportLinks(
   node: RuntimeWorkflowNode,
   snapshot: DashboardArtifactSnapshot | undefined,
 ): DashboardArtifactLink[] {
-  const isReportNode = node.id === "report" || node.harness === "reporter" || node.kind === "visualization";
+  const isReportNode =
+    node.id === "report" || node.harness === "reporter" || node.kind === "visualization";
   const runStatus = snapshot?.state?.status ?? snapshot?.run?.status;
   if (!isReportNode || runStatus === "running") {
     return [];
   }
-  return [{
-    label: "Open workflow report",
-    file: "workflow-report.md",
-    href: artifactHref(runId, "workflow-report.md"),
-  }];
+  return [
+    {
+      label: "Open workflow report",
+      file: "workflow-report.md",
+      href: artifactHref(runId, "workflow-report.md"),
+    },
+  ];
 }
 
 function artifactLabel(artifact: WorkflowArtifactRef): string {

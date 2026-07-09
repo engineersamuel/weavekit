@@ -12,7 +12,11 @@ export function getGeneratedBamlFunctionNames(): Set<string> {
     ...(prototype ? Object.getOwnPropertyNames(prototype) : []),
   ]);
   keys.delete("constructor");
-  return new Set([...keys].filter((key) => typeof client[key] === "function" || typeof prototype?.[key] === "function"));
+  return new Set(
+    [...keys].filter(
+      (key) => typeof client[key] === "function" || typeof prototype?.[key] === "function",
+    ),
+  );
 }
 
 function addUnknownBamlFunctionError(args: {
@@ -148,11 +152,13 @@ export function validateManifestSemantics(args: {
 
   for (const skillName of args.manifest.capabilities?.skills ?? []) {
     const result = validateSkillReference(skillName, args.repoRoot);
-    errors.push(...result.errors.map((error) => ({
-      ...error,
-      filePath: args.filePath,
-      entityId: args.manifest.id,
-    })));
+    errors.push(
+      ...result.errors.map((error) => ({
+        ...error,
+        filePath: args.filePath,
+        entityId: args.manifest.id,
+      })),
+    );
   }
 
   return errors;

@@ -1,5 +1,9 @@
 import type { ProjectCatalogEntry } from "../../config.js";
-import type { VerificationAudit, VerificationOpportunity, VerificationRecommendationReview } from "../../generated/baml_client/index.js";
+import type {
+  VerificationAudit,
+  VerificationOpportunity,
+  VerificationRecommendationReview,
+} from "../../generated/baml_client/index.js";
 
 export function buildVerificationAuditPrompt(project: ProjectCatalogEntry): string {
   return [

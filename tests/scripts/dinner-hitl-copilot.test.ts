@@ -39,7 +39,9 @@ describe("dinner-hitl-copilot helpers", () => {
 
   it("rejects missing or non-numeric owner chat ids", () => {
     expect(() => parseOwnerChatId(undefined)).toThrow("Need TELEGRAM_OWNER_CHAT_ID in .env.");
-    expect(() => parseOwnerChatId("not-a-number")).toThrow("TELEGRAM_OWNER_CHAT_ID must be a number.");
+    expect(() => parseOwnerChatId("not-a-number")).toThrow(
+      "TELEGRAM_OWNER_CHAT_ID must be a number.",
+    );
   });
 
   it("can import the Copilot SDK with the documented package entrypoint", () => {

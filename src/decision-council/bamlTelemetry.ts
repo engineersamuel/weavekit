@@ -42,7 +42,9 @@ function truncateTelemetryValue(value: unknown, seen = new WeakSet<object>()): u
     return "[circular]";
   }
   seen.add(value);
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, truncateTelemetryValue(item, seen)]));
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, truncateTelemetryValue(item, seen)]),
+  );
 }
 
 export function serializeTelemetryAttribute(value: unknown): string {
@@ -80,7 +82,8 @@ function setContextAttributes(span: Span, context: BamlTelemetryContext): void {
   if (context.roundNumber !== undefined) {
     span.setAttribute("weavekit.decision_council.round_number", context.roundNumber);
   }
-  if (context.personaId) span.setAttribute("weavekit.decision_council.persona_id", context.personaId);
+  if (context.personaId)
+    span.setAttribute("weavekit.decision_council.persona_id", context.personaId);
 }
 
 function setCollectorAttributes(span: Span, collector: Collector): void {

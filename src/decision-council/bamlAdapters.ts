@@ -5,7 +5,11 @@ import {
   type BamlEnv,
   type BamlRouteOptions,
 } from "./bamlRouting.js";
-import { TraceBamlOperation, createBamlTelemetryOptions, type BamlTelemetryContext } from "./bamlTelemetry.js";
+import {
+  TraceBamlOperation,
+  createBamlTelemetryOptions,
+  type BamlTelemetryContext,
+} from "./bamlTelemetry.js";
 import { RouteTaskKind, type ModelRouter } from "./modelRouter.js";
 import {
   DecisionCouncilReportSchema,
@@ -75,7 +79,9 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
   private readonly bamlEnv: BamlEnv;
   private readonly client: RoutableBamlClient;
 
-  constructor(args: { router?: ModelRouter; bamlEnv?: BamlEnv; bamlClient?: RoutableBamlClient } = {}) {
+  constructor(
+    args: { router?: ModelRouter; bamlEnv?: BamlEnv; bamlClient?: RoutableBamlClient } = {},
+  ) {
     this.router = args.router;
     this.bamlEnv = args.bamlEnv ?? {
       baseUrl: process.env.COPILOT_PROXY_BASE_URL,
@@ -108,11 +114,11 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
   ): BamlRouteOptions {
     const telemetryOptions = createBamlTelemetryOptions(telemetryContext);
     return {
-      ...(options ?? {}),
+      ...options,
       ...telemetryOptions,
       tags: {
-        ...(options?.tags ?? {}),
-        ...(telemetryOptions.tags ?? {}),
+        ...options?.tags,
+        ...telemetryOptions.tags,
       },
     };
   }

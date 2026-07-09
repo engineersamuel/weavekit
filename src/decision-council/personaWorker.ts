@@ -8,7 +8,10 @@ import { buildCopilotClientOptions } from "../telemetry/copilotSdk.js";
 type CopilotLikeClient = {
   start(): Promise<void>;
   createSession(config: unknown): Promise<{
-    sendAndWait(message: { prompt: string }, timeout?: number): Promise<{ data?: { content?: string } } | undefined>;
+    sendAndWait(
+      message: { prompt: string },
+      timeout?: number,
+    ): Promise<{ data?: { content?: string } } | undefined>;
     disconnect(): Promise<void>;
   }>;
   // Real SDK returns Error[] on stop; undefined is tolerated for mocks/no-error cases.
@@ -82,10 +85,7 @@ function attachStopErrors(err: unknown, stopErrors: Error[]): void {
 }
 
 export type PersonaWorker = {
-  runPersona(args: {
-    persona: PersonaDefinition;
-    brief: RoundBrief;
-  }): Promise<RawPersonaResult>;
+  runPersona(args: { persona: PersonaDefinition; brief: RoundBrief }): Promise<RawPersonaResult>;
 };
 
 export function buildPersonaPrompt(persona: PersonaDefinition, brief: RoundBrief): string {
@@ -112,34 +112,45 @@ export class CopilotPersonaWorker implements PersonaWorker {
   private readonly supportsReasoningEffort: (model: string) => boolean;
   private readonly ensureSkill: (skill: PersonaSkill) => Promise<string>;
 
-  constructor(args: {
-    clientFactory?: () => CopilotLikeClient | Promise<CopilotLikeClient>;
-    model?: string;
-    timeoutMs?: number;
-    /** Permission handler for persona sessions. Defaults to deny-by-default. */
-    onPermissionRequest?: () => { kind: "approved" | "denied" };
-    router?: ModelRouter;
-    supportsReasoningEffort?: (model: string) => boolean;
-    ensureSkill?: (skill: PersonaSkill) => Promise<string>;
-  } = {}) {
-    this.clientFactory = args.clientFactory ?? (async () => {
-      const { CopilotClient } = await import("@github/copilot-sdk");
-      const CopilotClientCtor = CopilotClient as unknown as new (options?: unknown) => CopilotLikeClient;
-      const telemetryOptions = buildCopilotClientOptions();
-      return telemetryOptions ? new CopilotClientCtor(telemetryOptions) : new CopilotClientCtor();
-    });
+  constructor(
+    args: {
+      clientFactory?: () => CopilotLikeClient | Promise<CopilotLikeClient>;
+      model?: string;
+      timeoutMs?: number;
+      /** Permission handler for persona sessions. Defaults to deny-by-default. */
+      onPermissionRequest?: () => { kind: "approved" | "denied" };
+      router?: ModelRouter;
+      supportsReasoningEffort?: (model: string) => boolean;
+      ensureSkill?: (skill: PersonaSkill) => Promise<string>;
+    } = {},
+  ) {
+    this.clientFactory =
+      args.clientFactory ??
+      (async () => {
+        const { CopilotClient } = await import("@github/copilot-sdk");
+        const CopilotClientCtor = CopilotClient as unknown as new (
+          options?: unknown,
+        ) => CopilotLikeClient;
+        const telemetryOptions = buildCopilotClientOptions();
+        return telemetryOptions ? new CopilotClientCtor(telemetryOptions) : new CopilotClientCtor();
+      });
     this.model = args.model ?? "claude-sonnet-5";
     this.timeoutMs = args.timeoutMs ?? 120_000;
     this.onPermissionRequest = args.onPermissionRequest ?? (() => ({ kind: "denied" as const }));
     this.router = args.router;
     this.supportsReasoningEffort = args.supportsReasoningEffort ?? (() => false);
-    this.ensureSkill = args.ensureSkill ?? (async (skill) => {
-      const { ensureSkillInstalled } = await import("../personas/skillInstaller.js");
-      return ensureSkillInstalled({ skill });
-    });
+    this.ensureSkill =
+      args.ensureSkill ??
+      (async (skill) => {
+        const { ensureSkillInstalled } = await import("../personas/skillInstaller.js");
+        return ensureSkillInstalled({ skill });
+      });
   }
 
-  async runPersona(args: { persona: PersonaDefinition; brief: RoundBrief }): Promise<RawPersonaResult> {
+  async runPersona(args: {
+    persona: PersonaDefinition;
+    brief: RoundBrief;
+  }): Promise<RawPersonaResult> {
     const { persona, brief } = args;
     const client = await this.clientFactory();
     await client.start();
@@ -163,7 +174,12 @@ export class CopilotPersonaWorker implements PersonaWorker {
         model: string;
         reasoningEffort?: string;
         agent?: string;
-        customAgents?: Array<{ name: string; displayName: string; description: string; prompt: string }>;
+        customAgents?: Array<{
+          name: string;
+          displayName: string;
+          description: string;
+          prompt: string;
+        }>;
         skillDirectories?: string[];
         disabledSkills?: string[];
         onPermissionRequest: () => { kind: "approved" | "denied" };
@@ -175,9 +191,9 @@ export class CopilotPersonaWorker implements PersonaWorker {
       if (persona.skill) {
         const skillsDir = await this.ensureSkill(persona.skill);
         const allDirs = readdirSync(skillsDir, { withFileTypes: true })
-          .filter(d => d.isDirectory())
-          .map(d => d.name);
-        const disabledSkills = allDirs.filter(name => name !== persona.skill!.name);
+          .filter((d) => d.isDirectory())
+          .map((d) => d.name);
+        const disabledSkills = allDirs.filter((name) => name !== persona.skill!.name);
         sessionConfig = {
           model,
           skillDirectories: [skillsDir],
@@ -255,7 +271,9 @@ export class CopilotPersonaWorker implements PersonaWorker {
       const rawStop = await client.stop();
       if (rawStop && rawStop.length > 0) stopErrors = rawStop;
     } catch (stopRejection) {
-      stopErrors = [stopRejection instanceof Error ? stopRejection : new Error(String(stopRejection))];
+      stopErrors = [
+        stopRejection instanceof Error ? stopRejection : new Error(String(stopRejection)),
+      ];
     }
 
     if (successResult !== undefined) {

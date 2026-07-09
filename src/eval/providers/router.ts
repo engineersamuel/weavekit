@@ -1,5 +1,10 @@
 import type { ApiProvider, ProviderResponse } from "promptfoo";
-import { createInitialWorkflowRouter, type InitialRouter, type InitialRouterInput, type RouteDecision } from "../../initialRouter.js";
+import {
+  createInitialWorkflowRouter,
+  type InitialRouter,
+  type InitialRouterInput,
+  type RouteDecision,
+} from "../../initialRouter.js";
 
 export interface RouterProviderOptions {
   router?: InitialRouter;
@@ -40,7 +45,10 @@ export class RouterProvider implements ApiProvider {
     return "weavekit:initial-router";
   }
 
-  async callApi(prompt: string, context?: { vars?: Record<string, unknown> }): Promise<ProviderResponse> {
+  async callApi(
+    prompt: string,
+    context?: { vars?: Record<string, unknown> },
+  ): Promise<ProviderResponse> {
     const vars = context?.vars ?? {};
     const input: InitialRouterInput = {
       prompt: String(vars.prompt ?? vars.question ?? prompt),

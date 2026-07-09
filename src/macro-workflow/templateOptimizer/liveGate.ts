@@ -135,9 +135,10 @@ export async function optimizeTemplateWithLiveGate(
     return buildResult({
       args,
       fixtureResult,
-      status: fixtureResult.finalIncumbent.id === args.baseline.id
-        ? "keep-current-template"
-        : "fixture-candidate-ready",
+      status:
+        fixtureResult.finalIncumbent.id === args.baseline.id
+          ? "keep-current-template"
+          : "fixture-candidate-ready",
       maxLiveTrials,
       attemptedLiveTrials: 0,
       liveRejectedMoves: [],
@@ -197,7 +198,9 @@ export async function optimizeTemplateWithLiveGate(
         liveTrialIndex,
       });
     } catch (error) {
-      liveRejectedMoves.push(`Blocked live gate for ${challenger.id}: incumbent trial failed: ${stringifyError(error)}`);
+      liveRejectedMoves.push(
+        `Blocked live gate for ${challenger.id}: incumbent trial failed: ${stringifyError(error)}`,
+      );
       return buildResult({
         args,
         fixtureResult: {
@@ -249,7 +252,9 @@ export async function optimizeTemplateWithLiveGate(
         liveTrialIndex,
       });
     } catch (error) {
-      liveRejectedMoves.push(`Rejected ${challenger.id}: challenger live trial failed: ${stringifyError(error)}`);
+      liveRejectedMoves.push(
+        `Rejected ${challenger.id}: challenger live trial failed: ${stringifyError(error)}`,
+      );
       continue;
     }
     if (challengerTrial.status !== "passed") {
@@ -269,7 +274,9 @@ export async function optimizeTemplateWithLiveGate(
         criteria: LIVE_JUDGE_CRITERIA,
       });
     } catch (error) {
-      liveRejectedMoves.push(`Rejected ${challenger.id}: live judge failed: ${stringifyError(error)}`);
+      liveRejectedMoves.push(
+        `Rejected ${challenger.id}: live judge failed: ${stringifyError(error)}`,
+      );
       continue;
     }
 
@@ -302,7 +309,9 @@ export async function optimizeTemplateWithLiveGate(
       });
     }
 
-    liveRejectedMoves.push(buildLiveRejectedMoveSummary(challenger, latestLiveDecision, liveJudgment));
+    liveRejectedMoves.push(
+      buildLiveRejectedMoveSummary(challenger, latestLiveDecision, liveJudgment),
+    );
   }
 
   const exhaustedFixtureResult: TemplateOptimizerResult = {
@@ -369,7 +378,9 @@ function buildResult(args: {
   };
 }
 
-function buildFixtureDecision(result: TemplateOptimizerResult): TemplateOptimizerFixtureDecision | undefined {
+function buildFixtureDecision(
+  result: TemplateOptimizerResult,
+): TemplateOptimizerFixtureDecision | undefined {
   const replacement = findLastReplacementIteration(result.iterations);
   const latest = replacement ?? result.iterations.at(-1);
   if (!latest) {
@@ -405,8 +416,9 @@ function buildLiveDecision(args: {
   challengerTrial: LiveTemplateTrialResult;
   liveJudgment: LiveTemplateJudgment;
 }): TemplateOptimizerLiveDecision {
-  const scoreDelta = args.liveJudgment.scoreDelta
-    ?? args.liveJudgment.challengerScore - args.liveJudgment.incumbentScore;
+  const scoreDelta =
+    args.liveJudgment.scoreDelta ??
+    args.liveJudgment.challengerScore - args.liveJudgment.incumbentScore;
   const adoptionDecision =
     args.liveJudgment.winner === "challenger" &&
     scoreDelta >= args.args.liveGate.minimumLiveDelta &&
@@ -445,7 +457,9 @@ function buildLiveRejectedMoveSummary(
     reasons.push(`live winner was ${decision.winner}`);
   }
   if (decision.scoreDelta < decision.threshold.minimumLiveDelta) {
-    reasons.push(`live score delta ${decision.scoreDelta} is below minimum ${decision.threshold.minimumLiveDelta}`);
+    reasons.push(
+      `live score delta ${decision.scoreDelta} is below minimum ${decision.threshold.minimumLiveDelta}`,
+    );
   }
   if (decision.decisionConfidence < decision.threshold.minimumLiveDecisionConfidence) {
     reasons.push(
@@ -453,7 +467,9 @@ function buildLiveRejectedMoveSummary(
     );
   }
   if (judgment.criticalRegression) {
-    reasons.push(`live critical regression${judgment.criticalRegressionReason ? `: ${judgment.criticalRegressionReason}` : ""}`);
+    reasons.push(
+      `live critical regression${judgment.criticalRegressionReason ? `: ${judgment.criticalRegressionReason}` : ""}`,
+    );
   }
   reasons.push(decision.rationale);
   reasons.push(`critique for next challenger: ${decision.critiqueForNextChallenger}`);
@@ -470,7 +486,10 @@ function compactLiveRejectedMoveTrace(liveRejectedMoves: string[]): string | und
     .join("\n");
 }
 
-function addUniqueCandidates(leaderboard: TemplateCandidate[], candidates: TemplateCandidate[]): void {
+function addUniqueCandidates(
+  leaderboard: TemplateCandidate[],
+  candidates: TemplateCandidate[],
+): void {
   const seen = new Set(leaderboard.map((candidate) => candidate.id));
   for (const candidate of candidates) {
     if (!seen.has(candidate.id)) {

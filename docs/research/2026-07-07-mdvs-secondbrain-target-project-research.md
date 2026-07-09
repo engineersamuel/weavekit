@@ -52,6 +52,7 @@ independent of anything about mdvs or secondbrain.
 
 **Confirmed recurring across three separate runs in this repo's `runs/`
 history**, all for this same source/target pair:
+
 - `runs/6b6710ab-.../` — original run; flagged the mismatch as a catalog-config
   risk (now shown to be a red herring — config was already correct).
 - `runs/7e3a98f7-.../raw-plans/plan-opportunity-opp-1-schema-only-validator-cli.md`
@@ -60,7 +61,7 @@ history**, all for this same source/target pair:
   scoped, unimplemented Python validator plan for the vault.
 - `runs/56160fde-.../workflow-report.md` (most recent, same day) — the
   workflow's own project-research node again resolved `Target project:
-  Weavekit` and the run's top recommendation became **"Retarget validation
+Weavekit` and the run's top recommendation became **"Retarget validation
   plans to the vault via the catalog"** (`opp-002-fix-project-identity-in-plans`),
   i.e. the workflow tried to patch around the symptom (mistargeted plans)
   without locating this task-script root cause.
@@ -118,13 +119,12 @@ the checks themselves are not schema-driven.
    documented schema, run before/independent of any qmd/embedding work,
    emitting structured JSON with a distinct exit code for violations vs.
    operational errors.
-2. **Metadata-aware filtering for search.** `00-system/search-mcp.md` (line 42,
-   130) explicitly states `03-sources/` is excluded from qmd until
+2. **Metadata-aware filtering for search.** `00-system/search-mcp.md` (line 42, 130) explicitly states `03-sources/` is excluded from qmd until
    "metadata-aware qmd filtering exists" — i.e., the vault has a
    known, named gap that matches mdvs's "typed metadata filters over
    frontmatter" capability. A schema-aware filter (e.g., only index/return
    `03-sources/` notes where `classification != restricted` and `agent_access
-   != no-read`) is a second concrete, source-grounded opportunity.
+!= no-read`) is a second concrete, source-grounded opportunity.
 3. **Incremental build / delta classification** is lower priority: qmd already
    does incremental refresh (confirmed via `qmd status` showing an existing,
    current index), so mdvs's build-classification lesson is not a

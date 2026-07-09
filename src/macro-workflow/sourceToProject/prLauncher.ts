@@ -63,9 +63,13 @@ export type SourceToProjectPrLauncherShell = {
   run(command: string, args: string[], options: { cwd: string }): Promise<string>;
 };
 
-export async function launchSourceToProjectPrAgent(args: SourceToProjectPrLaunchArgs): Promise<SourceToProjectPrLaunchResult> {
+export async function launchSourceToProjectPrAgent(
+  args: SourceToProjectPrLaunchArgs,
+): Promise<SourceToProjectPrLaunchResult> {
   if (args.config.provider !== "herdr") {
-    throw new Error(`Unsupported source-to-project PR launcher provider: ${String(args.config.provider)}`);
+    throw new Error(
+      `Unsupported source-to-project PR launcher provider: ${String(args.config.provider)}`,
+    );
   }
   const shell = args.shell ?? { run: defaultRun };
   const launchIds = sourceToProjectPrLaunchIds(args.context);
@@ -90,11 +94,20 @@ export async function launchSourceToProjectPrAgent(args: SourceToProjectPrLaunch
   });
   const createResult = parseHerdrWorktreeCreateOutput(createOutput);
   const worktreePath = createResult.worktreePath;
-  const agentCommand = await resolveAgentCommandPath(args.config.agentCommand, shell, args.context.project.workingTree);
+  const agentCommand = await resolveAgentCommandPath(
+    args.config.agentCommand,
+    shell,
+    args.context.project.workingTree,
+  );
   const isSuperpowersInstalled = args.isSuperpowersInstalled ?? isSuperpowersInstalledForCodex;
-  const prompt = args.context.initialPromptMode === "implement"
-    ? buildSourceToProjectPrAgentAutoImplementInitialPrompt(args.context, agentCommand, isSuperpowersInstalled)
-    : buildSourceToProjectPrAgentInitialPrompt(args.context);
+  const prompt =
+    args.context.initialPromptMode === "implement"
+      ? buildSourceToProjectPrAgentAutoImplementInitialPrompt(
+          args.context,
+          agentCommand,
+          isSuperpowersInstalled,
+        )
+      : buildSourceToProjectPrAgentInitialPrompt(args.context);
   const agentArgs = buildAgentCommandArgs({
     agentCommand,
     configuredArgs: args.config.agentArgs,
@@ -102,23 +115,23 @@ export async function launchSourceToProjectPrAgent(args: SourceToProjectPrLaunch
   });
   const startCommand = createResult.rootPaneId
     ? await runAgentInRootPane({
-      shell,
-      cwd: args.context.project.workingTree,
-      paneId: createResult.rootPaneId,
-      agentName: launchIds.agentName,
-      agentCommand,
-      agentArgs,
-    })
+        shell,
+        cwd: args.context.project.workingTree,
+        paneId: createResult.rootPaneId,
+        agentName: launchIds.agentName,
+        agentCommand,
+        agentArgs,
+      })
     : await startAgentInNewPane({
-      shell,
-      cwd: args.context.project.workingTree,
-      launchIds,
-      worktreePath,
-      createResult,
-      config: args.config,
-      agentCommand,
-      agentArgs,
-    });
+        shell,
+        cwd: args.context.project.workingTree,
+        launchIds,
+        worktreePath,
+        createResult,
+        config: args.config,
+        agentCommand,
+        agentArgs,
+      });
 
   return {
     provider: "herdr",
@@ -142,8 +155,14 @@ async function runAgentInRootPane(args: {
 }): Promise<string> {
   const commandLine = [args.agentCommand, ...args.agentArgs].map(shellQuote).join(" ");
   await args.shell.run("herdr", ["pane", "run", args.paneId, commandLine], { cwd: args.cwd });
-  await args.shell.run("herdr", ["agent", "wait", args.paneId, "--status", "idle", "--timeout", "30000"], { cwd: args.cwd }).catch(() => undefined);
-  await args.shell.run("herdr", ["agent", "rename", args.paneId, args.agentName], { cwd: args.cwd }).catch(() => undefined);
+  await args.shell
+    .run("herdr", ["agent", "wait", args.paneId, "--status", "idle", "--timeout", "30000"], {
+      cwd: args.cwd,
+    })
+    .catch(() => undefined);
+  await args.shell
+    .run("herdr", ["agent", "rename", args.paneId, args.agentName], { cwd: args.cwd })
+    .catch(() => undefined);
   return formatCommand("herdr", ["pane", "run", args.paneId, commandLine]);
 }
 
@@ -159,10 +178,10 @@ async function startAgentInNewPane(args: {
 }): Promise<string> {
   const placementArgs = args.createResult.workspaceId
     ? [
-      "--workspace",
-      args.createResult.workspaceId,
-      ...(args.createResult.tabId ? ["--tab", args.createResult.tabId] : []),
-    ]
+        "--workspace",
+        args.createResult.workspaceId,
+        ...(args.createResult.tabId ? ["--tab", args.createResult.tabId] : []),
+      ]
     : ["--split", args.config.split];
   const startArgs = [
     "agent",
@@ -179,13 +198,18 @@ async function startAgentInNewPane(args: {
   return formatCommand("herdr", startArgs);
 }
 
-function buildAgentCommandArgs(args: { agentCommand: string; configuredArgs: string[]; prompt: string }): string[] {
+function buildAgentCommandArgs(args: {
+  agentCommand: string;
+  configuredArgs: string[];
+  prompt: string;
+}): string[] {
   const configuredArgs = [...args.configuredArgs];
-  const permissionArgs = isCodexCommand(args.agentCommand) && !hasCodexPermissionOverride(configuredArgs)
-    ? ["--dangerously-bypass-approvals-and-sandbox"]
-    : isCopilotCommand(args.agentCommand) && !hasCopilotPermissionOverride(configuredArgs)
-      ? ["--allow-all"]
-      : [];
+  const permissionArgs =
+    isCodexCommand(args.agentCommand) && !hasCodexPermissionOverride(configuredArgs)
+      ? ["--dangerously-bypass-approvals-and-sandbox"]
+      : isCopilotCommand(args.agentCommand) && !hasCopilotPermissionOverride(configuredArgs)
+        ? ["--allow-all"]
+        : [];
   return [...permissionArgs, ...configuredArgs, args.prompt];
 }
 
@@ -211,7 +235,8 @@ function isSuperpowersInstalledForCodex(): boolean {
       return false;
     }
     return Object.entries(plugins as Record<string, unknown>).some(([name, value]) => {
-      const enabled = value && typeof value === "object" ? (value as Record<string, unknown>).enabled : undefined;
+      const enabled =
+        value && typeof value === "object" ? (value as Record<string, unknown>).enabled : undefined;
       return name.split("@")[0] === "superpowers" && enabled === true;
     });
   } catch {
@@ -220,23 +245,22 @@ function isSuperpowersInstalledForCodex(): boolean {
 }
 
 function hasCopilotPermissionOverride(args: string[]): boolean {
-  return args.some((arg) => (
-    arg === "--allow-all"
-    || arg === "--allow-all-tools"
-    || arg.startsWith("--allow-tool")
-  ));
+  return args.some(
+    (arg) => arg === "--allow-all" || arg === "--allow-all-tools" || arg.startsWith("--allow-tool"),
+  );
 }
 
 function hasCodexPermissionOverride(args: string[]): boolean {
-  return args.some((arg) => (
-    arg === "--dangerously-bypass-approvals-and-sandbox"
-    || arg === "--sandbox"
-    || arg.startsWith("--sandbox=")
-    || arg === "-s"
-    || arg === "--ask-for-approval"
-    || arg.startsWith("--ask-for-approval=")
-    || arg === "-a"
-  ));
+  return args.some(
+    (arg) =>
+      arg === "--dangerously-bypass-approvals-and-sandbox" ||
+      arg === "--sandbox" ||
+      arg.startsWith("--sandbox=") ||
+      arg === "-s" ||
+      arg === "--ask-for-approval" ||
+      arg.startsWith("--ask-for-approval=") ||
+      arg === "-a",
+  );
 }
 
 async function runCreateOrOpenWorktree(args: {
@@ -251,15 +275,11 @@ async function runCreateOrOpenWorktree(args: {
     if (!isExistingWorktreeError(error)) {
       throw error;
     }
-    return args.shell.run("herdr", [
-      "worktree",
-      "open",
-      "--cwd",
-      args.cwd,
-      "--branch",
-      args.branchName,
-      "--json",
-    ], { cwd: args.cwd });
+    return args.shell.run(
+      "herdr",
+      ["worktree", "open", "--cwd", args.cwd, "--branch", args.branchName, "--json"],
+      { cwd: args.cwd },
+    );
   }
 }
 
@@ -272,7 +292,9 @@ async function resolveAgentCommandPath(
     return command;
   }
   try {
-    const resolved = (await shell.run("sh", ["-lc", `command -v ${shellQuote(command)}`], { cwd })).trim();
+    const resolved = (
+      await shell.run("sh", ["-lc", `command -v ${shellQuote(command)}`], { cwd })
+    ).trim();
     return resolved || command;
   } catch {
     return command;
@@ -312,11 +334,15 @@ export function buildSourceToProjectPrAgentPrompt(context: SourceToProjectPrLaun
     "Validation commands:",
     ...(context.project.validationCommands.length > 0
       ? context.project.validationCommands.map((command) => `- ${command}`)
-      : ["- No validation commands were configured; run the smallest relevant checks you can justify."]),
+      : [
+          "- No validation commands were configured; run the smallest relevant checks you can justify.",
+        ]),
     "",
     "Reviewed source-to-project report:",
     context.reportMarkdown,
-  ].filter((part): part is string => Boolean(part)).join("\n");
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n");
 }
 
 function renderProjectBrief(projectBrief: ProjectBrief | undefined): string[] {
@@ -332,9 +358,13 @@ function renderProjectBrief(projectBrief: ProjectBrief | undefined): string[] {
     ...renderNamedList("Change surfaces", projectBrief.changeSurfaces),
     ...renderNamedList("Project research validation commands", projectBrief.validationCommands),
     ...renderNamedList("Project risks", projectBrief.risks),
-    ...renderNamedList("Project evidence", projectBrief.evidence.map((evidence) =>
-      `${evidence.id}: ${evidence.source}${evidence.quote ? ` - ${evidence.quote}` : ""}`
-    )),
+    ...renderNamedList(
+      "Project evidence",
+      projectBrief.evidence.map(
+        (evidence) =>
+          `${evidence.id}: ${evidence.source}${evidence.quote ? ` - ${evidence.quote}` : ""}`,
+      ),
+    ),
   ].filter((part): part is string => Boolean(part));
 }
 
@@ -342,19 +372,13 @@ function renderNamedList(title: string, values: string[]): string[] {
   if (values.length === 0) {
     return [];
   }
-  return [
-    "",
-    `${title}:`,
-    ...values.map((value) => `- ${value}`),
-  ];
+  return ["", `${title}:`, ...values.map((value) => `- ${value}`)];
 }
 
-export function buildSourceToProjectPrAgentInitialPrompt(context: SourceToProjectPrLaunchContext): string {
-  return [
-    "/plan",
-    "",
-    buildSourceToProjectPrAgentPrompt(context),
-  ].join("\n");
+export function buildSourceToProjectPrAgentInitialPrompt(
+  context: SourceToProjectPrLaunchContext,
+): string {
+  return ["/plan", "", buildSourceToProjectPrAgentPrompt(context)].join("\n");
 }
 
 /**
@@ -379,15 +403,15 @@ export function buildSourceToProjectPrAgentAutoImplementInitialPrompt(
       ? "Use subagent-driven development to implement this reviewed source-to-project opportunity directly."
       : "Implement this reviewed source-to-project opportunity directly."
     : "Implement this reviewed source-to-project opportunity directly (no plan-mode approval step; it was already planned and reviewed upstream in the workflow).";
-  return [
-    openingLine,
-    "",
-    buildSourceToProjectPrAgentPrompt(context),
-  ].join("\n");
+  return [openingLine, "", buildSourceToProjectPrAgentPrompt(context)].join("\n");
 }
 
-function sourceToProjectPrLaunchIds(context: SourceToProjectPrLaunchContext): { branchName: string; agentName: string } {
-  const opportunitySlug = shortLaunchPart(context.opportunityId, 24) || shortLaunchPart(context.nodeId, 24);
+function sourceToProjectPrLaunchIds(context: SourceToProjectPrLaunchContext): {
+  branchName: string;
+  agentName: string;
+} {
+  const opportunitySlug =
+    shortLaunchPart(context.opportunityId, 24) || shortLaunchPart(context.nodeId, 24);
   const runSlug = shortLaunchPart(context.runId, 8);
   const shortId = [opportunitySlug, runSlug].filter(Boolean).join("-") || "manual-pr";
   return {
@@ -404,14 +428,22 @@ function labelForOpportunity(context: SourceToProjectPrLaunchContext): string {
 }
 
 function sanitizeLaunchPart(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/(^-|-$)/g, "");
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 }
 
 function shortLaunchPart(value: string, maxLen: number): string {
   return sanitizeLaunchPart(value).slice(0, maxLen).replace(/-+$/, "");
 }
 
-function parseHerdrWorktreeCreateOutput(output: string): { worktreePath: string; workspaceId?: string; tabId?: string; rootPaneId?: string } {
+function parseHerdrWorktreeCreateOutput(output: string): {
+  worktreePath: string;
+  workspaceId?: string;
+  tabId?: string;
+  rootPaneId?: string;
+} {
   const parsed = parseJsonObject(output);
   const worktreePath = findStringByKey(parsed, "path") ?? findStringByKey(parsed, "worktree_path");
   if (!worktreePath) {
@@ -419,7 +451,8 @@ function parseHerdrWorktreeCreateOutput(output: string): { worktreePath: string;
   }
   return {
     worktreePath,
-    workspaceId: findStringByKey(parsed, "workspace_id") ?? findStringByKey(parsed, "open_workspace_id"),
+    workspaceId:
+      findStringByKey(parsed, "workspace_id") ?? findStringByKey(parsed, "open_workspace_id"),
     tabId: findStringInNamedObject(parsed, "tab", "tab_id") ?? findStringByKey(parsed, "tab_id"),
     rootPaneId: findStringInNamedObject(parsed, "root_pane", "pane_id"),
   };
@@ -429,7 +462,9 @@ function parseJsonObject(output: string): unknown {
   try {
     return JSON.parse(output);
   } catch (error) {
-    throw new Error(`Herdr worktree create returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Herdr worktree create returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -455,7 +490,11 @@ function findStringByKey(value: unknown, key: string): string | undefined {
   return undefined;
 }
 
-function findStringInNamedObject(value: unknown, objectKey: string, valueKey: string): string | undefined {
+function findStringInNamedObject(
+  value: unknown,
+  objectKey: string,
+  valueKey: string,
+): string | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
@@ -482,10 +521,16 @@ function findStringInNamedObject(value: unknown, objectKey: string, valueKey: st
 }
 
 function formatCommand(command: string, args: string[]): string {
-  return [command, ...args].map((part) => /\s/.test(part) ? JSON.stringify(part) : part).join(" ");
+  return [command, ...args]
+    .map((part) => (/\s/.test(part) ? JSON.stringify(part) : part))
+    .join(" ");
 }
 
-async function defaultRun(command: string, args: string[], options: { cwd: string }): Promise<string> {
+async function defaultRun(
+  command: string,
+  args: string[],
+  options: { cwd: string },
+): Promise<string> {
   const result = await execFileAsync(command, args, { cwd: options.cwd });
   return result.stdout;
 }

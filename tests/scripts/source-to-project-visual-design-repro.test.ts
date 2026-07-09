@@ -28,7 +28,9 @@ describe("source-to-project visual design replay", () => {
     const fixture = await loadVisualDesignReplayFixture();
 
     expect(payloadMapForVisualDesignReplay(fixture).has("visual-plan-preflight")).toBe(true);
-    expect(payloadMapForVisualDesignReplay(fixture, { checkInstall: true }).has("visual-plan-preflight")).toBe(false);
+    expect(
+      payloadMapForVisualDesignReplay(fixture, { checkInstall: true }).has("visual-plan-preflight"),
+    ).toBe(false);
   });
 
   it("runs the visual-design node against the captured O3 fixture in hosted mock mode", async () => {
@@ -48,7 +50,9 @@ describe("source-to-project visual design replay", () => {
     expect(result.status).toBe("passed");
     expect(result.payload?.sourceToProjectVisualPlan).toMatchObject({
       opportunityId: "O3",
-      hostedArtifactUrl: expect.stringContaining("https://plan.agent-native.com/local-plans/replay-o3-readiness"),
+      hostedArtifactUrl: expect.stringContaining(
+        "https://plan.agent-native.com/local-plans/replay-o3-readiness",
+      ),
       bridgeCleanup: {
         status: "scheduled",
         bridgeUrl: "http://127.0.0.1:57044/local-plan.json?token=fixture",
@@ -74,21 +78,27 @@ describe("source-to-project visual design replay", () => {
 
       expect(result.status).toBe("passed");
       expect(traces.every((line) => line.startsWith("[repro +"))).toBe(true);
-      expect(traces).toEqual(expect.arrayContaining([
-        expect.stringContaining("start mode=mock-local-plan"),
-        expect.stringContaining("fixture loaded"),
-        expect.stringContaining("registry create"),
-        expect.stringContaining("adapter start node=visual-design-opportunity-o3"),
-        expect.stringContaining("adapter complete status=passed"),
-        expect.stringContaining("result url=https://plan.agent-native.com/local-plans/replay-o3-readiness"),
-        expect.stringContaining("finished"),
-      ]));
+      expect(traces).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("start mode=mock-local-plan"),
+          expect.stringContaining("fixture loaded"),
+          expect.stringContaining("registry create"),
+          expect.stringContaining("adapter start node=visual-design-opportunity-o3"),
+          expect.stringContaining("adapter complete status=passed"),
+          expect.stringContaining(
+            "result url=https://plan.agent-native.com/local-plans/replay-o3-readiness",
+          ),
+          expect.stringContaining("finished"),
+        ]),
+      );
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
   });
 
   it("fails the captured O3 replay when the visual step produces local HTML", async () => {
-    await expect(runVisualDesignReplay({ mode: "mock-local-html" })).rejects.toThrow("local HTML fallback");
+    await expect(runVisualDesignReplay({ mode: "mock-local-html" })).rejects.toThrow(
+      "local HTML fallback",
+    );
   });
 });

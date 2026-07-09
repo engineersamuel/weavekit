@@ -135,7 +135,10 @@ export async function runDecisionCouncilRound(
           personaIds: result.personaSet.personas.map((persona) => persona.id),
           rationale: result.rationale,
         };
-        span.setAttribute("weavekit.decision_council.selected_persona_count", output.personaIds.length);
+        span.setAttribute(
+          "weavekit.decision_council.selected_persona_count",
+          output.personaIds.length,
+        );
         setSerializedAttribute(span, "weavekit.decision_council.result", output);
         setSerializedAttribute(span, "langfuse.observation.output", output);
         span.setStatus({ code: SpanStatusCode.OK });
@@ -177,7 +180,9 @@ export async function runDecisionCouncilRound(
     | { stage: "persona-failed"; failure: DecisionPersonaFailure }
     | { stage: "normalize-failed"; raw: RawPersonaResult; failure: DecisionPersonaFailure };
 
-  async function processPersona(persona: (typeof selection.personaSet.personas)[number]): Promise<Outcome> {
+  async function processPersona(
+    persona: (typeof selection.personaSet.personas)[number],
+  ): Promise<Outcome> {
     const personaStartedAt = performance.now();
     deps.logger?.event({
       type: "council.persona.started",
@@ -258,7 +263,9 @@ export async function runDecisionCouncilRound(
     }
   }
 
-  const outcomes = await Promise.all(selection.personaSet.personas.map((persona) => processPersona(persona)));
+  const outcomes = await Promise.all(
+    selection.personaSet.personas.map((persona) => processPersona(persona)),
+  );
 
   for (const outcome of outcomes) {
     if (outcome.stage === "ok") {
@@ -346,7 +353,8 @@ export async function runDecisionCouncilRound(
   const assessments = rounds.map((item) => item.assessment);
 
   const reachedMaxRounds = rounds.length >= state.maxRounds;
-  const shouldStop = reachedMaxRounds || !assessment.shouldContinue || assessment.diminishingReturns;
+  const shouldStop =
+    reachedMaxRounds || !assessment.shouldContinue || assessment.diminishingReturns;
 
   deps.logger?.event({
     type: "council.round.completed",

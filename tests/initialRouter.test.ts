@@ -5,7 +5,8 @@ describe("InitialWorkflowRouter", () => {
   it("routes planning-heavy prompts to plan mode", async () => {
     const router = createInitialWorkflowRouter();
     const decision = await router.route({
-      prompt: "Create a rollout plan for the new router and break it into milestones and implementation steps.",
+      prompt:
+        "Create a rollout plan for the new router and break it into milestones and implementation steps.",
     });
 
     expect(decision.route).toBe(Classifier.PLAN);
@@ -16,7 +17,8 @@ describe("InitialWorkflowRouter", () => {
   it("routes research-heavy prompts to deep research", async () => {
     const router = createInitialWorkflowRouter();
     const decision = await router.route({
-      prompt: "Research the current state of deep research connectors and compare the options with evidence from source docs.",
+      prompt:
+        "Research the current state of deep research connectors and compare the options with evidence from source docs.",
     });
 
     expect(decision.route).toBe(Classifier.RESEARCH);
@@ -26,7 +28,8 @@ describe("InitialWorkflowRouter", () => {
   it("routes decision questions to the decision council", async () => {
     const router = createInitialWorkflowRouter();
     const decision = await router.route({
-      prompt: "Should we use the decision council or plan mode for this design challenge? We need a recommendation with trade-offs.",
+      prompt:
+        "Should we use the decision council or plan mode for this design challenge? We need a recommendation with trade-offs.",
     });
 
     expect(decision.route).toBe("decision-council");

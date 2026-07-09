@@ -17,7 +17,10 @@
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chatId = process.env.TELEGRAM_OWNER_CHAT_ID;
-const proxyBase = (process.env.COPILOT_PROXY_BASE_URL ?? "http://127.0.0.1:8080/v1").replace(/\/$/, "");
+const proxyBase = (process.env.COPILOT_PROXY_BASE_URL ?? "http://127.0.0.1:8080/v1").replace(
+  /\/$/,
+  "",
+);
 const proxyKey = process.env.COPILOT_PROXY_API_KEY ?? "anything";
 const model = process.env.BAML_MODEL ?? "gpt-5-mini";
 

@@ -1,6 +1,12 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   background: #0b1020;
   color: #e8eefc;
 }
@@ -1271,15 +1277,21 @@ body {
 }
 
 .node-status-running {
-  box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.24), 0 16px 34px rgba(251, 146, 60, 0.14);
+  box-shadow:
+    0 0 0 1px rgba(251, 146, 60, 0.24),
+    0 16px 34px rgba(251, 146, 60, 0.14);
 }
 
 .node-status-passed {
-  box-shadow: 0 0 0 1px rgba(20, 184, 166, 0.2), 0 14px 28px rgba(20, 184, 166, 0.1);
+  box-shadow:
+    0 0 0 1px rgba(20, 184, 166, 0.2),
+    0 14px 28px rgba(20, 184, 166, 0.1);
 }
 
 .node-status-failed {
-  box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.28), 0 14px 30px rgba(244, 63, 94, 0.16);
+  box-shadow:
+    0 0 0 1px rgba(244, 63, 94, 0.28),
+    0 14px 30px rgba(244, 63, 94, 0.16);
 }
 
 .node-status-pending {
@@ -1376,7 +1388,10 @@ body {
 }
 
 .react-flow__edge-path {
-  transition: stroke 180ms ease, stroke-width 180ms ease, opacity 180ms ease;
+  transition:
+    stroke 180ms ease,
+    stroke-width 180ms ease,
+    opacity 180ms ease;
 }
 
 .edge-status-running .react-flow__edge-path {
@@ -1394,7 +1409,6 @@ body {
 .edge-status-pending .react-flow__edge-path {
   opacity: 0.6;
 }
-
 
 .event-list {
   display: flex;

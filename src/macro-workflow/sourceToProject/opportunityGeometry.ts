@@ -8,7 +8,7 @@ export const OPPORTUNITY_SCORE_DIMENSIONS = [
   "risk",
 ] as const satisfies readonly (keyof OpportunityScore)[];
 
-type OpportunityScoreDimension = typeof OPPORTUNITY_SCORE_DIMENSIONS[number];
+type OpportunityScoreDimension = (typeof OPPORTUNITY_SCORE_DIMENSIONS)[number];
 
 export type OpportunityScoreVector = Pick<OpportunityScore, OpportunityScoreDimension>;
 
@@ -20,7 +20,9 @@ export type OpportunityScoreDiagnostics = {
 
 const MAX_OPPORTUNITY_SCORE_DISTANCE = Math.sqrt(OPPORTUNITY_SCORE_DIMENSIONS.length);
 
-export function averageOpportunityScoreVector(vectors: readonly OpportunityScoreVector[]): OpportunityScoreVector {
+export function averageOpportunityScoreVector(
+  vectors: readonly OpportunityScoreVector[],
+): OpportunityScoreVector {
   if (vectors.length === 0) {
     throw new RangeError("Expected at least one OpportunityScore vector.");
   }
@@ -33,20 +35,29 @@ export function averageOpportunityScoreVector(vectors: readonly OpportunityScore
   };
 }
 
-export function opportunityScorePrototype(vectors: readonly OpportunityScoreVector[]): OpportunityScoreVector {
+export function opportunityScorePrototype(
+  vectors: readonly OpportunityScoreVector[],
+): OpportunityScoreVector {
   return averageOpportunityScoreVector(vectors);
 }
 
-export function opportunityScoreDistance(left: OpportunityScoreVector, right: OpportunityScoreVector): number {
+export function opportunityScoreDistance(
+  left: OpportunityScoreVector,
+  right: OpportunityScoreVector,
+): number {
   const squaredDistance = OPPORTUNITY_SCORE_DIMENSIONS.reduce(
-    (sum, dimension) => sum + ((left[dimension] - right[dimension]) ** 2),
+    (sum, dimension) => sum + (left[dimension] - right[dimension]) ** 2,
     0,
   );
   return Math.sqrt(squaredDistance);
 }
 
-export function opportunityScoreTypicality(vector: OpportunityScoreVector, prototype: OpportunityScoreVector): number {
-  const typicality = 1 - (opportunityScoreDistance(vector, prototype) / MAX_OPPORTUNITY_SCORE_DISTANCE);
+export function opportunityScoreTypicality(
+  vector: OpportunityScoreVector,
+  prototype: OpportunityScoreVector,
+): number {
+  const typicality =
+    1 - opportunityScoreDistance(vector, prototype) / MAX_OPPORTUNITY_SCORE_DISTANCE;
   return Math.min(1, Math.max(0, typicality));
 }
 
@@ -68,15 +79,20 @@ export function opportunityScoreToScalar(
   sourceCoreFit: number,
   metaInfrastructurePenalty: number,
 ): number {
-  return (score.impact * 0.34) +
-    (score.applicability * 0.24) +
-    (score.confidence * 0.24) +
-    (sourceCoreFit * 0.24) -
-    (score.implementationCost * 0.12) -
-    (score.risk * 0.18) -
-    metaInfrastructurePenalty;
+  return (
+    score.impact * 0.34 +
+    score.applicability * 0.24 +
+    score.confidence * 0.24 +
+    sourceCoreFit * 0.24 -
+    score.implementationCost * 0.12 -
+    score.risk * 0.18 -
+    metaInfrastructurePenalty
+  );
 }
 
-function averageDimension(vectors: readonly OpportunityScoreVector[], dimension: OpportunityScoreDimension): number {
+function averageDimension(
+  vectors: readonly OpportunityScoreVector[],
+  dimension: OpportunityScoreDimension,
+): number {
   return vectors.reduce((sum, vector) => sum + vector[dimension], 0) / vectors.length;
 }

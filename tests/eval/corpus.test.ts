@@ -26,17 +26,20 @@ describe("evals/corpus", () => {
   });
 
   it("has exact per-domain distribution", () => {
-    const domainCounts = items.reduce((acc, item) => {
-      acc[item.domain] = (acc[item.domain] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    const domainCounts = items.reduce(
+      (acc, item) => {
+        acc[item.domain] = (acc[item.domain] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
 
     expect(domainCounts).toEqual({
       "api-protocol": 2,
       "architecture-style": 2,
       "build-vs-buy": 2,
       "data-store": 2,
-      "deploy": 1,
+      deploy: 1,
       "language-runtime": 2,
       "macro-workflow": 1,
       "messaging-async": 2,

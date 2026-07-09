@@ -9,6 +9,7 @@ weavekit is a **meta harness** — an orchestration layer that sits on top of ex
 **weavekit does not solve problems that LLMs can solve.** If a step in a workflow requires reasoning, code generation, summarization, classification, or any other LLM-native capability, delegate it to the LLM or harness — do not implement it in weavekit workflow code. weavekit's job is to orchestrate, not to be the intelligence.
 
 When building workflows:
+
 - Use Copilot SDK, Claude Code, Codex CLI, or other harnesses as execution engines for agent tasks.
 - Use **BAML** to define structured output schemas and context contracts between workflow steps. BAML is the boundary layer between weavekit orchestration and LLM execution — use it to declare what you expect back, not to implement the logic yourself.
 - Let the LLM solve what the LLM is good at. Let the harness manage agent execution, tool-calling, and context. weavekit connects and sequences those pieces.
@@ -54,6 +55,7 @@ If calling the Copilot SDK directly and you want the response to conform to a BA
 Write canonical, erasable TypeScript and avoid arcane runtime hacks. Node 22.18+/24 strips types and runs `.ts` files directly, so source stays build-free; `tsc` is for type-checking only (it does not run the code).
 
 - **Run TS directly, type-check separately.** Execute with `nub <file>.ts` (or `nub run <script>`); never add a transpile step for plain scripts. Keep type errors honest with a `typecheck` script (`tsc --noEmit`) in dev/CI — stripping does **not** type-check.
+- **Always use oxlint for linting and oxfmt for formatting.** Run `nub run lint` (`oxlint --deny-warnings .`) and `nub run fmt` (`oxfmt`) before committing; do not introduce ESLint, Prettier, Biome, or other lint/format tools. `mise run pre-commit` auto-fixes and formats staged files with oxlint/oxfmt (install the hook once per clone with `mise generate git-pre-commit --write`). Generated code under `src/generated/**` is excluded from oxfmt via `.oxfmtrc.json` — it's owned by `baml-cli generate`'s own formatter, so run `nub run baml-generate` to keep it in sync instead.
 - **Keep syntax erasable.** No `enum`, `namespace` with runtime code, parameter properties, or `import =`/`export =`. Use `const` objects/unions instead of `enum`, and explicit fields instead of parameter properties, so files run unchanged under native type-stripping. (`erasableSyntaxOnly` in `tsconfig.json` enforces this.)
 - **`import type` for types** (`verbatimModuleSyntax`). Type-only imports must use `import type`/`type`; otherwise the runtime treats them as value imports and crashes.
 - **Prefer library auto-resolution over hand-rolled paths.** If an SDK/tool resolves something for you, let it. Don't reach for `require.resolve(...)` path tricks unless auto-resolution genuinely fails — and gate that behind an env override.
@@ -61,7 +63,7 @@ Write canonical, erasable TypeScript and avoid arcane runtime hacks. Node 22.18+
 
 ```ts
 // ❌ arcane: hand-resolve the runtime path
-connection: RuntimeConnection.forStdio({ path: require.resolve("@github/copilot/npm-loader.js") })
+connection: RuntimeConnection.forStdio({ path: require.resolve("@github/copilot/npm-loader.js") });
 
 // ✅ canonical: let the SDK auto-resolve its bundled runtime; override only via env
 const cliPath = process.env.COPILOT_CLI_PATH;
@@ -90,8 +92,8 @@ type PreToolUseInput = Parameters<PreToolUseHandler>[0];
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "noEmit": true,
-    "strict": true
-  }
+    "strict": true,
+  },
 }
 ```
 
@@ -112,7 +114,7 @@ When debugging workflow execution, use the **playwright MCP** to navigate to thi
 
 ## Model proxy
 
-By default models are hosted through the copilot-proxy-rs available at http://127.0.0.1:8080 with endpoints  `/health`, `/version`, `/v1/models`, and `/v1/messages/count_tokens` routes.
+By default models are hosted through the copilot-proxy-rs available at http://127.0.0.1:8080 with endpoints `/health`, `/version`, `/v1/models`, and `/v1/messages/count_tokens` routes.
 
 ## TypeScript conventions
 

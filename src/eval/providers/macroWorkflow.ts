@@ -30,7 +30,10 @@ export class MacroWorkflowProvider {
     return { plan, verification };
   }
 
-  async callApi(_prompt: string, context?: { vars?: Record<string, string> }): Promise<{ output: string; metadata: Record<string, unknown> }> {
+  async callApi(
+    _prompt: string,
+    context?: { vars?: Record<string, string> },
+  ): Promise<{ output: string; metadata: Record<string, unknown> }> {
     const input = {
       prompt: context?.vars?.prompt ?? _prompt,
       objective: context?.vars?.prompt ?? _prompt,
@@ -39,7 +42,11 @@ export class MacroWorkflowProvider {
     const result = await this.provide(input);
     return {
       output: `Template: ${result.plan.templateId}\nNode count: ${result.plan.nodes.length}\nValidation: ${result.verification.valid ? "valid" : "invalid"}`,
-      metadata: { templateId: result.plan.templateId, valid: result.verification.valid, issueCount: result.verification.issues.length },
+      metadata: {
+        templateId: result.plan.templateId,
+        valid: result.verification.valid,
+        issueCount: result.verification.issues.length,
+      },
     };
   }
 }

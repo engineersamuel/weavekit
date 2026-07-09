@@ -4,7 +4,11 @@ import { PersonaDefinitionSchema } from "../../src/decision-council/types.js";
 
 describe("manifest-backed council personas", () => {
   it("loads the shipped manifest personas", () => {
-    expect(listPersonas().map((persona) => persona.id).sort()).toEqual([
+    expect(
+      listPersonas()
+        .map((persona) => persona.id)
+        .sort(),
+    ).toEqual([
       "deep-module-dry",
       "dialectic-adversary",
       "dialectic-advocate",

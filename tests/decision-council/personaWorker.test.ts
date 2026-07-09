@@ -11,7 +11,11 @@ import {
   getResultStopErrors,
   getStopErrors,
 } from "../../src/decision-council/personaWorker.js";
-import { PersonaDefinitionSchema, type PersonaDefinition, type RoundBrief } from "../../src/decision-council/types.js";
+import {
+  PersonaDefinitionSchema,
+  type PersonaDefinition,
+  type RoundBrief,
+} from "../../src/decision-council/types.js";
 import type { ModelRouter } from "../../src/decision-council/modelRouter.js";
 
 const persona: PersonaDefinition = PersonaDefinitionSchema.parse({
@@ -282,7 +286,10 @@ describe("persona worker routing", () => {
     });
     const result = await worker.runPersona({ persona, brief });
 
-    const config = client.createSession.mock.calls[0]![0] as { model: string; reasoningEffort?: string };
+    const config = client.createSession.mock.calls[0]![0] as {
+      model: string;
+      reasoningEffort?: string;
+    };
     expect(config.model).toBe("gpt-5.4");
     expect(config.reasoningEffort).toBe("medium");
     expect(result.metadata.model).toBe("gpt-5.4");
@@ -308,7 +315,10 @@ describe("persona worker routing", () => {
     const worker = new CopilotPersonaWorker({ clientFactory: () => client, router });
     await worker.runPersona({ persona, brief });
 
-    const config = client.createSession.mock.calls[0]![0] as { model: string; reasoningEffort?: string };
+    const config = client.createSession.mock.calls[0]![0] as {
+      model: string;
+      reasoningEffort?: string;
+    };
     expect(config.model).toBe("claude-sonnet-4.5");
     expect(config.reasoningEffort).toBeUndefined();
   });
@@ -324,10 +334,16 @@ describe("persona worker routing", () => {
       stop: vi.fn().mockResolvedValue(undefined),
     };
 
-    const worker = new CopilotPersonaWorker({ clientFactory: () => client, model: "claude-sonnet-4.5" });
+    const worker = new CopilotPersonaWorker({
+      clientFactory: () => client,
+      model: "claude-sonnet-4.5",
+    });
     await worker.runPersona({ persona, brief });
 
-    const config = client.createSession.mock.calls[0]![0] as { model: string; reasoningEffort?: string };
+    const config = client.createSession.mock.calls[0]![0] as {
+      model: string;
+      reasoningEffort?: string;
+    };
     expect(config.model).toBe("claude-sonnet-4.5");
     expect(config.reasoningEffort).toBeUndefined();
   });
@@ -458,7 +474,9 @@ describe("persona worker — skill-backed branch", () => {
       },
     });
 
-    await expect(worker.runPersona({ persona: skillPersona, brief: skillBrief })).rejects.toThrow("install failed");
+    await expect(worker.runPersona({ persona: skillPersona, brief: skillBrief })).rejects.toThrow(
+      "install failed",
+    );
     expect(client.createSession).not.toHaveBeenCalled();
   });
 

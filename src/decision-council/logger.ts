@@ -132,7 +132,8 @@ function colorize(event: DecisionCouncilEvent, text: string, enabled: boolean): 
   const colors = pc.createColors(enabled);
   if (!enabled) return text;
   if (event.type.endsWith(".failed")) return colors.red(text);
-  if (event.type.endsWith(".completed") || event.type === "council.artifacts.written") return colors.green(text);
+  if (event.type.endsWith(".completed") || event.type === "council.artifacts.written")
+    return colors.green(text);
   if (event.type.endsWith(".started")) return colors.cyan(text);
   return colors.bold(text);
 }
@@ -154,7 +155,10 @@ function eventDetails(event: DecisionCouncilEvent): Record<string, unknown> {
   return details;
 }
 
-export function formatDecisionCouncilEvent(event: DecisionCouncilEvent, options: FormatOptions = {}): string {
+export function formatDecisionCouncilEvent(
+  event: DecisionCouncilEvent,
+  options: FormatOptions = {},
+): string {
   const color = options.color ?? pc.isColorSupported;
   const colors = pc.createColors(color);
   const header = `${colors.gray(`[${event.timestamp}]`)} ${colorize(event, label(event), color)}`;
@@ -162,7 +166,9 @@ export function formatDecisionCouncilEvent(event: DecisionCouncilEvent, options:
   return body.length > 0 ? `${header}\n${indent(body)}` : header;
 }
 
-export function createConsoleDecisionCouncilLogger(options: LoggerOptions & FormatOptions = {}): DecisionCouncilLogger {
+export function createConsoleDecisionCouncilLogger(
+  options: LoggerOptions & FormatOptions = {},
+): DecisionCouncilLogger {
   const write = options.write ?? ((message) => process.stderr.write(message));
   return {
     event(event) {
@@ -171,7 +177,9 @@ export function createConsoleDecisionCouncilLogger(options: LoggerOptions & Form
   };
 }
 
-export function createJsonDecisionCouncilLogger(options: LoggerOptions = {}): DecisionCouncilLogger {
+export function createJsonDecisionCouncilLogger(
+  options: LoggerOptions = {},
+): DecisionCouncilLogger {
   const write = options.write ?? ((message) => process.stderr.write(message));
   return {
     event(event) {
@@ -180,7 +188,9 @@ export function createJsonDecisionCouncilLogger(options: LoggerOptions = {}): De
   };
 }
 
-export function createSilentDecisionCouncilLogger(options: LoggerOptions = {}): DecisionCouncilLogger {
+export function createSilentDecisionCouncilLogger(
+  options: LoggerOptions = {},
+): DecisionCouncilLogger {
   const write = options.write ?? noopWrite;
   return {
     event() {

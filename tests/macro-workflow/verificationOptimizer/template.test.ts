@@ -24,11 +24,13 @@ describe("verification-optimizer template", () => {
       dependsOn: [],
       writeMode: "read-only",
     });
-    expect(plan.nodes.find((node) => node.id === "verification-opportunity-mapping")).toMatchObject({
-      kind: "planning",
-      harness: "research",
-      dependsOn: ["project-verification-audit"],
-    });
+    expect(plan.nodes.find((node) => node.id === "verification-opportunity-mapping")).toMatchObject(
+      {
+        kind: "planning",
+        harness: "research",
+        dependsOn: ["project-verification-audit"],
+      },
+    );
     expect(plan.nodes.find((node) => node.id === "verification-review")).toMatchObject({
       kind: "deliberation",
       harness: "decision-council",
@@ -49,9 +51,11 @@ describe("verification-optimizer template", () => {
       "project-verification-audit",
       "verification-opportunity-mapping",
     ]);
-    expect(plan.nodes.find((node) => node.id === "verification-opportunity-mapping")).toMatchObject({
-      dependsOn: ["project-verification-audit"],
-    });
+    expect(plan.nodes.find((node) => node.id === "verification-opportunity-mapping")).toMatchObject(
+      {
+        dependsOn: ["project-verification-audit"],
+      },
+    );
     expect(verifyWorkflowPlan(plan).valid).toBe(true);
   });
 });

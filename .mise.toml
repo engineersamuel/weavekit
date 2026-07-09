@@ -2,6 +2,7 @@
 
 [tools]
 node = "24"
+"npm:@nubjs/nub" = "0.2.9"
 
 [tasks.doctor]
 description = "Validate workflow entity manifests, prompt references, BAML outputs, and skill capabilities."
@@ -10,6 +11,43 @@ run = "nub src/cli.ts entity validate"
 [tasks."doctor:sdk"]
 description = "Validate configured entity skills against a live Copilot SDK session."
 run = "nub scripts/entity-sdk-doctor.ts"
+
+[tasks."pre-commit"]
+description = "Fast pre-commit gate: auto-fix/lint staged files with oxlint, auto-format staged files with oxfmt. Install locally with: mise generate git-pre-commit --write"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${STAGED:-}" ]; then
+  echo "[pre-commit] No staged files; skipping oxlint/oxfmt."
+  exit 0
+fi
+
+staged_ts_js=$(echo "$STAGED" | tr ' ' '\n' | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' | grep -v '^src/generated/' || true)
+if [ -n "$staged_ts_js" ]; then
+  echo "[pre-commit] Running oxlint --fix on staged files..."
+  echo "$staged_ts_js" | xargs nubx oxlint --fix
+fi
+
+# src/generated/** is excluded via .oxfmtrc.json (owned by `baml-cli generate`'s
+# own formatter, not oxfmt) but filter it here too for clarity/speed.
+staged_formattable=$(echo "$STAGED" | tr ' ' '\n' | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json|yaml|yml|md)$' | grep -v '^src/generated/' || true)
+if [ -n "$staged_formattable" ]; then
+  echo "[pre-commit] Running oxfmt on staged files..."
+  echo "$staged_formattable" | xargs nubx oxfmt
+fi
+
+if [ -z "$staged_ts_js" ] && [ -z "$staged_formattable" ]; then
+  echo "[pre-commit] No lintable/formattable files staged."
+  exit 0
+fi
+
+echo "[pre-commit] Re-staging any files oxlint/oxfmt modified..."
+staged_relevant=$(printf '%s\n%s\n' "$staged_ts_js" "$staged_formattable" | sort -u | sed '/^$/d')
+if [ -n "$staged_relevant" ]; then
+  echo "$staged_relevant" | xargs git add
+fi
+'''
 
 [tasks."repro:visual-design:live-trace"]
 description = "Replay the captured O3 visual-design node against the live LLM with timing traces and a 10-minute local Plan bridge cleanup TTL."

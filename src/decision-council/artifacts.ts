@@ -1,6 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { DecisionCouncilReport, DecisionCouncilRunState, DecisionPersonaFailure } from "./types.js";
+import type {
+  DecisionCouncilReport,
+  DecisionCouncilRunState,
+  DecisionPersonaFailure,
+} from "./types.js";
 
 export type DecisionCouncilArtifacts = {
   reportPath: string;
@@ -21,14 +25,20 @@ function renderFailures(failures: DecisionPersonaFailure[]): string {
     return "- None\n";
   }
 
-  return failures
-    .map((failure) => `- ${failure.personaId}: ${failure.message} (retryable: ${failure.retryable})`)
-    .join("\n") + "\n";
+  return (
+    failures
+      .map(
+        (failure) => `- ${failure.personaId}: ${failure.message} (retryable: ${failure.retryable})`,
+      )
+      .join("\n") + "\n"
+  );
 }
 
 export function renderDecisionCouncilReportMarkdown(report: DecisionCouncilReport): string {
   if (report.finalReportMarkdown.trim().length > 0) {
-    return report.finalReportMarkdown.endsWith("\n") ? report.finalReportMarkdown : `${report.finalReportMarkdown}\n`;
+    return report.finalReportMarkdown.endsWith("\n")
+      ? report.finalReportMarkdown
+      : `${report.finalReportMarkdown}\n`;
   }
 
   return [
@@ -90,7 +100,10 @@ export async function writeDecisionCouncilArtifacts(args: {
   for (const round of state.rounds) {
     for (let i = 0; i < round.rawResults.length; i++) {
       const result = round.rawResults[i]!;
-      const transcriptPath = join(debugDir, `round-${round.brief.roundNumber}-${result.personaId}-${i}.txt`);
+      const transcriptPath = join(
+        debugDir,
+        `round-${round.brief.roundNumber}-${result.personaId}-${i}.txt`,
+      );
       await writeFile(transcriptPath, result.transcript.join("\n") + "\n", "utf8");
       debugTranscriptPaths.push(transcriptPath);
     }

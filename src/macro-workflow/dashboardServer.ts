@@ -5,7 +5,11 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
-import { loadTypedWeavekitConfig, type ProjectCatalogEntry, type WeavekitConfig } from "../config.js";
+import {
+  loadTypedWeavekitConfig,
+  type ProjectCatalogEntry,
+  type WeavekitConfig,
+} from "../config.js";
 import { MacroWorkflowEventKind, type MacroWorkflowEvent } from "./logger.js";
 import type { MacroWorkflowRunStateLike, WorkflowReplayEvent } from "./types.js";
 import type { ProjectBrief } from "../generated/baml_client/index.js";
@@ -41,12 +45,20 @@ export type WorkflowDashboardSnapshot = {
 
 export type WorkflowDashboardServer = {
   url: string;
-  publishState: (state: MacroWorkflowRunStateLike, event: MacroWorkflowEvent, history?: WorkflowReplayEvent[]) => void;
+  publishState: (
+    state: MacroWorkflowRunStateLike,
+    event: MacroWorkflowEvent,
+    history?: WorkflowReplayEvent[],
+  ) => void;
   stop: () => Promise<void>;
 };
 
 export type WorkflowDashboardPublisher = {
-  publishState: (state: MacroWorkflowRunStateLike, event: MacroWorkflowEvent, history?: WorkflowReplayEvent[]) => Promise<void>;
+  publishState: (
+    state: MacroWorkflowRunStateLike,
+    event: MacroWorkflowEvent,
+    history?: WorkflowReplayEvent[],
+  ) => Promise<void>;
 };
 
 export type WorkflowDashboardServerOptions = {
@@ -126,7 +138,11 @@ export async function createWorkflowDashboardServer(
       }
 
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify(toSerializablePayload(latestState, latestEvent, latestHistory, latestRun, latestRuns)));
+      response.end(
+        JSON.stringify(
+          toSerializablePayload(latestState, latestEvent, latestHistory, latestRun, latestRuns),
+        ),
+      );
       return;
     }
 
@@ -140,11 +156,17 @@ export async function createWorkflowDashboardServer(
           latestRun = snapshot.run;
           latestRuns = snapshot.runs;
         }).catch((error: unknown) => {
-          logDashboardError(`Dashboard replay refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+          logDashboardError(
+            `Dashboard replay refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         });
       }
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify(toSerializablePayload(latestState, latestEvent, latestHistory, latestRun, latestRuns)));
+      response.end(
+        JSON.stringify(
+          toSerializablePayload(latestState, latestEvent, latestHistory, latestRun, latestRuns),
+        ),
+      );
       return;
     }
 
@@ -153,7 +175,12 @@ export async function createWorkflowDashboardServer(
         latestRuns = await listWorkflowDashboardRuns(watchDir).catch(() => latestRuns);
       }
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({ runs: latestRuns ?? [], activeRunId: latestRun?.runId ?? latestState?.runId }));
+      response.end(
+        JSON.stringify({
+          runs: latestRuns ?? [],
+          activeRunId: latestRun?.runId ?? latestState?.runId,
+        }),
+      );
       return;
     }
 
@@ -162,14 +189,23 @@ export async function createWorkflowDashboardServer(
         const config = loadTypedWeavekitConfig(options.configPath);
         const agentOptions = config.sourceToProject.prLauncher.agentOptions;
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(JSON.stringify({
-          options: agentOptions,
-          defaultAgentId: agentOptions.find((option) => option.agentCommand === config.sourceToProject.prLauncher.agentCommand)?.id
-            ?? agentOptions[0]?.id,
-        }));
+        response.end(
+          JSON.stringify({
+            options: agentOptions,
+            defaultAgentId:
+              agentOptions.find(
+                (option) => option.agentCommand === config.sourceToProject.prLauncher.agentCommand,
+              )?.id ?? agentOptions[0]?.id,
+          }),
+        );
       } catch (error) {
         response.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-        response.end(JSON.stringify({ options: [], error: error instanceof Error ? error.message : String(error) }));
+        response.end(
+          JSON.stringify({
+            options: [],
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
       return;
     }
@@ -180,13 +216,23 @@ export async function createWorkflowDashboardServer(
         return;
       }
       if (!watchDir) {
-        writePrLaunchErrorResponse(response, 404, "PR launch requires a dashboard watch directory.");
+        writePrLaunchErrorResponse(
+          response,
+          404,
+          "PR launch requires a dashboard watch directory.",
+        );
         return;
       }
       const body = await readRequestBody(request).catch(() => "");
       try {
         const payload = parsePrLaunchRequestBody(body);
-        const state = await readSelectedWorkflowStateForArtifact(watchDir, payload.runId, latestState, latestRun, latestRuns);
+        const state = await readSelectedWorkflowStateForArtifact(
+          watchDir,
+          payload.runId,
+          latestState,
+          latestRun,
+          latestRuns,
+        );
         if (!state) {
           throw dashboardRequestError(404, "Workflow run not found.");
         }
@@ -202,10 +248,15 @@ export async function createWorkflowDashboardServer(
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify({ ok: true, launch }));
       } catch (error) {
-        const statusCode = typeof (error as { statusCode?: unknown }).statusCode === "number"
-          ? (error as { statusCode: number }).statusCode
-          : 500;
-        writePrLaunchErrorResponse(response, statusCode, error instanceof Error ? error.message : String(error));
+        const statusCode =
+          typeof (error as { statusCode?: unknown }).statusCode === "number"
+            ? (error as { statusCode: number }).statusCode
+            : 500;
+        writePrLaunchErrorResponse(
+          response,
+          statusCode,
+          error instanceof Error ? error.message : String(error),
+        );
       }
       return;
     }
@@ -217,9 +268,20 @@ export async function createWorkflowDashboardServer(
         return;
       }
 
-      const filePath = await resolveRunArtifactRequest(requestUrl, watchDir, latestRun, latestRuns).catch(() => undefined);
+      const filePath = await resolveRunArtifactRequest(
+        requestUrl,
+        watchDir,
+        latestRun,
+        latestRuns,
+      ).catch(() => undefined);
       if (!filePath) {
-        const payloadArtifact = await resolveRunPayloadArtifactRequest(requestUrl, watchDir, latestState, latestRun, latestRuns).catch(() => undefined);
+        const payloadArtifact = await resolveRunPayloadArtifactRequest(
+          requestUrl,
+          watchDir,
+          latestState,
+          latestRun,
+          latestRuns,
+        ).catch(() => undefined);
         if (payloadArtifact) {
           response.writeHead(200, {
             "Content-Type": "application/json; charset=utf-8",
@@ -292,9 +354,10 @@ export async function createWorkflowDashboardServer(
       latestHistory = history;
     }
     if (nextState.runId) {
-      const existingRun = latestRun?.runId === nextState.runId
-        ? latestRun
-        : latestRuns?.find((run) => run.runId === nextState.runId);
+      const existingRun =
+        latestRun?.runId === nextState.runId
+          ? latestRun
+          : latestRuns?.find((run) => run.runId === nextState.runId);
       latestRun = summarizeWorkflowRun(nextState, existingRun?.statePath ?? "", new Date());
     }
     const snapshot = toSerializablePayload(nextState, event, latestHistory, latestRun, latestRuns);
@@ -318,7 +381,9 @@ export async function createWorkflowDashboardServer(
           publishStateInternal(snapshot.state, snapshot.event, snapshot.history);
         }
       }).catch((error: unknown) => {
-        logDashboardError(`Dashboard watch refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+        logDashboardError(
+          `Dashboard watch refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       });
     }, 1000);
   }
@@ -371,7 +436,9 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
   });
 }
 
-export async function createWorkflowDashboardPublisher(baseUrl: string): Promise<WorkflowDashboardPublisher> {
+export async function createWorkflowDashboardPublisher(
+  baseUrl: string,
+): Promise<WorkflowDashboardPublisher> {
   return {
     async publishState(state, event, history) {
       const response = await fetch(new URL("/api/state", baseUrl).toString(), {
@@ -406,7 +473,11 @@ function handleSseConnection(
   }
 }
 
-function writeSseEvent(response: ServerResponse, eventName: string, payload: WorkflowDashboardSnapshot) {
+function writeSseEvent(
+  response: ServerResponse,
+  eventName: string,
+  payload: WorkflowDashboardSnapshot,
+) {
   response.write(`event: ${eventName}\n`);
   response.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
@@ -418,10 +489,14 @@ function toSerializablePayload(
   run?: WorkflowDashboardRunSummary,
   runs?: WorkflowDashboardRunSummary[],
 ): WorkflowDashboardSnapshot {
-  return JSON.parse(JSON.stringify({ state, history, event, run, runs, activeRunId: run?.runId ?? state?.runId })) as WorkflowDashboardSnapshot;
+  return JSON.parse(
+    JSON.stringify({ state, history, event, run, runs, activeRunId: run?.runId ?? state?.runId }),
+  ) as WorkflowDashboardSnapshot;
 }
 
-export function createWorkflowDashboardSnapshotVersion(snapshot: WorkflowDashboardSnapshot): string {
+export function createWorkflowDashboardSnapshotVersion(
+  snapshot: WorkflowDashboardSnapshot,
+): string {
   const latestHistoryEvent = snapshot.history?.at(-1);
   return JSON.stringify({
     stateRunId: snapshot.state?.runId,
@@ -436,15 +511,20 @@ export function createWorkflowDashboardSnapshotVersion(snapshot: WorkflowDashboa
         }
       : undefined,
     historyLength: snapshot.history?.length ?? 0,
-    runs: snapshot.runs?.map((run) => ({
-      runId: run.runId,
-      status: run.status,
-      updatedAt: run.updatedAt,
-    })) ?? [],
+    runs:
+      snapshot.runs?.map((run) => ({
+        runId: run.runId,
+        status: run.status,
+        updatedAt: run.updatedAt,
+      })) ?? [],
   });
 }
 
-function parsePrLaunchRequestBody(body: string): { runId?: string; nodeId: string; agentId?: string } {
+function parsePrLaunchRequestBody(body: string): {
+  runId?: string;
+  nodeId: string;
+  agentId?: string;
+} {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -461,7 +541,8 @@ function parsePrLaunchRequestBody(body: string): { runId?: string; nodeId: strin
   return {
     runId: typeof record.runId === "string" && record.runId.trim() ? record.runId : undefined,
     nodeId: record.nodeId,
-    agentId: typeof record.agentId === "string" && record.agentId.trim() ? record.agentId : undefined,
+    agentId:
+      typeof record.agentId === "string" && record.agentId.trim() ? record.agentId : undefined,
   };
 }
 
@@ -472,9 +553,14 @@ async function buildSourceToProjectPrLaunchArgs(args: {
   config: WeavekitConfig;
 }): Promise<SourceToProjectPrLaunchArgs> {
   if (args.state.templateId !== "source-to-project") {
-    throw dashboardRequestError(409, "Manual PR launch is only available for source-to-project runs.");
+    throw dashboardRequestError(
+      409,
+      "Manual PR launch is only available for source-to-project runs.",
+    );
   }
-  const node = (args.state.currentPlan?.nodes ?? args.state.plan?.nodes ?? []).find((candidate) => candidate.id === args.nodeId);
+  const node = (args.state.currentPlan?.nodes ?? args.state.plan?.nodes ?? []).find(
+    (candidate) => candidate.id === args.nodeId,
+  );
   const isReportNode = node?.kind === "report" && node.id.startsWith("report-opportunity-");
   if (!node || !isReportNode) {
     throw dashboardRequestError(409, "Manual PR launch requires a passed report node.");
@@ -512,7 +598,10 @@ async function buildSourceToProjectPrLaunchArgs(args: {
     initialPromptMode: "implement",
   };
   return {
-    config: resolveSourceToProjectPrLauncherConfig(args.config.sourceToProject.prLauncher, args.agentId),
+    config: resolveSourceToProjectPrLauncherConfig(
+      args.config.sourceToProject.prLauncher,
+      args.agentId,
+    ),
     context,
   };
 }
@@ -535,7 +624,10 @@ function resolveSourceToProjectPrLauncherConfig(
   };
 }
 
-async function resolveProjectForSourceToProjectRun(state: MacroWorkflowRunStateLike, config: WeavekitConfig): Promise<ProjectCatalogEntry> {
+async function resolveProjectForSourceToProjectRun(
+  state: MacroWorkflowRunStateLike,
+  config: WeavekitConfig,
+): Promise<ProjectCatalogEntry> {
   const projects = Object.values(config.projects);
   if (projects.length === 0) {
     throw dashboardRequestError(409, "No configured project matches this source-to-project run.");
@@ -554,10 +646,16 @@ async function resolveProjectForSourceToProjectRun(state: MacroWorkflowRunStateL
   if (projects.length === 1) {
     return projects[0]!;
   }
-  throw dashboardRequestError(409, "Could not determine which configured project owns this source-to-project run.");
+  throw dashboardRequestError(
+    409,
+    "Could not determine which configured project owns this source-to-project run.",
+  );
 }
 
-async function resolveProjectByGitRemote(cwdCandidates: string[], projects: ProjectCatalogEntry[]): Promise<ProjectCatalogEntry | undefined> {
+async function resolveProjectByGitRemote(
+  cwdCandidates: string[],
+  projects: ProjectCatalogEntry[],
+): Promise<ProjectCatalogEntry | undefined> {
   const candidateRemoteUrls = new Set<string>();
   const remoteNames = Array.from(new Set(projects.map((project) => project.remote || "origin")));
   for (const cwd of cwdCandidates) {
@@ -584,7 +682,9 @@ async function resolveProjectByGitRemote(cwdCandidates: string[], projects: Proj
 
 async function readGitRemoteUrl(cwd: string, remoteName: string): Promise<string | undefined> {
   try {
-    const result = await execFileAsync("git", ["-C", cwd, "remote", "get-url", remoteName], { timeout: 3000 });
+    const result = await execFileAsync("git", ["-C", cwd, "remote", "get-url", remoteName], {
+      timeout: 3000,
+    });
     const remoteUrl = normalizeGitRemoteUrl(result.stdout);
     return remoteUrl || undefined;
   } catch {
@@ -593,7 +693,10 @@ async function readGitRemoteUrl(cwd: string, remoteName: string): Promise<string
 }
 
 function normalizeGitRemoteUrl(value: string): string {
-  return value.trim().replace(/\/$/, "").replace(/\.git$/, "");
+  return value
+    .trim()
+    .replace(/\/$/, "")
+    .replace(/\.git$/, "");
 }
 
 function executionCwdCandidates(state: MacroWorkflowRunStateLike): string[] {
@@ -613,25 +716,34 @@ function executionCwdCandidates(state: MacroWorkflowRunStateLike): string[] {
 }
 
 function readSourceReference(state: MacroWorkflowRunStateLike): string {
-  const sourcePayload = state.nodeResults?.find((result) => result.nodeId === "source-reading")?.payload;
+  const sourcePayload = state.nodeResults?.find(
+    (result) => result.nodeId === "source-reading",
+  )?.payload;
   const sourceAnalysis = readObject(sourcePayload?.sourceAnalysis);
   return readString(sourceAnalysis?.sourceId) ?? state.objective;
 }
 
 function readProjectBrief(state: MacroWorkflowRunStateLike): ProjectBrief | undefined {
-  const projectResearchPayload = state.nodeResults?.find((result) => result.nodeId === "project-research")?.payload;
+  const projectResearchPayload = state.nodeResults?.find(
+    (result) => result.nodeId === "project-research",
+  )?.payload;
   return readObject(projectResearchPayload?.projectBrief) as ProjectBrief | undefined;
 }
 
 function readObject(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
-function dashboardRequestError(statusCode: number, message: string): Error & { statusCode: number } {
+function dashboardRequestError(
+  statusCode: number,
+  message: string,
+): Error & { statusCode: number } {
   return Object.assign(new Error(message), { statusCode });
 }
 
@@ -652,15 +764,17 @@ async function resolveRunArtifactRequest(
   latestRuns: WorkflowDashboardRunSummary[] | undefined,
 ): Promise<string | undefined> {
   const artifactFile = requestUrl.searchParams.get("file") ?? "";
-  if (!artifactFile || artifactFile.startsWith("/") || artifactFile.split(/[\\/]+/).includes("..")) {
+  if (
+    !artifactFile ||
+    artifactFile.startsWith("/") ||
+    artifactFile.split(/[\\/]+/).includes("..")
+  ) {
     return undefined;
   }
 
-  const runs = latestRuns ?? await listWorkflowDashboardRuns(watchDir);
+  const runs = latestRuns ?? (await listWorkflowDashboardRuns(watchDir));
   const runId = requestUrl.searchParams.get("runId") ?? undefined;
-  const selectedRun = runId
-    ? runs.find((run) => run.runId === runId)
-    : latestRun ?? runs[0];
+  const selectedRun = runId ? runs.find((run) => run.runId === runId) : (latestRun ?? runs[0]);
   if (!selectedRun?.outputDir) {
     return undefined;
   }
@@ -683,7 +797,11 @@ async function resolveRunPayloadArtifactRequest(
   latestRuns: WorkflowDashboardRunSummary[] | undefined,
 ): Promise<{ filename: string; contents: string } | undefined> {
   const artifactFile = requestUrl.searchParams.get("file") ?? "";
-  if (!artifactFile || artifactFile.startsWith("/") || artifactFile.split(/[\\/]+/).includes("..")) {
+  if (
+    !artifactFile ||
+    artifactFile.startsWith("/") ||
+    artifactFile.split(/[\\/]+/).includes("..")
+  ) {
     return undefined;
   }
   const suffix = ".payload.json";
@@ -693,7 +811,13 @@ async function resolveRunPayloadArtifactRequest(
 
   const nodeId = artifactFile.slice(0, -suffix.length);
   const runId = requestUrl.searchParams.get("runId") ?? undefined;
-  const state = await readSelectedWorkflowStateForArtifact(watchDir, runId, latestState, latestRun, latestRuns);
+  const state = await readSelectedWorkflowStateForArtifact(
+    watchDir,
+    runId,
+    latestState,
+    latestRun,
+    latestRuns,
+  );
   const payload = state?.nodeResults.find((result) => result.nodeId === nodeId)?.payload;
   if (!payload) {
     return undefined;
@@ -717,8 +841,9 @@ async function readSelectedWorkflowStateForArtifact(
   }
 
   const cachedRun = runId
-    ? latestRuns?.find((run) => run.runId === runId) ?? (latestRun?.runId === runId ? latestRun : undefined)
-    : latestRun ?? latestRuns?.[0];
+    ? (latestRuns?.find((run) => run.runId === runId) ??
+      (latestRun?.runId === runId ? latestRun : undefined))
+    : (latestRun ?? latestRuns?.[0]);
   const runs = cachedRun?.statePath ? [cachedRun] : await listWorkflowDashboardRuns(watchDir);
   const selectedRun = runId ? runs.find((run) => run.runId === runId) : runs[0];
   if (!selectedRun?.statePath) {
@@ -729,7 +854,11 @@ async function readSelectedWorkflowStateForArtifact(
   return JSON.parse(contents) as MacroWorkflowRunStateLike;
 }
 
-function resolveStaticPath(pathname: string, dashboardDir: string, repoRoot: string): string | undefined {
+function resolveStaticPath(
+  pathname: string,
+  dashboardDir: string,
+  repoRoot: string,
+): string | undefined {
   const normalizedPath = pathname === "/" ? "/index.html" : pathname;
   if (normalizedPath.startsWith("/node_modules/")) {
     const relative = normalizedPath.slice("/node_modules/".length);
@@ -770,12 +899,16 @@ export async function readWorkflowReplayEvents(filePath: string): Promise<Workfl
       try {
         return JSON.parse(line) as WorkflowReplayEvent;
       } catch (error) {
-        throw new Error(`Invalid workflow replay event JSON on line ${index + 1}: ${(error as Error).message}`);
+        throw new Error(
+          `Invalid workflow replay event JSON on line ${index + 1}: ${(error as Error).message}`,
+        );
       }
     });
 }
 
-export async function readWorkflowDashboardSnapshot(stateFilePath: string): Promise<WorkflowDashboardSnapshot> {
+export async function readWorkflowDashboardSnapshot(
+  stateFilePath: string,
+): Promise<WorkflowDashboardSnapshot> {
   const contents = await readFile(stateFilePath, "utf8");
   const state = JSON.parse(contents) as MacroWorkflowRunStateLike;
   const historyPath = join(dirname(stateFilePath), "workflow-events.jsonl");
@@ -802,7 +935,9 @@ export async function readWorkflowDashboardSnapshot(stateFilePath: string): Prom
   };
 }
 
-export async function listWorkflowDashboardRuns(rootDir: string): Promise<WorkflowDashboardRunSummary[]> {
+export async function listWorkflowDashboardRuns(
+  rootDir: string,
+): Promise<WorkflowDashboardRunSummary[]> {
   const stateFilePaths = await listWorkflowStateFiles(rootDir);
   const runs: WorkflowDashboardRunSummary[] = [];
   for (const filePath of stateFilePaths) {
@@ -817,7 +952,11 @@ export async function listWorkflowDashboardRuns(rootDir: string): Promise<Workfl
   return runs.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
 }
 
-async function refreshWorkflowSnapshot(watchDir: string, runId: string | undefined, onSnapshot: (snapshot: WorkflowDashboardSnapshot) => void) {
+async function refreshWorkflowSnapshot(
+  watchDir: string,
+  runId: string | undefined,
+  onSnapshot: (snapshot: WorkflowDashboardSnapshot) => void,
+) {
   const runs = await listWorkflowDashboardRuns(watchDir);
   if (runs.length === 0) {
     return;
@@ -852,11 +991,17 @@ function summarizeWorkflowRun(
 }
 
 function generateFallbackRunName(objective: string): string {
-  const words = objective.split(/\s+/).filter(Boolean).slice(0, 5).map((word) => word.slice(0, 18));
+  const words = objective
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 5)
+    .map((word) => word.slice(0, 18));
   if (words.length === 0) {
     return "Workflow Run";
   }
-  return words.map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1).toLowerCase()}`).join(" ");
+  return words
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1).toLowerCase()}`)
+    .join(" ");
 }
 
 function serializeDateLike(value: Date | string | undefined): string | undefined {
@@ -869,7 +1014,9 @@ function serializeDateLike(value: Date | string | undefined): string | undefined
   return value;
 }
 
-async function listWorkflowStateFiles(rootDir: string): Promise<Array<{ path: string; mtimeMs: number }>> {
+async function listWorkflowStateFiles(
+  rootDir: string,
+): Promise<Array<{ path: string; mtimeMs: number }>> {
   const results: Array<{ path: string; mtimeMs: number }> = [];
 
   async function visit(currentDir: string) {

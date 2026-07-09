@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { CritiqueNormalizer, JudgeReducer } from "../../src/decision-council/bamlAdapters.js";
-import { GeneratedBamlAdapters, type RoutableBamlClient } from "../../src/decision-council/bamlAdapters.js";
+import {
+  GeneratedBamlAdapters,
+  type RoutableBamlClient,
+} from "../../src/decision-council/bamlAdapters.js";
 import { PolicyModelRouter } from "../../src/decision-council/modelRouter.js";
-import type { DecisionPersonaCritique, DecisionRoundAssessment, DecisionCouncilReport } from "../../src/decision-council/types.js";
+import type {
+  DecisionPersonaCritique,
+  DecisionRoundAssessment,
+  DecisionCouncilReport,
+} from "../../src/decision-council/types.js";
 
 describe("BAML adapter seams", () => {
   it("allows tests to replace critique normalization", async () => {
@@ -58,7 +65,9 @@ describe("BAML adapter seams", () => {
       },
     };
 
-    await expect(judge.assessRound({ roundNumber: 1, critiques: [], failures: [] })).resolves.toMatchObject({
+    await expect(
+      judge.assessRound({ roundNumber: 1, critiques: [], failures: [] }),
+    ).resolves.toMatchObject({
       shouldContinue: false,
     });
   });
@@ -118,7 +127,12 @@ describe("BAML adapter seams", () => {
         bamlEnv: {},
       });
 
-      await adapters.normalizeCritique({ personaId: "skeptic", text: "raw", transcript: [], metadata: {} });
+      await adapters.normalizeCritique({
+        personaId: "skeptic",
+        text: "raw",
+        transcript: [],
+        metadata: {},
+      });
       expect(capture.options[0]).toMatchObject({
         client: "CopilotProxyGpt5Mini",
         collector: expect.anything(),
@@ -167,9 +181,12 @@ describe("BAML adapter seams", () => {
       expect(assessModel).toBe("gpt-5.4");
 
       let reportModel: string | undefined;
-      await adapters.createFinalReport({ critiques: [], assessments: [], failures: [] }, (model) => {
-        reportModel = model;
-      });
+      await adapters.createFinalReport(
+        { critiques: [], assessments: [], failures: [] },
+        (model) => {
+          reportModel = model;
+        },
+      );
       expect(reportModel).toBe("claude-opus-4.8");
     });
 
@@ -189,9 +206,17 @@ describe("BAML adapter seams", () => {
 
     it("passes collector-backed tags into normalize calls", async () => {
       const capture = { options: [] as unknown[] };
-      const adapters = new GeneratedBamlAdapters({ bamlClient: fakeBamlClient(capture), bamlEnv: {} });
+      const adapters = new GeneratedBamlAdapters({
+        bamlClient: fakeBamlClient(capture),
+        bamlEnv: {},
+      });
 
-      await adapters.normalizeCritique({ personaId: "skeptic", text: "raw", transcript: [], metadata: {} });
+      await adapters.normalizeCritique({
+        personaId: "skeptic",
+        text: "raw",
+        transcript: [],
+        metadata: {},
+      });
 
       expect(capture.options[0]).toMatchObject({
         collector: expect.anything(),
@@ -203,7 +228,10 @@ describe("BAML adapter seams", () => {
 
     it("passes collector-backed tags into assess calls", async () => {
       const capture = { options: [] as unknown[] };
-      const adapters = new GeneratedBamlAdapters({ bamlClient: fakeBamlClient(capture), bamlEnv: {} });
+      const adapters = new GeneratedBamlAdapters({
+        bamlClient: fakeBamlClient(capture),
+        bamlEnv: {},
+      });
 
       await adapters.assessRound({ roundNumber: 2, critiques: [], failures: [] });
 
@@ -217,7 +245,10 @@ describe("BAML adapter seams", () => {
 
     it("passes collector-backed options into report calls", async () => {
       const capture = { options: [] as unknown[] };
-      const adapters = new GeneratedBamlAdapters({ bamlClient: fakeBamlClient(capture), bamlEnv: {} });
+      const adapters = new GeneratedBamlAdapters({
+        bamlClient: fakeBamlClient(capture),
+        bamlEnv: {},
+      });
 
       await adapters.createFinalReport({ critiques: [], assessments: [], failures: [] });
 
@@ -294,7 +325,11 @@ describe("BAML adapter seams", () => {
         recommendations: ["recommendation"],
       };
 
-      await adapters.createFinalReport({ critiques: [fullCritique], assessments: [], failures: [] });
+      await adapters.createFinalReport({
+        critiques: [fullCritique],
+        assessments: [],
+        failures: [],
+      });
 
       // The report receives only per-persona summaries, never the verbose claim/risk/
       // question/recommendation arrays, to keep the slow report generation within the

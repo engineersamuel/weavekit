@@ -2,7 +2,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderDecisionCouncilReportMarkdown, writeDecisionCouncilArtifacts } from "../../src/decision-council/artifacts.js";
+import {
+  renderDecisionCouncilReportMarkdown,
+  writeDecisionCouncilArtifacts,
+} from "../../src/decision-council/artifacts.js";
 import type { DecisionCouncilRunState } from "../../src/decision-council/types.js";
 
 const report = {
@@ -81,8 +84,12 @@ describe("council artifacts", () => {
       expect(artifacts.debugTranscriptPaths).toHaveLength(2);
       expect(artifacts.debugTranscriptPaths[0]).not.toBe(artifacts.debugTranscriptPaths[1]);
 
-      await expect(readFile(artifacts.debugTranscriptPaths[0]!, "utf8")).resolves.toContain("First answer");
-      await expect(readFile(artifacts.debugTranscriptPaths[1]!, "utf8")).resolves.toContain("Second answer");
+      await expect(readFile(artifacts.debugTranscriptPaths[0]!, "utf8")).resolves.toContain(
+        "First answer",
+      );
+      await expect(readFile(artifacts.debugTranscriptPaths[1]!, "utf8")).resolves.toContain(
+        "Second answer",
+      );
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
@@ -131,8 +138,12 @@ describe("council artifacts", () => {
       const artifacts = await writeDecisionCouncilArtifacts({ outputDir, state });
 
       await expect(readFile(artifacts.reportPath, "utf8")).resolves.toContain("Use Flue for v0.");
-      await expect(readFile(artifacts.statePath, "utf8")).resolves.toContain("\"stopReason\": \"consensus\"");
-      await expect(readFile(artifacts.debugTranscriptPaths[0]!, "utf8")).resolves.toContain("assistant: Raw answer");
+      await expect(readFile(artifacts.statePath, "utf8")).resolves.toContain(
+        '"stopReason": "consensus"',
+      );
+      await expect(readFile(artifacts.debugTranscriptPaths[0]!, "utf8")).resolves.toContain(
+        "assistant: Raw answer",
+      );
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

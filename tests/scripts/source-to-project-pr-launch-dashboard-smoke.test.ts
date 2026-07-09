@@ -47,7 +47,11 @@ describe("source-to-project PR launch dashboard smoke fixture", () => {
       "report",
       "visualization",
     ]);
-    expect(state.nodeResults.find((result: { nodeId: string }) => result.nodeId === "visual-design-opportunity-smoke")).toMatchObject({
+    expect(
+      state.nodeResults.find(
+        (result: { nodeId: string }) => result.nodeId === "visual-design-opportunity-smoke",
+      ),
+    ).toMatchObject({
       status: "passed",
       payload: {
         sourceToProjectVisualPlan: {
@@ -55,10 +59,12 @@ describe("source-to-project PR launch dashboard smoke fixture", () => {
         },
       },
     });
-    expect(state.nodeResults.find((result: { nodeId: string }) => result.nodeId === "report-opportunity-smoke")?.payload.sourceToProjectReportMarkdown).toContain(
-      "Smoke prompt passed to the Herdr Codex agent.",
-    );
-    expect(events).toContain("\"kind\":\"node-added\"");
-    expect(events).toContain("\"nodeId\":\"visual-design-opportunity-smoke\"");
+    expect(
+      state.nodeResults.find(
+        (result: { nodeId: string }) => result.nodeId === "report-opportunity-smoke",
+      )?.payload.sourceToProjectReportMarkdown,
+    ).toContain("Smoke prompt passed to the Herdr Codex agent.");
+    expect(events).toContain('"kind":"node-added"');
+    expect(events).toContain('"nodeId":"visual-design-opportunity-smoke"');
   });
 });

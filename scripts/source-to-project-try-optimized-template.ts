@@ -21,7 +21,10 @@ export function parseTryOptimizedTemplateArgs(argv: string[]): TryOptimizedTempl
     throw new Error(usage("Missing -- before the source-to-project prompt."));
   }
   const head = argv.slice(0, separatorIndex);
-  const prompt = argv.slice(separatorIndex + 1).join(" ").trim();
+  const prompt = argv
+    .slice(separatorIndex + 1)
+    .join(" ")
+    .trim();
   const runId = head.shift();
   if (!runId) {
     throw new Error(usage("Missing optimizer run id."));
@@ -108,7 +111,9 @@ export function buildTryOptimizedTemplateWorkflowArgs(args: TryOptimizedTemplate
   return workflowArgs;
 }
 
-export async function runTryOptimizedTemplate(args: TryOptimizedTemplateArgs): Promise<number | null> {
+export async function runTryOptimizedTemplate(
+  args: TryOptimizedTemplateArgs,
+): Promise<number | null> {
   const child = spawn("nub", buildTryOptimizedTemplateWorkflowArgs(args), {
     stdio: "inherit",
     env: process.env,
@@ -139,10 +144,12 @@ function usage(message: string): string {
 
 const isMain = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
 if (isMain) {
-  runTryOptimizedTemplate(parseTryOptimizedTemplateArgs(process.argv.slice(2))).then((code) => {
-    process.exitCode = code ?? 1;
-  }).catch((error: unknown) => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = 1;
-  });
+  runTryOptimizedTemplate(parseTryOptimizedTemplateArgs(process.argv.slice(2)))
+    .then((code) => {
+      process.exitCode = code ?? 1;
+    })
+    .catch((error: unknown) => {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    });
 }

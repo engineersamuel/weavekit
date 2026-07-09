@@ -133,7 +133,7 @@ one binary.
   not automated gating, unless CI is added separately.
 - **Hybrid vector+BM25+RRF search with SQL-style `--where` filters (E8)** is
   already delivered by qmd; there is no unmet search-capability gap here,
-  only an unmet *metadata-filtering* gap (see mapped lesson 2 above) — the
+  only an unmet _metadata-filtering_ gap (see mapped lesson 2 above) — the
   distinction matters because it scopes the opportunity to "add a filter,"
   not "replace the search engine."
 - The real change surface is **"port mdvs's schema-validation and

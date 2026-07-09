@@ -18,12 +18,24 @@ import type {
   VerificationOptimizerMode,
   VerificationOptimizerThresholds,
 } from "../../config.js";
-import type { HarnessAdapter, HarnessExecutionResult, HarnessRegistry, WorkflowExecutionContext } from "../harness.js";
+import type {
+  HarnessAdapter,
+  HarnessExecutionResult,
+  HarnessRegistry,
+  WorkflowExecutionContext,
+} from "../harness.js";
 import { createStaticHarnessRegistry, resolveHarnessAdapter } from "../harness.js";
 import type { WorkflowDynamicExpander } from "../runner.js";
-import type { RuntimeWorkflowNode, WorkflowExecutionCall, WorkflowExecutionMetadata } from "../types.js";
+import type {
+  RuntimeWorkflowNode,
+  WorkflowExecutionCall,
+  WorkflowExecutionMetadata,
+} from "../types.js";
 import { WorkflowGateKind, WorkflowHarnessKind, WorkflowNodeKind } from "../types.js";
-import { prepareAutonomousWorktree, type WorktreePreparationResult } from "../sourceToProject/worktree.js";
+import {
+  prepareAutonomousWorktree,
+  type WorktreePreparationResult,
+} from "../sourceToProject/worktree.js";
 import {
   buildDeepResearchSeedQuestionNode,
   createDeepResearchDynamicExpander,
@@ -115,18 +127,17 @@ export type VerificationOptimizerHarnessOptions = {
 export function createOfflineVerificationOptimizerHarnessClient(): VerificationOptimizerCopilotClient {
   return {
     async run(args) {
-      return [
-        `Mode: ${args.mode}`,
-        args.cwd ? `Cwd: ${args.cwd}` : undefined,
-        args.prompt,
-      ].filter(Boolean).join("\n\n");
+      return [`Mode: ${args.mode}`, args.cwd ? `Cwd: ${args.cwd}` : undefined, args.prompt]
+        .filter(Boolean)
+        .join("\n\n");
     },
   };
 }
 
 export function createLiveVerificationOptimizerBamlClient(): VerificationOptimizerBamlClient {
   return {
-    DistillVerificationAudit: (projectJson, rawAudit) => b.DistillVerificationAudit(projectJson, rawAudit),
+    DistillVerificationAudit: (projectJson, rawAudit) =>
+      b.DistillVerificationAudit(projectJson, rawAudit),
     MapVerificationOpportunities: (audit) => b.MapVerificationOpportunities(audit),
     RefineVerificationOpportunitiesWithResearch: (audit, initialReview, researchReports) =>
       b.RefineVerificationOpportunitiesWithResearch(audit, initialReview, researchReports),
@@ -143,19 +154,37 @@ export function prepareVerificationOptimizerCopilotExecution(
   if (node.id === "project-verification-audit") {
     const prompt = buildVerificationAuditPrompt(options.project);
     return buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
-      copilotCall({ mode: "research", cwd: options.project.workingTree, prompt, model: node.model }),
+      copilotCall({
+        mode: "research",
+        cwd: options.project.workingTree,
+        prompt,
+        model: node.model,
+      }),
     ]);
   }
 
   if (node.id === "implement-verification-improvement") {
     const worktreePath = readOptionalWorktreePath(context);
-    const audit = getOptionalPayloadValue<VerificationAudit>(context, "project-verification-audit", "verificationAudit");
-    const review = getOptionalPayloadValue<VerificationRecommendationReview>(context, "verification-review", "verificationReview");
+    const audit = getOptionalPayloadValue<VerificationAudit>(
+      context,
+      "project-verification-audit",
+      "verificationAudit",
+    );
+    const review = getOptionalPayloadValue<VerificationRecommendationReview>(
+      context,
+      "verification-review",
+      "verificationReview",
+    );
     const opportunity = review?.selectedOpportunity ?? undefined;
     if (!worktreePath || !audit || !review || !opportunity) {
       return undefined;
     }
-    const prompt = buildVerificationImplementationPrompt({ project: options.project, audit, opportunity, review });
+    const prompt = buildVerificationImplementationPrompt({
+      project: options.project,
+      audit,
+      opportunity,
+      review,
+    });
     return buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
       copilotCall({ mode: "implement", cwd: worktreePath, prompt, model: node.model }),
     ]);
@@ -163,7 +192,11 @@ export function prepareVerificationOptimizerCopilotExecution(
 
   if (node.id === "review-verification-implementation") {
     const worktreePath = readOptionalWorktreePath(context);
-    const review = getOptionalPayloadValue<VerificationRecommendationReview>(context, "verification-review", "verificationReview");
+    const review = getOptionalPayloadValue<VerificationRecommendationReview>(
+      context,
+      "verification-review",
+      "verificationReview",
+    );
     const opportunity = review?.selectedOpportunity ?? undefined;
     if (!worktreePath || !review || !opportunity) {
       return undefined;
@@ -188,204 +221,310 @@ function prepareVerificationOptimizerResearchExecution(
       return undefined;
     }
     return buildExecutionMetadata(WorkflowHarnessKind.RESEARCH, [
-      bamlCall("MapVerificationOpportunities", buildMapVerificationOpportunitiesPromptPreview(audit)),
+      bamlCall(
+        "MapVerificationOpportunities",
+        buildMapVerificationOpportunitiesPromptPreview(audit),
+      ),
     ]);
   }
   if (isVerificationOpportunityRefinementNode(node)) {
     const audit = context.payloads.get("project-verification-audit")?.verificationAudit;
-    const initialReview = context.payloads.get("verification-opportunity-mapping")?.verificationOpportunityReview;
-    const candidates = readExternalResearchCandidates(context.payloads.get("verification-opportunity-mapping"));
-    const reports = compactVerificationOpportunityResearchReports(candidates.flatMap((candidate) => {
-      const report = context.payloads.get(candidate.reportNodeId)?.deepResearchReport;
-      return isDeepResearchReport(report) ? [{ opportunityId: candidate.opportunityId, objective: candidate.objective, report }] : [];
-    }));
+    const initialReview = context.payloads.get(
+      "verification-opportunity-mapping",
+    )?.verificationOpportunityReview;
+    const candidates = readExternalResearchCandidates(
+      context.payloads.get("verification-opportunity-mapping"),
+    );
+    const reports = compactVerificationOpportunityResearchReports(
+      candidates.flatMap((candidate) => {
+        const report = context.payloads.get(candidate.reportNodeId)?.deepResearchReport;
+        return isDeepResearchReport(report)
+          ? [{ opportunityId: candidate.opportunityId, objective: candidate.objective, report }]
+          : [];
+      }),
+    );
     if (!audit || !initialReview) {
       return undefined;
     }
     return buildExecutionMetadata(WorkflowHarnessKind.RESEARCH, [
-      bamlCall("RefineVerificationOpportunitiesWithResearch", buildRefineVerificationOpportunitiesPromptPreview(audit, initialReview, reports)),
+      bamlCall(
+        "RefineVerificationOpportunitiesWithResearch",
+        buildRefineVerificationOpportunitiesPromptPreview(audit, initialReview, reports),
+      ),
     ]);
   }
   return undefined;
 }
 
-export function createVerificationOptimizerHarnessRegistry(options: VerificationOptimizerHarnessOptions): HarnessRegistry {
+export function createVerificationOptimizerHarnessRegistry(
+  options: VerificationOptimizerHarnessOptions,
+): HarnessRegistry {
   const registry = createStaticHarnessRegistry();
   const copilot = options.copilot ?? createOfflineVerificationOptimizerHarnessClient();
   const bamlClient = resolveBamlClient(options);
   const deepResearchHarnesses = createDeepResearchHarnessRegistry(options.deepResearch);
 
-  const copilotAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
-    if (isDeepResearchNode(node)) {
-      return resolveHarnessAdapter(deepResearchHarnesses, WorkflowHarnessKind.COPILOT_SDK)(node, context);
-    }
-
-    if (node.id === "project-verification-audit") {
-      const prompt = buildVerificationAuditPrompt(options.project);
-      const rawAudit = await copilot.run({
-        cwd: options.project.workingTree,
-        prompt,
-        mode: "research",
-        model: node.model,
-        operation: node.id,
-        nodeId: node.id,
-        label: "Copilot verification audit",
-      });
-      const audit = augmentVerificationAuditWithLocalBestPracticeScan(
-        await bamlClient.DistillVerificationAudit(JSON.stringify(options.project), rawAudit),
-        options.project.workingTree,
-      );
-      return {
-        status: "passed",
-        output: `Verification audit complete for ${audit.projectId}.`,
-        payload: { verificationAudit: audit },
-        execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
-          copilotCall({ mode: "research", cwd: options.project.workingTree, prompt, model: node.model }),
-          bamlCall("DistillVerificationAudit"),
-        ]),
-      };
-    }
-
-    if (node.id === "implement-verification-improvement") {
-      const worktreePath = readWorktreePath(context);
-      const audit = getPayloadValue<VerificationAudit>(context, "project-verification-audit", "verificationAudit");
-      const review = getPayloadValue<VerificationRecommendationReview>(context, "verification-review", "verificationReview");
-      const opportunity = readSelectedOpportunity(review);
-      const prompt = buildVerificationImplementationPrompt({ project: options.project, audit, opportunity, review });
-      const raw = await copilot.run({
-        cwd: worktreePath,
-        prompt,
-        mode: "implement",
-        model: node.model,
-        operation: node.id,
-        nodeId: node.id,
-        label: "Copilot verification implementation",
-      });
-      return {
-        status: "passed",
-        output: "Verification improvement implementation complete.",
-        payload: { implementationSummary: raw },
-        execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
-          copilotCall({ mode: "implement", cwd: worktreePath, prompt, model: node.model }),
-        ]),
-      };
-    }
-
-    if (node.id === "review-verification-implementation") {
-      const worktreePath = readWorktreePath(context);
-      const review = getPayloadValue<VerificationRecommendationReview>(context, "verification-review", "verificationReview");
-      const opportunity = readSelectedOpportunity(review);
-      const proofCommands = readProofCommands(review, opportunity);
-      const prompt = buildVerificationImplementationReviewPrompt({ opportunity, proofCommands });
-      const raw = await copilot.run({
-        cwd: worktreePath,
-        prompt,
-        mode: "review",
-        model: node.model,
-        operation: node.id,
-        nodeId: node.id,
-        label: "Copilot verification implementation review",
-      });
-      return {
-        status: "passed",
-        output: "Verification implementation review complete.",
-        payload: { implementationReview: raw },
-        execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
-          copilotCall({ mode: "review", cwd: worktreePath, prompt, model: node.model }),
-        ]),
-      };
-    }
-
-    return { status: "passed", output: `Copilot SDK harness skipped unsupported node ${node.id}.` };
-  }, {
-    prepareExecution(node: RuntimeWorkflowNode, context: WorkflowExecutionContext) {
-      return prepareVerificationOptimizerCopilotExecution(node, context, options);
-    },
-  });
-
-  const researchAdapter: HarnessAdapter = Object.assign(async (node: RuntimeWorkflowNode, context: WorkflowExecutionContext): Promise<HarnessExecutionResult> => {
-    if (isDeepResearchNode(node)) {
-      return resolveHarnessAdapter(deepResearchHarnesses, WorkflowHarnessKind.RESEARCH)(node, context);
-    }
-
-    if (isVerificationOpportunityRefinementNode(node)) {
-      const audit = getPayloadValue<VerificationAudit>(context, "project-verification-audit", "verificationAudit");
-      const initialReview = getPayloadValue<VerificationOpportunityReview>(context, "verification-opportunity-mapping", "verificationOpportunityReview");
-      const candidates = getPayloadValue<VerificationExternalResearchCandidate[]>(
-        context,
-        "verification-opportunity-mapping",
-        "verificationExternalResearchCandidates",
-      );
-      const researchReports = compactVerificationOpportunityResearchReports(candidates.map((candidate) => ({
-        opportunityId: candidate.opportunityId,
-        objective: candidate.objective,
-        report: getPayloadValue<DeepResearchReport>(context, candidate.reportNodeId, "deepResearchReport"),
-      })));
-      const refined = await bamlClient.RefineVerificationOpportunitiesWithResearch(audit, initialReview, researchReports);
-      const opportunityReview = applyExternalResearchRefinement(initialReview, refined);
-      return {
-        status: "passed",
-        output: `Refined ${opportunityReview.opportunities.length} verification opportunities with ${researchReports.length} external research report(s).`,
-        payload: { verificationOpportunityReview: opportunityReview, verificationExternalResearchReports: researchReports },
-        execution: buildExecutionMetadata(WorkflowHarnessKind.RESEARCH, [
-          bamlCall("RefineVerificationOpportunitiesWithResearch"),
-        ]),
-      };
-    }
-
-    if (node.id !== "verification-opportunity-mapping") {
-      return {
-        status: "failed",
-        output: `Research harness does not support node ${node.id}.`,
-        error: `Research harness does not support node ${node.id}.`,
-      };
-    }
-    const audit = getPayloadValue<VerificationAudit>(context, "project-verification-audit", "verificationAudit");
-    const opportunityReview = mergeBestPracticeOpportunities(await bamlClient.MapVerificationOpportunities(audit), audit);
-    const researchCandidates = options.verificationOptimizer?.externalResearch
-      ? buildExternalResearchCandidates(audit, opportunityReview.opportunities)
-      : [];
-    return {
-      status: "passed",
-      output: `Mapped ${opportunityReview.opportunities.length} verification opportunities.`,
-      payload: {
-        verificationOpportunityReview: opportunityReview,
-        verificationExternalResearchCandidates: researchCandidates,
-      },
-      execution: buildExecutionMetadata(WorkflowHarnessKind.RESEARCH, [
-        bamlCall("MapVerificationOpportunities"),
-      ]),
-    };
-  }, {
-    prepareExecution(node: RuntimeWorkflowNode, context: WorkflowExecutionContext) {
+  const copilotAdapter: HarnessAdapter = Object.assign(
+    async (
+      node: RuntimeWorkflowNode,
+      context: WorkflowExecutionContext,
+    ): Promise<HarnessExecutionResult> => {
       if (isDeepResearchNode(node)) {
-        return resolveHarnessAdapter(deepResearchHarnesses, WorkflowHarnessKind.RESEARCH).prepareExecution?.(node, context);
+        return resolveHarnessAdapter(deepResearchHarnesses, WorkflowHarnessKind.COPILOT_SDK)(
+          node,
+          context,
+        );
       }
-      return prepareVerificationOptimizerResearchExecution(node, context);
+
+      if (node.id === "project-verification-audit") {
+        const prompt = buildVerificationAuditPrompt(options.project);
+        const rawAudit = await copilot.run({
+          cwd: options.project.workingTree,
+          prompt,
+          mode: "research",
+          model: node.model,
+          operation: node.id,
+          nodeId: node.id,
+          label: "Copilot verification audit",
+        });
+        const audit = augmentVerificationAuditWithLocalBestPracticeScan(
+          await bamlClient.DistillVerificationAudit(JSON.stringify(options.project), rawAudit),
+          options.project.workingTree,
+        );
+        return {
+          status: "passed",
+          output: `Verification audit complete for ${audit.projectId}.`,
+          payload: { verificationAudit: audit },
+          execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
+            copilotCall({
+              mode: "research",
+              cwd: options.project.workingTree,
+              prompt,
+              model: node.model,
+            }),
+            bamlCall("DistillVerificationAudit"),
+          ]),
+        };
+      }
+
+      if (node.id === "implement-verification-improvement") {
+        const worktreePath = readWorktreePath(context);
+        const audit = getPayloadValue<VerificationAudit>(
+          context,
+          "project-verification-audit",
+          "verificationAudit",
+        );
+        const review = getPayloadValue<VerificationRecommendationReview>(
+          context,
+          "verification-review",
+          "verificationReview",
+        );
+        const opportunity = readSelectedOpportunity(review);
+        const prompt = buildVerificationImplementationPrompt({
+          project: options.project,
+          audit,
+          opportunity,
+          review,
+        });
+        const raw = await copilot.run({
+          cwd: worktreePath,
+          prompt,
+          mode: "implement",
+          model: node.model,
+          operation: node.id,
+          nodeId: node.id,
+          label: "Copilot verification implementation",
+        });
+        return {
+          status: "passed",
+          output: "Verification improvement implementation complete.",
+          payload: { implementationSummary: raw },
+          execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
+            copilotCall({ mode: "implement", cwd: worktreePath, prompt, model: node.model }),
+          ]),
+        };
+      }
+
+      if (node.id === "review-verification-implementation") {
+        const worktreePath = readWorktreePath(context);
+        const review = getPayloadValue<VerificationRecommendationReview>(
+          context,
+          "verification-review",
+          "verificationReview",
+        );
+        const opportunity = readSelectedOpportunity(review);
+        const proofCommands = readProofCommands(review, opportunity);
+        const prompt = buildVerificationImplementationReviewPrompt({ opportunity, proofCommands });
+        const raw = await copilot.run({
+          cwd: worktreePath,
+          prompt,
+          mode: "review",
+          model: node.model,
+          operation: node.id,
+          nodeId: node.id,
+          label: "Copilot verification implementation review",
+        });
+        return {
+          status: "passed",
+          output: "Verification implementation review complete.",
+          payload: { implementationReview: raw },
+          execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
+            copilotCall({ mode: "review", cwd: worktreePath, prompt, model: node.model }),
+          ]),
+        };
+      }
+
+      return {
+        status: "passed",
+        output: `Copilot SDK harness skipped unsupported node ${node.id}.`,
+      };
     },
-  });
+    {
+      prepareExecution(node: RuntimeWorkflowNode, context: WorkflowExecutionContext) {
+        return prepareVerificationOptimizerCopilotExecution(node, context, options);
+      },
+    },
+  );
+
+  const researchAdapter: HarnessAdapter = Object.assign(
+    async (
+      node: RuntimeWorkflowNode,
+      context: WorkflowExecutionContext,
+    ): Promise<HarnessExecutionResult> => {
+      if (isDeepResearchNode(node)) {
+        return resolveHarnessAdapter(deepResearchHarnesses, WorkflowHarnessKind.RESEARCH)(
+          node,
+          context,
+        );
+      }
+
+      if (isVerificationOpportunityRefinementNode(node)) {
+        const audit = getPayloadValue<VerificationAudit>(
+          context,
+          "project-verification-audit",
+          "verificationAudit",
+        );
+        const initialReview = getPayloadValue<VerificationOpportunityReview>(
+          context,
+          "verification-opportunity-mapping",
+          "verificationOpportunityReview",
+        );
+        const candidates = getPayloadValue<VerificationExternalResearchCandidate[]>(
+          context,
+          "verification-opportunity-mapping",
+          "verificationExternalResearchCandidates",
+        );
+        const researchReports = compactVerificationOpportunityResearchReports(
+          candidates.map((candidate) => ({
+            opportunityId: candidate.opportunityId,
+            objective: candidate.objective,
+            report: getPayloadValue<DeepResearchReport>(
+              context,
+              candidate.reportNodeId,
+              "deepResearchReport",
+            ),
+          })),
+        );
+        const refined = await bamlClient.RefineVerificationOpportunitiesWithResearch(
+          audit,
+          initialReview,
+          researchReports,
+        );
+        const opportunityReview = applyExternalResearchRefinement(initialReview, refined);
+        return {
+          status: "passed",
+          output: `Refined ${opportunityReview.opportunities.length} verification opportunities with ${researchReports.length} external research report(s).`,
+          payload: {
+            verificationOpportunityReview: opportunityReview,
+            verificationExternalResearchReports: researchReports,
+          },
+          execution: buildExecutionMetadata(WorkflowHarnessKind.RESEARCH, [
+            bamlCall("RefineVerificationOpportunitiesWithResearch"),
+          ]),
+        };
+      }
+
+      if (node.id !== "verification-opportunity-mapping") {
+        return {
+          status: "failed",
+          output: `Research harness does not support node ${node.id}.`,
+          error: `Research harness does not support node ${node.id}.`,
+        };
+      }
+      const audit = getPayloadValue<VerificationAudit>(
+        context,
+        "project-verification-audit",
+        "verificationAudit",
+      );
+      const opportunityReview = mergeBestPracticeOpportunities(
+        await bamlClient.MapVerificationOpportunities(audit),
+        audit,
+      );
+      const researchCandidates = options.verificationOptimizer?.externalResearch
+        ? buildExternalResearchCandidates(audit, opportunityReview.opportunities)
+        : [];
+      return {
+        status: "passed",
+        output: `Mapped ${opportunityReview.opportunities.length} verification opportunities.`,
+        payload: {
+          verificationOpportunityReview: opportunityReview,
+          verificationExternalResearchCandidates: researchCandidates,
+        },
+        execution: buildExecutionMetadata(WorkflowHarnessKind.RESEARCH, [
+          bamlCall("MapVerificationOpportunities"),
+        ]),
+      };
+    },
+    {
+      prepareExecution(node: RuntimeWorkflowNode, context: WorkflowExecutionContext) {
+        if (isDeepResearchNode(node)) {
+          return resolveHarnessAdapter(
+            deepResearchHarnesses,
+            WorkflowHarnessKind.RESEARCH,
+          ).prepareExecution?.(node, context);
+        }
+        return prepareVerificationOptimizerResearchExecution(node, context);
+      },
+    },
+  );
 
   const councilAdapter: HarnessAdapter = async (node, context) => {
     if (node.id !== "verification-review") {
       return { status: "passed", output: `Council harness skipped unsupported node ${node.id}.` };
     }
-    const audit = getPayloadValue<VerificationAudit>(context, "project-verification-audit", "verificationAudit");
+    const audit = getPayloadValue<VerificationAudit>(
+      context,
+      "project-verification-audit",
+      "verificationAudit",
+    );
     const opportunityReview = readCurrentOpportunityReview(context);
-    const selection = selectVerificationOpportunity(opportunityReview.opportunities, resolveThresholds(options));
+    const selection = selectVerificationOpportunity(
+      opportunityReview.opportunities,
+      resolveThresholds(options),
+    );
     const verificationReview = selection.selectedOpportunity
-      ? normalizeAcceptedReview(await bamlClient.ReviewVerificationRecommendation(audit, selection.selectedOpportunity), selection.selectedOpportunity)
+      ? normalizeAcceptedReview(
+          await bamlClient.ReviewVerificationRecommendation(audit, selection.selectedOpportunity),
+          selection.selectedOpportunity,
+        )
       : buildRejectedReview(selection.reason);
-    const strictReview = verificationReview.status === "accepted"
-      ? verificationReview
-      : { ...verificationReview, selectedOpportunity: undefined, proofCommands: [] };
+    const strictReview =
+      verificationReview.status === "accepted"
+        ? verificationReview
+        : { ...verificationReview, selectedOpportunity: undefined, proofCommands: [] };
     return {
       status: "passed",
-      output: strictReview.status === "accepted"
-        ? `Verification review accepted ${strictReview.selectedOpportunity?.id}.`
-        : `Verification review rejected all opportunities: ${strictReview.rejectionReason ?? strictReview.rationale}`,
+      output:
+        strictReview.status === "accepted"
+          ? `Verification review accepted ${strictReview.selectedOpportunity?.id}.`
+          : `Verification review rejected all opportunities: ${strictReview.rejectionReason ?? strictReview.rationale}`,
       payload: { verificationReview: strictReview, verificationOpportunitySelection: selection },
       execution: buildExecutionMetadata(WorkflowHarnessKind.DECISION_COUNCIL, [
-        { executor: "decision-council", operation: "StrictVerificationReview", prompt: node.prompt },
+        {
+          executor: "decision-council",
+          operation: "StrictVerificationReview",
+          prompt: node.prompt,
+        },
         ...(selection.selectedOpportunity ? [bamlCall("ReviewVerificationRecommendation")] : []),
       ]),
     };
@@ -393,12 +532,13 @@ export function createVerificationOptimizerHarnessRegistry(options: Verification
 
   const verifierAdapter: HarnessAdapter = async (node, context) => {
     if (node.id === "prepare-worktree") {
-      const worktreePreparation = await (options.worktree?.prepare() ?? prepareAutonomousWorktree({
-        sourceWorkingTree: options.project.workingTree,
-        worktreeRoot: join(options.project.workingTree, ".."),
-        branchName: `verification-optimizer/${Date.now()}`,
-        mainline: options.project.mainline,
-      }));
+      const worktreePreparation = await (options.worktree?.prepare() ??
+        prepareAutonomousWorktree({
+          sourceWorkingTree: options.project.workingTree,
+          worktreeRoot: join(options.project.workingTree, ".."),
+          branchName: `verification-optimizer/${Date.now()}`,
+          mainline: options.project.mainline,
+        }));
       return {
         status: "passed",
         output: `Prepared worktree ${worktreePreparation.worktreePath} at ${worktreePreparation.baselineCommit}.`,
@@ -408,31 +548,48 @@ export function createVerificationOptimizerHarnessRegistry(options: Verification
 
     if (node.id === "run-verification-commands") {
       const worktreePath = readWorktreePath(context);
-      const review = getPayloadValue<VerificationRecommendationReview>(context, "verification-review", "verificationReview");
+      const review = getPayloadValue<VerificationRecommendationReview>(
+        context,
+        "verification-review",
+        "verificationReview",
+      );
       const opportunity = readSelectedOpportunity(review);
       const verificationCommands = uniqueCommands([
         ...options.project.validationCommands,
         ...readProofCommands(review, opportunity),
       ]);
-      const verificationSummary = await runValidationCommands(verificationCommands, worktreePath, options.shell);
+      const verificationSummary = await runValidationCommands(
+        verificationCommands,
+        worktreePath,
+        options.shell,
+      );
       return {
         status: "passed",
         output: "Verification commands complete.",
         payload: { verificationSummary, verificationCommands },
-        execution: buildExecutionMetadata(WorkflowHarnessKind.VERIFIER, verificationCommands.map((command) => ({
-          executor: "shell",
-          operation: command,
-          cwd: worktreePath,
-        }))),
+        execution: buildExecutionMetadata(
+          WorkflowHarnessKind.VERIFIER,
+          verificationCommands.map((command) => ({
+            executor: "shell",
+            operation: command,
+            cwd: worktreePath,
+          })),
+        ),
       };
     }
 
     return { status: "passed", output: "Verification complete." };
   };
 
-  const reporterAdapter: HarnessAdapter = async (node, context): Promise<HarnessExecutionResult> => {
+  const reporterAdapter: HarnessAdapter = async (
+    node,
+    context,
+  ): Promise<HarnessExecutionResult> => {
     if (isDeepResearchNode(node)) {
-      return resolveHarnessAdapter(deepResearchHarnesses, WorkflowHarnessKind.REPORTER)(node, context);
+      return resolveHarnessAdapter(deepResearchHarnesses, WorkflowHarnessKind.REPORTER)(
+        node,
+        context,
+      );
     }
 
     if (node.id === "open-pr") {
@@ -447,7 +604,11 @@ export function createVerificationOptimizerHarnessRegistry(options: Verification
     }
 
     if (node.id === "report-no-verification-opportunity") {
-      const selection = getPayloadValue<VerificationOpportunitySelection>(context, "verification-review", "verificationOpportunitySelection");
+      const selection = getPayloadValue<VerificationOpportunitySelection>(
+        context,
+        "verification-review",
+        "verificationOpportunitySelection",
+      );
       return {
         status: "passed",
         output: `No verification opportunity selected: ${selection.reason}`,
@@ -457,10 +618,16 @@ export function createVerificationOptimizerHarnessRegistry(options: Verification
     }
 
     if (node.id === "report-verification-opportunity") {
-      const review = getPayloadValue<VerificationRecommendationReview>(context, "verification-review", "verificationReview");
+      const review = getPayloadValue<VerificationRecommendationReview>(
+        context,
+        "verification-review",
+        "verificationReview",
+      );
       const opportunityReview = readCurrentOpportunityReview(context);
       const selectedId = review.selectedOpportunity?.id;
-      const otherOpportunities = opportunityReview.opportunities.filter((opportunity) => opportunity.id !== selectedId);
+      const otherOpportunities = opportunityReview.opportunities.filter(
+        (opportunity) => opportunity.id !== selectedId,
+      );
       return {
         status: "passed",
         output: [
@@ -469,8 +636,16 @@ export function createVerificationOptimizerHarnessRegistry(options: Verification
           otherOpportunities.length > 0
             ? `Other discovered feedback-loop opportunities: ${otherOpportunities.map((opportunity) => `${opportunity.id} (${opportunity.title})`).join(", ")}`
             : undefined,
-        ].filter((line): line is string => Boolean(line)).join("\n"),
-        payload: { verificationOptimizerReport: { status: "accepted", review, opportunities: opportunityReview.opportunities } },
+        ]
+          .filter((line): line is string => Boolean(line))
+          .join("\n"),
+        payload: {
+          verificationOptimizerReport: {
+            status: "accepted",
+            review,
+            opportunities: opportunityReview.opportunities,
+          },
+        },
         execution: reporterExecution(node),
       };
     }
@@ -486,7 +661,9 @@ export function createVerificationOptimizerHarnessRegistry(options: Verification
   return registry;
 }
 
-export function createVerificationOptimizerDynamicExpander(options: VerificationOptimizerHarnessOptions): WorkflowDynamicExpander {
+export function createVerificationOptimizerDynamicExpander(
+  options: VerificationOptimizerHarnessOptions,
+): WorkflowDynamicExpander {
   const deepResearchExpander = createDeepResearchDynamicExpander();
   return async (args) => {
     const { node, result, payloads, completedNodeIds } = args;
@@ -494,32 +671,44 @@ export function createVerificationOptimizerDynamicExpander(options: Verification
       return undefined;
     }
 
-    if (node.id === "verification-opportunity-mapping" && options.verificationOptimizer?.externalResearch) {
+    if (
+      node.id === "verification-opportunity-mapping" &&
+      options.verificationOptimizer?.externalResearch
+    ) {
       const candidates = readExternalResearchCandidates(result.payload);
       if (candidates.length === 0) {
         return [buildVerificationReviewNode("verification-opportunity-mapping")];
       }
       const config = normalizeDeepResearchConfig(options.deepResearch?.config);
-      return candidates.map((candidate) => buildDeepResearchSeedQuestionNode({
-        deepResearchRunId: candidate.runId,
-        objective: candidate.objective,
-        config,
-        dependsOn: ["verification-opportunity-mapping"],
-      }));
+      return candidates.map((candidate) =>
+        buildDeepResearchSeedQuestionNode({
+          deepResearchRunId: candidate.runId,
+          objective: candidate.objective,
+          config,
+          dependsOn: ["verification-opportunity-mapping"],
+        }),
+      );
     }
 
     if (isDeepResearchNode(node)) {
       const deepResearchExpansion = await deepResearchExpander(args);
-      if (deepResearchExpansion && !(Array.isArray(deepResearchExpansion) && deepResearchExpansion.length === 0)) {
+      if (
+        deepResearchExpansion &&
+        !(Array.isArray(deepResearchExpansion) && deepResearchExpansion.length === 0)
+      ) {
         return deepResearchExpansion;
       }
-      const candidates = readExternalResearchCandidates(payloads.get("verification-opportunity-mapping"));
+      const candidates = readExternalResearchCandidates(
+        payloads.get("verification-opportunity-mapping"),
+      );
       if (!candidates.some((candidate) => candidate.reportNodeId === node.id)) {
         return undefined;
       }
       const completedWithCurrent = new Set([...completedNodeIds, node.id]);
       if (candidates.every((candidate) => completedWithCurrent.has(candidate.reportNodeId))) {
-        return [buildOpportunityRefinementNode(candidates.map((candidate) => candidate.reportNodeId))];
+        return [
+          buildOpportunityRefinementNode(candidates.map((candidate) => candidate.reportNodeId)),
+        ];
       }
       return undefined;
     }
@@ -532,7 +721,9 @@ export function createVerificationOptimizerDynamicExpander(options: Verification
       return undefined;
     }
 
-    const review = result.payload?.verificationReview as VerificationRecommendationReview | undefined;
+    const review = result.payload?.verificationReview as
+      | VerificationRecommendationReview
+      | undefined;
     if (!review || review.status !== "accepted" || !review.selectedOpportunity) {
       return [buildNoOpportunityReportNode()];
     }
@@ -547,22 +738,25 @@ export function selectVerificationOpportunity(
   thresholds: VerificationOptimizerThresholds = DEFAULT_THRESHOLDS,
 ): VerificationOpportunitySelection {
   const rejections: VerificationOpportunitySelection["rejections"] = [];
-  const accepted = opportunities.filter((opportunity) => {
-    const reason = rejectionReason(opportunity, thresholds);
-    if (reason) {
-      rejections.push({ id: opportunity.id, reason });
-      return false;
-    }
-    return true;
-  }).sort(compareVerificationOpportunities);
+  const accepted = opportunities
+    .filter((opportunity) => {
+      const reason = rejectionReason(opportunity, thresholds);
+      if (reason) {
+        rejections.push({ id: opportunity.id, reason });
+        return false;
+      }
+      return true;
+    })
+    .sort(compareVerificationOpportunities);
 
   const selectedOpportunity = accepted[0];
   if (!selectedOpportunity) {
     return {
       status: "rejected",
-      reason: rejections.length > 0
-        ? `No opportunities passed strict gates: ${rejections.map((rejection) => `${rejection.id}: ${rejection.reason}`).join("; ")}`
-        : "No verification opportunities were proposed.",
+      reason:
+        rejections.length > 0
+          ? `No opportunities passed strict gates: ${rejections.map((rejection) => `${rejection.id}: ${rejection.reason}`).join("; ")}`
+          : "No verification opportunities were proposed.",
       rejections,
     };
   }
@@ -575,7 +769,9 @@ export function selectVerificationOpportunity(
   };
 }
 
-export function deriveBestPracticeVerificationOpportunities(audit: VerificationAudit): VerificationOpportunity[] {
+export function deriveBestPracticeVerificationOpportunities(
+  audit: VerificationAudit,
+): VerificationOpportunity[] {
   const text = auditText(audit);
   const opportunities: VerificationOpportunity[] = [];
 
@@ -583,14 +779,19 @@ export function deriveBestPracticeVerificationOpportunities(audit: VerificationA
     opportunities.push({
       id: "baseline-lint-format",
       title: "Add check-only lint and format verification",
-      currentVerificationGap: "The project lacks a lint/format verification surface, so agents do not get fast static feedback before typecheck and tests.",
+      currentVerificationGap:
+        "The project lacks a lint/format verification surface, so agents do not get fast static feedback before typecheck and tests.",
       targetChange: [
         "Add Oxc-based lint and formatter configuration plus check-only package scripts such as `lint` and `format:check`.",
         "Keep this verification-only: do not perform a broad repository reformat in the same change.",
       ].join(" "),
       allowedChangeKind: "lint",
       score: { confidence: 0.92, impact: 0.75, risk: 0.25, implementationCost: 0.35 },
-      evidence: bestPracticeEvidence(audit, ["lint", "format", "oxlint", "oxc", "prettier", "biome", "eslint"], "No lint or formatter verification surface was found."),
+      evidence: bestPracticeEvidence(
+        audit,
+        ["lint", "format", "oxlint", "oxc", "prettier", "biome", "eslint"],
+        "No lint or formatter verification surface was found.",
+      ),
       proofCommands: ["nub run lint", "nub run format:check"],
       speculative: false,
     });
@@ -600,11 +801,17 @@ export function deriveBestPracticeVerificationOpportunities(audit: VerificationA
     opportunities.push({
       id: "baseline-git-hooks",
       title: "Add git commit hooks for local verification",
-      currentVerificationGap: "The project lacks commit-time hooks, so agents and humans can create commits without the fastest local verification checks running first.",
-      targetChange: "Add a git hook setup such as Husky or lefthook that runs lightweight validation before commits, wired through a package script such as `prepare`.",
+      currentVerificationGap:
+        "The project lacks commit-time hooks, so agents and humans can create commits without the fastest local verification checks running first.",
+      targetChange:
+        "Add a git hook setup such as Husky or lefthook that runs lightweight validation before commits, wired through a package script such as `prepare`.",
       allowedChangeKind: "script",
       score: { confidence: 0.9, impact: 0.68, risk: 0.3, implementationCost: 0.35 },
-      evidence: bestPracticeEvidence(audit, ["hook", "husky", "lefthook", "lint-staged", "commit"], "No git commit hook verification surface was found."),
+      evidence: bestPracticeEvidence(
+        audit,
+        ["hook", "husky", "lefthook", "lint-staged", "commit"],
+        "No git commit hook verification surface was found.",
+      ),
       proofCommands: ["nub run prepare", "nub run lint", "nub run typecheck"],
       speculative: false,
     });
@@ -614,11 +821,17 @@ export function deriveBestPracticeVerificationOpportunities(audit: VerificationA
     opportunities.push({
       id: "baseline-coverage-threshold",
       title: "Add 100% coverage threshold verification",
-      currentVerificationGap: "The project lacks a coverage command or threshold, so test presence is not tied to measurable coverage feedback.",
-      targetChange: "Add a coverage script and 100% threshold configuration for the existing Vitest test surface so coverage regressions are visible to agents and CI.",
+      currentVerificationGap:
+        "The project lacks a coverage command or threshold, so test presence is not tied to measurable coverage feedback.",
+      targetChange:
+        "Add a coverage script and 100% threshold configuration for the existing Vitest test surface so coverage regressions are visible to agents and CI.",
       allowedChangeKind: "script",
       score: { confidence: 0.88, impact: 0.65, risk: 0.2, implementationCost: 0.25 },
-      evidence: bestPracticeEvidence(audit, ["coverage", "vitest", "test"], "No coverage verification surface was found."),
+      evidence: bestPracticeEvidence(
+        audit,
+        ["coverage", "vitest", "test"],
+        "No coverage verification surface was found.",
+      ),
       proofCommands: ["nub run coverage"],
       speculative: false,
     });
@@ -633,7 +846,10 @@ function mergeBestPracticeOpportunities(
 ): VerificationOpportunityReview {
   const byId = new Map(review.opportunities.map((opportunity) => [opportunity.id, opportunity]));
   for (const opportunity of deriveBestPracticeVerificationOpportunities(audit)) {
-    byId.set(opportunity.id, normalizeBestPracticeOpportunity(byId.get(opportunity.id), opportunity));
+    byId.set(
+      opportunity.id,
+      normalizeBestPracticeOpportunity(byId.get(opportunity.id), opportunity),
+    );
   }
   return {
     ...review,
@@ -641,7 +857,9 @@ function mergeBestPracticeOpportunities(
     rankingRationale: [
       review.rankingRationale,
       "Baseline feedback-loop opportunities are added deterministically when repository evidence shows missing lint/format, commit hooks, or coverage verification.",
-    ].filter(Boolean).join(" "),
+    ]
+      .filter(Boolean)
+      .join(" "),
   };
 }
 
@@ -660,7 +878,9 @@ function buildExternalResearchCandidates(
   });
 }
 
-function topExternalResearchCandidates(opportunities: VerificationOpportunity[]): VerificationOpportunity[] {
+function topExternalResearchCandidates(
+  opportunities: VerificationOpportunity[],
+): VerificationOpportunity[] {
   return opportunities
     .filter((opportunity) => opportunity.evidence.length > 0)
     .slice()
@@ -669,7 +889,11 @@ function topExternalResearchCandidates(opportunities: VerificationOpportunity[])
 }
 
 function normalizeNodeId(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/(^-|-$)/gu, "");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/(^-|-$)/gu, "");
   return normalized || "candidate";
 }
 
@@ -696,7 +920,9 @@ function applyExternalResearchRefinement(
   initialReview: VerificationOpportunityReview,
   refinedReview: VerificationOpportunityReview,
 ): VerificationOpportunityReview {
-  const initialById = new Map(initialReview.opportunities.map((opportunity) => [opportunity.id, opportunity]));
+  const initialById = new Map(
+    initialReview.opportunities.map((opportunity) => [opportunity.id, opportunity]),
+  );
   const seen = new Set<string>();
   const refinedOpportunities = refinedReview.opportunities.flatMap((refined) => {
     const initial = initialById.get(refined.id);
@@ -704,22 +930,29 @@ function applyExternalResearchRefinement(
       return [];
     }
     seen.add(refined.id);
-    return [{
-      ...initial,
-      ...refined,
-      score: refined.score,
-      evidence: initial.evidence,
-    }];
+    return [
+      {
+        ...initial,
+        ...refined,
+        score: refined.score,
+        evidence: initial.evidence,
+      },
+    ];
   });
   const remaining = initialReview.opportunities.filter((opportunity) => !seen.has(opportunity.id));
   return {
     ...refinedReview,
     opportunities: [...refinedOpportunities, ...remaining],
-    nonApplicableGaps: uniqueStrings([...initialReview.nonApplicableGaps, ...refinedReview.nonApplicableGaps]),
+    nonApplicableGaps: uniqueStrings([
+      ...initialReview.nonApplicableGaps,
+      ...refinedReview.nonApplicableGaps,
+    ]),
     rankingRationale: [
       refinedReview.rankingRationale,
       "External research refined candidate approach and ranking only; repository evidence from the initial local audit was preserved for gap proof.",
-    ].filter(Boolean).join(" "),
+    ]
+      .filter(Boolean)
+      .join(" "),
   };
 }
 
@@ -749,12 +982,12 @@ function compactDeepResearchReport(report: DeepResearchReport): DeepResearchRepo
       relevance: clipWhitespace(entry.relevance, 500),
       quality: clipWhitespace(entry.quality, 240),
     })),
-    contradictions: report.contradictions.slice(0, REFINEMENT_REPORT_LIST_LIMIT).map((item) =>
-      clipWhitespace(item, REFINEMENT_REPORT_TEXT_LIMIT)
-    ),
-    gaps: report.gaps.slice(0, REFINEMENT_REPORT_LIST_LIMIT).map((item) =>
-      clipWhitespace(item, REFINEMENT_REPORT_TEXT_LIMIT)
-    ),
+    contradictions: report.contradictions
+      .slice(0, REFINEMENT_REPORT_LIST_LIMIT)
+      .map((item) => clipWhitespace(item, REFINEMENT_REPORT_TEXT_LIMIT)),
+    gaps: report.gaps
+      .slice(0, REFINEMENT_REPORT_LIST_LIMIT)
+      .map((item) => clipWhitespace(item, REFINEMENT_REPORT_TEXT_LIMIT)),
     confidence: clipWhitespace(report.confidence, REFINEMENT_REPORT_TEXT_LIMIT),
     sources: report.sources.slice(0, REFINEMENT_REPORT_SOURCE_LIMIT).map((source) => ({
       ...source,
@@ -771,10 +1004,12 @@ function isDeepResearchNode(node: RuntimeWorkflowNode): boolean {
 }
 
 function isDeepResearchReport(value: unknown): value is DeepResearchReport {
-  const record = value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-  return typeof record.objective === "string" &&
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return (
+    typeof record.objective === "string" &&
     typeof record.methodology === "string" &&
     Array.isArray(record.findings) &&
     Array.isArray(record.evidenceMatrix) &&
@@ -782,43 +1017,55 @@ function isDeepResearchReport(value: unknown): value is DeepResearchReport {
     Array.isArray(record.gaps) &&
     typeof record.confidence === "string" &&
     Array.isArray(record.sources) &&
-    typeof record.markdown === "string";
+    typeof record.markdown === "string"
+  );
 }
 
 function isVerificationOpportunityRefinementNode(node: RuntimeWorkflowNode): boolean {
-  return node.id === "verification-opportunity-refinement" ||
+  return (
+    node.id === "verification-opportunity-refinement" ||
     node.id.startsWith("verification-opportunity-refinement-") ||
-    node.input?.verificationOptimizerStep === "opportunity-refinement";
+    node.input?.verificationOptimizerStep === "opportunity-refinement"
+  );
 }
 
 function readExternalResearchCandidates(payload: unknown): VerificationExternalResearchCandidate[] {
-  const record = payload && typeof payload === "object" && !Array.isArray(payload)
-    ? payload as Record<string, unknown>
-    : {};
+  const record =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {};
   const candidates = record.verificationExternalResearchCandidates;
   if (!Array.isArray(candidates)) {
     return [];
   }
   return candidates.filter((candidate): candidate is VerificationExternalResearchCandidate => {
-    const record = candidate && typeof candidate === "object" && !Array.isArray(candidate)
-      ? candidate as Record<string, unknown>
-      : {};
-    return typeof record.opportunityId === "string" &&
+    const record =
+      candidate && typeof candidate === "object" && !Array.isArray(candidate)
+        ? (candidate as Record<string, unknown>)
+        : {};
+    return (
+      typeof record.opportunityId === "string" &&
       typeof record.runId === "string" &&
       typeof record.reportNodeId === "string" &&
-      typeof record.objective === "string";
+      typeof record.objective === "string"
+    );
   });
 }
 
-function readCurrentOpportunityReview(context: WorkflowExecutionContext): VerificationOpportunityReview {
-  return getOptionalPayloadValue<VerificationOpportunityReview>(
-    context,
-    "verification-opportunity-refinement",
-    "verificationOpportunityReview",
-  ) ?? getPayloadValue<VerificationOpportunityReview>(
-    context,
-    "verification-opportunity-mapping",
-    "verificationOpportunityReview",
+function readCurrentOpportunityReview(
+  context: WorkflowExecutionContext,
+): VerificationOpportunityReview {
+  return (
+    getOptionalPayloadValue<VerificationOpportunityReview>(
+      context,
+      "verification-opportunity-refinement",
+      "verificationOpportunityReview",
+    ) ??
+    getPayloadValue<VerificationOpportunityReview>(
+      context,
+      "verification-opportunity-mapping",
+      "verificationOpportunityReview",
+    )
   );
 }
 
@@ -836,7 +1083,10 @@ function normalizeBestPracticeOpportunity(
       confidence: Math.max(existing.score.confidence, baseline.score.confidence),
       impact: Math.max(existing.score.impact, baseline.score.impact),
       risk: Math.min(existing.score.risk, baseline.score.risk),
-      implementationCost: Math.min(existing.score.implementationCost, baseline.score.implementationCost),
+      implementationCost: Math.min(
+        existing.score.implementationCost,
+        baseline.score.implementationCost,
+      ),
     },
     evidence: mergeEvidence(existing.evidence, baseline.evidence),
     proofCommands: uniqueCommands([...existing.proofCommands, ...baseline.proofCommands]),
@@ -844,7 +1094,10 @@ function normalizeBestPracticeOpportunity(
   };
 }
 
-function rejectionReason(opportunity: VerificationOpportunity, thresholds: VerificationOptimizerThresholds): string | undefined {
+function rejectionReason(
+  opportunity: VerificationOpportunity,
+  thresholds: VerificationOptimizerThresholds,
+): string | undefined {
   if (thresholds.requireNonSpeculative && opportunity.speculative) {
     return "speculative opportunities are not allowed";
   }
@@ -869,18 +1122,23 @@ function rejectionReason(opportunity: VerificationOpportunity, thresholds: Verif
   return undefined;
 }
 
-function compareVerificationOpportunities(left: VerificationOpportunity, right: VerificationOpportunity): number {
+function compareVerificationOpportunities(
+  left: VerificationOpportunity,
+  right: VerificationOpportunity,
+): number {
   const leftScore = opportunityQualityScore(left);
   const rightScore = opportunityQualityScore(right);
   return rightScore - leftScore;
 }
 
 function opportunityQualityScore(opportunity: VerificationOpportunity): number {
-  return (opportunity.score.confidence * 0.35) +
-    (opportunity.score.impact * 0.3) -
-    (opportunity.score.risk * 0.2) -
-    (opportunity.score.implementationCost * 0.15) +
-    Math.min(0.1, opportunity.evidence.length * 0.02);
+  return (
+    opportunity.score.confidence * 0.35 +
+    opportunity.score.impact * 0.3 -
+    opportunity.score.risk * 0.2 -
+    opportunity.score.implementationCost * 0.15 +
+    Math.min(0.1, opportunity.evidence.length * 0.02)
+  );
 }
 
 function augmentVerificationAuditWithLocalBestPracticeScan(
@@ -898,15 +1156,19 @@ function augmentVerificationAuditWithLocalBestPracticeScan(
   };
 }
 
-function scanLocalBestPracticeGaps(workingTree: string): { gaps: string[]; evidence: EvidenceReference[] } {
+function scanLocalBestPracticeGaps(workingTree: string): {
+  gaps: string[];
+  evidence: EvidenceReference[];
+} {
   if (!existsSync(workingTree)) {
     return { gaps: [], evidence: [] };
   }
 
   const packageJson = readPackageJson(workingTree);
-  const scripts = packageJson && typeof packageJson.scripts === "object" && packageJson.scripts
-    ? packageJson.scripts as Record<string, unknown>
-    : {};
+  const scripts =
+    packageJson && typeof packageJson.scripts === "object" && packageJson.scripts
+      ? (packageJson.scripts as Record<string, unknown>)
+      : {};
   const packageKeys = Object.keys(packageJson ?? {});
   const gaps: string[] = [];
   const evidence: EvidenceReference[] = [];
@@ -938,7 +1200,9 @@ function scanLocalBestPracticeGaps(workingTree: string): { gaps: string[]; evide
     "biome.jsonc",
   ]);
   if (!hasLintScript && !hasFormatScript && !hasLintConfig && !hasFormatConfig) {
-    gaps.push("No lint or format scripts/configuration were found for ESLint, Prettier, Biome, or Oxlint.");
+    gaps.push(
+      "No lint or format scripts/configuration were found for ESLint, Prettier, Biome, or Oxlint.",
+    );
     evidence.push({
       id: "local-lint-format-scan",
       source: "repository lint/format config scan",
@@ -946,30 +1210,45 @@ function scanLocalBestPracticeGaps(workingTree: string): { gaps: string[]; evide
     });
   }
 
-  const hasHookConfig = anyPathExists(workingTree, [
-    ".husky",
-    "lefthook.yml",
-    "lefthook.yaml",
-    ".lefthook.yml",
-    ".lefthook.yaml",
-    "lint-staged.config.js",
-    "lint-staged.config.mjs",
-    "lint-staged.config.cjs",
-  ]) ||
+  const hasHookConfig =
+    anyPathExists(workingTree, [
+      ".husky",
+      "lefthook.yml",
+      "lefthook.yaml",
+      ".lefthook.yml",
+      ".lefthook.yaml",
+      "lint-staged.config.js",
+      "lint-staged.config.mjs",
+      "lint-staged.config.cjs",
+    ]) ||
     hasScriptValue(scripts, /(?:husky|lefthook)\s+(?:install|run|add)/u) ||
     packageKeys.includes("lint-staged");
   if (!hasHookConfig) {
-    gaps.push("No git commit hooks were found under .husky, lefthook, or lint-staged configuration.");
+    gaps.push(
+      "No git commit hooks were found under .husky, lefthook, or lint-staged configuration.",
+    );
     evidence.push({
       id: "local-git-hook-scan",
       source: "repository git hook config scan",
-      quote: "No .husky, lefthook, lint-staged config, or hook installation package script was found.",
+      quote:
+        "No .husky, lefthook, lint-staged config, or hook installation package script was found.",
     });
   }
 
-  const hasCoverageScript = hasScript(scripts, /^coverage(?::|$)/u) || hasScriptValue(scripts, /\b(?:vitest|c8|nyc|v8)\b.*\bcoverage\b/u);
-  const vitestConfig = readFirstExistingText(workingTree, ["vitest.config.ts", "vitest.config.js", "vitest.config.mjs"]);
-  const hasCoverageThreshold = Boolean(vitestConfig && /\bcoverage\b[\s\S]*\b(?:threshold|thresholds|lines|branches|functions|statements)\b/u.test(vitestConfig));
+  const hasCoverageScript =
+    hasScript(scripts, /^coverage(?::|$)/u) ||
+    hasScriptValue(scripts, /\b(?:vitest|c8|nyc|v8)\b.*\bcoverage\b/u);
+  const vitestConfig = readFirstExistingText(workingTree, [
+    "vitest.config.ts",
+    "vitest.config.js",
+    "vitest.config.mjs",
+  ]);
+  const hasCoverageThreshold = Boolean(
+    vitestConfig &&
+    /\bcoverage\b[\s\S]*\b(?:threshold|thresholds|lines|branches|functions|statements)\b/u.test(
+      vitestConfig,
+    ),
+  );
   if (!hasCoverageScript || !hasCoverageThreshold) {
     gaps.push("No coverage script or coverage threshold configuration was found.");
     evidence.push({
@@ -997,7 +1276,9 @@ function readPackageJson(workingTree: string): Record<string, unknown> | undefin
   }
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
   } catch {
     return undefined;
   }
@@ -1008,7 +1289,9 @@ function hasScript(scripts: Record<string, unknown>, pattern: RegExp): boolean {
 }
 
 function hasScriptValue(scripts: Record<string, unknown>, pattern: RegExp): boolean {
-  return Object.values(scripts).some((script) => typeof script === "string" && pattern.test(script));
+  return Object.values(scripts).some(
+    (script) => typeof script === "string" && pattern.test(script),
+  );
 }
 
 function anyPathExists(workingTree: string, relativePaths: string[]): boolean {
@@ -1037,28 +1320,42 @@ function auditText(audit: VerificationAudit): string {
     ...audit.verificationSurfaces,
     ...audit.gaps,
     ...audit.evidence.flatMap((entry) => [entry.source, entry.quote ?? ""]),
-  ].join("\n").toLowerCase();
+  ]
+    .join("\n")
+    .toLowerCase();
 }
 
 function mentionsMissingLintOrFormat(text: string): boolean {
-  return /\bno\b[\s\S]{0,80}\b(?:lint|format|eslint|prettier|biome|oxlint|oxc)\b/u.test(text) ||
+  return (
+    /\bno\b[\s\S]{0,80}\b(?:lint|format|eslint|prettier|biome|oxlint|oxc)\b/u.test(text) ||
     /\bmissing\b[\s\S]{0,80}\b(?:lint|format|eslint|prettier|biome|oxlint|oxc)\b/u.test(text) ||
-    /\black(?:s|ing)?\b[\s\S]{0,80}\b(?:lint|format|eslint|prettier|biome|oxlint|oxc)\b/u.test(text);
+    /\black(?:s|ing)?\b[\s\S]{0,80}\b(?:lint|format|eslint|prettier|biome|oxlint|oxc)\b/u.test(text)
+  );
 }
 
 function mentionsMissingGitHooks(text: string): boolean {
-  return /\bno\b[\s\S]{0,80}\b(?:git hook|commit hook|husky|lefthook|lint-staged)\b/u.test(text) ||
+  return (
+    /\bno\b[\s\S]{0,80}\b(?:git hook|commit hook|husky|lefthook|lint-staged)\b/u.test(text) ||
     /\bmissing\b[\s\S]{0,80}\b(?:git hook|commit hook|husky|lefthook|lint-staged)\b/u.test(text) ||
-    /\black(?:s|ing)?\b[\s\S]{0,80}\b(?:git hook|commit hook|husky|lefthook|lint-staged)\b/u.test(text);
+    /\black(?:s|ing)?\b[\s\S]{0,80}\b(?:git hook|commit hook|husky|lefthook|lint-staged)\b/u.test(
+      text,
+    )
+  );
 }
 
 function mentionsMissingCoverage(text: string): boolean {
-  return /\bno\b[\s\S]{0,80}\b(?:coverage|threshold)\b/u.test(text) ||
+  return (
+    /\bno\b[\s\S]{0,80}\b(?:coverage|threshold)\b/u.test(text) ||
     /\bmissing\b[\s\S]{0,80}\b(?:coverage|threshold)\b/u.test(text) ||
-    /\black(?:s|ing)?\b[\s\S]{0,80}\b(?:coverage|threshold)\b/u.test(text);
+    /\black(?:s|ing)?\b[\s\S]{0,80}\b(?:coverage|threshold)\b/u.test(text)
+  );
 }
 
-function bestPracticeEvidence(audit: VerificationAudit, keywords: string[], fallbackQuote: string): EvidenceReference[] {
+function bestPracticeEvidence(
+  audit: VerificationAudit,
+  keywords: string[],
+  fallbackQuote: string,
+): EvidenceReference[] {
   const matching = audit.evidence.filter((entry) => {
     const text = `${entry.source} ${entry.quote ?? ""}`.toLowerCase();
     return keywords.some((keyword) => text.includes(keyword));
@@ -1069,7 +1366,13 @@ function bestPracticeEvidence(audit: VerificationAudit, keywords: string[], fall
       source: "verification audit gap analysis",
       quote: fallbackQuote,
     },
-    ...audit.evidence.filter((entry) => /package\.json|config|scan|tests?|vitest/u.test(`${entry.source} ${entry.quote ?? ""}`.toLowerCase())).slice(0, 2),
+    ...audit.evidence
+      .filter((entry) =>
+        /package\.json|config|scan|tests?|vitest/u.test(
+          `${entry.source} ${entry.quote ?? ""}`.toLowerCase(),
+        ),
+      )
+      .slice(0, 2),
   ]).slice(0, 4);
 }
 
@@ -1099,9 +1402,11 @@ function buildOpportunityRefinementNode(reportNodeIds: string[]): RuntimeWorkflo
     kind: WorkflowNodeKind.PLANNING,
     harness: WorkflowHarnessKind.RESEARCH,
     title: "Refine verification opportunities",
-    description: "Refine repository-evidenced verification opportunities using completed external research reports.",
+    description:
+      "Refine repository-evidenced verification opportunities using completed external research reports.",
     model: "gpt-5.5",
-    modelRationale: "Opportunity refinement uses typed BAML synthesis while preserving local repository evidence.",
+    modelRationale:
+      "Opportunity refinement uses typed BAML synthesis while preserving local repository evidence.",
     prompt: "Refine verification opportunities with external deep research.",
     input: { verificationOptimizerStep: "opportunity-refinement", reportNodeIds },
     dependsOn: reportNodeIds,
@@ -1117,7 +1422,8 @@ function buildVerificationReviewNode(dependency: string): RuntimeWorkflowNode {
     kind: WorkflowNodeKind.DELIBERATION,
     harness: WorkflowHarnessKind.DECISION_COUNCIL,
     title: "Review verification recommendation",
-    description: "Apply strict gates and select at most one high-confidence verification-only improvement.",
+    description:
+      "Apply strict gates and select at most one high-confidence verification-only improvement.",
     model: "deterministic",
     modelRationale: "Strict review is deterministic after typed opportunity mapping.",
     prompt: "Review verification opportunities against strict acceptance gates.",
@@ -1134,7 +1440,8 @@ function buildNoOpportunityReportNode(): RuntimeWorkflowNode {
     kind: WorkflowNodeKind.REPORT,
     harness: WorkflowHarnessKind.REPORTER,
     title: "Report no verification opportunity",
-    description: "Publish a deterministic report explaining why no strict verification opportunity was accepted.",
+    description:
+      "Publish a deterministic report explaining why no strict verification opportunity was accepted.",
     model: "deterministic",
     modelRationale: "No-op reporting formats the deterministic strict-gate result.",
     prompt: "Report that no strict verification-only opportunity was selected.",
@@ -1151,7 +1458,8 @@ function buildAcceptedAdvisoryReportNode(): RuntimeWorkflowNode {
     kind: WorkflowNodeKind.REPORT,
     harness: WorkflowHarnessKind.REPORTER,
     title: "Report verification opportunity",
-    description: "Publish the selected strict verification-only recommendation without making changes.",
+    description:
+      "Publish the selected strict verification-only recommendation without making changes.",
     model: "deterministic",
     modelRationale: "Advisory mode reports the accepted recommendation without a writer node.",
     prompt: "Report the selected strict verification-only opportunity.",
@@ -1214,7 +1522,8 @@ function buildAutonomousPrNodes(opportunity: VerificationOpportunity): RuntimeWo
       kind: WorkflowNodeKind.DELIBERATION,
       harness: WorkflowHarnessKind.COPILOT_SDK,
       title: "Review verification implementation",
-      description: "Review that the implementation stayed verification-only and passed proof commands.",
+      description:
+        "Review that the implementation stayed verification-only and passed proof commands.",
       model: "gpt-5.5",
       modelRationale: "Post-implementation review uses a strong review model.",
       prompt: "Review the verification-only implementation.",
@@ -1242,7 +1551,9 @@ function buildAutonomousPrNodes(opportunity: VerificationOpportunity): RuntimeWo
   ];
 }
 
-function resolveThresholds(options: VerificationOptimizerHarnessOptions): VerificationOptimizerThresholds {
+function resolveThresholds(
+  options: VerificationOptimizerHarnessOptions,
+): VerificationOptimizerThresholds {
   return {
     ...DEFAULT_THRESHOLDS,
     ...options.verificationOptimizer?.thresholds,
@@ -1250,22 +1561,29 @@ function resolveThresholds(options: VerificationOptimizerHarnessOptions): Verifi
   };
 }
 
-function resolveBamlClient(options: VerificationOptimizerHarnessOptions): VerificationOptimizerBamlClient {
+function resolveBamlClient(
+  options: VerificationOptimizerHarnessOptions,
+): VerificationOptimizerBamlClient {
   const deterministic = createDeterministicBamlClient(options);
   const injected = options.baml;
   return {
-    DistillVerificationAudit: injected?.DistillVerificationAudit?.bind(injected)
-      ?? deterministic.DistillVerificationAudit,
-    MapVerificationOpportunities: injected?.MapVerificationOpportunities?.bind(injected)
-      ?? deterministic.MapVerificationOpportunities,
-    RefineVerificationOpportunitiesWithResearch: injected?.RefineVerificationOpportunitiesWithResearch?.bind(injected)
-      ?? deterministic.RefineVerificationOpportunitiesWithResearch,
-    ReviewVerificationRecommendation: injected?.ReviewVerificationRecommendation?.bind(injected)
-      ?? deterministic.ReviewVerificationRecommendation,
+    DistillVerificationAudit:
+      injected?.DistillVerificationAudit?.bind(injected) ?? deterministic.DistillVerificationAudit,
+    MapVerificationOpportunities:
+      injected?.MapVerificationOpportunities?.bind(injected) ??
+      deterministic.MapVerificationOpportunities,
+    RefineVerificationOpportunitiesWithResearch:
+      injected?.RefineVerificationOpportunitiesWithResearch?.bind(injected) ??
+      deterministic.RefineVerificationOpportunitiesWithResearch,
+    ReviewVerificationRecommendation:
+      injected?.ReviewVerificationRecommendation?.bind(injected) ??
+      deterministic.ReviewVerificationRecommendation,
   };
 }
 
-function createDeterministicBamlClient(options: VerificationOptimizerHarnessOptions): VerificationOptimizerBamlClient {
+function createDeterministicBamlClient(
+  options: VerificationOptimizerHarnessOptions,
+): VerificationOptimizerBamlClient {
   return {
     async DistillVerificationAudit(projectJson) {
       const project = readJsonRecord(projectJson);
@@ -1283,17 +1601,20 @@ function createDeterministicBamlClient(options: VerificationOptimizerHarnessOpti
     },
     async MapVerificationOpportunities(audit) {
       return {
-        opportunities: [{
-          id: "verification-1",
-          title: "Add focused workflow verification",
-          currentVerificationGap: audit.gaps[0] ?? "Verification coverage can be improved.",
-          targetChange: "Add a focused verification test and explicit proof command.",
-          allowedChangeKind: "test",
-          score: { confidence: 0.9, impact: 0.7, risk: 0.2, implementationCost: 0.3 },
-          evidence: audit.evidence.slice(0, 2),
-          proofCommands: audit.verificationCommands.length > 0 ? audit.verificationCommands : ["nub run test"],
-          speculative: false,
-        }],
+        opportunities: [
+          {
+            id: "verification-1",
+            title: "Add focused workflow verification",
+            currentVerificationGap: audit.gaps[0] ?? "Verification coverage can be improved.",
+            targetChange: "Add a focused verification test and explicit proof command.",
+            allowedChangeKind: "test",
+            score: { confidence: 0.9, impact: 0.7, risk: 0.2, implementationCost: 0.3 },
+            evidence: audit.evidence.slice(0, 2),
+            proofCommands:
+              audit.verificationCommands.length > 0 ? audit.verificationCommands : ["nub run test"],
+            speculative: false,
+          },
+        ],
         nonApplicableGaps: [],
         rankingRationale: "Offline harness emits one strict verification-only opportunity.",
       };
@@ -1304,7 +1625,9 @@ function createDeterministicBamlClient(options: VerificationOptimizerHarnessOpti
         rankingRationale: [
           initialReview.rankingRationale,
           "Offline harness did not apply external deep research refinement.",
-        ].filter(Boolean).join(" "),
+        ]
+          .filter(Boolean)
+          .join(" "),
       };
     },
     async ReviewVerificationRecommendation(_audit, selectedOpportunity) {
@@ -1314,7 +1637,8 @@ function createDeterministicBamlClient(options: VerificationOptimizerHarnessOpti
       return {
         status: "accepted",
         selectedOpportunity,
-        rationale: "The selected opportunity is verification-only, evidenced, and has explicit proof commands.",
+        rationale:
+          "The selected opportunity is verification-only, evidenced, and has explicit proof commands.",
         rejectionReason: null,
         proofCommands: selectedOpportunity.proofCommands,
       };
@@ -1332,7 +1656,8 @@ function normalizeAcceptedReview(
   return {
     ...review,
     selectedOpportunity: review.selectedOpportunity ?? selectedOpportunity,
-    proofCommands: review.proofCommands.length > 0 ? review.proofCommands : selectedOpportunity.proofCommands,
+    proofCommands:
+      review.proofCommands.length > 0 ? review.proofCommands : selectedOpportunity.proofCommands,
   };
 }
 
@@ -1346,7 +1671,9 @@ function buildRejectedReview(reason: string): VerificationRecommendationReview {
   };
 }
 
-function readSelectedOpportunity(review: VerificationRecommendationReview): VerificationOpportunity {
+function readSelectedOpportunity(
+  review: VerificationRecommendationReview,
+): VerificationOpportunity {
   if (!review.selectedOpportunity) {
     throw new Error("Verification review did not include a selected opportunity.");
   }
@@ -1372,7 +1699,11 @@ function uniqueCommands(commands: string[]): string[] {
   });
 }
 
-async function runValidationCommands(commands: string[], cwd: string, shell?: VerificationOptimizerShellClient): Promise<string> {
+async function runValidationCommands(
+  commands: string[],
+  cwd: string,
+  shell?: VerificationOptimizerShellClient,
+): Promise<string> {
   if (commands.length === 0) {
     return "No verification commands configured.";
   }
@@ -1384,7 +1715,10 @@ async function runValidationCommands(commands: string[], cwd: string, shell?: Ve
   return outputs.join("\n");
 }
 
-async function openPullRequest(cwd: string, shell?: VerificationOptimizerShellClient): Promise<string> {
+async function openPullRequest(
+  cwd: string,
+  shell?: VerificationOptimizerShellClient,
+): Promise<string> {
   if (!shell) {
     return "not-opened-by-test-harness";
   }
@@ -1392,17 +1726,29 @@ async function openPullRequest(cwd: string, shell?: VerificationOptimizerShellCl
   return output.trim() || "not-opened";
 }
 
-async function defaultShellRun(command: string, args: string[], options: { cwd: string }): Promise<string> {
+async function defaultShellRun(
+  command: string,
+  args: string[],
+  options: { cwd: string },
+): Promise<string> {
   const result = await execFileAsync(command, args, { cwd: options.cwd });
   return [result.stdout, result.stderr].filter(Boolean).join("\n");
 }
 
 function readWorktreePath(context: WorkflowExecutionContext): string {
-  return getPayloadValue<WorktreePreparationResult>(context, "prepare-worktree", "worktreePreparation").worktreePath;
+  return getPayloadValue<WorktreePreparationResult>(
+    context,
+    "prepare-worktree",
+    "worktreePreparation",
+  ).worktreePath;
 }
 
 function readOptionalWorktreePath(context: WorkflowExecutionContext): string | undefined {
-  return getOptionalPayloadValue<WorktreePreparationResult>(context, "prepare-worktree", "worktreePreparation")?.worktreePath;
+  return getOptionalPayloadValue<WorktreePreparationResult>(
+    context,
+    "prepare-worktree",
+    "worktreePreparation",
+  )?.worktreePath;
 }
 
 function getPayloadValue<T>(context: WorkflowExecutionContext, nodeId: string, key: string): T {
@@ -1413,21 +1759,30 @@ function getPayloadValue<T>(context: WorkflowExecutionContext, nodeId: string, k
   return payload[key] as T;
 }
 
-function getOptionalPayloadValue<T>(context: WorkflowExecutionContext, nodeId: string, key: string): T | undefined {
+function getOptionalPayloadValue<T>(
+  context: WorkflowExecutionContext,
+  nodeId: string,
+  key: string,
+): T | undefined {
   const payload = context.payloads.get(nodeId);
-  return payload && key in payload ? payload[key] as T : undefined;
+  return payload && key in payload ? (payload[key] as T) : undefined;
 }
 
 function readJsonRecord(input: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(input);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
   } catch {
     return {};
   }
 }
 
-function buildExecutionMetadata(executor: string, calls: WorkflowExecutionCall[]): WorkflowExecutionMetadata {
+function buildExecutionMetadata(
+  executor: string,
+  calls: WorkflowExecutionCall[],
+): WorkflowExecutionMetadata {
   const firstCall = calls[0];
   return {
     executor,
@@ -1495,11 +1850,13 @@ function buildRefineVerificationOpportunitiesPromptPreview(
 }
 
 function reporterExecution(node: RuntimeWorkflowNode): WorkflowExecutionMetadata {
-  return buildExecutionMetadata(WorkflowHarnessKind.REPORTER, [{
-    executor: WorkflowHarnessKind.REPORTER,
-    operation: node.id,
-    mode: "report",
-    prompt: node.prompt,
-    model: node.model ?? "deterministic",
-  }]);
+  return buildExecutionMetadata(WorkflowHarnessKind.REPORTER, [
+    {
+      executor: WorkflowHarnessKind.REPORTER,
+      operation: node.id,
+      mode: "report",
+      prompt: node.prompt,
+      model: node.model ?? "deterministic",
+    },
+  ]);
 }

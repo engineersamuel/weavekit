@@ -43,7 +43,9 @@ async function main() {
   for (const client of selectedClients) {
     const proxyModel = proxyModels.get(client.model);
     const endpoint = expectedEndpoint(client.provider);
-    const endpointOk = endpoint ? proxyModel?.supported_endpoints?.includes(endpoint) === true : true;
+    const endpointOk = endpoint
+      ? proxyModel?.supported_endpoints?.includes(endpoint) === true
+      : true;
     if (!proxyModel || !endpointOk) {
       failed = true;
     }
@@ -98,9 +100,14 @@ async function fetchProxyModels(baseUrl: string): Promise<Map<string, ProxyModel
   const rootUrl = baseUrl.replace(/\/v1\/?$/, "");
   const response = await fetch(`${rootUrl}/v1/models`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch proxy models from ${rootUrl}/v1/models: HTTP ${response.status}`);
+    throw new Error(
+      `Failed to fetch proxy models from ${rootUrl}/v1/models: HTTP ${response.status}`,
+    );
   }
-  const payload = (await response.json()) as { data?: Array<{ id: string }>; models?: ProxyModel[] };
+  const payload = (await response.json()) as {
+    data?: Array<{ id: string }>;
+    models?: ProxyModel[];
+  };
   const models = new Map<string, ProxyModel>();
   for (const item of payload.data ?? []) {
     models.set(item.id, { slug: item.id });
@@ -149,17 +156,29 @@ function liveProbes(): Array<{ name: string; client: string; call: () => Promise
     {
       name: "PlanWorkflow",
       client: "CopilotProxyClaudeOpus48",
-      call: () => b.PlanWorkflow("BAML health check", "Create a minimal implementation-review DAG.", "implementation-review", { client: "CopilotProxyClaudeOpus48" }),
+      call: () =>
+        b.PlanWorkflow(
+          "BAML health check",
+          "Create a minimal implementation-review DAG.",
+          "implementation-review",
+          { client: "CopilotProxyClaudeOpus48" },
+        ),
     },
     {
       name: "GenerateReplanPatch",
       client: "CopilotProxyClaudeOpus48",
-      call: () => b.GenerateReplanPatch("Health-check retry after timeout.", 1, [], currentPlan, { client: "CopilotProxyClaudeOpus48" }),
+      call: () =>
+        b.GenerateReplanPatch("Health-check retry after timeout.", 1, [], currentPlan, {
+          client: "CopilotProxyClaudeOpus48",
+        }),
     },
     {
       name: "RouteModelCall",
       client: "CopilotProxyGpt5Mini",
-      call: () => b.RouteModelCall("normalize", "Health-check fast routing.", ["CopilotProxyGpt5Mini"], { client: "CopilotProxyGpt5Mini" }),
+      call: () =>
+        b.RouteModelCall("normalize", "Health-check fast routing.", ["CopilotProxyGpt5Mini"], {
+          client: "CopilotProxyGpt5Mini",
+        }),
     },
     {
       name: "DistillSourceAnalysis",
@@ -176,8 +195,12 @@ function liveProbes(): Array<{ name: string; client: string; call: () => Promise
 
 function formatError(error: unknown): string {
   if (error && typeof error === "object") {
-    const raw = "raw_response" in error ? String((error as { raw_response?: unknown }).raw_response ?? "") : "";
-    const message = "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
+    const raw =
+      "raw_response" in error
+        ? String((error as { raw_response?: unknown }).raw_response ?? "")
+        : "";
+    const message =
+      "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
     return compact(raw || message || String(error));
   }
   return compact(String(error));

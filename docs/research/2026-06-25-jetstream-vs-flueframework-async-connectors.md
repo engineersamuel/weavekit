@@ -11,8 +11,8 @@ messages and a connector for new TickTick todo items, piped downstream through e
 
 For "get Teams DMs and new TickTick todos into an AI agent that acts on them," **Flue
 handles the async incoming connections far better** — it is the only one of the two
-with actual connectors. JetStream is a message bus: it does not *grab* events, it
-*stores and distributes* them, and only earns its place once you have multiple
+with actual connectors. JetStream is a message bus: it does not _grab_ events, it
+_stores and distributes_ them, and only earns its place once you have multiple
 consumers or serious volume. Reach for JetStream when the bus itself is the
 requirement, not before.
 
@@ -23,8 +23,8 @@ These are not the same category, and the "PI" in the question is part of the Flu
 - **NATS JetStream** = messaging/streaming **infrastructure** (a broker/bus). Durable
   streams, pub/sub, delivery guarantees, replay. It is transport + persistence. It has
   **no concept of agents and no SaaS connectors**.
-- **Flue (flueframework.com)** = a TypeScript **AI-agent framework**. It is *"powered by
-  Pi, the open agent harness"* ([pi.dev](https://pi.dev), `earendil-works/pi`) — the
+- **Flue (flueframework.com)** = a TypeScript **AI-agent framework**. It is _"powered by
+  Pi, the open agent harness"_ ([pi.dev](https://pi.dev), `earendil-works/pi`) — the
   same Pi referenced in the `superpowers` `pi-tools.md`. So **"PI" = Pi, the low-level
   harness; Flue = the batteries-included framework built on top of it.** "Pipe through
   PI vs Flue" = bare harness vs. full framework on one stack.
@@ -35,10 +35,10 @@ need the bus at all.
 
 ## Connector reality (identical constraints for both tools)
 
-| Source | Push or poll? | Needs public HTTPS endpoint? | Auth |
-|---|---|---|---|
-| **Teams DMs** | **Push** — Graph change notifications (`/chats/{id}/messages`, `/users/{id}/chats/getAllMessages`) *or* a Bot Framework endpoint | **Yes** (either path) | Entra OAuth / Bot creds; RSC (`ChatMessage.Read.Chat`) to receive all DMs without @mention |
-| **TickTick new todos** | **Poll only** — Open API has **no webhooks** (`GET /open/v1/project/{id}/data`, diff task IDs) | No for polling; Yes only if bridged via Zapier/Make | OAuth2 bearer, scope `tasks:read` |
+| Source                 | Push or poll?                                                                                                                    | Needs public HTTPS endpoint?                        | Auth                                                                                       |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Teams DMs**          | **Push** — Graph change notifications (`/chats/{id}/messages`, `/users/{id}/chats/getAllMessages`) _or_ a Bot Framework endpoint | **Yes** (either path)                               | Entra OAuth / Bot creds; RSC (`ChatMessage.Read.Chat`) to receive all DMs without @mention |
+| **TickTick new todos** | **Poll only** — Open API has **no webhooks** (`GET /open/v1/project/{id}/data`, diff task IDs)                                   | No for polling; Yes only if bridged via Zapier/Make | OAuth2 bearer, scope `tasks:read`                                                          |
 
 Gotchas that apply regardless of which tool you choose:
 
@@ -51,19 +51,19 @@ Gotchas that apply regardless of which tool you choose:
 
 ## Side-by-side comparison
 
-| | **JetStream** | **Flue / Pi** |
-|---|---|---|
-| **Layer** | Event bus / persistence | Agent app framework + harness |
-| **Teams connector** | Build a Bot/Graph webhook bridge yourself, then publish | First-party `@flue/teams` **Channel** (Bot Connector ingress, JWT verify, `dispatch` -> agent) |
-| **TickTick connector** | Build a poller that publishes | No prebuilt connector, but sanctioned **Schedules** idiom (Cloudflare Cron / Croner / BullMQ) -> `dispatch` |
-| **HTTP/webhook ingress** | None native (TCP / WebSocket / MQTT only) — bridge required | HTTP-native (Channels / Routing) |
-| **Durability & replay** | Streams, durable consumers, at-least-once + dedup window (default 2 min), replay from offset/time, work-queue retention | "Durable Streams" — per-agent-instance durable queue + replay (Cloudflare Durable Objects/SQLite; Node needs a sqlite/postgres `PersistenceAdapter`) |
-| **Delivery guarantees** | At-least-once; publisher-side dedup via `Nats-Msg-Id`; practical exactly-once via double-ack + idempotent sinks | Conservative interruption recovery; app owns idempotency (`dispatchId`, activity IDs); Teams channel does NOT dedup |
-| **Fan-out to many consumers** | Excellent (queue groups, work-queue streams, polyglot) | Oriented around feeding agent instances, not a general multi-consumer bus |
-| **Ops footprint** | Single Go binary, clustering, self-host or Synadia Cloud | Deploy to Node.js, Cloudflare Workers, GitHub/GitLab CI, Vercel, Fly.io, Render |
-| **Languages** | Polyglot, 40+ client languages | TypeScript |
-| **Maturity** | CNCF **Incubating**, Apache-2.0, battle-tested, large community | **1.0 Beta**, very new, docs partly "AI-generated, awaiting review"; Pi is a young minimal harness |
-| **Best at** | High-volume, polyglot, decoupled event backbone | Rapidly building an AI agent that *acts on* events |
+|                               | **JetStream**                                                                                                           | **Flue / Pi**                                                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Layer**                     | Event bus / persistence                                                                                                 | Agent app framework + harness                                                                                                                        |
+| **Teams connector**           | Build a Bot/Graph webhook bridge yourself, then publish                                                                 | First-party `@flue/teams` **Channel** (Bot Connector ingress, JWT verify, `dispatch` -> agent)                                                       |
+| **TickTick connector**        | Build a poller that publishes                                                                                           | No prebuilt connector, but sanctioned **Schedules** idiom (Cloudflare Cron / Croner / BullMQ) -> `dispatch`                                          |
+| **HTTP/webhook ingress**      | None native (TCP / WebSocket / MQTT only) — bridge required                                                             | HTTP-native (Channels / Routing)                                                                                                                     |
+| **Durability & replay**       | Streams, durable consumers, at-least-once + dedup window (default 2 min), replay from offset/time, work-queue retention | "Durable Streams" — per-agent-instance durable queue + replay (Cloudflare Durable Objects/SQLite; Node needs a sqlite/postgres `PersistenceAdapter`) |
+| **Delivery guarantees**       | At-least-once; publisher-side dedup via `Nats-Msg-Id`; practical exactly-once via double-ack + idempotent sinks         | Conservative interruption recovery; app owns idempotency (`dispatchId`, activity IDs); Teams channel does NOT dedup                                  |
+| **Fan-out to many consumers** | Excellent (queue groups, work-queue streams, polyglot)                                                                  | Oriented around feeding agent instances, not a general multi-consumer bus                                                                            |
+| **Ops footprint**             | Single Go binary, clustering, self-host or Synadia Cloud                                                                | Deploy to Node.js, Cloudflare Workers, GitHub/GitLab CI, Vercel, Fly.io, Render                                                                      |
+| **Languages**                 | Polyglot, 40+ client languages                                                                                          | TypeScript                                                                                                                                           |
+| **Maturity**                  | CNCF **Incubating**, Apache-2.0, battle-tested, large community                                                         | **1.0 Beta**, very new, docs partly "AI-generated, awaiting review"; Pi is a young minimal harness                                                   |
+| **Best at**                   | High-volume, polyglot, decoupled event backbone                                                                         | Rapidly building an AI agent that _acts on_ events                                                                                                   |
 
 ## Recommendation by scope
 
@@ -94,7 +94,7 @@ TickTick poller            ─┘                     (replay, work-queue,    (F
                                                    dedup, fan-out)         other services)
 ```
 
-You can even reuse a Flue Teams Channel as the *receiver* that publishes to JetStream.
+You can even reuse a Flue Teams Channel as the _receiver_ that publishes to JetStream.
 This buys decoupling, replay, retention, and work-queue distribution across a fleet — at
 the cost of more moving parts. For one person and two sources, this is over-engineering.
 

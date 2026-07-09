@@ -1,4 +1,9 @@
-import { connectMcpServer, type McpServerConnection, type McpServerOptions, type ToolDefinition } from "@flue/runtime";
+import {
+  connectMcpServer,
+  type McpServerConnection,
+  type McpServerOptions,
+  type ToolDefinition,
+} from "@flue/runtime";
 import type { RemoteFlueMcpSpec } from "./mcpConfig.js";
 
 export type ConnectMcpServer = (
@@ -15,14 +20,22 @@ function isAllowedTool(tool: ToolDefinition, spec: RemoteFlueMcpSpec): boolean {
 
   return spec.tools.some((allowed) => {
     const normalized = normalizeFlueToolName(allowed);
-    return tool.name === allowed || tool.name === normalized || tool.name === `mcp__${spec.name}__${normalized}`;
+    return (
+      tool.name === allowed ||
+      tool.name === normalized ||
+      tool.name === `mcp__${spec.name}__${normalized}`
+    );
   });
 }
 
 export async function connectConfiguredMcpTools(
   specs: RemoteFlueMcpSpec[],
   connect: ConnectMcpServer = connectMcpServer as ConnectMcpServer,
-): Promise<{ tools: ToolDefinition[]; connections: McpServerConnection[]; close(): Promise<void> }> {
+): Promise<{
+  tools: ToolDefinition[];
+  connections: McpServerConnection[];
+  close(): Promise<void>;
+}> {
   const connections: McpServerConnection[] = [];
 
   try {

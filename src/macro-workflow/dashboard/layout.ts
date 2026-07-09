@@ -26,13 +26,19 @@ type WorkflowLayoutEdge = {
   [key: string]: unknown;
 };
 
-export function layoutWorkflowGraph<TNode extends WorkflowLayoutNode, TEdge extends WorkflowLayoutEdge>({
+export function layoutWorkflowGraph<
+  TNode extends WorkflowLayoutNode,
+  TEdge extends WorkflowLayoutEdge,
+>({
   nodes,
   edges,
 }: {
   nodes: TNode[];
   edges: TEdge[];
-}): { nodes: Array<TNode & { targetPosition: string; sourcePosition: string }>; edges: Array<TEdge & { type: string }> } {
+}): {
+  nodes: Array<TNode & { targetPosition: string; sourcePosition: string }>;
+  edges: Array<TEdge & { type: string }>;
+} {
   const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   const nodeIds = new Set(nodes.map((node) => node.id));
 
@@ -61,7 +67,12 @@ export function layoutWorkflowGraph<TNode extends WorkflowLayoutNode, TEdge exte
 
   return {
     nodes: nodes.map((node) => {
-      const dimensions = graph.node(node.id) as { x: number; y: number; width: number; height: number };
+      const dimensions = graph.node(node.id) as {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      };
       return {
         ...node,
         targetPosition: HORIZONTAL_TARGET_POSITION,

@@ -49,19 +49,13 @@ export function createTemplateOptimizerBamlAdapters(
   };
   return {
     generateChallenger(args) {
-      return retryTransientBamlCall(
-        () => generateTemplateChallenger(client, args),
-        retryOptions,
-      );
+      return retryTransientBamlCall(() => generateTemplateChallenger(client, args), retryOptions);
     },
     judgeFixture(args) {
       return retryTransientBamlCall(() => judgeTemplateFixture(client, args), retryOptions);
     },
     aggregateJudgments(args) {
-      return retryTransientBamlCall(
-        () => aggregateTemplateJudgments(client, args),
-        retryOptions,
-      );
+      return retryTransientBamlCall(() => aggregateTemplateJudgments(client, args), retryOptions);
     },
   };
 }

@@ -18,15 +18,16 @@ afterEach(async () => {
 
 describe("X post prompt preprocessing", () => {
   it("detects unique X and Twitter status URLs in encounter order", () => {
-    expect(extractXPostUrls([
-      "Read https://x.com/alice/status/12345, then compare",
-      "Duplicate https://x.com/alice/status/12345.",
-      "Legacy https://twitter.com/bob/status/67890?s=20",
-      "Ignore https://x.com/explore and https://twitter.com/bob",
-    ].join("\n"))).toEqual([
-      "https://x.com/alice/status/12345",
-      "https://twitter.com/bob/status/67890?s=20",
-    ]);
+    expect(
+      extractXPostUrls(
+        [
+          "Read https://x.com/alice/status/12345, then compare",
+          "Duplicate https://x.com/alice/status/12345.",
+          "Legacy https://twitter.com/bob/status/67890?s=20",
+          "Ignore https://x.com/explore and https://twitter.com/bob",
+        ].join("\n"),
+      ),
+    ).toEqual(["https://x.com/alice/status/12345", "https://twitter.com/bob/status/67890?s=20"]);
   });
 
   it("returns the original prompt without invoking the fetcher when no status URL is present", async () => {
@@ -59,15 +60,17 @@ describe("X post prompt preprocessing", () => {
     expect(result.fetchedXPosts).toEqual([
       { url: "https://x.com/alice/status/12345", markdown: "# Alice Post\n\nFetched body." },
     ]);
-    expect(result.prompt).toBe([
-      "Apply https://x.com/alice/status/12345 and https://x.com/alice/status/12345.",
-      "",
-      "## Resolved X Post Sources",
-      "",
-      "### https://x.com/alice/status/12345",
-      "",
-      "# Alice Post\n\nFetched body.",
-    ].join("\n"));
+    expect(result.prompt).toBe(
+      [
+        "Apply https://x.com/alice/status/12345 and https://x.com/alice/status/12345.",
+        "",
+        "## Resolved X Post Sources",
+        "",
+        "### https://x.com/alice/status/12345",
+        "",
+        "# Alice Post\n\nFetched body.",
+      ].join("\n"),
+    );
   });
 
   it("includes explicit source URLs when preprocessing the workflow prompt", async () => {
@@ -90,11 +93,15 @@ describe("X post prompt preprocessing", () => {
     tempDirs.push(root);
     const argsPath = join(root, "args.txt");
     const grokPath = join(root, "grok");
-    await writeFile(grokPath, [
-      "#!/bin/sh",
-      `printf '%s\\n' "$@" > ${JSON.stringify(argsPath)}`,
-      "printf '\\n# Clean Markdown\\n\\nBody.\\n'",
-    ].join("\n"), "utf8");
+    await writeFile(
+      grokPath,
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$@" > ${JSON.stringify(argsPath)}`,
+        "printf '\\n# Clean Markdown\\n\\nBody.\\n'",
+      ].join("\n"),
+      "utf8",
+    );
     await chmod(grokPath, 0o755);
 
     const fetchXPost = createGrokXPostFetcher({ command: grokPath, timeoutMs: 1_000 });
@@ -104,7 +111,9 @@ describe("X post prompt preprocessing", () => {
       url: "https://x.com/alice/status/12345",
       markdown: "# Clean Markdown\n\nBody.",
     });
-    await expect(readText(argsPath)).resolves.toContain("x_search tool to fetch the full content of https://x.com/alice/status/12345");
+    await expect(readText(argsPath)).resolves.toContain(
+      "x_search tool to fetch the full content of https://x.com/alice/status/12345",
+    );
     await expect(readText(argsPath)).resolves.toContain("grok-4.5");
     await expect(readText(argsPath)).resolves.toContain("plain");
   });
@@ -122,14 +131,20 @@ describe("X post prompt preprocessing", () => {
     await chmod(empty, 0o755);
     await chmod(slow, 0o755);
 
-    await expect(createGrokXPostFetcher({ command: failing, timeoutMs: 1_000 })("https://x.com/a/status/1"))
-      .rejects.toThrow("grok failed");
-    await expect(createGrokXPostFetcher({ command: "definitely-missing-grok-binary", timeoutMs: 1_000 })("https://x.com/a/status/1"))
-      .rejects.toThrow("Could not find grok");
-    await expect(createGrokXPostFetcher({ command: empty, timeoutMs: 1_000 })("https://x.com/a/status/1"))
-      .rejects.toThrow("empty content");
-    await expect(createGrokXPostFetcher({ command: slow, timeoutMs: 10 })("https://x.com/a/status/1"))
-      .rejects.toThrow("timed out");
+    await expect(
+      createGrokXPostFetcher({ command: failing, timeoutMs: 1_000 })("https://x.com/a/status/1"),
+    ).rejects.toThrow("grok failed");
+    await expect(
+      createGrokXPostFetcher({ command: "definitely-missing-grok-binary", timeoutMs: 1_000 })(
+        "https://x.com/a/status/1",
+      ),
+    ).rejects.toThrow("Could not find grok");
+    await expect(
+      createGrokXPostFetcher({ command: empty, timeoutMs: 1_000 })("https://x.com/a/status/1"),
+    ).rejects.toThrow("empty content");
+    await expect(
+      createGrokXPostFetcher({ command: slow, timeoutMs: 10 })("https://x.com/a/status/1"),
+    ).rejects.toThrow("timed out");
   });
 });
 

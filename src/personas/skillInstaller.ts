@@ -24,7 +24,10 @@ export interface EnsureSkillOptions {
  *   2. typed tooling config
  *   3. `<repoRoot>/.weavekit/skills` (repo root found by upward search for package.json)
  */
-export function resolveSkillsCacheDir(override?: string, tooling?: Pick<ToolingDefaults, "skillsDirectory">): string {
+export function resolveSkillsCacheDir(
+  override?: string,
+  tooling?: Pick<ToolingDefaults, "skillsDirectory">,
+): string {
   if (override) return override;
   if (tooling?.skillsDirectory) return tooling.skillsDirectory;
 
@@ -39,7 +42,7 @@ export function resolveSkillsCacheDir(override?: string, tooling?: Pick<ToolingD
   }
 
   throw new Error(
-      `Could not locate repo root (package.json) searching upward from ` +
+    `Could not locate repo root (package.json) searching upward from ` +
       `${fileURLToPath(import.meta.url)}. Configure tooling.skills_directory to override.`,
   );
 }

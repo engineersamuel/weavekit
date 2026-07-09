@@ -44,8 +44,8 @@ describe("macro workflow artifacts", () => {
 
       expect(report).toContain("Macro Workflow Run Report");
       expect(report).toContain("## Token Usage and Cost");
-      expect(stateFile).toContain("\"status\": \"passed\"");
-      expect(eventLog).toContain("\"kind\":\"planning-started\"");
+      expect(stateFile).toContain('"status": "passed"');
+      expect(eventLog).toContain('"kind":"planning-started"');
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
@@ -98,7 +98,9 @@ describe("macro workflow artifacts", () => {
       const report = await readFile(artifacts.reportPath, "utf8");
 
       expect(report).toContain("## Token Usage and Cost");
-      expect(report).toContain("| Copilot source reading | copilot-sdk | gpt-5.5 | 1,000 | 100 | 200 | $0.01 |");
+      expect(report).toContain(
+        "| Copilot source reading | copilot-sdk | gpt-5.5 | 1,000 | 100 | 200 | $0.01 |",
+      );
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
@@ -133,7 +135,8 @@ describe("macro workflow artifacts", () => {
                   sourceId: "source-1",
                   title: "Example KG repo",
                   accessLevel: "public",
-                  summary: "A repository with a chunk, extract, standardize, infer, visualize pipeline.",
+                  summary:
+                    "A repository with a chunk, extract, standardize, infer, visualize pipeline.",
                   claims: [],
                   transferableLessons: [],
                   evidence: [],
@@ -172,7 +175,8 @@ describe("macro workflow artifacts", () => {
                       id: "opp-1",
                       title: "Add LLM adapter controls",
                       lesson: "Keep LLM calls optional and auditable.",
-                      projectChange: "Route agent entrypoints through an opt-in adapter with local-only mode.",
+                      projectChange:
+                        "Route agent entrypoints through an opt-in adapter with local-only mode.",
                       changeSurface: "agent entrypoints",
                       score: {
                         applicability: 0.9,
@@ -199,10 +203,16 @@ describe("macro workflow artifacts", () => {
                     title: "LLM adapter layer",
                     recommendation: "Add an opt-in LLM adapter with local-only fail-fast behavior.",
                     problemSolved: "Direct provider calls are hard to audit and disable.",
-                    sourceLessonApplied: "Keep LLM steps optional and log raw outputs for debugging.",
+                    sourceLessonApplied:
+                      "Keep LLM steps optional and log raw outputs for debugging.",
                     targetChange: "Introduce one adapter boundary used by agent entrypoints.",
-                    expectedUserValue: "Users can inspect and control model calls before implementation.",
-                    implementationOutline: ["Define adapter interface", "Update entrypoints", "Add local-only tests"],
+                    expectedUserValue:
+                      "Users can inspect and control model calls before implementation.",
+                    implementationOutline: [
+                      "Define adapter interface",
+                      "Update entrypoints",
+                      "Add local-only tests",
+                    ],
                     scope: "Adapter, config, logging, and tests.",
                     filesLikelyTouched: ["src/llm"],
                     validationCommands: ["nub run typecheck"],
@@ -222,7 +232,9 @@ describe("macro workflow artifacts", () => {
       expect(report).toContain("## Advisory Summary");
       expect(report).toContain("Add an opt-in LLM adapter with local-only fail-fast behavior.");
       expect(report).toContain("## Ranked Opportunities");
-      expect(report).toContain("Route agent entrypoints through an opt-in adapter with local-only mode.");
+      expect(report).toContain(
+        "Route agent entrypoints through an opt-in adapter with local-only mode.",
+      );
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

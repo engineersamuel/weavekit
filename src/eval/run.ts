@@ -22,7 +22,10 @@ interface SummaryLike {
 }
 
 async function defaultProviders(): Promise<ApiProvider[]> {
-  const [{ CouncilProvider }, { CopilotCliProvider }] = await Promise.all([import("./providers/council.js"), import("./providers/copilot.js")]);
+  const [{ CouncilProvider }, { CopilotCliProvider }] = await Promise.all([
+    import("./providers/council.js"),
+    import("./providers/copilot.js"),
+  ]);
   return [new CouncilProvider(), new CopilotCliProvider()];
 }
 
@@ -42,8 +45,14 @@ function renderSummary(items: CorpusItem[], summary: SummaryLike): string {
   ].join("\n");
 }
 
-export async function runEval(options: RunEvalOptions = {}, deps: RunEvalDeps = {}): Promise<string> {
-  if (options.maxConcurrency !== undefined && (!Number.isInteger(options.maxConcurrency) || options.maxConcurrency < 1)) {
+export async function runEval(
+  options: RunEvalOptions = {},
+  deps: RunEvalDeps = {},
+): Promise<string> {
+  if (
+    options.maxConcurrency !== undefined &&
+    (!Number.isInteger(options.maxConcurrency) || options.maxConcurrency < 1)
+  ) {
     throw new Error(`maxConcurrency must be an integer >= 1; received ${options.maxConcurrency}.`);
   }
 

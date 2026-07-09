@@ -15,11 +15,12 @@ export function createWorkflowViewportFitKey(args: {
   edges: ViewportEdge[];
 }): string {
   const nodeKey = args.nodes
-    .map((node) => `${node.id}@${Math.round(node.position?.x ?? 0)},${Math.round(node.position?.y ?? 0)}`)
+    .map(
+      (node) =>
+        `${node.id}@${Math.round(node.position?.x ?? 0)},${Math.round(node.position?.y ?? 0)}`,
+    )
     .join("|");
-  const edgeKey = args.edges
-    .map((edge) => `${edge.id}:${edge.source}>${edge.target}`)
-    .join("|");
+  const edgeKey = args.edges.map((edge) => `${edge.id}:${edge.source}>${edge.target}`).join("|");
 
   return `${args.runId ?? ""}::${nodeKey}::${edgeKey}`;
 }

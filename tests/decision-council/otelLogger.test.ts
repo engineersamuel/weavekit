@@ -54,10 +54,7 @@ describe("otel decision council logger", () => {
   it("can fan out to multiple logger sinks without changing payloads", () => {
     const first = vi.fn();
     const second = vi.fn();
-    const logger = composeDecisionCouncilLoggers(
-      { event: first },
-      { event: second },
-    );
+    const logger = composeDecisionCouncilLoggers({ event: first }, { event: second });
     const event = {
       type: "council.run.started" as const,
       timestamp: "2026-06-26T20:00:00.000Z",

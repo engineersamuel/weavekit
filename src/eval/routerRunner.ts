@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runEval } from "./run.js";
 import { RouterProvider } from "./providers/router.js";
@@ -38,9 +38,16 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function renderDashboard(items: CorpusItem[], results: RouteClassificationResult[], summary: unknown): string {
-  const stats = ((summary as { stats?: Record<string, unknown> } | undefined)?.stats ?? {}) as Record<string, unknown>;
-  const routeMatches = results.filter((result) => result.actualRoute === result.expectedRoute).length;
+function renderDashboard(
+  items: CorpusItem[],
+  results: RouteClassificationResult[],
+  summary: unknown,
+): string {
+  const stats = ((summary as { stats?: Record<string, unknown> } | undefined)?.stats ??
+    {}) as Record<string, unknown>;
+  const routeMatches = results.filter(
+    (result) => result.actualRoute === result.expectedRoute,
+  ).length;
   const routeMismatches = results.length - routeMatches;
   const rows = results
     .map((result) => {
@@ -108,7 +115,9 @@ function renderDashboard(items: CorpusItem[], results: RouteClassificationResult
 </html>`;
 }
 
-export async function runRouteClassificationEval(options: RunRouteClassificationOptions = {}): Promise<string> {
+export async function runRouteClassificationEval(
+  options: RunRouteClassificationOptions = {},
+): Promise<string> {
   const corpusDir = options.corpusDir ?? "evals/corpus/router-classification";
   const resultsDir = options.resultsDir ?? "evals/results/router-classification";
   const router = createInitialWorkflowRouter();

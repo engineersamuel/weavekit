@@ -2,11 +2,18 @@ import { describe, expect, it } from "vitest";
 import { applyReplanPatch, runMacroWorkflow } from "../../src/macro-workflow/runner.js";
 import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js";
 import { materializeWorkflowPlan } from "../../src/macro-workflow/templates.js";
-import { WorkflowGateKind, WorkflowHarnessKind, WorkflowNodeKind, type RuntimeWorkflowPlan } from "../../src/macro-workflow/types.js";
+import {
+  WorkflowGateKind,
+  WorkflowHarnessKind,
+  WorkflowNodeKind,
+  type RuntimeWorkflowPlan,
+} from "../../src/macro-workflow/types.js";
 
 describe("macro workflow replanning", () => {
   it("applies a patch only to incomplete nodes", () => {
-    const plan = materializeWorkflowPlan("implementation-review", { objective: "Implement rich logging" });
+    const plan = materializeWorkflowPlan("implementation-review", {
+      objective: "Implement rich logging",
+    });
     const patched = applyReplanPatch(
       plan,
       {
@@ -34,11 +41,16 @@ describe("macro workflow replanning", () => {
   });
 
   it("replans once when a gate-triggering node fails", async () => {
-    const plan = materializeWorkflowPlan("implementation-review", { objective: "Implement rich logging" });
+    const plan = materializeWorkflowPlan("implementation-review", {
+      objective: "Implement rich logging",
+    });
     const harnesses = createStaticHarnessRegistry({
       [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "ok" }),
       [WorkflowHarnessKind.DECISION_COUNCIL]: async () => ({ status: "passed", output: "ok" }),
-      [WorkflowHarnessKind.COPILOT_SDK]: async (node) => ({ status: node.id === "implement" ? "failed" : "passed", output: "ok" }),
+      [WorkflowHarnessKind.COPILOT_SDK]: async (node) => ({
+        status: node.id === "implement" ? "failed" : "passed",
+        output: "ok",
+      }),
       [WorkflowHarnessKind.VERIFIER]: async () => ({ status: "passed", output: "ok" }),
       [WorkflowHarnessKind.REPORTER]: async () => ({ status: "passed", output: "ok" }),
     });
@@ -117,7 +129,11 @@ describe("macro workflow replanning", () => {
 
     let replannerCalls = 0;
     const harnesses = createStaticHarnessRegistry({
-      [WorkflowHarnessKind.COPILOT_SDK]: async () => ({ status: "failed", output: "boom", error: "boom" }),
+      [WorkflowHarnessKind.COPILOT_SDK]: async () => ({
+        status: "failed",
+        output: "boom",
+        error: "boom",
+      }),
       [WorkflowHarnessKind.VERIFIER]: async () => ({ status: "passed", output: "ok" }),
     });
 

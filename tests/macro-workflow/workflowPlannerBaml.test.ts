@@ -40,7 +40,11 @@ describe("macro workflow planner BAML bindings", () => {
     };
 
     const planner = new GeneratedWorkflowPlannerAdapter({ plannerClient: fakeBamlClient as never });
-    const plan = await planner.planWorkflow({ objective: "Implement structured logging", prompt: "Add logging", templateId: "implementation-review" });
+    const plan = await planner.planWorkflow({
+      objective: "Implement structured logging",
+      prompt: "Add logging",
+      templateId: "implementation-review",
+    });
 
     expect(plan.templateId).toBe("implementation-review");
     expect(plan.nodes[0]).toMatchObject({ id: "research", kind: "research" });

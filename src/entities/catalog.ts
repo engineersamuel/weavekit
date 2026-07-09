@@ -34,7 +34,10 @@ function kindDirectory(kind: WorkflowEntityManifest["kind"]): string {
   return "elicitation";
 }
 
-function manifestToRuntimePersona(manifest: WorkflowEntityManifest, repoRoot: string): PersonaRuntimeDefinition | undefined {
+function manifestToRuntimePersona(
+  manifest: WorkflowEntityManifest,
+  repoRoot: string,
+): PersonaRuntimeDefinition | undefined {
   if (manifest.kind !== "persona" || manifest.execution.mode !== "harness_then_baml") {
     return undefined;
   }
@@ -54,19 +57,24 @@ function manifestToRuntimePersona(manifest: WorkflowEntityManifest, repoRoot: st
   });
 }
 
-function parseManifestFile(absolute: string, filePath: string): { manifest?: WorkflowEntityManifest; errors: EntityValidationError[] } {
+function parseManifestFile(
+  absolute: string,
+  filePath: string,
+): { manifest?: WorkflowEntityManifest; errors: EntityValidationError[] } {
   let parsed: unknown;
   try {
     parsed = YAML.parse(readFileSync(absolute, "utf8"));
   } catch (error) {
     return {
-      errors: [{
-        code: "catalog.yaml_parse",
-        filePath,
-        fieldPath: "<root>",
-        message: error instanceof Error ? error.message : String(error),
-        repairHint: "Fix YAML syntax so the manifest can be parsed.",
-      }],
+      errors: [
+        {
+          code: "catalog.yaml_parse",
+          filePath,
+          fieldPath: "<root>",
+          message: error instanceof Error ? error.message : String(error),
+          repairHint: "Fix YAML syntax so the manifest can be parsed.",
+        },
+      ],
     };
   }
 
@@ -78,24 +86,34 @@ function parseManifestFile(absolute: string, filePath: string): { manifest?: Wor
   return { manifest: result.data, errors: [] };
 }
 
-function collectCatalog(repoRoot: string, includeSemantics: boolean): {
+function collectCatalog(
+  repoRoot: string,
+  includeSemantics: boolean,
+): {
   errors: EntityValidationError[];
   manifests: Array<{ filePath: string; absolutePath: string; manifest: WorkflowEntityManifest }>;
 } {
   const errors: EntityValidationError[] = [];
-  const manifests: Array<{ filePath: string; absolutePath: string; manifest: WorkflowEntityManifest }> = [];
+  const manifests: Array<{
+    filePath: string;
+    absolutePath: string;
+    manifest: WorkflowEntityManifest;
+  }> = [];
   const entitiesDir = join(repoRoot, "entities");
 
   if (!existsSync(entitiesDir)) {
     return {
       manifests,
-      errors: [{
-        code: "catalog.missing_entities_dir",
-        filePath: "entities",
-        fieldPath: "entities",
-        message: "Required repo-local entities/ directory is missing.",
-        repairHint: "Create repo-local entities/personas, entities/artifacts, and entities/elicitation directories.",
-      }],
+      errors: [
+        {
+          code: "catalog.missing_entities_dir",
+          filePath: "entities",
+          fieldPath: "entities",
+          message: "Required repo-local entities/ directory is missing.",
+          repairHint:
+            "Create repo-local entities/personas, entities/artifacts, and entities/elicitation directories.",
+        },
+      ],
     };
   }
 
@@ -110,8 +128,10 @@ function collectCatalog(repoRoot: string, includeSemantics: boolean): {
         code: "catalog.invalid_directory",
         filePath: relative(repoRoot, entryPath),
         fieldPath: "entities",
-        message: "Only personas, artifacts, and elicitation directories are allowed under entities/.",
-        repairHint: "Move manifests into entities/personas, entities/artifacts, or entities/elicitation.",
+        message:
+          "Only personas, artifacts, and elicitation directories are allowed under entities/.",
+        repairHint:
+          "Move manifests into entities/personas, entities/artifacts, or entities/elicitation.",
       });
       continue;
     }
@@ -193,13 +213,15 @@ function collectCatalog(repoRoot: string, includeSemantics: boolean): {
       }
 
       if (includeSemantics && bamlFunctions) {
-        errors.push(...validateManifestSemantics({
-          manifest,
-          filePath,
-          absolutePath: absolute,
-          repoRoot,
-          bamlFunctions,
-        }));
+        errors.push(
+          ...validateManifestSemantics({
+            manifest,
+            filePath,
+            absolutePath: absolute,
+            repoRoot,
+            bamlFunctions,
+          }),
+        );
       }
     }
   }
@@ -248,8 +270,12 @@ export function loadEntityCatalog(repoRoot = process.cwd()): EntityCatalog {
       const runtime = manifestToRuntimePersona(manifest, repoRoot);
       return runtime ? [runtime] : [];
     }),
-    artifacts: entities.filter((manifest): manifest is ArtifactEntityManifest => manifest.kind === "artifact"),
-    elicitation: entities.filter((manifest): manifest is ElicitationEntityManifest => manifest.kind === "elicitation"),
+    artifacts: entities.filter(
+      (manifest): manifest is ArtifactEntityManifest => manifest.kind === "artifact",
+    ),
+    elicitation: entities.filter(
+      (manifest): manifest is ElicitationEntityManifest => manifest.kind === "elicitation",
+    ),
   };
 }
 

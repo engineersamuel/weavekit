@@ -42,8 +42,10 @@ describe("loadCorpusItem", () => {
   });
 
   it("rejects rubric weights that do not sum to 1", () => {
-    const bad = VALID.replace("weight: 0.5\n    levels: Full credit for surfacing the key tradeoffs.",
-      "weight: 0.9\n    levels: Full credit for surfacing the key tradeoffs.");
+    const bad = VALID.replace(
+      "weight: 0.5\n    levels: Full credit for surfacing the key tradeoffs.",
+      "weight: 0.9\n    levels: Full credit for surfacing the key tradeoffs.",
+    );
     expect(() => loadCorpusItem(bad)).toThrow(/weights must sum/i);
   });
 

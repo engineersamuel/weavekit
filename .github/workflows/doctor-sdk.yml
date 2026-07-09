@@ -1,0 +1,40 @@
+name: Doctor SDK (manual)
+
+# Validates configured entity skills against a live Copilot SDK session.
+# This requires a real Copilot SDK runtime (the @github/copilot platform
+# package, or a reachable COPILOT_RUNTIME_URL / COPILOT_CLI_URL / COPILOT_CLI_PATH),
+# so it's kept out of the default pull_request/push CI flow and run on demand.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  doctor-sdk:
+    name: mise run doctor:sdk
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 1
+
+      - name: Install mise + tools
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          install: true
+          cache: true
+
+      - name: Install dependencies
+        run: nub install
+
+      - name: Regenerate BAML client
+        run: nub run baml-generate
+
+      - name: Doctor SDK
+        env:
+          COPILOT_RUNTIME_URL: ${{ secrets.COPILOT_RUNTIME_URL }}
+          COPILOT_CLI_URL: ${{ secrets.COPILOT_CLI_URL }}
+        run: mise run doctor:sdk

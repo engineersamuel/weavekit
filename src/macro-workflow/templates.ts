@@ -1,7 +1,15 @@
 import type { DeepResearchProvider } from "../config.js";
-import type { RuntimeWorkflowPlan, WorkflowPlanTemplateId, WorkflowNodeWriteMode, WorkflowReplanPolicy } from "./types.js";
+import type {
+  RuntimeWorkflowPlan,
+  WorkflowPlanTemplateId,
+  WorkflowNodeWriteMode,
+  WorkflowReplanPolicy,
+} from "./types.js";
 import { WorkflowGateKind, WorkflowHarnessKind, WorkflowNodeKind } from "./types.js";
-import { SourceToProjectModelOperation, sourceToProjectNodeModelMetadata } from "./sourceToProject/modelPolicy.js";
+import {
+  SourceToProjectModelOperation,
+  sourceToProjectNodeModelMetadata,
+} from "./sourceToProject/modelPolicy.js";
 
 export type WorkflowTemplate = {
   id: WorkflowPlanTemplateId;
@@ -30,7 +38,8 @@ const templates = {
   "implementation-review": {
     id: "implementation-review",
     title: "Implementation Review",
-    description: "A deterministic workflow that gathers context, reviews implementation, and verifies the result.",
+    description:
+      "A deterministic workflow that gathers context, reviews implementation, and verifies the result.",
     materialize: (objective: string): RuntimeWorkflowPlan => ({
       id: workflowPlanId("implementation-review", objective),
       objective,
@@ -42,10 +51,12 @@ const templates = {
           kind: WorkflowNodeKind.RESEARCH,
           harness: WorkflowHarnessKind.RESEARCH,
           title: "Research repository context",
-          description: "Collect repository context, constraints, and evidence relevant to the requested implementation review.",
+          description:
+            "Collect repository context, constraints, and evidence relevant to the requested implementation review.",
           model: "gpt-5.5",
           modelRationale: "Repository research uses the primary review reasoning model.",
-          prompt: "Inspect repository context and implementation details relevant to the objective.",
+          prompt:
+            "Inspect repository context and implementation details relevant to the objective.",
           dependsOn: [],
           gates: [WorkflowGateKind.OUTPUT_CONTRACT],
           writeMode: "read-only" as WorkflowNodeWriteMode,
@@ -56,7 +67,8 @@ const templates = {
           kind: WorkflowNodeKind.DELIBERATION,
           harness: WorkflowHarnessKind.DECISION_COUNCIL,
           title: "Review implementation",
-          description: "Review the implementation evidence, summarize risks, and decide whether changes are needed.",
+          description:
+            "Review the implementation evidence, summarize risks, and decide whether changes are needed.",
           model: "gpt-5.5",
           modelRationale: "Implementation review uses the strongest available GPT review model.",
           prompt: "Review the available implementation evidence and identify gaps or risks.",
@@ -113,25 +125,29 @@ const templates = {
   "source-to-project": {
     id: "source-to-project",
     title: "Source to Project",
-    description: "Read one Source artifact against one Target project and produce ranked opportunities, plans, and optional PRs.",
+    description:
+      "Read one Source artifact against one Target project and produce ranked opportunities, plans, and optional PRs.",
     materialize: makeSourceToProjectPlan,
   },
   "verification-optimizer": {
     id: "verification-optimizer",
     title: "Verification Optimizer",
-    description: "Audit one project and implement a strict high-confidence verification-only improvement.",
+    description:
+      "Audit one project and implement a strict high-confidence verification-only improvement.",
     materialize: makeVerificationOptimizerPlan,
   },
   "x-article-summary": {
     id: "x-article-summary",
     title: "X Article Summary",
-    description: "Fetch a single X status through workflow preprocessing and summarize the resolved article markdown.",
+    description:
+      "Fetch a single X status through workflow preprocessing and summarize the resolved article markdown.",
     materialize: makeXArticleSummaryPlan,
   },
   "deep-research": {
     id: "deep-research",
     title: "Deep Research",
-    description: "Run an iterative, provider-backed research loop and compile a cited Markdown report.",
+    description:
+      "Run an iterative, provider-backed research loop and compile a cited Markdown report.",
     materialize: makeDeepResearchPlan,
   },
 } satisfies Record<WorkflowPlanTemplateId, WorkflowTemplate>;
@@ -159,7 +175,8 @@ function makeXArticleSummaryPlan(objective: string): RuntimeWorkflowPlan {
         title: "Summarize X article",
         description: "Summarize the X article content resolved by workflow prompt preprocessing.",
         model: "deterministic",
-        modelRationale: "This smoke workflow summarizes the already-prefetched markdown without another model call.",
+        modelRationale:
+          "This smoke workflow summarizes the already-prefetched markdown without another model call.",
         prompt: [
           "Summarize this X article.",
           "Use the resolved X post markdown that workflow prompt preprocessing appended to the objective.",
@@ -175,7 +192,10 @@ function makeXArticleSummaryPlan(objective: string): RuntimeWorkflowPlan {
   };
 }
 
-function makeVerificationOptimizerPlan(objective: string, input: WorkflowTemplateInput = { objective }): RuntimeWorkflowPlan {
+function makeVerificationOptimizerPlan(
+  objective: string,
+  input: WorkflowTemplateInput = { objective },
+): RuntimeWorkflowPlan {
   const project = input.project ?? input.projectPath ?? "";
   const includeInitialReview = !input.externalResearch;
   const nodes: RuntimeWorkflowPlan["nodes"] = [
@@ -184,8 +204,12 @@ function makeVerificationOptimizerPlan(objective: string, input: WorkflowTemplat
       kind: WorkflowNodeKind.RESEARCH,
       harness: WorkflowHarnessKind.COPILOT_SDK,
       title: "Audit project verification",
-      description: "Inspect only the target project and summarize its current verification surface.",
-      ...verificationOptimizerNodeMetadata("gpt-5.5", "Verification audit uses a strong repository analysis model."),
+      description:
+        "Inspect only the target project and summarize its current verification surface.",
+      ...verificationOptimizerNodeMetadata(
+        "gpt-5.5",
+        "Verification audit uses a strong repository analysis model.",
+      ),
       prompt: `Audit the verification surface for target project: ${project}`,
       dependsOn: [],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
@@ -197,8 +221,12 @@ function makeVerificationOptimizerPlan(objective: string, input: WorkflowTemplat
       kind: WorkflowNodeKind.PLANNING,
       harness: WorkflowHarnessKind.RESEARCH,
       title: "Map verification opportunities",
-      description: "Map the audit into at most one strict high-confidence verification-only improvement candidate.",
-      ...verificationOptimizerNodeMetadata("gpt-5.5", "Opportunity mapping uses typed BAML distillation and review."),
+      description:
+        "Map the audit into at most one strict high-confidence verification-only improvement candidate.",
+      ...verificationOptimizerNodeMetadata(
+        "gpt-5.5",
+        "Opportunity mapping uses typed BAML distillation and review.",
+      ),
       prompt: "Map the verification audit into strict verification-only opportunities.",
       dependsOn: ["project-verification-audit"],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
@@ -224,8 +252,12 @@ function buildVerificationReviewNode(dependency: string): RuntimeWorkflowPlan["n
     kind: WorkflowNodeKind.DELIBERATION,
     harness: WorkflowHarnessKind.DECISION_COUNCIL,
     title: "Review verification recommendation",
-    description: "Apply strict gates and select at most one high-confidence verification-only improvement.",
-    ...verificationOptimizerNodeMetadata("deterministic", "Strict review is deterministic after typed opportunity mapping."),
+    description:
+      "Apply strict gates and select at most one high-confidence verification-only improvement.",
+    ...verificationOptimizerNodeMetadata(
+      "deterministic",
+      "Strict review is deterministic after typed opportunity mapping.",
+    ),
     prompt: "Review verification opportunities against strict acceptance gates.",
     dependsOn: [dependency],
     gates: [WorkflowGateKind.REVIEW_ACCEPTED],
@@ -234,13 +266,28 @@ function buildVerificationReviewNode(dependency: string): RuntimeWorkflowPlan["n
   };
 }
 
-function makeDeepResearchPlan(objective: string, input: WorkflowTemplateInput = { objective }): RuntimeWorkflowPlan {
+function makeDeepResearchPlan(
+  objective: string,
+  input: WorkflowTemplateInput = { objective },
+): RuntimeWorkflowPlan {
   const config = {
     providers: input.providers?.length ? input.providers : DEFAULT_DEEP_RESEARCH_CONFIG.providers,
-    maxIterations: readPositiveInteger(input.maxIterations, DEFAULT_DEEP_RESEARCH_CONFIG.maxIterations),
-    questionsPerIteration: readPositiveInteger(input.questionsPerIteration, DEFAULT_DEEP_RESEARCH_CONFIG.questionsPerIteration),
-    maxResultsPerQuestion: readPositiveInteger(input.maxResultsPerQuestion, DEFAULT_DEEP_RESEARCH_CONFIG.maxResultsPerQuestion),
-    providerRetryAttempts: readNonNegativeInteger(input.providerRetryAttempts, DEFAULT_DEEP_RESEARCH_CONFIG.providerRetryAttempts),
+    maxIterations: readPositiveInteger(
+      input.maxIterations,
+      DEFAULT_DEEP_RESEARCH_CONFIG.maxIterations,
+    ),
+    questionsPerIteration: readPositiveInteger(
+      input.questionsPerIteration,
+      DEFAULT_DEEP_RESEARCH_CONFIG.questionsPerIteration,
+    ),
+    maxResultsPerQuestion: readPositiveInteger(
+      input.maxResultsPerQuestion,
+      DEFAULT_DEEP_RESEARCH_CONFIG.maxResultsPerQuestion,
+    ),
+    providerRetryAttempts: readNonNegativeInteger(
+      input.providerRetryAttempts,
+      DEFAULT_DEEP_RESEARCH_CONFIG.providerRetryAttempts,
+    ),
     visualize: input.visualize ?? DEFAULT_DEEP_RESEARCH_CONFIG.visualize,
   };
   const runId = normalizeOptionalNodeId(input.deepResearchRunId);
@@ -274,15 +321,18 @@ function makeDeepResearchPlan(objective: string, input: WorkflowTemplateInput = 
   };
 }
 
-function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput = { objective }): RuntimeWorkflowPlan {
-  const mode = input.mode ?? "advisory";
+function makeSourceToProjectPlan(
+  objective: string,
+  input: WorkflowTemplateInput = { objective },
+): RuntimeWorkflowPlan {
   const advisoryNodes: RuntimeWorkflowPlan["nodes"] = [
     {
       id: "visual-plan-preflight",
       kind: WorkflowNodeKind.VERIFICATION,
       harness: WorkflowHarnessKind.COPILOT_SDK,
       title: "Verify visual-plan capability",
-      description: "Fail fast if the visual-plan skill installer cannot resolve before source-to-project research begins.",
+      description:
+        "Fail fast if the visual-plan skill installer cannot resolve before source-to-project research begins.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.DETERMINISTIC),
       prompt: "Verify visual-plan skill installation before source-to-project execution.",
       dependsOn: [],
@@ -295,7 +345,8 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
       kind: WorkflowNodeKind.RESEARCH,
       harness: WorkflowHarnessKind.COPILOT_SDK,
       title: "Read source artifact",
-      description: "Read the source artifact and extract grounded claims, assumptions, evidence, and transferable lessons.",
+      description:
+        "Read the source artifact and extract grounded claims, assumptions, evidence, and transferable lessons.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.SOURCE_READING),
       prompt: `Read and analyze source: ${input.source ?? ""}`,
       dependsOn: ["visual-plan-preflight"],
@@ -321,16 +372,19 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
       kind: WorkflowNodeKind.RESEARCH,
       harness: WorkflowHarnessKind.COPILOT_SDK,
       title: "Research target project",
-      description: "Research the target project through the source lens and capture source-relevant change surfaces.",
+      description:
+        "Research the target project through the source lens and capture source-relevant change surfaces.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.PROJECT_RESEARCH),
       prompt: `Research target project in relation to source findings: ${input.project ?? input.projectPath ?? ""}`,
       capabilities: {
-        pluginCommands: [{
-          plugin: "hve-core",
-          command: "hve-core:task-research",
-          promptInputName: "topic",
-          args: { subagents: "auto" },
-        }],
+        pluginCommands: [
+          {
+            plugin: "hve-core",
+            command: "hve-core:task-research",
+            promptInputName: "topic",
+            args: { subagents: "auto" },
+          },
+        ],
       },
       dependsOn: ["source-corroboration"],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
@@ -342,9 +396,11 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
       kind: WorkflowNodeKind.PLANNING,
       harness: WorkflowHarnessKind.RESEARCH,
       title: "Map source lessons to project opportunities",
-      description: "Map corroborated source lessons and project evidence into actionable opportunities and non-applicable lessons.",
+      description:
+        "Map corroborated source lessons and project evidence into actionable opportunities and non-applicable lessons.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.OPPORTUNITY_MAPPING),
-      prompt: "Map source analysis and project brief into opportunities and non-applicable lessons.",
+      prompt:
+        "Map source analysis and project brief into opportunities and non-applicable lessons.",
       dependsOn: ["source-reading", "source-corroboration", "project-research"],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
       writeMode: "read-only" as WorkflowNodeWriteMode,
@@ -355,7 +411,8 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
       kind: WorkflowNodeKind.DELIBERATION,
       harness: WorkflowHarnessKind.DECISION_COUNCIL,
       title: "Rank and bundle opportunities",
-      description: "Deterministically rank opportunities against source-to-project acceptance thresholds and bundle valid work.",
+      description:
+        "Deterministically rank opportunities against source-to-project acceptance thresholds and bundle valid work.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.DETERMINISTIC),
       prompt: "Review opportunities, rank them, and emit valid bundles.",
       dependsOn: ["opportunity-mapping"],
@@ -370,9 +427,7 @@ function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput
     objective,
     templateId: "source-to-project",
     maxReplans: 2,
-    nodes: [
-      ...advisoryNodes,
-    ],
+    nodes: [...advisoryNodes],
   };
 }
 
@@ -392,12 +447,20 @@ function deepResearchNodeId(runId: string | undefined, suffix: string): string {
 }
 
 function normalizeOptionalNodeId(value: string | undefined): string | undefined {
-  const normalized = value?.trim().toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/(^-|-$)/gu, "");
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/(^-|-$)/gu, "");
   return normalized || undefined;
 }
 
 function workflowPlanId(prefix: WorkflowPlanTemplateId, objective: string): string {
-  const slug = objective.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "plan";
+  const slug =
+    objective
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "plan";
   return `${prefix}-${slug.slice(0, 96).replace(/-$/u, "")}`;
 }
 
@@ -425,18 +488,21 @@ export function materializeWorkflowPlan(
   templateIdOrInput: WorkflowPlanTemplateId | WorkflowTemplateInput,
   maybeObjective?: string | WorkflowTemplateInput,
 ): RuntimeWorkflowPlan {
-  const templateId = typeof templateIdOrInput === "string" ? templateIdOrInput : "implementation-review";
-  const objective = typeof templateIdOrInput === "string"
-    ? typeof maybeObjective === "string"
+  const templateId =
+    typeof templateIdOrInput === "string" ? templateIdOrInput : "implementation-review";
+  const objective =
+    typeof templateIdOrInput === "string"
+      ? typeof maybeObjective === "string"
+        ? maybeObjective
+        : maybeObjective && typeof maybeObjective === "object" && "objective" in maybeObjective
+          ? String(maybeObjective.objective)
+          : ""
+      : templateIdOrInput.objective;
+  const input =
+    typeof templateIdOrInput === "string" && maybeObjective && typeof maybeObjective === "object"
       ? maybeObjective
-      : maybeObjective && typeof maybeObjective === "object" && "objective" in maybeObjective
-        ? String(maybeObjective.objective)
-        : ""
-    : templateIdOrInput.objective;
-  const input = typeof templateIdOrInput === "string" && maybeObjective && typeof maybeObjective === "object"
-    ? maybeObjective
-    : typeof templateIdOrInput === "object"
-      ? templateIdOrInput
-      : { objective: String(objective) };
+      : typeof templateIdOrInput === "object"
+        ? templateIdOrInput
+        : { objective: String(objective) };
   return getWorkflowTemplate(templateId).materialize(String(objective), input);
 }

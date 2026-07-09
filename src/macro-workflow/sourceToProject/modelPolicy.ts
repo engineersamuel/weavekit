@@ -38,7 +38,8 @@ export const SOURCE_TO_PROJECT_BAML_FUNCTION_OPERATIONS = {
   DistillPlanArtifact: SourceToProjectModelOperation.PLAN_DISTILLATION,
   ReviewFinalRecommendation: SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW,
 } as const;
-export type SourceToProjectBamlFunctionName = keyof typeof SOURCE_TO_PROJECT_BAML_FUNCTION_OPERATIONS;
+export type SourceToProjectBamlFunctionName =
+  keyof typeof SOURCE_TO_PROJECT_BAML_FUNCTION_OPERATIONS;
 
 const PRIMARY_MODEL = "gpt-5.5";
 const PROJECT_RESEARCH_COPILOT_MODEL = "claude-sonnet-5";
@@ -69,7 +70,8 @@ const BAML_CLIENT_BY_MODEL: Record<string, string> = {
 const OPERATION_POLICY: Record<SourceToProjectModelOperation, SourceToProjectModelDecision> = {
   [SourceToProjectModelOperation.SOURCE_READING]: {
     model: PRIMARY_MODEL,
-    modelRationale: "Primary source-reading and evidence extraction require the source-to-project reasoning tier.",
+    modelRationale:
+      "Primary source-reading and evidence extraction require the source-to-project reasoning tier.",
   },
   [SourceToProjectModelOperation.SOURCE_CORROBORATION]: {
     model: PRIMARY_MODEL,
@@ -81,11 +83,13 @@ const OPERATION_POLICY: Record<SourceToProjectModelOperation, SourceToProjectMod
   },
   [SourceToProjectModelOperation.OPPORTUNITY_MAPPING]: {
     model: PLANNING_MODEL,
-    modelRationale: "Mapping source lessons to project opportunities needs the strongest available planning synthesis model.",
+    modelRationale:
+      "Mapping source lessons to project opportunities needs the strongest available planning synthesis model.",
   },
   [SourceToProjectModelOperation.PLAN_GENERATION]: {
     model: PLANNING_MODEL,
-    modelRationale: "Source-to-project plan generation uses the strongest available planning synthesis model.",
+    modelRationale:
+      "Source-to-project plan generation uses the strongest available planning synthesis model.",
   },
   [SourceToProjectModelOperation.VISUAL_DESIGN]: {
     model: VISUAL_DESIGN_MODEL,
@@ -105,11 +109,13 @@ const OPERATION_POLICY: Record<SourceToProjectModelOperation, SourceToProjectMod
   },
   [SourceToProjectModelOperation.IMPLEMENTATION_FIX]: {
     model: ADVANCED_PLANNING_MODEL,
-    modelRationale: "Review-findings fixes use the strongest available GPT model for targeted repair.",
+    modelRationale:
+      "Review-findings fixes use the strongest available GPT model for targeted repair.",
   },
   [SourceToProjectModelOperation.IMPLEMENTATION_REVIEW]: {
     model: ADVANCED_PLANNING_MODEL,
-    modelRationale: "Implementation review uses the strongest available GPT model for non-mutating review.",
+    modelRationale:
+      "Implementation review uses the strongest available GPT model for non-mutating review.",
   },
   [SourceToProjectModelOperation.WORKFLOW_PLANNING]: {
     model: WORKFLOW_PLANNING_MODEL,
@@ -121,18 +127,23 @@ const OPERATION_POLICY: Record<SourceToProjectModelOperation, SourceToProjectMod
   },
 };
 
-const BAML_OPERATION_MODEL_OVERRIDES: Partial<Record<SourceToProjectModelOperation, SourceToProjectModelDecision>> = {
+const BAML_OPERATION_MODEL_OVERRIDES: Partial<
+  Record<SourceToProjectModelOperation, SourceToProjectModelDecision>
+> = {
   [SourceToProjectModelOperation.SOURCE_READING]: {
     model: MINI_MODEL,
-    modelRationale: "Source analysis distillation is structured extraction from an existing Copilot transcript.",
+    modelRationale:
+      "Source analysis distillation is structured extraction from an existing Copilot transcript.",
   },
   [SourceToProjectModelOperation.SOURCE_CORROBORATION]: {
     model: MINI_MODEL,
-    modelRationale: "Corroboration distillation is structured extraction from an existing Copilot transcript.",
+    modelRationale:
+      "Corroboration distillation is structured extraction from an existing Copilot transcript.",
   },
   [SourceToProjectModelOperation.PROJECT_RESEARCH]: {
     model: MINI_MODEL,
-    modelRationale: "Project brief distillation is structured extraction from an existing Copilot transcript.",
+    modelRationale:
+      "Project brief distillation is structured extraction from an existing Copilot transcript.",
   },
 };
 
@@ -152,7 +163,8 @@ export function sourceToProjectCopilotModelDecision(
     if (operation === SourceToProjectModelOperation.PROJECT_RESEARCH) {
       return {
         model: PROJECT_RESEARCH_COPILOT_MODEL,
-        modelRationale: "Target project repo research uses the faster Sonnet tier for bounded codebase inspection.",
+        modelRationale:
+          "Target project repo research uses the faster Sonnet tier for bounded codebase inspection.",
       };
     }
     return decision;
@@ -178,7 +190,8 @@ export function sourceToProjectBamlRoute(
     };
   }
 
-  const decision = BAML_OPERATION_MODEL_OVERRIDES[operation] ?? sourceToProjectModelDecision(operation);
+  const decision =
+    BAML_OPERATION_MODEL_OVERRIDES[operation] ?? sourceToProjectModelDecision(operation);
   return {
     ...decision,
     client: BAML_CLIENT_BY_MODEL[decision.model],

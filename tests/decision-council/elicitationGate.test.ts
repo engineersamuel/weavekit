@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { SkipSource, type ElicitationSource } from "../../src/decision-council/elicitation.js";
 import { applyElicitation } from "../../src/decision-council/elicitationGate.js";
-import type { DecisionCouncilRunState, DecisionRoundAssessment } from "../../src/decision-council/types.js";
+import type {
+  DecisionCouncilRunState,
+  DecisionRoundAssessment,
+} from "../../src/decision-council/types.js";
 
 function baseState(): DecisionCouncilRunState {
   return {

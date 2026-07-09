@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { WorkflowGateKind, WorkflowHarnessKind, WorkflowNodeKind, WorkflowNodeStatus } from "../../../src/macro-workflow/types.js";
+import {
+  WorkflowGateKind,
+  WorkflowHarnessKind,
+  WorkflowNodeKind,
+  WorkflowNodeStatus,
+} from "../../../src/macro-workflow/types.js";
 import { runMacroWorkflow } from "../../../src/macro-workflow/runner.js";
 import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.js";
 import {
@@ -64,7 +69,9 @@ describe("verification-optimizer harnesses", () => {
     });
     const node = plan.nodes.find((candidate) => candidate.id === "project-verification-audit")!;
 
-    const execution = await registry.get(WorkflowHarnessKind.COPILOT_SDK)?.prepareExecution?.(node, emptyExecutionContext());
+    const execution = await registry
+      .get(WorkflowHarnessKind.COPILOT_SDK)
+      ?.prepareExecution?.(node, emptyExecutionContext());
 
     expect(execution?.prompt).toBe(buildVerificationAuditPrompt(options.project));
     expect(execution?.calls?.[0]?.prompt).toBe(execution?.prompt);
@@ -72,10 +79,12 @@ describe("verification-optimizer harnesses", () => {
 
   it("delegates prepared execution metadata for embedded deep research nodes", async () => {
     const registry = createVerificationOptimizerHarnessRegistry(verificationOptimizerOptions());
-    const execution = await registry.get(WorkflowHarnessKind.RESEARCH)?.prepareExecution?.(
-      embeddedProviderNodeFixture("copilot-last30days"),
-      emptyExecutionContext(),
-    );
+    const execution = await registry
+      .get(WorkflowHarnessKind.RESEARCH)
+      ?.prepareExecution?.(
+        embeddedProviderNodeFixture("copilot-last30days"),
+        emptyExecutionContext(),
+      );
 
     expect(execution?.calls?.[0]).toMatchObject({
       executor: "copilot-last30days",
@@ -85,24 +94,31 @@ describe("verification-optimizer harnesses", () => {
       prompt: expect.stringContaining("/last30days"),
     });
     expect(execution?.calls?.[0]?.prompt).toContain("What CI workflow should this repository use?");
-    expect(execution?.calls?.[0]?.prompt).not.toBe("Run copilot-last30days research for deep research iteration 1.");
+    expect(execution?.calls?.[0]?.prompt).not.toBe(
+      "Run copilot-last30days research for deep research iteration 1.",
+    );
   });
 
   it("publishes actual BAML prompts for verification research nodes before they run", async () => {
     const registry = createVerificationOptimizerHarnessRegistry(verificationOptimizerOptions());
     const context = emptyExecutionContext();
-    context.payloads.set("project-verification-audit", { verificationAudit: verificationAuditFixture() });
-    const execution = await registry.get(WorkflowHarnessKind.RESEARCH)?.prepareExecution?.({
-      id: "verification-opportunity-mapping",
-      kind: WorkflowNodeKind.PLANNING,
-      harness: WorkflowHarnessKind.RESEARCH,
-      title: "Map verification opportunities",
-      prompt: "Map the verification audit into strict verification-only opportunities.",
-      dependsOn: ["project-verification-audit"],
-      gates: [WorkflowGateKind.OUTPUT_CONTRACT],
-      writeMode: "read-only",
-      replanPolicy: "on-contract-failure",
-    }, context);
+    context.payloads.set("project-verification-audit", {
+      verificationAudit: verificationAuditFixture(),
+    });
+    const execution = await registry.get(WorkflowHarnessKind.RESEARCH)?.prepareExecution?.(
+      {
+        id: "verification-opportunity-mapping",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Map verification opportunities",
+        prompt: "Map the verification audit into strict verification-only opportunities.",
+        dependsOn: ["project-verification-audit"],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only",
+        replanPolicy: "on-contract-failure",
+      },
+      context,
+    );
 
     expect(execution?.calls?.[0]).toMatchObject({
       executor: "baml",
@@ -110,7 +126,9 @@ describe("verification-optimizer harnesses", () => {
       prompt: expect.stringContaining("Verification audit:"),
     });
     expect(execution?.calls?.[0]?.prompt).toContain("No focused workflow verification fixture.");
-    expect(execution?.calls?.[0]?.prompt).not.toBe("Map the verification audit into strict verification-only opportunities.");
+    expect(execution?.calls?.[0]?.prompt).not.toBe(
+      "Map the verification audit into strict verification-only opportunities.",
+    );
   });
 
   it("runs replanned verification opportunity refinement retry nodes and compacts research reports", async () => {
@@ -132,19 +150,23 @@ describe("verification-optimizer harnesses", () => {
     });
     const registry = createVerificationOptimizerHarnessRegistry(options);
     const context = emptyExecutionContext();
-    context.payloads.set("project-verification-audit", { verificationAudit: verificationAuditFixture() });
+    context.payloads.set("project-verification-audit", {
+      verificationAudit: verificationAuditFixture(),
+    });
     context.payloads.set("verification-opportunity-mapping", {
       verificationOpportunityReview: {
         opportunities: [verificationOpportunityFixture({ id: "opp-ci" })],
         nonApplicableGaps: [],
         rankingRationale: "Initial local ranking.",
       },
-      verificationExternalResearchCandidates: [{
-        opportunityId: "opp-ci",
-        runId: "verification-research-opp-ci",
-        reportNodeId: "verification-research-opp-ci-report",
-        objective: "Research CI verification",
-      }],
+      verificationExternalResearchCandidates: [
+        {
+          opportunityId: "opp-ci",
+          runId: "verification-research-opp-ci",
+          reportNodeId: "verification-research-opp-ci-report",
+          objective: "Research CI verification",
+        },
+      ],
     });
     context.payloads.set("verification-research-opp-ci-report", {
       deepResearchReport: deepResearchReportFixture({
@@ -159,17 +181,20 @@ describe("verification-optimizer harnesses", () => {
       }),
     });
 
-    const result = await registry.get(WorkflowHarnessKind.RESEARCH)!({
-      id: "verification-opportunity-refinement-retry-1",
-      kind: WorkflowNodeKind.PLANNING,
-      harness: WorkflowHarnessKind.RESEARCH,
-      title: "Refine verification opportunities (retry after transient client error)",
-      prompt: "Retry: Refine verification opportunities with external deep research.",
-      dependsOn: ["verification-research-opp-ci-report"],
-      gates: [WorkflowGateKind.OUTPUT_CONTRACT],
-      writeMode: "read-only",
-      replanPolicy: "on-contract-failure",
-    }, context);
+    const result = await registry.get(WorkflowHarnessKind.RESEARCH)!(
+      {
+        id: "verification-opportunity-refinement-retry-1",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Refine verification opportunities (retry after transient client error)",
+        prompt: "Retry: Refine verification opportunities with external deep research.",
+        dependsOn: ["verification-research-opp-ci-report"],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only",
+        replanPolicy: "on-contract-failure",
+      },
+      context,
+    );
 
     expect(result).toMatchObject({
       status: "passed",
@@ -233,17 +258,20 @@ describe("verification-optimizer harnesses", () => {
   it("fails closed for unsupported verification optimizer research nodes", async () => {
     const registry = createVerificationOptimizerHarnessRegistry(verificationOptimizerOptions());
 
-    const result = await registry.get(WorkflowHarnessKind.RESEARCH)!({
-      id: "verification-opportunity-unknown-retry-1",
-      kind: WorkflowNodeKind.PLANNING,
-      harness: WorkflowHarnessKind.RESEARCH,
-      title: "Unknown research retry",
-      prompt: "Retry an unknown research step.",
-      dependsOn: [],
-      gates: [WorkflowGateKind.OUTPUT_CONTRACT],
-      writeMode: "read-only",
-      replanPolicy: "on-contract-failure",
-    }, emptyExecutionContext());
+    const result = await registry.get(WorkflowHarnessKind.RESEARCH)!(
+      {
+        id: "verification-opportunity-unknown-retry-1",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Unknown research retry",
+        prompt: "Retry an unknown research step.",
+        dependsOn: [],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only",
+        replanPolicy: "on-contract-failure",
+      },
+      emptyExecutionContext(),
+    );
 
     expect(result).toMatchObject({
       status: "failed",
@@ -265,7 +293,11 @@ describe("verification-optimizer harnesses", () => {
       replanPolicy: "on-verification-failure",
     };
 
-    const execution = prepareVerificationOptimizerCopilotExecution(node, emptyExecutionContext(), options);
+    const execution = prepareVerificationOptimizerCopilotExecution(
+      node,
+      emptyExecutionContext(),
+      options,
+    );
 
     expect(execution).toBeUndefined();
   });
@@ -284,7 +316,11 @@ describe("verification-optimizer harnesses", () => {
       replanPolicy: "never",
     };
 
-    const execution = prepareVerificationOptimizerCopilotExecution(node, emptyExecutionContext(), options);
+    const execution = prepareVerificationOptimizerCopilotExecution(
+      node,
+      emptyExecutionContext(),
+      options,
+    );
 
     expect(execution).toBeUndefined();
   });
@@ -302,30 +338,38 @@ describe("verification-optimizer harnesses", () => {
       artifacts: new Map(),
     };
 
-    const implementationExecution = prepareVerificationOptimizerCopilotExecution({
-      id: "implement-verification-improvement",
-      kind: WorkflowNodeKind.IMPLEMENTATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Implement verification improvement",
-      model: "gpt-impl",
-      prompt: "Implement the planned verification improvement.",
-      dependsOn: [],
-      gates: [],
-      writeMode: "single-writer",
-      replanPolicy: "on-verification-failure",
-    }, context, options);
-    const reviewExecution = prepareVerificationOptimizerCopilotExecution({
-      id: "review-verification-implementation",
-      kind: WorkflowNodeKind.DELIBERATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Review verification implementation",
-      model: "gpt-review",
-      prompt: "Review the implemented verification improvement.",
-      dependsOn: [],
-      gates: [],
-      writeMode: "read-only",
-      replanPolicy: "never",
-    }, context, options);
+    const implementationExecution = prepareVerificationOptimizerCopilotExecution(
+      {
+        id: "implement-verification-improvement",
+        kind: WorkflowNodeKind.IMPLEMENTATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Implement verification improvement",
+        model: "gpt-impl",
+        prompt: "Implement the planned verification improvement.",
+        dependsOn: [],
+        gates: [],
+        writeMode: "single-writer",
+        replanPolicy: "on-verification-failure",
+      },
+      context,
+      options,
+    );
+    const reviewExecution = prepareVerificationOptimizerCopilotExecution(
+      {
+        id: "review-verification-implementation",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Review verification implementation",
+        model: "gpt-review",
+        prompt: "Review the implemented verification improvement.",
+        dependsOn: [],
+        gates: [],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      context,
+      options,
+    );
 
     expect(implementationExecution).toMatchObject({
       executor: WorkflowHarnessKind.COPILOT_SDK,
@@ -333,7 +377,9 @@ describe("verification-optimizer harnesses", () => {
       cwd: "/tmp/verification-wt",
       model: "gpt-impl",
     });
-    expect(implementationExecution?.prompt).toContain("Implement the selected verification-only improvement");
+    expect(implementationExecution?.prompt).toContain(
+      "Implement the selected verification-only improvement",
+    );
     expect(implementationExecution?.prompt).toContain(JSON.stringify(audit));
     expect(implementationExecution?.calls?.[0]?.prompt).toBe(implementationExecution?.prompt);
 
@@ -343,7 +389,9 @@ describe("verification-optimizer harnesses", () => {
       cwd: "/tmp/verification-wt",
       model: "gpt-review",
     });
-    expect(reviewExecution?.prompt).toContain("Review the implemented verification-only improvement");
+    expect(reviewExecution?.prompt).toContain(
+      "Review the implemented verification-only improvement",
+    );
     expect(reviewExecution?.prompt).toContain(JSON.stringify(review.proofCommands));
     expect(reviewExecution?.calls?.[0]?.prompt).toBe(reviewExecution?.prompt);
   });
@@ -359,26 +407,45 @@ describe("verification-optimizer harnesses", () => {
       requireProofCommands: true,
     };
 
-    const accepted = selectVerificationOpportunity([
-      verificationOpportunityFixture({ id: "low-confidence", score: { confidence: 0.84, impact: 0.9, risk: 0.2, implementationCost: 0.2 } }),
-      verificationOpportunityFixture({ id: "accepted", title: "Add focused workflow validation", score: { confidence: 0.9, impact: 0.7, risk: 0.2, implementationCost: 0.3 } }),
-    ], thresholds);
+    const accepted = selectVerificationOpportunity(
+      [
+        verificationOpportunityFixture({
+          id: "low-confidence",
+          score: { confidence: 0.84, impact: 0.9, risk: 0.2, implementationCost: 0.2 },
+        }),
+        verificationOpportunityFixture({
+          id: "accepted",
+          title: "Add focused workflow validation",
+          score: { confidence: 0.9, impact: 0.7, risk: 0.2, implementationCost: 0.3 },
+        }),
+      ],
+      thresholds,
+    );
 
     expect(accepted.status).toBe("accepted");
     expect(accepted.selectedOpportunity?.id).toBe("accepted");
-    expect(accepted.rejections.find((rejection) => rejection.id === "low-confidence")?.reason).toContain("confidence");
+    expect(
+      accepted.rejections.find((rejection) => rejection.id === "low-confidence")?.reason,
+    ).toContain("confidence");
   });
 
   it("rejects speculative or under-evidenced opportunities", () => {
-    const selection = selectVerificationOpportunity([
-      verificationOpportunityFixture({ id: "speculative", speculative: true }),
-      verificationOpportunityFixture({ id: "under-evidenced", evidence: [evidence("one")] }),
-      verificationOpportunityFixture({ id: "no-proof", proofCommands: [] }),
-    ], defaultThresholds());
+    const selection = selectVerificationOpportunity(
+      [
+        verificationOpportunityFixture({ id: "speculative", speculative: true }),
+        verificationOpportunityFixture({ id: "under-evidenced", evidence: [evidence("one")] }),
+        verificationOpportunityFixture({ id: "no-proof", proofCommands: [] }),
+      ],
+      defaultThresholds(),
+    );
 
     expect(selection.status).toBe("rejected");
     expect(selection.selectedOpportunity).toBeUndefined();
-    expect(selection.rejections.map((rejection) => rejection.id)).toEqual(["speculative", "under-evidenced", "no-proof"]);
+    expect(selection.rejections.map((rejection) => rejection.id)).toEqual([
+      "speculative",
+      "under-evidenced",
+      "no-proof",
+    ]);
   });
 
   it("derives baseline feedback-loop opportunities from missing lint, hooks, and coverage evidence", () => {
@@ -391,9 +458,22 @@ describe("verification-optimizer harnesses", () => {
       ],
       evidence: [
         evidence("package-json"),
-        { id: "lint-scan", source: "repository lint/format config scan", quote: "No ESLint, Prettier, Biome, or Oxlint config detected; no package scripts for lint/format." },
-        { id: "hook-scan", source: "repository git hook config scan", quote: "No .husky, lefthook, or lint-staged configuration detected." },
-        { id: "coverage-scan", source: "package.json coverage gap", quote: "No coverage script or coverage thresholds were found." },
+        {
+          id: "lint-scan",
+          source: "repository lint/format config scan",
+          quote:
+            "No ESLint, Prettier, Biome, or Oxlint config detected; no package scripts for lint/format.",
+        },
+        {
+          id: "hook-scan",
+          source: "repository git hook config scan",
+          quote: "No .husky, lefthook, or lint-staged configuration detected.",
+        },
+        {
+          id: "coverage-scan",
+          source: "package.json coverage gap",
+          quote: "No coverage script or coverage thresholds were found.",
+        },
       ],
     });
 
@@ -402,16 +482,23 @@ describe("verification-optimizer harnesses", () => {
       "baseline-git-hooks",
       "baseline-coverage-threshold",
     ]);
-    expect(opportunities.find((opportunity) => opportunity.id === "baseline-coverage-threshold")?.targetChange).toContain("100% threshold");
+    expect(
+      opportunities.find((opportunity) => opportunity.id === "baseline-coverage-threshold")
+        ?.targetChange,
+    ).toContain("100% threshold");
     expect(opportunities.every((opportunity) => !opportunity.speculative)).toBe(true);
     expect(opportunities.every((opportunity) => opportunity.evidence.length >= 2)).toBe(true);
-    expect(opportunities.flatMap((opportunity) => opportunity.proofCommands)).toEqual(expect.arrayContaining([
-      "nub run lint",
-      "nub run format:check",
-      "nub run prepare",
-      "nub run coverage",
-    ]));
-    expect(selectVerificationOpportunity(opportunities, defaultThresholds()).status).toBe("accepted");
+    expect(opportunities.flatMap((opportunity) => opportunity.proofCommands)).toEqual(
+      expect.arrayContaining([
+        "nub run lint",
+        "nub run format:check",
+        "nub run prepare",
+        "nub run coverage",
+      ]),
+    );
+    expect(selectVerificationOpportunity(opportunities, defaultThresholds()).status).toBe(
+      "accepted",
+    );
   });
 
   it("promotes best-practice feedback-loop gaps even when BAML mapping returns no opportunities", async () => {
@@ -430,23 +517,35 @@ describe("verification-optimizer harnesses", () => {
       },
     });
 
-    const state = await runMacroWorkflow(materializeWorkflowPlan("verification-optimizer", {
-      objective: "Optimize verification",
-      project: "weavekit",
-      mode: "advisory",
-    }), {
-      harnesses: createVerificationOptimizerHarnessRegistry(options),
-      expandAfterNode: createVerificationOptimizerDynamicExpander(options),
-    });
+    const state = await runMacroWorkflow(
+      materializeWorkflowPlan("verification-optimizer", {
+        objective: "Optimize verification",
+        project: "weavekit",
+        mode: "advisory",
+      }),
+      {
+        harnesses: createVerificationOptimizerHarnessRegistry(options),
+        expandAfterNode: createVerificationOptimizerDynamicExpander(options),
+      },
+    );
 
-    const mapping = state.nodeResults.find((result) => result.nodeId === "verification-opportunity-mapping")?.payload?.verificationOpportunityReview as {
-      opportunities?: VerificationOpportunity[];
-    } | undefined;
-    const review = state.nodeResults.find((result) => result.nodeId === "verification-review")?.payload?.verificationReview as {
-      selectedOpportunity?: VerificationOpportunity;
-      status?: string;
-    } | undefined;
-    const report = state.nodeResults.find((result) => result.nodeId === "report-verification-opportunity");
+    const mapping = state.nodeResults.find(
+      (result) => result.nodeId === "verification-opportunity-mapping",
+    )?.payload?.verificationOpportunityReview as
+      | {
+          opportunities?: VerificationOpportunity[];
+        }
+      | undefined;
+    const review = state.nodeResults.find((result) => result.nodeId === "verification-review")
+      ?.payload?.verificationReview as
+      | {
+          selectedOpportunity?: VerificationOpportunity;
+          status?: string;
+        }
+      | undefined;
+    const report = state.nodeResults.find(
+      (result) => result.nodeId === "report-verification-opportunity",
+    );
 
     expect(mapping?.opportunities?.map((opportunity) => opportunity.id)).toEqual([
       "baseline-lint-format",
@@ -457,15 +556,23 @@ describe("verification-optimizer harnesses", () => {
       status: "accepted",
       selectedOpportunity: { id: "baseline-lint-format" },
     });
-    expect(state.nodeResults.map((result) => result.nodeId)).toContain("report-verification-opportunity");
-    expect(state.nodeResults.map((result) => result.nodeId)).not.toContain("report-no-verification-opportunity");
+    expect(state.nodeResults.map((result) => result.nodeId)).toContain(
+      "report-verification-opportunity",
+    );
+    expect(state.nodeResults.map((result) => result.nodeId)).not.toContain(
+      "report-no-verification-opportunity",
+    );
     expect(report?.output).toContain("baseline-git-hooks");
     expect(report?.output).toContain("baseline-coverage-threshold");
   });
 
   it("does not dynamically insert external deep research when the opt-in flag is disabled", async () => {
     const options = verificationOptimizerOptions({
-      verificationOptimizer: { mode: "advisory", externalResearch: false, thresholds: defaultThresholds() },
+      verificationOptimizer: {
+        mode: "advisory",
+        externalResearch: false,
+        thresholds: defaultThresholds(),
+      },
       baml: {
         async MapVerificationOpportunities() {
           return {
@@ -480,19 +587,28 @@ describe("verification-optimizer harnesses", () => {
       } as never,
     } as never);
 
-    const state = await runMacroWorkflow(materializeWorkflowPlan("verification-optimizer", {
-      objective: "Optimize verification",
-      project: "weavekit",
-      mode: "advisory",
-      externalResearch: false,
-    }), {
-      harnesses: createVerificationOptimizerHarnessRegistry(options),
-      expandAfterNode: createVerificationOptimizerDynamicExpander(options),
-    });
+    const state = await runMacroWorkflow(
+      materializeWorkflowPlan("verification-optimizer", {
+        objective: "Optimize verification",
+        project: "weavekit",
+        mode: "advisory",
+        externalResearch: false,
+      }),
+      {
+        harnesses: createVerificationOptimizerHarnessRegistry(options),
+        expandAfterNode: createVerificationOptimizerDynamicExpander(options),
+      },
+    );
 
     expect(state.status).toBe("passed");
-    expect(state.currentPlan.nodes.map((node) => node.id)).not.toContain("verification-opportunity-refinement");
-    expect(state.currentPlan.nodes.map((node) => node.id).filter((id) => id.startsWith("verification-research-"))).toEqual([]);
+    expect(state.currentPlan.nodes.map((node) => node.id)).not.toContain(
+      "verification-opportunity-refinement",
+    );
+    expect(
+      state.currentPlan.nodes
+        .map((node) => node.id)
+        .filter((id) => id.startsWith("verification-research-")),
+    ).toEqual([]);
   });
 
   it("inserts visible top-three candidate research DAGs before refinement and review", async () => {
@@ -500,31 +616,59 @@ describe("verification-optimizer harnesses", () => {
     const compiledReports: Array<{ objective: string; evidenceIds: string[] }> = [];
     const refinedInputs: Array<{ opportunityId: string; objective: string }> = [];
     const opportunities = [
-      verificationOpportunityFixture({ id: "one", score: { confidence: 0.95, impact: 0.9, risk: 0.1, implementationCost: 0.1 } }),
-      verificationOpportunityFixture({ id: "two", score: { confidence: 0.94, impact: 0.85, risk: 0.1, implementationCost: 0.1 } }),
-      verificationOpportunityFixture({ id: "three", score: { confidence: 0.93, impact: 0.8, risk: 0.1, implementationCost: 0.1 } }),
-      verificationOpportunityFixture({ id: "four", score: { confidence: 0.7, impact: 0.6, risk: 0.2, implementationCost: 0.2 } }),
+      verificationOpportunityFixture({
+        id: "one",
+        score: { confidence: 0.95, impact: 0.9, risk: 0.1, implementationCost: 0.1 },
+      }),
+      verificationOpportunityFixture({
+        id: "two",
+        score: { confidence: 0.94, impact: 0.85, risk: 0.1, implementationCost: 0.1 },
+      }),
+      verificationOpportunityFixture({
+        id: "three",
+        score: { confidence: 0.93, impact: 0.8, risk: 0.1, implementationCost: 0.1 },
+      }),
+      verificationOpportunityFixture({
+        id: "four",
+        score: { confidence: 0.7, impact: 0.6, risk: 0.2, implementationCost: 0.2 },
+      }),
     ];
     const options = verificationOptimizerOptions({
-      verificationOptimizer: { mode: "advisory", externalResearch: true, thresholds: defaultThresholds() },
+      verificationOptimizer: {
+        mode: "advisory",
+        externalResearch: true,
+        thresholds: defaultThresholds(),
+      },
       deepResearch: {
-        config: { providers: ["exa"], maxIterations: 1, questionsPerIteration: 1, maxResultsPerQuestion: 1 },
+        config: {
+          providers: ["exa"],
+          maxIterations: 1,
+          questionsPerIteration: 1,
+          maxResultsPerQuestion: 1,
+        },
         providers: {
           exa: {
-            async search(args: { objective: string; questions: Array<{ id: string }>; queries: string[] }) {
+            async search(args: {
+              objective: string;
+              questions: Array<{ id: string }>;
+              queries: string[];
+            }) {
               providerObjectives.push(args.objective);
-              const opportunityId = args.objective.match(/Opportunity ID: ([^\n]+)/u)?.[1] ?? "unknown";
-              return [{
-                provider: "exa",
-                questionId: args.questions[0]?.id ?? `${opportunityId}-q1`,
-                query: args.queries[0] ?? "",
-                url: `https://example.com/${opportunityId}`,
-                title: `${opportunityId} research`,
-                excerpt: `External guidance for ${opportunityId}.`,
-                content: `External guidance for ${opportunityId}.`,
-                sourceQuality: "secondary",
-                provenance: "test provider",
-              }];
+              const opportunityId =
+                args.objective.match(/Opportunity ID: ([^\n]+)/u)?.[1] ?? "unknown";
+              return [
+                {
+                  provider: "exa",
+                  questionId: args.questions[0]?.id ?? `${opportunityId}-q1`,
+                  query: args.queries[0] ?? "",
+                  url: `https://example.com/${opportunityId}`,
+                  title: `${opportunityId} research`,
+                  excerpt: `External guidance for ${opportunityId}.`,
+                  content: `External guidance for ${opportunityId}.`,
+                  sourceQuality: "secondary",
+                  provenance: "test provider",
+                },
+              ];
             },
           },
         },
@@ -533,45 +677,62 @@ describe("verification-optimizer harnesses", () => {
             const opportunityId = prompt.match(/Opportunity ID: ([^\n]+)/u)?.[1] ?? "unknown";
             return {
               iteration: 1,
-              questions: [{
-                id: `${opportunityId}-q1`,
-                text: `How should ${opportunityId} be verified?`,
-                rationale: "Need external approach guidance.",
-                priority: 1,
-                providerHints: ["exa"],
-                searchQueries: [`${opportunityId} verification approach`],
-                completionCriteria: ["Find one approach."],
-                status: "pending",
-                dependencies: [],
-              }],
+              questions: [
+                {
+                  id: `${opportunityId}-q1`,
+                  text: `How should ${opportunityId} be verified?`,
+                  rationale: "Need external approach guidance.",
+                  priority: 1,
+                  providerHints: ["exa"],
+                  searchQueries: [`${opportunityId} verification approach`],
+                  completionCriteria: ["Find one approach."],
+                  status: "pending",
+                  dependencies: [],
+                },
+              ],
             };
           },
-          async AssessResearchIteration(questionSet: { questions: Array<{ id: string }> }, evidence: Array<{ questionId: string }>) {
+          async AssessResearchIteration(
+            questionSet: { questions: Array<{ id: string }> },
+            evidence: Array<{ questionId: string }>,
+          ) {
             expect(evidence.map((item) => item.questionId)).toEqual([questionSet.questions[0]?.id]);
             return {
               iteration: 1,
-              questionCoverage: [{
-                questionId: questionSet.questions[0]?.id ?? "q1",
-                coverageScore: 0.9,
-                evidenceQuality: "medium",
-                contradictions: [],
-                gaps: [],
-              }],
+              questionCoverage: [
+                {
+                  questionId: questionSet.questions[0]?.id ?? "q1",
+                  coverageScore: 0.9,
+                  evidenceQuality: "medium",
+                  contradictions: [],
+                  gaps: [],
+                },
+              ],
               contradictions: [],
               newFollowUpQuestions: [],
               answerSufficient: true,
               stopReason: "complete",
             };
           },
-          async CompileDeepResearchReport(prompt: string, finalState: { evidence: Array<{ id: string }> }) {
-            compiledReports.push({ objective: prompt, evidenceIds: finalState.evidence.map((item) => item.id) });
+          async CompileDeepResearchReport(
+            prompt: string,
+            finalState: { evidence: Array<{ id: string }> },
+          ) {
+            compiledReports.push({
+              objective: prompt,
+              evidenceIds: finalState.evidence.map((item) => item.id),
+            });
             return { markdown: "# Deep Research Report\n\nCandidate guidance." };
           },
         },
       },
       baml: {
         async MapVerificationOpportunities() {
-          return { opportunities, nonApplicableGaps: [], rankingRationale: "Initial local mapping." };
+          return {
+            opportunities,
+            nonApplicableGaps: [],
+            rankingRationale: "Initial local mapping.",
+          };
         },
         async RefineVerificationOpportunitiesWithResearch(
           _audit: VerificationAudit,
@@ -583,8 +744,11 @@ describe("verification-optimizer harnesses", () => {
             ...initialReview,
             opportunities: initialReview.opportunities.map((opportunity) =>
               opportunity.id === "one"
-                ? { ...opportunity, targetChange: "Use externally researched verification approach." }
-                : opportunity
+                ? {
+                    ...opportunity,
+                    targetChange: "Use externally researched verification approach.",
+                  }
+                : opportunity,
             ),
             rankingRationale: "Refined after visible research nodes.",
           };
@@ -592,55 +756,87 @@ describe("verification-optimizer harnesses", () => {
       } as never,
     } as never);
 
-    const state = await runMacroWorkflow(materializeWorkflowPlan("verification-optimizer", {
-      objective: "Optimize verification",
-      project: "weavekit",
-      mode: "advisory",
-      externalResearch: true,
-    }), {
-      harnesses: createVerificationOptimizerHarnessRegistry(options),
-      expandAfterNode: createVerificationOptimizerDynamicExpander(options),
-    });
+    const state = await runMacroWorkflow(
+      materializeWorkflowPlan("verification-optimizer", {
+        objective: "Optimize verification",
+        project: "weavekit",
+        mode: "advisory",
+        externalResearch: true,
+      }),
+      {
+        harnesses: createVerificationOptimizerHarnessRegistry(options),
+        expandAfterNode: createVerificationOptimizerDynamicExpander(options),
+      },
+    );
 
     expect(state.status).toBe("passed");
-    expect(providerObjectives.map((objective) => objective.match(/Opportunity ID: ([^\n]+)/u)?.[1])).toEqual(["one", "two", "three"]);
-    expect(providerObjectives.some((objective) => objective.includes("Opportunity ID: four"))).toBe(false);
+    expect(
+      providerObjectives.map((objective) => objective.match(/Opportunity ID: ([^\n]+)/u)?.[1]),
+    ).toEqual(["one", "two", "three"]);
+    expect(providerObjectives.some((objective) => objective.includes("Opportunity ID: four"))).toBe(
+      false,
+    );
     expect(refinedInputs.map((input) => input.opportunityId)).toEqual(["one", "two", "three"]);
-    expect(state.currentPlan.nodes.map((node) => node.id)).toEqual(expect.arrayContaining([
-      "verification-research-one-questions-1",
-      "verification-research-one-exa-1",
-      "verification-research-one-assess-1",
-      "verification-research-one-report",
-      "verification-research-two-report",
-      "verification-research-three-report",
-      "verification-opportunity-refinement",
-      "verification-review",
-      "report-verification-opportunity",
-    ]));
-    expect(state.currentPlan.nodes.map((node) => node.id)).not.toContain("verification-research-four-questions-1");
-    expect(state.currentPlan.nodes.find((node) => node.id === "verification-opportunity-refinement")?.dependsOn).toEqual([
+    expect(state.currentPlan.nodes.map((node) => node.id)).toEqual(
+      expect.arrayContaining([
+        "verification-research-one-questions-1",
+        "verification-research-one-exa-1",
+        "verification-research-one-assess-1",
+        "verification-research-one-report",
+        "verification-research-two-report",
+        "verification-research-three-report",
+        "verification-opportunity-refinement",
+        "verification-review",
+        "report-verification-opportunity",
+      ]),
+    );
+    expect(state.currentPlan.nodes.map((node) => node.id)).not.toContain(
+      "verification-research-four-questions-1",
+    );
+    expect(
+      state.currentPlan.nodes.find((node) => node.id === "verification-opportunity-refinement")
+        ?.dependsOn,
+    ).toEqual([
       "verification-research-one-report",
       "verification-research-two-report",
       "verification-research-three-report",
     ]);
-    expect(state.currentPlan.nodes.find((node) => node.id === "verification-review")?.dependsOn).toEqual([
-      "verification-opportunity-refinement",
-    ]);
-    expect(state.nodeResults.map((result) => result.nodeId).indexOf("verification-opportunity-refinement"))
-      .toBeGreaterThan(state.nodeResults.map((result) => result.nodeId).indexOf("verification-research-three-report"));
-    expect(state.nodeResults.map((result) => result.nodeId).indexOf("verification-review"))
-      .toBeGreaterThan(state.nodeResults.map((result) => result.nodeId).indexOf("verification-opportunity-refinement"));
+    expect(
+      state.currentPlan.nodes.find((node) => node.id === "verification-review")?.dependsOn,
+    ).toEqual(["verification-opportunity-refinement"]);
+    expect(
+      state.nodeResults
+        .map((result) => result.nodeId)
+        .indexOf("verification-opportunity-refinement"),
+    ).toBeGreaterThan(
+      state.nodeResults
+        .map((result) => result.nodeId)
+        .indexOf("verification-research-three-report"),
+    );
+    expect(
+      state.nodeResults.map((result) => result.nodeId).indexOf("verification-review"),
+    ).toBeGreaterThan(
+      state.nodeResults
+        .map((result) => result.nodeId)
+        .indexOf("verification-opportunity-refinement"),
+    );
     expect(compiledReports).toEqual([
       { objective: expect.stringContaining("Opportunity ID: one"), evidenceIds: ["exa-1-1"] },
       { objective: expect.stringContaining("Opportunity ID: two"), evidenceIds: ["exa-1-1"] },
       { objective: expect.stringContaining("Opportunity ID: three"), evidenceIds: ["exa-1-1"] },
     ]);
-    expect(state.nodeResults.find((result) => result.nodeId === "verification-opportunity-refinement")?.payload?.verificationOpportunityReview).toMatchObject({
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "verification-opportunity-refinement")
+        ?.payload?.verificationOpportunityReview,
+    ).toMatchObject({
       opportunities: expect.arrayContaining([
         expect.objectContaining({
           id: "one",
           targetChange: "Use externally researched verification approach.",
-          evidence: [expect.objectContaining({ id: "audit-1" }), expect.objectContaining({ id: "audit-2" })],
+          evidence: [
+            expect.objectContaining({ id: "audit-1" }),
+            expect.objectContaining({ id: "audit-2" }),
+          ],
         }),
       ]),
     });
@@ -648,23 +844,38 @@ describe("verification-optimizer harnesses", () => {
 
   it("does not let external research supply repository evidence for strict gates", async () => {
     const options = verificationOptimizerOptions({
-      verificationOptimizer: { mode: "advisory", externalResearch: true, thresholds: defaultThresholds() },
+      verificationOptimizer: {
+        mode: "advisory",
+        externalResearch: true,
+        thresholds: defaultThresholds(),
+      },
       deepResearch: {
-        config: { providers: ["exa"], maxIterations: 1, questionsPerIteration: 1, maxResultsPerQuestion: 1 },
+        config: {
+          providers: ["exa"],
+          maxIterations: 1,
+          questionsPerIteration: 1,
+          maxResultsPerQuestion: 1,
+        },
         providers: {
           exa: {
-            async search(args: { objective: string; questions: Array<{ id: string }>; queries: string[] }) {
-              return [{
-                provider: "exa",
-                questionId: args.questions[0]?.id ?? "q1",
-                query: args.queries[0] ?? "",
-                url: "https://example.com/external",
-                title: "External research",
-                excerpt: args.objective,
-                content: args.objective,
-                sourceQuality: "secondary",
-                provenance: "test provider",
-              }];
+            async search(args: {
+              objective: string;
+              questions: Array<{ id: string }>;
+              queries: string[];
+            }) {
+              return [
+                {
+                  provider: "exa",
+                  questionId: args.questions[0]?.id ?? "q1",
+                  query: args.queries[0] ?? "",
+                  url: "https://example.com/external",
+                  title: "External research",
+                  excerpt: args.objective,
+                  content: args.objective,
+                  sourceQuality: "secondary",
+                  provenance: "test provider",
+                },
+              ];
             },
           },
         },
@@ -672,23 +883,33 @@ describe("verification-optimizer harnesses", () => {
           async GenerateResearchQuestions() {
             return {
               iteration: 1,
-              questions: [{
-                id: "q1",
-                text: "Which external tool should be used?",
-                rationale: "Need external approach guidance.",
-                priority: 1,
-                providerHints: ["exa"],
-                searchQueries: ["external verification tool"],
-                completionCriteria: ["Find one source."],
-                status: "pending",
-                dependencies: [],
-              }],
+              questions: [
+                {
+                  id: "q1",
+                  text: "Which external tool should be used?",
+                  rationale: "Need external approach guidance.",
+                  priority: 1,
+                  providerHints: ["exa"],
+                  searchQueries: ["external verification tool"],
+                  completionCriteria: ["Find one source."],
+                  status: "pending",
+                  dependencies: [],
+                },
+              ],
             };
           },
           async AssessResearchIteration() {
             return {
               iteration: 1,
-              questionCoverage: [{ questionId: "q1", coverageScore: 0.9, evidenceQuality: "medium", contradictions: [], gaps: [] }],
+              questionCoverage: [
+                {
+                  questionId: "q1",
+                  coverageScore: 0.9,
+                  evidenceQuality: "medium",
+                  contradictions: [],
+                  gaps: [],
+                },
+              ],
               contradictions: [],
               newFollowUpQuestions: [],
               answerSufficient: true,
@@ -703,7 +924,12 @@ describe("verification-optimizer harnesses", () => {
       baml: {
         async MapVerificationOpportunities() {
           return {
-            opportunities: [verificationOpportunityFixture({ id: "under-evidenced", evidence: [evidence("local-only")] })],
+            opportunities: [
+              verificationOpportunityFixture({
+                id: "under-evidenced",
+                evidence: [evidence("local-only")],
+              }),
+            ],
             nonApplicableGaps: [],
             rankingRationale: "Initial local mapping.",
           };
@@ -714,11 +940,7 @@ describe("verification-optimizer harnesses", () => {
               verificationOpportunityFixture({
                 id: "under-evidenced",
                 targetChange: "Use externally recommended verification tooling.",
-                evidence: [
-                  evidence("external-1"),
-                  evidence("external-2"),
-                  evidence("external-3"),
-                ],
+                evidence: [evidence("external-1"), evidence("external-2"), evidence("external-3")],
               }),
             ],
             nonApplicableGaps: [],
@@ -728,26 +950,40 @@ describe("verification-optimizer harnesses", () => {
       } as never,
     } as never);
 
-    const state = await runMacroWorkflow(materializeWorkflowPlan("verification-optimizer", {
-      objective: "Optimize verification",
-      project: "weavekit",
-      mode: "advisory",
-      externalResearch: true,
-    }), {
-      harnesses: createVerificationOptimizerHarnessRegistry(options),
-      expandAfterNode: createVerificationOptimizerDynamicExpander(options),
-    });
+    const state = await runMacroWorkflow(
+      materializeWorkflowPlan("verification-optimizer", {
+        objective: "Optimize verification",
+        project: "weavekit",
+        mode: "advisory",
+        externalResearch: true,
+      }),
+      {
+        harnesses: createVerificationOptimizerHarnessRegistry(options),
+        expandAfterNode: createVerificationOptimizerDynamicExpander(options),
+      },
+    );
 
-    const refinement = state.nodeResults.find((result) => result.nodeId === "verification-opportunity-refinement")?.payload?.verificationOpportunityReview as {
-      opportunities?: VerificationOpportunity[];
-    } | undefined;
-    const selection = state.nodeResults.find((result) => result.nodeId === "verification-review")?.payload?.verificationOpportunitySelection as {
-      status?: string;
-      rejections?: Array<{ id: string; reason: string }>;
-    } | undefined;
+    const refinement = state.nodeResults.find(
+      (result) => result.nodeId === "verification-opportunity-refinement",
+    )?.payload?.verificationOpportunityReview as
+      | {
+          opportunities?: VerificationOpportunity[];
+        }
+      | undefined;
+    const selection = state.nodeResults.find((result) => result.nodeId === "verification-review")
+      ?.payload?.verificationOpportunitySelection as
+      | {
+          status?: string;
+          rejections?: Array<{ id: string; reason: string }>;
+        }
+      | undefined;
 
-    expect(refinement?.opportunities?.[0]?.targetChange).toBe("Use externally recommended verification tooling.");
-    expect(refinement?.opportunities?.[0]?.evidence.map((entry) => entry.id)).toEqual(["local-only"]);
+    expect(refinement?.opportunities?.[0]?.targetChange).toBe(
+      "Use externally recommended verification tooling.",
+    );
+    expect(refinement?.opportunities?.[0]?.evidence.map((entry) => entry.id)).toEqual([
+      "local-only",
+    ]);
     expect(selection?.status).toBe("rejected");
     expect(selection?.rejections?.[0]).toMatchObject({
       id: "under-evidenced",
@@ -757,7 +993,11 @@ describe("verification-optimizer harnesses", () => {
 
   it("inserts review directly when external research has no candidates", async () => {
     const options = verificationOptimizerOptions({
-      verificationOptimizer: { mode: "advisory", externalResearch: true, thresholds: defaultThresholds() },
+      verificationOptimizer: {
+        mode: "advisory",
+        externalResearch: true,
+        thresholds: defaultThresholds(),
+      },
       baml: {
         async MapVerificationOpportunities() {
           return {
@@ -769,23 +1009,30 @@ describe("verification-optimizer harnesses", () => {
       },
     });
 
-    const state = await runMacroWorkflow(materializeWorkflowPlan("verification-optimizer", {
-      objective: "Optimize verification",
-      project: "weavekit",
-      mode: "advisory",
-      externalResearch: true,
-    }), {
-      harnesses: createVerificationOptimizerHarnessRegistry(options),
-      expandAfterNode: createVerificationOptimizerDynamicExpander(options),
-    });
+    const state = await runMacroWorkflow(
+      materializeWorkflowPlan("verification-optimizer", {
+        objective: "Optimize verification",
+        project: "weavekit",
+        mode: "advisory",
+        externalResearch: true,
+      }),
+      {
+        harnesses: createVerificationOptimizerHarnessRegistry(options),
+        expandAfterNode: createVerificationOptimizerDynamicExpander(options),
+      },
+    );
 
     expect(state.status).toBe("passed");
     expect(state.currentPlan.nodes.map((node) => node.id)).toContain("verification-review");
-    expect(state.currentPlan.nodes.find((node) => node.id === "verification-review")?.dependsOn).toEqual([
-      "verification-opportunity-mapping",
-    ]);
-    expect(state.currentPlan.nodes.map((node) => node.id)).not.toContain("verification-opportunity-refinement");
-    expect(state.nodeResults.map((result) => result.nodeId)).toContain("report-no-verification-opportunity");
+    expect(
+      state.currentPlan.nodes.find((node) => node.id === "verification-review")?.dependsOn,
+    ).toEqual(["verification-opportunity-mapping"]);
+    expect(state.currentPlan.nodes.map((node) => node.id)).not.toContain(
+      "verification-opportunity-refinement",
+    );
+    expect(state.nodeResults.map((result) => result.nodeId)).toContain(
+      "report-no-verification-opportunity",
+    );
   });
 
   it("expands a rejected review into a no-op report", async () => {
@@ -793,25 +1040,37 @@ describe("verification-optimizer harnesses", () => {
       baml: {
         async MapVerificationOpportunities() {
           return {
-            opportunities: [verificationOpportunityFixture({ id: "weak", score: { confidence: 0.5, impact: 0.4, risk: 0.2, implementationCost: 0.2 } })],
+            opportunities: [
+              verificationOpportunityFixture({
+                id: "weak",
+                score: { confidence: 0.5, impact: 0.4, risk: 0.2, implementationCost: 0.2 },
+              }),
+            ],
             nonApplicableGaps: [],
             rankingRationale: "No high-confidence verification-only improvement exists.",
           };
         },
       },
     });
-    const state = await runMacroWorkflow(materializeWorkflowPlan("verification-optimizer", {
-      objective: "Optimize verification",
-      project: "weavekit",
-      mode: "advisory",
-    }), {
-      harnesses: createVerificationOptimizerHarnessRegistry(options),
-      expandAfterNode: createVerificationOptimizerDynamicExpander(options),
-    });
+    const state = await runMacroWorkflow(
+      materializeWorkflowPlan("verification-optimizer", {
+        objective: "Optimize verification",
+        project: "weavekit",
+        mode: "advisory",
+      }),
+      {
+        harnesses: createVerificationOptimizerHarnessRegistry(options),
+        expandAfterNode: createVerificationOptimizerDynamicExpander(options),
+      },
+    );
 
     expect(state.status).toBe("passed");
-    expect(state.nodeResults.map((result) => result.nodeId)).toContain("report-no-verification-opportunity");
-    expect(state.nodeResults.some((result) => result.nodeId === "implement-verification-improvement")).toBe(false);
+    expect(state.nodeResults.map((result) => result.nodeId)).toContain(
+      "report-no-verification-opportunity",
+    );
+    expect(
+      state.nodeResults.some((result) => result.nodeId === "implement-verification-improvement"),
+    ).toBe(false);
   });
 
   it("expands an accepted review into worktree, implementation, verification, review, and PR nodes", async () => {
@@ -828,7 +1087,12 @@ describe("verification-optimizer harnesses", () => {
       worktree: {
         async prepare() {
           calls.push("prepare-worktree");
-          return { worktreePath: "/tmp/verification-wt", branchName: "verification-optimizer/accepted", baselineCommit: "abc123", copiedEnvFiles: [".env"] };
+          return {
+            worktreePath: "/tmp/verification-wt",
+            branchName: "verification-optimizer/accepted",
+            baselineCommit: "abc123",
+            copiedEnvFiles: [".env"],
+          };
         },
       },
       shell: {
@@ -839,14 +1103,17 @@ describe("verification-optimizer harnesses", () => {
       },
     });
 
-    const state = await runMacroWorkflow(materializeWorkflowPlan("verification-optimizer", {
-      objective: "Optimize verification",
-      project: "weavekit",
-      mode: "autonomous-pr",
-    }), {
-      harnesses: createVerificationOptimizerHarnessRegistry(options),
-      expandAfterNode: createVerificationOptimizerDynamicExpander(options),
-    });
+    const state = await runMacroWorkflow(
+      materializeWorkflowPlan("verification-optimizer", {
+        objective: "Optimize verification",
+        project: "weavekit",
+        mode: "autonomous-pr",
+      }),
+      {
+        harnesses: createVerificationOptimizerHarnessRegistry(options),
+        expandAfterNode: createVerificationOptimizerDynamicExpander(options),
+      },
+    );
 
     expect(state.status).toBe("passed");
     expect(state.nodeResults.map((result) => result.nodeId)).toEqual([
@@ -876,19 +1143,26 @@ describe("verification-optimizer harnesses", () => {
       },
       worktree: {
         async prepare() {
-          return { worktreePath: "/tmp/verification-wt", branchName: "verification-optimizer/accepted", baselineCommit: "abc123", copiedEnvFiles: [".env"] };
+          return {
+            worktreePath: "/tmp/verification-wt",
+            branchName: "verification-optimizer/accepted",
+            baselineCommit: "abc123",
+            copiedEnvFiles: [".env"],
+          };
         },
       },
       shell: {
         async run(command, args) {
-          commands.push(command === "gh" ? command : args[1] ?? command);
+          commands.push(command === "gh" ? command : (args[1] ?? command));
           return "ok\n";
         },
       },
       baml: {
         async MapVerificationOpportunities() {
           return {
-            opportunities: [verificationOpportunityFixture({ proofCommands: ["nub run test -- verification"] })],
+            opportunities: [
+              verificationOpportunityFixture({ proofCommands: ["nub run test -- verification"] }),
+            ],
             nonApplicableGaps: [],
             rankingRationale: "Proof command is explicit.",
           };
@@ -896,22 +1170,23 @@ describe("verification-optimizer harnesses", () => {
       },
     });
 
-    const state = await runMacroWorkflow(materializeWorkflowPlan("verification-optimizer", {
-      objective: "Optimize verification",
-      project: "weavekit",
-      mode: "autonomous-pr",
-    }), {
-      harnesses: createVerificationOptimizerHarnessRegistry(options),
-      expandAfterNode: createVerificationOptimizerDynamicExpander(options),
-    });
+    const state = await runMacroWorkflow(
+      materializeWorkflowPlan("verification-optimizer", {
+        objective: "Optimize verification",
+        project: "weavekit",
+        mode: "autonomous-pr",
+      }),
+      {
+        harnesses: createVerificationOptimizerHarnessRegistry(options),
+        expandAfterNode: createVerificationOptimizerDynamicExpander(options),
+      },
+    );
 
     expect(state.status).toBe("passed");
-    expect(commands).toEqual([
-      "nub run typecheck",
-      "nub run test -- verification",
-      "gh",
-    ]);
-    expect(state.nodeResults.find((result) => result.nodeId === "run-verification-commands")?.payload).toMatchObject({
+    expect(commands).toEqual(["nub run typecheck", "nub run test -- verification", "gh"]);
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "run-verification-commands")?.payload,
+    ).toMatchObject({
       verificationCommands: ["nub run typecheck", "nub run test -- verification"],
     });
   });
@@ -924,7 +1199,9 @@ function emptyExecutionContext(): WorkflowExecutionContext {
   };
 }
 
-function verificationOptimizerOptions(overrides: Partial<Parameters<typeof createVerificationOptimizerHarnessRegistry>[0]> = {}) {
+function verificationOptimizerOptions(
+  overrides: Partial<Parameters<typeof createVerificationOptimizerHarnessRegistry>[0]> = {},
+) {
   return {
     project: projectFixture(),
     mode: "advisory" as const,
@@ -945,17 +1222,19 @@ function embeddedProviderNodeFixture(provider: string): RuntimeWorkflowNode {
       objective: "Research CI verification",
       provider,
       iteration: 1,
-      questions: [{
-        id: "q1",
-        text: "What CI workflow should this repository use?",
-        rationale: "Need CI evidence.",
-        priority: 1,
-        providerHints: [provider],
-        searchQueries: ["Node TypeScript GitHub Actions CI"],
-        completionCriteria: ["Find CI guidance."],
-        status: "pending",
-        dependencies: [],
-      }],
+      questions: [
+        {
+          id: "q1",
+          text: "What CI workflow should this repository use?",
+          rationale: "Need CI evidence.",
+          priority: 1,
+          providerHints: [provider],
+          searchQueries: ["Node TypeScript GitHub Actions CI"],
+          completionCriteria: ["Find CI guidance."],
+          status: "pending",
+          dependencies: [],
+        },
+      ],
       queries: ["Node TypeScript GitHub Actions CI"],
       maxResultsPerQuestion: 5,
       questionNodeId: "verification-research-opp-ci-questions-1",
@@ -1016,7 +1295,8 @@ function verificationAuditFixture(): VerificationAudit {
 function auditWithFeedbackLoopGaps(): VerificationAudit {
   return {
     projectId: "weavekit",
-    summary: "Verification surface has tests and typecheck, but lacks common fast feedback-loop checks.",
+    summary:
+      "Verification surface has tests and typecheck, but lacks common fast feedback-loop checks.",
     verificationCommands: ["nub run typecheck", "nub run test"],
     verificationSurfaces: ["tests", "typecheck"],
     gaps: [
@@ -1026,14 +1306,29 @@ function auditWithFeedbackLoopGaps(): VerificationAudit {
     ],
     evidence: [
       evidence("package-json"),
-      { id: "lint-scan", source: "repository lint/format config scan", quote: "No ESLint, Prettier, Biome, or Oxlint config detected; no package scripts for lint/format." },
-      { id: "hook-scan", source: "repository git hook config scan", quote: "No .husky, lefthook, or lint-staged configuration detected." },
-      { id: "coverage-scan", source: "package.json coverage gap", quote: "No coverage script or coverage thresholds were found." },
+      {
+        id: "lint-scan",
+        source: "repository lint/format config scan",
+        quote:
+          "No ESLint, Prettier, Biome, or Oxlint config detected; no package scripts for lint/format.",
+      },
+      {
+        id: "hook-scan",
+        source: "repository git hook config scan",
+        quote: "No .husky, lefthook, or lint-staged configuration detected.",
+      },
+      {
+        id: "coverage-scan",
+        source: "package.json coverage gap",
+        quote: "No coverage script or coverage thresholds were found.",
+      },
     ],
   };
 }
 
-function verificationOpportunityFixture(overrides: Partial<VerificationOpportunity> = {}): VerificationOpportunity {
+function verificationOpportunityFixture(
+  overrides: Partial<VerificationOpportunity> = {},
+): VerificationOpportunity {
   return {
     id: "accepted",
     title: "Add focused workflow validation",
@@ -1053,38 +1348,48 @@ function verificationOpportunityFixture(overrides: Partial<VerificationOpportuni
   };
 }
 
-function deepResearchReportFixture(overrides: Partial<DeepResearchReport> = {}): DeepResearchReport {
+function deepResearchReportFixture(
+  overrides: Partial<DeepResearchReport> = {},
+): DeepResearchReport {
   return {
     objective: "Research CI verification",
     methodology: "Read external sources.",
-    findings: [{
-      title: "Use CI to run validation commands.",
-      summary: "Use CI to run validation commands.",
-      confidence: "high",
-      evidenceIds: ["e1"],
-    }],
-    evidenceMatrix: [{
-      questionId: "q1",
-      evidenceId: "e1",
-      relevance: "Supports adding CI.",
-      quality: "primary",
-    }],
+    findings: [
+      {
+        title: "Use CI to run validation commands.",
+        summary: "Use CI to run validation commands.",
+        confidence: "high",
+        evidenceIds: ["e1"],
+      },
+    ],
+    evidenceMatrix: [
+      {
+        questionId: "q1",
+        evidenceId: "e1",
+        relevance: "Supports adding CI.",
+        quality: "primary",
+      },
+    ],
     contradictions: [],
     gaps: [],
     confidence: "medium",
-    sources: [{
-      id: "e1",
-      provider: "exa",
-      url: "https://example.com/ci",
-      title: "CI guidance",
-      quality: "primary",
-    }],
+    sources: [
+      {
+        id: "e1",
+        provider: "exa",
+        url: "https://example.com/ci",
+        title: "CI guidance",
+        quality: "primary",
+      },
+    ],
     markdown: "# Deep Research Report\n\nUse CI.",
     ...overrides,
   };
 }
 
-function verificationReviewFixture(overrides: Partial<VerificationRecommendationReview> = {}): VerificationRecommendationReview {
+function verificationReviewFixture(
+  overrides: Partial<VerificationRecommendationReview> = {},
+): VerificationRecommendationReview {
   return {
     status: "accepted",
     selectedOpportunity: verificationOpportunityFixture(),

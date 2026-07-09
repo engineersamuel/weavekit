@@ -11,7 +11,9 @@ type SourceToProjectTemplateOptimizerUiArgs = {
 const DEFAULT_PORT = 4322;
 const DEFAULT_RUNS_ROOT = "evals/template-optimizer/runs";
 
-export function parseSourceToProjectTemplateOptimizerUiArgs(argv: string[]): SourceToProjectTemplateOptimizerUiArgs {
+export function parseSourceToProjectTemplateOptimizerUiArgs(
+  argv: string[],
+): SourceToProjectTemplateOptimizerUiArgs {
   const parsed: SourceToProjectTemplateOptimizerUiArgs = {
     port: DEFAULT_PORT,
     runsRoot: DEFAULT_RUNS_ROOT,

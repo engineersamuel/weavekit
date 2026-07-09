@@ -61,7 +61,9 @@ export type DeepResearchQuestionSummary = {
   queryCount: number;
 };
 
-export function buildDeepResearchProviderFailureSummary(payload: unknown): DeepResearchProviderFailureSummary | null {
+export function buildDeepResearchProviderFailureSummary(
+  payload: unknown,
+): DeepResearchProviderFailureSummary | null {
   const record = asRecord(payload);
   const failures = readArray(record.deepResearchProviderFailures)
     .map(asRecord)
@@ -73,13 +75,15 @@ export function buildDeepResearchProviderFailureSummary(payload: unknown): DeepR
       if (!provider || !message || iteration === undefined || retryCount === undefined) {
         return [];
       }
-      return [{
-        provider,
-        iteration,
-        retryCount,
-        message,
-        questionCount: readArray(failure.questionIds).length,
-      }];
+      return [
+        {
+          provider,
+          iteration,
+          retryCount,
+          message,
+          questionCount: readArray(failure.questionIds).length,
+        },
+      ];
     });
   if (failures.length === 0) {
     return null;
@@ -93,10 +97,14 @@ export function buildDeepResearchProviderFailureSummary(payload: unknown): DeepR
   };
 }
 
-export function buildVerificationOpportunityAdvancementSummary(payload: unknown): VerificationOpportunityAdvancementSummary | null {
+export function buildVerificationOpportunityAdvancementSummary(
+  payload: unknown,
+): VerificationOpportunityAdvancementSummary | null {
   const record = asRecord(payload);
   const review = asRecord(record.verificationOpportunityReview);
-  const opportunities = readArray(review.opportunities).map(asRecord).filter((opportunity) => readString(opportunity.id));
+  const opportunities = readArray(review.opportunities)
+    .map(asRecord)
+    .filter((opportunity) => readString(opportunity.id));
   if (opportunities.length === 0) {
     return null;
   }
@@ -110,7 +118,7 @@ export function buildVerificationOpportunityAdvancementSummary(payload: unknown)
       }),
   );
   const advancedCount = [...candidateByOpportunityId.keys()].filter((id) =>
-    opportunities.some((opportunity) => readString(opportunity.id) === id)
+    opportunities.some((opportunity) => readString(opportunity.id) === id),
   ).length;
 
   return {
@@ -141,10 +149,14 @@ export function buildVerificationOpportunityAdvancementSummary(payload: unknown)
   };
 }
 
-export function buildDeepResearchQuestionBatchSummary(payload: unknown): DeepResearchQuestionBatchSummary | null {
+export function buildDeepResearchQuestionBatchSummary(
+  payload: unknown,
+): DeepResearchQuestionBatchSummary | null {
   const record = asRecord(payload);
   const questionSet = asRecord(record.deepResearchQuestionSet);
-  const questions = readArray(questionSet.questions).map(asRecord).filter((question) => readString(question.id) || readString(question.text));
+  const questions = readArray(questionSet.questions)
+    .map(asRecord)
+    .filter((question) => readString(question.id) || readString(question.text));
   if (questions.length === 0) {
     return null;
   }
@@ -182,15 +194,23 @@ export function buildDeepResearchQuestionBatchSummary(payload: unknown): DeepRes
   };
 }
 
-function buildProviderStrategyLabels(questions: Record<string, unknown>[], configuredProviders: string[]): string[] {
-  const modes = uniqueStrings(questions.flatMap((question) => {
-    const mode = readString(question.researchMode);
-    return mode ? [mode] : [];
-  }));
+function buildProviderStrategyLabels(
+  questions: Record<string, unknown>[],
+  configuredProviders: string[],
+): string[] {
+  const modes = uniqueStrings(
+    questions.flatMap((question) => {
+      const mode = readString(question.researchMode);
+      return mode ? [mode] : [];
+    }),
+  );
   if (modes.length > 0) {
     return modes
       .sort(compareResearchModeOrder)
-      .map((mode) => `${mode} routes to ${routedProvidersForQuestion(mode, [], configuredProviders).join(" and ") || "no external providers"}.`);
+      .map(
+        (mode) =>
+          `${mode} routes to ${routedProvidersForQuestion(mode, [], configuredProviders).join(" and ") || "no external providers"}.`,
+      );
   }
   return configuredProviders.slice().sort(compareProviderStrategyOrder).map(providerStrategyLabel);
 }
@@ -214,9 +234,13 @@ function routedProvidersForQuestion(
   configuredProviders: string[],
 ): string[] {
   if (researchMode) {
-    return configuredProviders.filter((provider) => providersForResearchMode(researchMode).includes(provider));
+    return configuredProviders.filter((provider) =>
+      providersForResearchMode(researchMode).includes(provider),
+    );
   }
-  const hintedProviders = providerHints.filter((provider) => configuredProviders.includes(provider));
+  const hintedProviders = providerHints.filter((provider) =>
+    configuredProviders.includes(provider),
+  );
   return hintedProviders.length > 0 ? hintedProviders : configuredProviders;
 }
 
@@ -311,7 +335,9 @@ function readScore(value: unknown): VerificationOpportunityAdvancementItem["scor
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function readArray(value: unknown): unknown[] {

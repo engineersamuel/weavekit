@@ -1,11 +1,19 @@
-export function buildSourceReadingPrompt(source: string, maxToolCalls = 40, prefetchedSourceContent?: string): string {
+export function buildSourceReadingPrompt(
+  source: string,
+  maxToolCalls = 40,
+  prefetchedSourceContent?: string,
+): string {
   const prefetchedContent = prefetchedSourceContent?.trim();
   return [
     "Read the Source artifact and extract claims, assumptions, evidence, and transferable lessons.",
     "Do not inspect the target project in this step.",
     "Do not ask the user for input. This is an unattended workflow run.",
-    prefetchedContent ? "Use the prefetched X post markdown below as the primary Source artifact." : undefined,
-    prefetchedContent ? "Do not fetch, browse, or re-resolve the Source URL unless the prefetched markdown is internally inconsistent or incomplete." : undefined,
+    prefetchedContent
+      ? "Use the prefetched X post markdown below as the primary Source artifact."
+      : undefined,
+    prefetchedContent
+      ? "Do not fetch, browse, or re-resolve the Source URL unless the prefetched markdown is internally inconsistent or incomplete."
+      : undefined,
     "Keep the investigation bounded: inspect the source README, docs, examples, and only the core implementation files needed to understand the loop mechanics.",
     "Do not recursively inventory the whole repository. Prefer targeted file reads over broad globbing after the initial orientation.",
     "Stop browsing once you have enough evidence for 5-8 grounded claims, even if more files could be inspected.",
@@ -14,7 +22,9 @@ export function buildSourceReadingPrompt(source: string, maxToolCalls = 40, pref
     prefetchedContent ? `Source URL: ${source}` : undefined,
     prefetchedContent ? `Prefetched X post markdown:\n${prefetchedContent}` : undefined,
     `Source: ${source}`,
-  ].filter((part): part is string => Boolean(part)).join("\n\n");
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
 }
 
 export function buildCorroborationPrompt(sourceAnalysisJson: string): string {
@@ -49,7 +59,9 @@ export function buildProjectResearchPrompt(args: {
     args.sourceAnalysisJson ? `Source analysis so far:\n${args.sourceAnalysisJson}` : undefined,
     args.corroborationJson ? `Corroboration so far:\n${args.corroborationJson}` : undefined,
     `Project JSON:\n${args.projectJson}`,
-  ].filter((part): part is string => Boolean(part)).join("\n\n");
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
 }
 
 // Max chars of each raw transcript to include in the plan prompt.
@@ -60,9 +72,12 @@ const RAW_TRANSCRIPT_MAX_CHARS = 12_000;
 function truncateTranscript(raw: string | undefined, maxChars: number): string | undefined {
   if (!raw?.trim()) return undefined;
   if (raw.length <= maxChars) return raw;
-  return raw.slice(0, maxChars) + `
+  return (
+    raw.slice(0, maxChars) +
+    `
 
-[... transcript truncated at ${maxChars} chars ...]`;
+[... transcript truncated at ${maxChars} chars ...]`
+  );
 }
 
 export function buildPlanPrompt(
@@ -71,8 +86,14 @@ export function buildPlanPrompt(
   rawPlanArtifactPath?: string,
   rawTranscripts?: { rawSourceReading?: string; rawProjectResearch?: string },
 ): string {
-  const sourceEvidence = truncateTranscript(rawTranscripts?.rawSourceReading, RAW_TRANSCRIPT_MAX_CHARS);
-  const projectEvidence = truncateTranscript(rawTranscripts?.rawProjectResearch, RAW_TRANSCRIPT_MAX_CHARS);
+  const sourceEvidence = truncateTranscript(
+    rawTranscripts?.rawSourceReading,
+    RAW_TRANSCRIPT_MAX_CHARS,
+  );
+  const projectEvidence = truncateTranscript(
+    rawTranscripts?.rawProjectResearch,
+    RAW_TRANSCRIPT_MAX_CHARS,
+  );
   return [
     "/plan",
     "Create an implementation plan for this single selected source-to-project candidate.",
@@ -114,7 +135,13 @@ export function buildPlanPrompt(
     `Project JSON:\n${projectJson}`,
     // Raw research transcripts — these give the plan agent the same grounded evidence
     // that a raw /plan run would have from reading the source and project directly.
-    sourceEvidence ? `Source reading transcript (raw research evidence — use this for concrete tool syntax, config format, and field names):\n${sourceEvidence}` : undefined,
-    projectEvidence ? `Project research transcript (raw research evidence — use this for actual file contents, validation scripts, and project structure):\n${projectEvidence}` : undefined,
-  ].filter((part): part is string => Boolean(part)).join("\n\n");
+    sourceEvidence
+      ? `Source reading transcript (raw research evidence — use this for concrete tool syntax, config format, and field names):\n${sourceEvidence}`
+      : undefined,
+    projectEvidence
+      ? `Project research transcript (raw research evidence — use this for actual file contents, validation scripts, and project structure):\n${projectEvidence}`
+      : undefined,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
 }

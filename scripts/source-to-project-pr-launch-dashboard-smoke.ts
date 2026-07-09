@@ -1,9 +1,19 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { loadLocalEnvFiles, loadTypedWeavekitConfig, resolveProjectCatalogEntry, type ProjectCatalogEntry } from "../src/config.js";
+import {
+  loadLocalEnvFiles,
+  loadTypedWeavekitConfig,
+  resolveProjectCatalogEntry,
+  type ProjectCatalogEntry,
+} from "../src/config.js";
 import { createWorkflowDashboardServer } from "../src/macro-workflow/dashboardServer.js";
-import type { MacroWorkflowRunStateLike, RuntimeWorkflowNode, WorkflowNodeExecutionResult, WorkflowReplayEvent } from "../src/macro-workflow/types.js";
+import type {
+  MacroWorkflowRunStateLike,
+  RuntimeWorkflowNode,
+  WorkflowNodeExecutionResult,
+  WorkflowReplayEvent,
+} from "../src/macro-workflow/types.js";
 import { WorkflowReplayEventKind } from "../src/macro-workflow/types.js";
 
 export type PrLaunchSmokeRunOptions = {
@@ -26,7 +36,9 @@ const DEFAULT_PROMPT = [
   "The purpose is to verify that Weavekit -> dashboard -> Herdr worktree -> Codex agent handoff works.",
 ].join(" ");
 
-export async function writePrLaunchSmokeRun(options: PrLaunchSmokeRunOptions): Promise<PrLaunchSmokeRun> {
+export async function writePrLaunchSmokeRun(
+  options: PrLaunchSmokeRunOptions,
+): Promise<PrLaunchSmokeRun> {
   const runId = options.runId?.trim() || "manual-pr-smoke";
   const outputDir = join(resolve(options.outputRoot), runId);
   await mkdir(outputDir, { recursive: true });
@@ -38,21 +50,41 @@ export async function writePrLaunchSmokeRun(options: PrLaunchSmokeRunOptions): P
   const eventsPath = join(outputDir, "workflow-events.jsonl");
 
   await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
-  await writeFile(eventsPath, events.map((event) => JSON.stringify(event)).join("\n") + "\n", "utf8");
-  await writeFile(join(outputDir, "workflow-report.md"), state.nodeResults.find((result) => result.nodeId === "report-opportunity-smoke")?.output ?? "", "utf8");
+  await writeFile(
+    eventsPath,
+    events.map((event) => JSON.stringify(event)).join("\n") + "\n",
+    "utf8",
+  );
+  await writeFile(
+    join(outputDir, "workflow-report.md"),
+    state.nodeResults.find((result) => result.nodeId === "report-opportunity-smoke")?.output ?? "",
+    "utf8",
+  );
 
   return { runId, outputDir, statePath, eventsPath };
 }
 
-function buildPrLaunchSmokeState(args: { project: ProjectCatalogEntry; prompt: string; runId: string }): MacroWorkflowRunStateLike {
+function buildPrLaunchSmokeState(args: {
+  project: ProjectCatalogEntry;
+  prompt: string;
+  runId: string;
+}): MacroWorkflowRunStateLike {
   const opportunity = {
     id: "smoke",
     title: "Manual PR launcher smoke test",
     lesson: "A reviewed workflow should expose a manual handoff to an implementation agent.",
     projectChange: args.prompt,
     changeSurface: "source-to-project dashboard",
-    score: { applicability: 0.99, impact: 0.9, confidence: 0.95, implementationCost: 0.1, risk: 0.1 },
-    evidence: [{ id: "smoke-e1", source: "synthetic smoke fixture", quote: "manual PR launcher smoke test" }],
+    score: {
+      applicability: 0.99,
+      impact: 0.9,
+      confidence: 0.95,
+      implementationCost: 0.1,
+      risk: 0.1,
+    },
+    evidence: [
+      { id: "smoke-e1", source: "synthetic smoke fixture", quote: "manual PR launcher smoke test" },
+    ],
     speculative: false,
   };
   const nodes: RuntimeWorkflowNode[] = [
@@ -89,7 +121,8 @@ function buildPrLaunchSmokeState(args: { project: ProjectCatalogEntry; prompt: s
       kind: "report",
       harness: "reporter",
       title: "Report: manual PR launcher smoke test",
-      description: "Synthetic report node containing the prompt that will be sent to the Herdr agent.",
+      description:
+        "Synthetic report node containing the prompt that will be sent to the Herdr agent.",
       model: "deterministic",
       prompt: "Write the smoke source-to-project report.",
       input: { opportunity },
@@ -103,7 +136,8 @@ function buildPrLaunchSmokeState(args: { project: ProjectCatalogEntry; prompt: s
       kind: "visualization",
       harness: "copilot-sdk",
       title: "Visualization: manual PR launcher smoke test",
-      description: "Synthetic passed visualization node for display only. Click Create PR on the report node.",
+      description:
+        "Synthetic passed visualization node for display only. Click Create PR on the report node.",
       model: "deterministic",
       prompt: "Create a visual smoke artifact.",
       input: { opportunity },
@@ -130,7 +164,9 @@ function buildPrLaunchSmokeState(args: { project: ProjectCatalogEntry; prompt: s
       nodeId: "source-reading",
       status: "passed",
       output: "Synthetic source analysis complete.",
-      payload: { sourceAnalysis: { sourceId: "synthetic-smoke-source", title: "Manual PR smoke source" } },
+      payload: {
+        sourceAnalysis: { sourceId: "synthetic-smoke-source", title: "Manual PR smoke source" },
+      },
     },
     {
       nodeId: "project-research",
@@ -174,7 +210,11 @@ function buildPrLaunchSmokeState(args: { project: ProjectCatalogEntry; prompt: s
           sourceLessonApplied: "Expose manual handoffs for reviewed work.",
           targetChange: "Launch a Herdr worktree and Codex agent from the dashboard action.",
           expectedUserValue: "The user can see the worktree and agent appear in Herdr.",
-          implementationOutline: ["Click Create PR", "Inspect Herdr for the worktree and agent", "Confirm the prompt was delivered"],
+          implementationOutline: [
+            "Click Create PR",
+            "Inspect Herdr for the worktree and agent",
+            "Confirm the prompt was delivered",
+          ],
           scope: "Synthetic dashboard smoke fixture only.",
           filesLikelyTouched: [],
           validationCommands: args.project.validationCommands,
@@ -239,14 +279,16 @@ function buildPrLaunchSmokeEvents(state: MacroWorkflowRunStateLike): WorkflowRep
         dependsOn: [],
       },
     },
-    ...nodes.map((node): WorkflowReplayEvent => ({
-      seq: ++seq,
-      ts,
-      kind: WorkflowReplayEventKind.NODE_ADDED,
-      phase: "planning",
-      nodeId: node.id,
-      node,
-    })),
+    ...nodes.map(
+      (node): WorkflowReplayEvent => ({
+        seq: ++seq,
+        ts,
+        kind: WorkflowReplayEventKind.NODE_ADDED,
+        phase: "planning",
+        nodeId: node.id,
+        node,
+      }),
+    ),
     {
       seq: ++seq,
       ts,
@@ -255,14 +297,16 @@ function buildPrLaunchSmokeEvents(state: MacroWorkflowRunStateLike): WorkflowRep
       nodeId: "workflow-planning",
       status: "passed",
     },
-    ...nodes.map((node): WorkflowReplayEvent => ({
-      seq: ++seq,
-      ts,
-      kind: WorkflowReplayEventKind.NODE_STATUS_CHANGED,
-      phase: "running",
-      nodeId: node.id,
-      status: "passed",
-    })),
+    ...nodes.map(
+      (node): WorkflowReplayEvent => ({
+        seq: ++seq,
+        ts,
+        kind: WorkflowReplayEventKind.NODE_STATUS_CHANGED,
+        phase: "running",
+        nodeId: node.id,
+        status: "passed",
+      }),
+    ),
     {
       seq: ++seq,
       ts,
@@ -279,7 +323,9 @@ async function main() {
   const config = loadTypedWeavekitConfig(args.configPath);
   const project = resolveProjectCatalogEntry(config, args.project);
   if (!project.autonomousPrAllowed) {
-    throw new Error(`Project ${project.id} has autonomous_pr_allowed = false; enable it before using this smoke path.`);
+    throw new Error(
+      `Project ${project.id} has autonomous_pr_allowed = false; enable it before using this smoke path.`,
+    );
   }
   const run = await writePrLaunchSmokeRun({
     outputRoot: args.outputRoot,
@@ -299,8 +345,22 @@ async function main() {
   await waitForShutdown(server.stop);
 }
 
-function parseArgs(argv: string[]): { project: string; outputRoot: string; prompt?: string; runId?: string; configPath?: string; port?: number } {
-  const parsed: { project?: string; outputRoot?: string; prompt?: string; runId?: string; configPath?: string; port?: number } = {};
+function parseArgs(argv: string[]): {
+  project: string;
+  outputRoot: string;
+  prompt?: string;
+  runId?: string;
+  configPath?: string;
+  port?: number;
+} {
+  const parsed: {
+    project?: string;
+    outputRoot?: string;
+    prompt?: string;
+    runId?: string;
+    configPath?: string;
+    port?: number;
+  } = {};
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--project") {
@@ -355,10 +415,14 @@ function readArgValue(argv: string[], index: number): string {
 function waitForShutdown(stop: () => Promise<void>): Promise<void> {
   return new Promise((resolveShutdown) => {
     const shutdown = () => {
-      stop().then(resolveShutdown).catch((error: unknown) => {
-        process.stderr.write(`Dashboard shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`);
-        resolveShutdown();
-      });
+      stop()
+        .then(resolveShutdown)
+        .catch((error: unknown) => {
+          process.stderr.write(
+            `Dashboard shutdown failed: ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+          resolveShutdown();
+        });
     };
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);

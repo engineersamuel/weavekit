@@ -1,4 +1,8 @@
-import { b, type PersonaChoiceCandidate, type PersonaSelectionRequest } from "../generated/baml_client/index.js";
+import {
+  b,
+  type PersonaChoiceCandidate,
+  type PersonaSelectionRequest,
+} from "../generated/baml_client/index.js";
 import { listPersonas } from "./registry.js";
 import type { PersonaDefinition } from "./schema.js";
 
@@ -78,7 +82,9 @@ function resolveSelectionRange(
   const maxPersonas = input.maxPersonas ?? defaults.maxPersonas ?? DEFAULT_MAX_PERSONAS;
 
   if (!Number.isInteger(minPersonas) || minPersonas < 1) {
-    throw new Error(`Persona chooser minimum must be a positive integer; received ${String(minPersonas)}.`);
+    throw new Error(
+      `Persona chooser minimum must be a positive integer; received ${String(minPersonas)}.`,
+    );
   }
 
   if (!Number.isInteger(maxPersonas) || maxPersonas < minPersonas) {
@@ -113,24 +119,31 @@ function resolveSelectedPersonas(
   }
 
   if (selected.length < minPersonas || selected.length > maxPersonas) {
-    throw new Error(`Persona chooser selected ${selected.length} personas; expected ${minPersonas}-${maxPersonas}.`);
+    throw new Error(
+      `Persona chooser selected ${selected.length} personas; expected ${minPersonas}-${maxPersonas}.`,
+    );
   }
 
   return selected.map((persona) => structuredClone(persona));
 }
 
-function resolveCandidates(input: PersonaSelectionInput, defaults?: PersonaDefinition[]): PersonaDefinition[] {
+function resolveCandidates(
+  input: PersonaSelectionInput,
+  defaults?: PersonaDefinition[],
+): PersonaDefinition[] {
   const candidates = input.candidatePersonas ?? defaults ?? listPersonas();
   return candidates.map((persona) => structuredClone(persona));
 }
 
-export function createBamlPersonaSelector(args: {
-  bamlClient?: Pick<typeof b, "ChoosePersonasForTask">;
-  candidatePersonas?: PersonaDefinition[];
-  minPersonas?: number;
-  maxPersonas?: number;
-  onEvent?: (event: PersonaSelectorEvent) => void;
-} = {}): PersonaSelector {
+export function createBamlPersonaSelector(
+  args: {
+    bamlClient?: Pick<typeof b, "ChoosePersonasForTask">;
+    candidatePersonas?: PersonaDefinition[];
+    minPersonas?: number;
+    maxPersonas?: number;
+    onEvent?: (event: PersonaSelectorEvent) => void;
+  } = {},
+): PersonaSelector {
   const bamlClient = args.bamlClient ?? b;
 
   return {
@@ -161,7 +174,12 @@ export function createBamlPersonaSelector(args: {
         };
 
         const selection = await bamlClient.ChoosePersonasForTask(request);
-        const selectedPersonas = resolveSelectedPersonas(selection.personaIds, candidates, minPersonas, maxPersonas);
+        const selectedPersonas = resolveSelectedPersonas(
+          selection.personaIds,
+          candidates,
+          minPersonas,
+          maxPersonas,
+        );
 
         return {
           personaSet: {

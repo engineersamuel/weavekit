@@ -18,81 +18,99 @@ afterEach(async () => {
   }
 });
 
-async function installCommandCapture(binDir: string, capturePath: string, command: "nub" | "nubx"): Promise<void> {
+async function installCommandCapture(
+  binDir: string,
+  capturePath: string,
+  command: "nub" | "nubx",
+): Promise<void> {
   const commandPath = join(binDir, command);
-  await writeFile(commandPath, [
-    "#!/usr/bin/env bash",
-    "set -euo pipefail",
-    ": > \"$CAPTURE_NUB_ARGS\"",
-    `printf '%s\\n' '${command}' >> "$CAPTURE_NUB_ARGS"`,
-    "for arg in \"$@\"; do",
-    "  printf '%s\\n' \"$arg\" >> \"$CAPTURE_NUB_ARGS\"",
-    "done",
-    "",
-  ].join("\n"));
+  await writeFile(
+    commandPath,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      ': > "$CAPTURE_NUB_ARGS"',
+      `printf '%s\\n' '${command}' >> "$CAPTURE_NUB_ARGS"`,
+      'for arg in "$@"; do',
+      '  printf \'%s\\n\' "$arg" >> "$CAPTURE_NUB_ARGS"',
+      "done",
+      "",
+    ].join("\n"),
+  );
   await chmod(commandPath, 0o755);
 }
 
 async function installAppendCommandCapture(binDir: string, command: "nub" | "nubx"): Promise<void> {
   const commandPath = join(binDir, command);
-  await writeFile(commandPath, [
-    "#!/usr/bin/env bash",
-    "set -euo pipefail",
-    "printf 'CALL\\n' >> \"$CAPTURE_NUB_ARGS\"",
-    `printf '%s\\n' '${command}' >> "$CAPTURE_NUB_ARGS"`,
-    "for arg in \"$@\"; do",
-    "  printf '%s\\n' \"$arg\" >> \"$CAPTURE_NUB_ARGS\"",
-    "done",
-    "printf 'END\\n' >> \"$CAPTURE_NUB_ARGS\"",
-    "",
-  ].join("\n"));
+  await writeFile(
+    commandPath,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "printf 'CALL\\n' >> \"$CAPTURE_NUB_ARGS\"",
+      `printf '%s\\n' '${command}' >> "$CAPTURE_NUB_ARGS"`,
+      'for arg in "$@"; do',
+      '  printf \'%s\\n\' "$arg" >> "$CAPTURE_NUB_ARGS"',
+      "done",
+      "printf 'END\\n' >> \"$CAPTURE_NUB_ARGS\"",
+      "",
+    ].join("\n"),
+  );
   await chmod(commandPath, 0o755);
 }
 
 async function installSourceToProjectOptimizeNubCapture(
   binDir: string,
-  capturePath: string,
+  _capturePath: string,
 ): Promise<void> {
   const nubPath = join(binDir, "nub");
-  await writeFile(nubPath, [
-    "#!/usr/bin/env bash",
-    "set -euo pipefail",
-    "printf 'CALL\\n' >> \"$CAPTURE_NUB_ARGS\"",
-    "for arg in \"$@\"; do",
-    "  printf '%s\\n' \"$arg\" >> \"$CAPTURE_NUB_ARGS\"",
-    "done",
-    "printf 'END\\n' >> \"$CAPTURE_NUB_ARGS\"",
-    "if [[ \"${1:-}\" == \"scripts/optimize-template.ts\" ]]; then",
-    "  run_dir=\"evals/template-optimizer/runs/run-123\"",
-    "  mkdir -p \"$run_dir\"",
-    "  printf '# Summary\\n' > \"$run_dir/summary.md\"",
-    "  printf '# Apply\\n' > \"$run_dir/apply-dry-run.md\"",
-    "  printf '{}\\n' > \"$run_dir/optimizer-run.json\"",
-    "  printf '[weavekit] Template optimizer run: run-123\\n'",
-    "  printf '[weavekit] Output: %s\\n' \"$run_dir\"",
-    "elif [[ \"${1:-}\" == \"scripts/optimize-template-apply.ts\" ]]; then",
-    "  printf '[weavekit] Template optimizer dry-run summary: evals/template-optimizer/runs/%s/apply-dry-run.md\\n' \"${2:-unknown}\"",
-    "fi",
-    "",
-  ].join("\n"));
+  await writeFile(
+    nubPath,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "printf 'CALL\\n' >> \"$CAPTURE_NUB_ARGS\"",
+      'for arg in "$@"; do',
+      '  printf \'%s\\n\' "$arg" >> "$CAPTURE_NUB_ARGS"',
+      "done",
+      "printf 'END\\n' >> \"$CAPTURE_NUB_ARGS\"",
+      'if [[ "${1:-}" == "scripts/optimize-template.ts" ]]; then',
+      '  run_dir="evals/template-optimizer/runs/run-123"',
+      '  mkdir -p "$run_dir"',
+      "  printf '# Summary\\n' > \"$run_dir/summary.md\"",
+      "  printf '# Apply\\n' > \"$run_dir/apply-dry-run.md\"",
+      "  printf '{}\\n' > \"$run_dir/optimizer-run.json\"",
+      "  printf '[weavekit] Template optimizer run: run-123\\n'",
+      "  printf '[weavekit] Output: %s\\n' \"$run_dir\"",
+      'elif [[ "${1:-}" == "scripts/optimize-template-apply.ts" ]]; then',
+      "  printf '[weavekit] Template optimizer dry-run summary: evals/template-optimizer/runs/%s/apply-dry-run.md\\n' \"${2:-unknown}\"",
+      "fi",
+      "",
+    ].join("\n"),
+  );
   await chmod(nubPath, 0o755);
 }
 
-async function installOpenCapture(binDir: string, capturePath: string): Promise<void> {
+async function installOpenCapture(binDir: string, _capturePath: string): Promise<void> {
   const openPath = join(binDir, "open");
-  await writeFile(openPath, [
-    "#!/usr/bin/env bash",
-    "set -euo pipefail",
-    ": > \"$CAPTURE_OPEN_ARGS\"",
-    "for arg in \"$@\"; do",
-    "  printf '%s\\n' \"$arg\" >> \"$CAPTURE_OPEN_ARGS\"",
-    "done",
-    "",
-  ].join("\n"));
+  await writeFile(
+    openPath,
+    [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      ': > "$CAPTURE_OPEN_ARGS"',
+      'for arg in "$@"; do',
+      '  printf \'%s\\n\' "$arg" >> "$CAPTURE_OPEN_ARGS"',
+      "done",
+      "",
+    ].join("\n"),
+  );
   await chmod(openPath, 0o755);
 }
 
-async function runSourceToProjectTask(env: Record<string, string | undefined> = {}): Promise<string[]> {
+async function runSourceToProjectTask(
+  env: Record<string, string | undefined> = {},
+): Promise<string[]> {
   const repoRoot = process.cwd();
   const tempDir = await mkdtemp(join(tmpdir(), "weavekit-mise-source-"));
   tempDirs.push(tempDir);
@@ -102,15 +120,19 @@ async function runSourceToProjectTask(env: Record<string, string | undefined> = 
   await installCommandCapture(binDir, capturePath, "nub");
   await installCommandCapture(binDir, capturePath, "nubx");
 
-  await execFileAsync(join(repoRoot, ".mise/tasks/source-to-project"), ["Adapt https://example.com/source"], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      ...env,
-      CAPTURE_NUB_ARGS: capturePath,
-      PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+  await execFileAsync(
+    join(repoRoot, ".mise/tasks/source-to-project"),
+    ["Adapt https://example.com/source"],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...env,
+        CAPTURE_NUB_ARGS: capturePath,
+        PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+      },
     },
-  });
+  );
 
   return (await readFile(capturePath, "utf8")).trimEnd().split("\n");
 }
@@ -125,14 +147,18 @@ async function runSourceToProjectTaskInFreshWorktree(): Promise<string[][]> {
   await installAppendCommandCapture(binDir, "nub");
   await installAppendCommandCapture(binDir, "nubx");
 
-  await execFileAsync(join(repoRoot, ".mise/tasks/source-to-project"), ["Adapt https://example.com/source"], {
-    cwd: tempDir,
-    env: {
-      ...process.env,
-      CAPTURE_NUB_ARGS: capturePath,
-      PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+  await execFileAsync(
+    join(repoRoot, ".mise/tasks/source-to-project"),
+    ["Adapt https://example.com/source"],
+    {
+      cwd: tempDir,
+      env: {
+        ...process.env,
+        CAPTURE_NUB_ARGS: capturePath,
+        PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+      },
     },
-  });
+  );
 
   return parseCapturedCalls(await readFile(capturePath, "utf8"));
 }
@@ -172,7 +198,11 @@ async function runVerificationOptimizerTask(
   }
 }
 
-async function runMiseTaskScript(scriptPath: string, args: string[], env: Record<string, string | undefined> = {}): Promise<string[]> {
+async function runMiseTaskScript(
+  scriptPath: string,
+  args: string[],
+  env: Record<string, string | undefined> = {},
+): Promise<string[]> {
   const repoRoot = process.cwd();
   const tempDir = await mkdtemp(join(tmpdir(), "weavekit-mise-task-"));
   tempDirs.push(tempDir);
@@ -253,19 +283,27 @@ async function runSourceToProjectOptimizeOpenTask(runId: string): Promise<string
   const captureOpenPath = join(tempDir, "open-args.txt");
   await installOpenCapture(binDir, captureOpenPath);
 
-  await execFileAsync(join(repoRoot, ".mise/tasks/source-to-project-optimize-template-open"), [runId], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      CAPTURE_OPEN_ARGS: captureOpenPath,
-      PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+  await execFileAsync(
+    join(repoRoot, ".mise/tasks/source-to-project-optimize-template-open"),
+    [runId],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        CAPTURE_OPEN_ARGS: captureOpenPath,
+        PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+      },
     },
-  });
+  );
 
   return (await readFile(captureOpenPath, "utf8")).trimEnd().split("\n");
 }
 
-async function createOptimizerRunFixture(): Promise<{ runsRoot: string; runId: string; runDir: string }> {
+async function createOptimizerRunFixture(): Promise<{
+  runsRoot: string;
+  runId: string;
+  runDir: string;
+}> {
   const runsRoot = await mkdtemp(join(tmpdir(), "weavekit-template-runs-"));
   tempDirs.push(runsRoot);
   const runId = "run-123";
@@ -306,7 +344,9 @@ describe("mise source-to-project task", () => {
     const miseConfig = await readFile(join(process.cwd(), ".mise.toml"), "utf8");
 
     expect(miseConfig).toContain('[tasks."doctor:sdk"]');
-    expect(miseConfig).toContain("Validate configured entity skills against a live Copilot SDK session");
+    expect(miseConfig).toContain(
+      "Validate configured entity skills against a live Copilot SDK session",
+    );
     expect(miseConfig).toContain("nub scripts/entity-sdk-doctor.ts");
   });
 
@@ -364,7 +404,9 @@ describe("mise source-to-project task", () => {
 
     expect(args.slice(0, 4)).toEqual(["nub", "src/cli.ts", "workflow", "run"]);
     expect(args).toContain("--dashboard-url");
-    expect(args[args.indexOf("--dashboard-url") + 1]).toBe("https://calm-meadow.weavekit-dashboard.localhost");
+    expect(args[args.indexOf("--dashboard-url") + 1]).toBe(
+      "https://calm-meadow.weavekit-dashboard.localhost",
+    );
     expect(args).not.toContain("--dashboard");
     expect(args).not.toContain("portless");
   });
@@ -379,11 +421,17 @@ describe("mise source-to-project task", () => {
   });
 
   it("starts the standalone dashboard through Portless without a hard-coded port", async () => {
-    const packageJson = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as { scripts?: Record<string, string> };
+    const packageJson = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as {
+      scripts?: Record<string, string>;
+    };
     const miseConfig = await readFile(join(process.cwd(), ".mise.toml"), "utf8");
 
-    expect(packageJson.scripts?.dashboard).toBe("nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard --watch-dir runs");
-    expect(miseConfig).toContain("nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard");
+    expect(packageJson.scripts?.dashboard).toBe(
+      "nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard --watch-dir runs",
+    );
+    expect(miseConfig).toContain(
+      "nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard",
+    );
     expect(miseConfig).toContain("--watch-dir runs");
     expect(miseConfig).not.toContain("--port 4321");
   });
@@ -400,17 +448,23 @@ describe("mise source-to-project task", () => {
     const result = await runVerificationOptimizerTask([]);
 
     expect(result.code).toBe(2);
-    expect(result.stderr).toContain("Usage: mise run verification-optimizer -- --project <id> [--mode advisory|autonomous-pr]");
+    expect(result.stderr).toContain(
+      "Usage: mise run verification-optimizer -- --project <id> [--mode advisory|autonomous-pr]",
+    );
   });
 
   it("runs verification-optimizer in advisory mode by default and suggests autonomous PR mode", async () => {
     const result = await runVerificationOptimizerTask(["--project", "weavekit"]);
 
     expect(result.code).toBe(0);
-    expect(result.stderr).toContain("Advisory mode selected. To let verification-optimizer implement one accepted improvement, rerun with --mode autonomous-pr.");
+    expect(result.stderr).toContain(
+      "Advisory mode selected. To let verification-optimizer implement one accepted improvement, rerun with --mode autonomous-pr.",
+    );
     expect(result.capturedArgs.slice(0, 4)).toEqual(["nub", "src/cli.ts", "workflow", "run"]);
     expect(result.capturedArgs).toContain("--template");
-    expect(result.capturedArgs[result.capturedArgs.indexOf("--template") + 1]).toBe("verification-optimizer");
+    expect(result.capturedArgs[result.capturedArgs.indexOf("--template") + 1]).toBe(
+      "verification-optimizer",
+    );
     expect(result.capturedArgs).toContain("--project");
     expect(result.capturedArgs[result.capturedArgs.indexOf("--project") + 1]).toBe("weavekit");
     expect(result.capturedArgs).toContain("--mode");
@@ -418,7 +472,12 @@ describe("mise source-to-project task", () => {
   });
 
   it("passes autonomous PR mode through for the verification-optimizer task without the advisory hint", async () => {
-    const result = await runVerificationOptimizerTask(["--project", "weavekit", "--mode", "autonomous-pr"]);
+    const result = await runVerificationOptimizerTask([
+      "--project",
+      "weavekit",
+      "--mode",
+      "autonomous-pr",
+    ]);
 
     expect(result.code).toBe(0);
     expect(result.stderr).not.toContain("Advisory mode selected");
@@ -444,7 +503,12 @@ describe("mise source-to-project task", () => {
   });
 
   it("routes optimize-template through the TypeScript optimizer script", async () => {
-    const args = await runMiseTaskScript(".mise/tasks/optimize-template", ["--template", "source-to-project", "--mode", "advisory"]);
+    const args = await runMiseTaskScript(".mise/tasks/optimize-template", [
+      "--template",
+      "source-to-project",
+      "--mode",
+      "advisory",
+    ]);
 
     expect(args).toEqual([
       "nub",
@@ -457,14 +521,12 @@ describe("mise source-to-project task", () => {
   });
 
   it("routes optimize-template apply through the TypeScript apply script", async () => {
-    const args = await runMiseTaskScript(".mise/tasks/optimize-template-apply", ["run-123", "--dry-run"]);
-
-    expect(args).toEqual([
-      "nub",
-      "scripts/optimize-template-apply.ts",
+    const args = await runMiseTaskScript(".mise/tasks/optimize-template-apply", [
       "run-123",
       "--dry-run",
     ]);
+
+    expect(args).toEqual(["nub", "scripts/optimize-template-apply.ts", "run-123", "--dry-run"]);
   });
 
   it("runs source-to-project template optimization, dry-run apply, and opens artifacts", async () => {
@@ -505,7 +567,10 @@ describe("mise source-to-project task", () => {
   });
 
   it("routes source-to-project template optimizer UI through the TypeScript UI script", async () => {
-    const args = await runMiseTaskScript(".mise/tasks/source-to-project-optimize-template-ui", ["--port", "4323"]);
+    const args = await runMiseTaskScript(".mise/tasks/source-to-project-optimize-template-ui", [
+      "--port",
+      "4323",
+    ]);
 
     expect(args).toEqual([
       "nub",
@@ -538,8 +603,12 @@ describe("mise source-to-project task", () => {
   it("does not write an apply summary before failing live apply", async () => {
     const { runsRoot, runId, runDir } = await createOptimizerRunFixture();
 
-    await expect(runApply({ runsRoot, runId, dryRun: false })).rejects.toThrow("live repository modification is not implemented");
-    await expect(access(join(runDir, "apply-summary.md"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(runApply({ runsRoot, runId, dryRun: false })).rejects.toThrow(
+      "live repository modification is not implemented",
+    );
+    await expect(access(join(runDir, "apply-summary.md"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("writes an apply dry-run summary", async () => {
@@ -548,6 +617,8 @@ describe("mise source-to-project task", () => {
     const result = await runApply({ runsRoot, runId, dryRun: true });
 
     expect(result).toEqual({ summaryPath: join(runDir, "apply-dry-run.md"), dryRun: true });
-    await expect(readFile(join(runDir, "apply-dry-run.md"), "utf8")).resolves.toContain("Dry run only. No repository files were modified.");
+    await expect(readFile(join(runDir, "apply-dry-run.md"), "utf8")).resolves.toContain(
+      "Dry run only. No repository files were modified.",
+    );
   });
 });

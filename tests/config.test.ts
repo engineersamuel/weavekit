@@ -2,7 +2,14 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { DeepResearchProvider, expandHomePath, loadLocalEnvFiles, loadTypedWeavekitConfig, loadWeavekitConfig, resolveProjectCatalogEntry } from "../src/config.js";
+import {
+  DeepResearchProvider,
+  expandHomePath,
+  loadLocalEnvFiles,
+  loadTypedWeavekitConfig,
+  loadWeavekitConfig,
+  resolveProjectCatalogEntry,
+} from "../src/config.js";
 
 const tempDirs: string[] = [];
 
@@ -19,16 +26,22 @@ describe("weavekit config loader", () => {
   it("loads local .env and .env.fish values without overriding existing env vars", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-env-"));
     tempDirs.push(dir);
-    await writeFile(join(dir, ".env"), [
-      "TELEGRAM_BOT_TOKEN=dot-env-token",
-      "TELEGRAM_OWNER_CHAT_ID=123",
-      "EXISTING=value-from-dotenv",
-    ].join("\n"));
-    await writeFile(join(dir, ".env.fish"), [
-      "set -gx COPILOT_PROXY_BASE_URL http://127.0.0.1:8080/v1",
-      "set -gx TELEGRAM_OWNER_CHAT_ID 456",
-      "set -gx FISH_QUOTED \"hello world\"",
-    ].join("\n"));
+    await writeFile(
+      join(dir, ".env"),
+      [
+        "TELEGRAM_BOT_TOKEN=dot-env-token",
+        "TELEGRAM_OWNER_CHAT_ID=123",
+        "EXISTING=value-from-dotenv",
+      ].join("\n"),
+    );
+    await writeFile(
+      join(dir, ".env.fish"),
+      [
+        "set -gx COPILOT_PROXY_BASE_URL http://127.0.0.1:8080/v1",
+        "set -gx TELEGRAM_OWNER_CHAT_ID 456",
+        'set -gx FISH_QUOTED "hello world"',
+      ].join("\n"),
+    );
     const env: NodeJS.ProcessEnv = { EXISTING: "already-set" };
 
     const loaded = loadLocalEnvFiles(dir, env);
@@ -49,7 +62,10 @@ describe("weavekit config loader", () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
-    await writeFile(configPath, 'COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1"\nBAML_MODEL = "gpt-5-mini"\n');
+    await writeFile(
+      configPath,
+      'COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1"\nBAML_MODEL = "gpt-5-mini"\n',
+    );
 
     const original = process.env.COPILOT_PROXY_BASE_URL;
     process.env.COPILOT_PROXY_BASE_URL = "https://existing.example/v1";
@@ -76,7 +92,9 @@ describe("weavekit config loader", () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1"
 
 [copilot]
@@ -140,7 +158,9 @@ autonomous_pr_allowed = true
 max_opportunities = 2
 notification = "telegram"
 knowledge_export = "off"
-`, "utf8");
+`,
+      "utf8",
+    );
 
     const config = loadTypedWeavekitConfig(configPath, {});
 
@@ -188,7 +208,12 @@ knowledge_export = "off"
       agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
       split: "right",
       agentOptions: [
-        { id: "codex", label: "Codex", agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"] },
+        {
+          id: "codex",
+          label: "Codex",
+          agentCommand: "codex",
+          agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+        },
         { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
       ],
     });
@@ -210,13 +235,17 @@ knowledge_export = "off"
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 [source_to_project.pr_launcher]
 provider = "herdr"
 agent_command = "claude"
 agent_args = ["--dangerously-skip-permissions"]
 split = "down"
-`, "utf8");
+`,
+      "utf8",
+    );
 
     const config = loadTypedWeavekitConfig(configPath, {});
 
@@ -226,7 +255,12 @@ split = "down"
       agentArgs: ["--dangerously-skip-permissions"],
       split: "down",
       agentOptions: [
-        { id: "codex", label: "Codex", agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"] },
+        {
+          id: "codex",
+          label: "Codex",
+          agentCommand: "codex",
+          agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+        },
         { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
       ],
     });
@@ -236,7 +270,9 @@ split = "down"
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 [source_to_project]
 min_acceptance_average = 0.9
 
@@ -250,7 +286,9 @@ validation_commands = []
 autonomous_pr_allowed = false
 notification = "cli"
 knowledge_export = "off"
-`, "utf8");
+`,
+      "utf8",
+    );
 
     const config = loadTypedWeavekitConfig(configPath, {});
     const spreadThresholds = {
@@ -266,7 +304,9 @@ knowledge_export = "off"
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 [[source_to_project.pr_launcher.agent_options]]
 id = "claude"
 label = "Claude"
@@ -278,12 +318,19 @@ id = "copilot"
 label = "Copilot"
 agent_command = "copilot"
 agent_args = ["--allow-all"]
-`, "utf8");
+`,
+      "utf8",
+    );
 
     const config = loadTypedWeavekitConfig(configPath, {});
 
     expect(config.sourceToProject.prLauncher.agentOptions).toEqual([
-      { id: "claude", label: "Claude", agentCommand: "claude", agentArgs: ["--dangerously-skip-permissions"] },
+      {
+        id: "claude",
+        label: "Claude",
+        agentCommand: "claude",
+        agentArgs: ["--dangerously-skip-permissions"],
+      },
       { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
     ]);
   });
@@ -292,38 +339,54 @@ agent_args = ["--allow-all"]
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 [projects.weavekit]
 working_tree = "~/projects/personal/weavekit"
-`, "utf8");
+`,
+      "utf8",
+    );
 
     const config = loadTypedWeavekitConfig(configPath, {});
 
-    expect(config.projects.weavekit?.workingTree).toBe(join(homedir(), "projects/personal/weavekit"));
+    expect(config.projects.weavekit?.workingTree).toBe(
+      join(homedir(), "projects/personal/weavekit"),
+    );
   });
 
   it("loads and expands the hve-core plugin directory from typed config", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 [plugins.hve-core]
 directory = "~/.copilot/installed-plugins/_direct/hve-core"
-`, "utf8");
+`,
+      "utf8",
+    );
 
     const config = loadTypedWeavekitConfig(configPath, {});
 
-    expect(config.plugins["hve-core"]?.directory).toBe(join(homedir(), ".copilot/installed-plugins/_direct/hve-core"));
+    expect(config.plugins["hve-core"]?.directory).toBe(
+      join(homedir(), ".copilot/installed-plugins/_direct/hve-core"),
+    );
   });
 
   it("prefers the hve-core plugin directory from config over the environment", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
-    await writeFile(configPath, `
+    await writeFile(
+      configPath,
+      `
 [plugins.hve-core]
 directory = "/config/hve-core"
-`, "utf8");
+`,
+      "utf8",
+    );
 
     const config = loadTypedWeavekitConfig(configPath, {
       WEAVEKIT_HVE_CORE_PLUGIN_DIR: "/env/hve-core",
@@ -394,8 +457,12 @@ directory = "/config/hve-core"
 
   it("expands only current-user home path prefixes", () => {
     expect(expandHomePath("~", "/home/tester")).toBe("/home/tester");
-    expect(expandHomePath("~/projects/weavekit", "/home/tester")).toBe(join("/home/tester", "projects/weavekit"));
-    expect(expandHomePath("~other/projects/weavekit", "/home/tester")).toBe("~other/projects/weavekit");
+    expect(expandHomePath("~/projects/weavekit", "/home/tester")).toBe(
+      join("/home/tester", "projects/weavekit"),
+    );
+    expect(expandHomePath("~other/projects/weavekit", "/home/tester")).toBe(
+      "~other/projects/weavekit",
+    );
     expect(expandHomePath("relative/weavekit", "/home/tester")).toBe("relative/weavekit");
   });
 
@@ -411,13 +478,30 @@ directory = "/config/hve-core"
       tooling: {},
       sourceToProject: {
         maxOpportunities: 1,
-        thresholds: { minApplicability: 0.7, minConfidence: 0.65, minImpact: 0.5, minAcceptanceAverage: 0.85, maxRisk: 0.8 },
+        thresholds: {
+          minApplicability: 0.7,
+          minConfidence: 0.65,
+          minImpact: 0.5,
+          minAcceptanceAverage: 0.85,
+          maxRisk: 0.8,
+        },
         mode: "advisory" as const,
         offline: false,
-        prLauncher: { provider: "herdr" as const, agentCommand: "codex", agentArgs: ["--dangerously-bypass-approvals-and-sandbox"], split: "right" as const, agentOptions: [] }, autoImplementOnReport: false,
+        prLauncher: {
+          provider: "herdr" as const,
+          agentCommand: "codex",
+          agentArgs: ["--dangerously-bypass-approvals-and-sandbox"],
+          split: "right" as const,
+          agentOptions: [],
+        },
+        autoImplementOnReport: false,
       },
       deepResearch: {
-        providers: [DeepResearchProvider.GROK, DeepResearchProvider.EXA, DeepResearchProvider.COPILOT_LAST30DAYS],
+        providers: [
+          DeepResearchProvider.GROK,
+          DeepResearchProvider.EXA,
+          DeepResearchProvider.COPILOT_LAST30DAYS,
+        ],
         maxIterations: 3,
         questionsPerIteration: 5,
         maxResultsPerQuestion: 5,
@@ -459,7 +543,9 @@ directory = "/config/hve-core"
     };
 
     expect(resolveProjectCatalogEntry(config, "weavekit").workingTree).toBe("/tmp/weavekit");
-    expect(() => resolveProjectCatalogEntry(config, "missing")).toThrow("Unknown project id: missing");
+    expect(() => resolveProjectCatalogEntry(config, "missing")).toThrow(
+      "Unknown project id: missing",
+    );
   });
 
   it("defaults Copilot verbose event logging to false when config is missing", () => {
@@ -489,6 +575,8 @@ directory = "/config/hve-core"
       },
     });
     expect(config.flue.model).toBe("anthropic/claude-haiku-4-5");
-    expect(config.plugins["hve-core"]?.directory).toBe(join(homedir(), ".copilot/installed-plugins/_direct/hve-core"));
+    expect(config.plugins["hve-core"]?.directory).toBe(
+      join(homedir(), ".copilot/installed-plugins/_direct/hve-core"),
+    );
   });
 });

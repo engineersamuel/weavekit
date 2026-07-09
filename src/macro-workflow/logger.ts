@@ -7,7 +7,8 @@ export const MacroWorkflowEventKind = {
   REPLAN_APPLIED: "macro-workflow.replan.applied",
   RUN_COMPLETED: "macro-workflow.run.completed",
 } as const;
-export type MacroWorkflowEventKind = (typeof MacroWorkflowEventKind)[keyof typeof MacroWorkflowEventKind];
+export type MacroWorkflowEventKind =
+  (typeof MacroWorkflowEventKind)[keyof typeof MacroWorkflowEventKind];
 
 export type MacroWorkflowEvent = {
   type?: string;

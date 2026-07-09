@@ -87,7 +87,9 @@ describe("workflow dashboard replay bootstrap", () => {
   it("fails clearly when PORT is invalid", async () => {
     process.env.PORT = "not-a-port";
 
-    await expect(createWorkflowDashboardServer(undefined)).rejects.toThrow("Invalid PORT value. Expected an integer between 1 and 65535.");
+    await expect(createWorkflowDashboardServer(undefined)).rejects.toThrow(
+      "Invalid PORT value. Expected an integer between 1 and 65535.",
+    );
   });
 
   it("merges workflow-state.json with adjacent workflow-events.jsonl", async () => {
@@ -97,7 +99,10 @@ describe("workflow dashboard replay bootstrap", () => {
 
       expect(snapshot.state?.planId).toBe("plan-1");
       expect(snapshot.run?.runName).toBe("Replay Dashboard Run");
-      expect(snapshot.history?.map((event) => event.kind)).toEqual(["planning-started", "node-added"]);
+      expect(snapshot.history?.map((event) => event.kind)).toEqual([
+        "planning-started",
+        "node-added",
+      ]);
       expect(snapshot.event?.planId).toBe("plan-1");
     } finally {
       await rm(outputDir, { recursive: true, force: true });
@@ -163,13 +168,21 @@ describe("workflow dashboard replay bootstrap", () => {
     const outputDir = await writeWorkflowRunFixture();
     try {
       const snapshot = await readWorkflowDashboardSnapshot(join(outputDir, "workflow-state.json"));
-      const repeatedSnapshot = await readWorkflowDashboardSnapshot(join(outputDir, "workflow-state.json"));
+      const repeatedSnapshot = await readWorkflowDashboardSnapshot(
+        join(outputDir, "workflow-state.json"),
+      );
 
-      expect(createWorkflowDashboardSnapshotVersion(repeatedSnapshot)).toBe(createWorkflowDashboardSnapshotVersion(snapshot));
-      expect(createWorkflowDashboardSnapshotVersion({
-        ...snapshot,
-        run: snapshot.run ? { ...snapshot.run, updatedAt: "2026-06-30T00:00:01.000Z" } : undefined,
-      })).not.toBe(createWorkflowDashboardSnapshotVersion(snapshot));
+      expect(createWorkflowDashboardSnapshotVersion(repeatedSnapshot)).toBe(
+        createWorkflowDashboardSnapshotVersion(snapshot),
+      );
+      expect(
+        createWorkflowDashboardSnapshotVersion({
+          ...snapshot,
+          run: snapshot.run
+            ? { ...snapshot.run, updatedAt: "2026-06-30T00:00:01.000Z" }
+            : undefined,
+        }),
+      ).not.toBe(createWorkflowDashboardSnapshotVersion(snapshot));
     } finally {
       await rm(join(outputDir, ".."), { recursive: true, force: true });
     }
@@ -188,7 +201,10 @@ describe("workflow dashboard replay bootstrap", () => {
       const replayResponse = await fetch(new URL("/api/replay?runId=run-1", server.url));
       const replayPayload = await replayResponse.json();
 
-      expect(runsPayload.runs.map((run: { runId: string }) => run.runId).sort()).toEqual(["run-1", "run-2"]);
+      expect(runsPayload.runs.map((run: { runId: string }) => run.runId).sort()).toEqual([
+        "run-1",
+        "run-2",
+      ]);
       expect(replayPayload.activeRunId).toBe("run-1");
       expect(replayPayload.run.runName).toBe("First Run");
     } finally {
@@ -203,9 +219,13 @@ describe("workflow dashboard replay bootstrap", () => {
       const server = await createWorkflowDashboardServer(undefined, { watchDir });
       servers.push(server);
 
-      const reportResponse = await fetch(new URL("/api/artifact?runId=run-1&file=workflow-report.md", server.url));
+      const reportResponse = await fetch(
+        new URL("/api/artifact?runId=run-1&file=workflow-report.md", server.url),
+      );
       const reportText = await reportResponse.text();
-      const traversalResponse = await fetch(new URL("/api/artifact?runId=run-1&file=../workflow-state.json", server.url));
+      const traversalResponse = await fetch(
+        new URL("/api/artifact?runId=run-1&file=../workflow-state.json", server.url),
+      );
 
       expect(reportResponse.status).toBe(200);
       expect(reportResponse.headers.get("content-type")).toContain("text/markdown");
@@ -223,7 +243,9 @@ describe("workflow dashboard replay bootstrap", () => {
       const server = await createWorkflowDashboardServer(undefined, { watchDir });
       servers.push(server);
 
-      const response = await fetch(new URL("/api/artifact?runId=run-1&file=source-corroboration.payload.json", server.url));
+      const response = await fetch(
+        new URL("/api/artifact?runId=run-1&file=source-corroboration.payload.json", server.url),
+      );
       const payload = await response.json();
 
       expect(response.status).toBe(200);
@@ -239,7 +261,9 @@ describe("workflow dashboard replay bootstrap", () => {
     const configPath = join(rootDir, "config.toml");
     const launched: unknown[] = [];
     try {
-      await writeFile(configPath, `
+      await writeFile(
+        configPath,
+        `
 [source_to_project.pr_launcher]
 agent_command = "codex"
 
@@ -250,8 +274,16 @@ mainline = "origin main"
 remote = "origin"
 validation_commands = ["nub run typecheck"]
 autonomous_pr_allowed = true
-`, "utf8");
-      await writeWorkflowRunFixture(rootDir, "run-1", "Source Run", "passed", createSourceToProjectWorkflowState());
+`,
+        "utf8",
+      );
+      await writeWorkflowRunFixture(
+        rootDir,
+        "run-1",
+        "Source Run",
+        "passed",
+        createSourceToProjectWorkflowState(),
+      );
       const server = await createWorkflowDashboardServer(undefined, {
         watchDir: rootDir,
         configPath,
@@ -290,7 +322,9 @@ autonomous_pr_allowed = true
     const configPath = join(rootDir, "config.toml");
     const launched: unknown[] = [];
     try {
-      await writeFile(configPath, `
+      await writeFile(
+        configPath,
+        `
 [source_to_project.pr_launcher]
 agent_command = "codex"
 
@@ -301,8 +335,16 @@ mainline = "origin main"
 remote = "origin"
 validation_commands = ["nub run typecheck"]
 autonomous_pr_allowed = true
-`, "utf8");
-      await writeWorkflowRunFixture(rootDir, "run-1", "Source Run", "passed", createSourceToProjectWorkflowState());
+`,
+        "utf8",
+      );
+      await writeWorkflowRunFixture(
+        rootDir,
+        "run-1",
+        "Source Run",
+        "passed",
+        createSourceToProjectWorkflowState(),
+      );
       const server = await createWorkflowDashboardServer(undefined, {
         watchDir: rootDir,
         configPath,
@@ -336,7 +378,8 @@ autonomous_pr_allowed = true
           nodeId: "report-opportunity-opp-1",
           opportunityId: "opp-1",
           opportunityTitle: "Add manual PR launch",
-          reportMarkdown: "# Source-to-Project Report: opp-1\n\nImplement this reviewed opportunity.",
+          reportMarkdown:
+            "# Source-to-Project Report: opp-1\n\nImplement this reviewed opportunity.",
           recommendation: "Add a manual dashboard PR action.",
           initialPromptMode: "implement",
           projectBrief: {
@@ -372,7 +415,9 @@ autonomous_pr_allowed = true
       await initGitRepo(configuredWeavekit, "git@example.com:org/weavekit.git");
       await initGitRepo(herdrWeavekit, "git@example.com:org/weavekit.git");
       await initGitRepo(secondbrain, "git@example.com:org/secondbrain.git");
-      await writeFile(configPath, `
+      await writeFile(
+        configPath,
+        `
 [source_to_project.pr_launcher]
 agent_command = "codex"
 
@@ -391,10 +436,18 @@ mainline = "origin main"
 remote = "origin"
 validation_commands = ["nub run typecheck"]
 autonomous_pr_allowed = true
-`, "utf8");
-      await writeWorkflowRunFixture(rootDir, "run-1", "Source Run", "passed", createSourceToProjectWorkflowState({
-        projectExecutionCwd: herdrWeavekit,
-      }));
+`,
+        "utf8",
+      );
+      await writeWorkflowRunFixture(
+        rootDir,
+        "run-1",
+        "Source Run",
+        "passed",
+        createSourceToProjectWorkflowState({
+          projectExecutionCwd: herdrWeavekit,
+        }),
+      );
       const server = await createWorkflowDashboardServer(undefined, {
         watchDir: rootDir,
         configPath,
@@ -440,7 +493,9 @@ autonomous_pr_allowed = true
     const configPath = join(rootDir, "config.toml");
     const stderrWrite = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
-      await writeFile(configPath, `
+      await writeFile(
+        configPath,
+        `
 [source_to_project.pr_launcher]
 agent_command = "codex"
 
@@ -451,8 +506,16 @@ mainline = "origin main"
 remote = "origin"
 validation_commands = ["nub run typecheck"]
 autonomous_pr_allowed = true
-`, "utf8");
-      await writeWorkflowRunFixture(rootDir, "run-1", "Source Run", "passed", createSourceToProjectWorkflowState());
+`,
+        "utf8",
+      );
+      await writeWorkflowRunFixture(
+        rootDir,
+        "run-1",
+        "Source Run",
+        "passed",
+        createSourceToProjectWorkflowState(),
+      );
       const server = await createWorkflowDashboardServer(undefined, {
         watchDir: rootDir,
         configPath,
@@ -473,7 +536,11 @@ autonomous_pr_allowed = true
 
       expect(response.status).toBe(500);
       expect(payload.error).toBe("Herdr launch failed in test.");
-      expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining("[weavekit][error] Manual PR launch failed (500): Herdr launch failed in test."));
+      expect(stderrWrite).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[weavekit][error] Manual PR launch failed (500): Herdr launch failed in test.",
+        ),
+      );
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }
@@ -483,19 +550,26 @@ autonomous_pr_allowed = true
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
     const configPath = join(rootDir, "config.toml");
     try {
-      await writeFile(configPath, `
+      await writeFile(
+        configPath,
+        `
 [projects.weavekit]
 working_tree = "/repo/weavekit"
 autonomous_pr_allowed = true
-`, "utf8");
+`,
+        "utf8",
+      );
       const state = createSourceToProjectWorkflowState();
       state.nodeResults = state.nodeResults.map((result) =>
         result.nodeId === "visual-design-opportunity-opp-1"
           ? { ...result, status: "running" as const }
-          : result
+          : result,
       );
       await writeWorkflowRunFixture(rootDir, "run-1", "Source Run", "running", state);
-      const server = await createWorkflowDashboardServer(undefined, { watchDir: rootDir, configPath });
+      const server = await createWorkflowDashboardServer(undefined, {
+        watchDir: rootDir,
+        configPath,
+      });
       servers.push(server);
 
       const response = await fetch(new URL("/api/source-to-project/pr-launch", server.url), {
@@ -537,8 +611,8 @@ autonomous_pr_allowed = true
 
     try {
       const text = await readUntil(body!, "event: state");
-      expect(text).toContain("\"history\"");
-      expect(text).toContain("\"kind\":\"planning-started\"");
+      expect(text).toContain('"history"');
+      expect(text).toContain('"kind":"planning-started"');
     } finally {
       controller.abort();
     }
@@ -556,12 +630,21 @@ async function writeWorkflowRunFixture(
   const outputDir = join(resolvedRootDir, runId);
   await mkdir(outputDir);
   await writeFile(join(outputDir, "workflow-state.json"), JSON.stringify(state, null, 2));
-  await writeFile(join(outputDir, "workflow-events.jsonl"), await readFile(fixtureEventsPath, "utf8"));
-  await writeFile(join(outputDir, "workflow-report.md"), "# Macro Workflow Run Report\n\nFixture report.\n", "utf8");
+  await writeFile(
+    join(outputDir, "workflow-events.jsonl"),
+    await readFile(fixtureEventsPath, "utf8"),
+  );
+  await writeFile(
+    join(outputDir, "workflow-report.md"),
+    "# Macro Workflow Run Report\n\nFixture report.\n",
+    "utf8",
+  );
   return outputDir;
 }
 
-function createSourceToProjectWorkflowState(options: { projectExecutionCwd?: string } = {}): MacroWorkflowRunStateLike {
+function createSourceToProjectWorkflowState(
+  options: { projectExecutionCwd?: string } = {},
+): MacroWorkflowRunStateLike {
   const projectExecutionCwd = options.projectExecutionCwd ?? "/repo/weavekit";
   return {
     runId: "run-1",
@@ -590,7 +673,13 @@ function createSourceToProjectWorkflowState(options: { projectExecutionCwd?: str
               lesson: "Expose manual handoffs for reviewed work.",
               projectChange: "Add a dashboard PR action.",
               changeSurface: "dashboard",
-              score: { applicability: 0.9, impact: 0.9, confidence: 0.9, implementationCost: 0.4, risk: 0.2 },
+              score: {
+                applicability: 0.9,
+                impact: 0.9,
+                confidence: 0.9,
+                implementationCost: 0.4,
+                risk: 0.2,
+              },
               evidence: [{ id: "e1", source: "README.md" }],
               speculative: false,
             },
@@ -613,7 +702,13 @@ function createSourceToProjectWorkflowState(options: { projectExecutionCwd?: str
               lesson: "Expose manual handoffs for reviewed work.",
               projectChange: "Add a dashboard PR action.",
               changeSurface: "dashboard",
-              score: { applicability: 0.9, impact: 0.9, confidence: 0.9, implementationCost: 0.4, risk: 0.2 },
+              score: {
+                applicability: 0.9,
+                impact: 0.9,
+                confidence: 0.9,
+                implementationCost: 0.4,
+                risk: 0.2,
+              },
               evidence: [{ id: "e1", source: "README.md" }],
               speculative: false,
             },
@@ -664,7 +759,8 @@ function createSourceToProjectWorkflowState(options: { projectExecutionCwd?: str
         status: "passed",
         output: "# Source-to-Project Report: opp-1\n\nImplement this reviewed opportunity.",
         payload: {
-          sourceToProjectReportMarkdown: "# Source-to-Project Report: opp-1\n\nImplement this reviewed opportunity.",
+          sourceToProjectReportMarkdown:
+            "# Source-to-Project Report: opp-1\n\nImplement this reviewed opportunity.",
           plan: {
             opportunityIds: ["opp-1"],
             title: "Manual PR launch plan",
@@ -708,7 +804,11 @@ async function initGitRepo(repoPath: string, remoteUrl: string) {
   await execFileAsync("git", ["remote", "add", "origin", remoteUrl], { cwd: repoPath });
 }
 
-function createWorkflowState(runId = "run-1", runName = "Replay Dashboard Run", status: MacroWorkflowRunStateLike["status"] = "running"): MacroWorkflowRunStateLike {
+function createWorkflowState(
+  runId = "run-1",
+  runName = "Replay Dashboard Run",
+  status: MacroWorkflowRunStateLike["status"] = "running",
+): MacroWorkflowRunStateLike {
   return {
     runId,
     runName,

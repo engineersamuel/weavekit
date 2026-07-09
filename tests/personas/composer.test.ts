@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { composePersonaPrompt } from "../../src/personas/composer.js";
 import { PersonaDefinitionSchema, type RoundBrief } from "../../src/personas/schema.js";
 
-const brief: RoundBrief = { roundNumber: 1, prompt: "Should we use Flue?", focus: "Initial critique" };
+const brief: RoundBrief = {
+  roundNumber: 1,
+  prompt: "Should we use Flue?",
+  focus: "Initial critique",
+};
 
 function expectedPrompt(name: string, prompt: string, b: RoundBrief): string {
   return [

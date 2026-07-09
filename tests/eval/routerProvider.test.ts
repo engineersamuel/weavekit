@@ -5,7 +5,9 @@ import { createInitialWorkflowRouter } from "../../src/initialRouter.js";
 describe("RouterProvider", () => {
   it("returns the router classification as a text summary", async () => {
     const provider = new RouterProvider({ router: createInitialWorkflowRouter() });
-    const response = await provider.callApi("Should we build our own orchestrator or adopt Flue? Recommend one.");
+    const response = await provider.callApi(
+      "Should we build our own orchestrator or adopt Flue? Recommend one.",
+    );
 
     expect(response.error).toBeUndefined();
     expect(response.output).toContain("Route:");

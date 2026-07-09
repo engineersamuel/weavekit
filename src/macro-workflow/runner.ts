@@ -2,7 +2,17 @@ import type { HarnessRegistry, WorkflowExecutionContext } from "./harness.js";
 import { resolveHarnessAdapter } from "./harness.js";
 import type { MacroWorkflowEvent, MacroWorkflowLogger } from "./logger.js";
 import { MacroWorkflowEventKind } from "./logger.js";
-import type { MacroWorkflowRunState, RuntimeWorkflowNode, RuntimeWorkflowPlan, WorkflowArtifactRef, WorkflowExecutionMetadata, WorkflowNodeExecutionResult, WorkflowNodePayload, WorkflowReplanPatch, WorkflowReplayEvent } from "./types.js";
+import type {
+  MacroWorkflowRunState,
+  RuntimeWorkflowNode,
+  RuntimeWorkflowPlan,
+  WorkflowArtifactRef,
+  WorkflowExecutionMetadata,
+  WorkflowNodeExecutionResult,
+  WorkflowNodePayload,
+  WorkflowReplanPatch,
+  WorkflowReplayEvent,
+} from "./types.js";
 import { WorkflowNodeStatus as WorkflowNodeState, WorkflowReplayEventKind } from "./types.js";
 import { verifyWorkflowPlan, verifyWorkflowReplanPatch } from "./verifier.js";
 
@@ -95,7 +105,11 @@ export async function runMacroWorkflow(
     node: planningReplayNode,
     status: WorkflowNodeState.PASSED,
   });
-  emitStateChange({ type: MacroWorkflowEventKind.RUN_STARTED, planId: plan.id, timestamp: new Date() });
+  emitStateChange({
+    type: MacroWorkflowEventKind.RUN_STARTED,
+    planId: plan.id,
+    timestamp: new Date(),
+  });
 
   let remainingPlan = plan;
   const completedNodeIds = new Set<string>();
@@ -145,7 +159,12 @@ export async function runMacroWorkflow(
     const runnableContexts = new Map<string, WorkflowExecutionContext>();
     const activeNodeExecutions: Record<string, WorkflowExecutionMetadata> = {};
     for (const node of runnableNodes) {
-      const context: WorkflowExecutionContext = { payloads, artifacts, objective: plan.objective, outputDir: dependencies.outputDir };
+      const context: WorkflowExecutionContext = {
+        payloads,
+        artifacts,
+        objective: plan.objective,
+        outputDir: dependencies.outputDir,
+      };
       const preparedExecution = await prepareNodeExecution(node, context, dependencies.harnesses);
       if (preparedExecution.warning) {
         emitStateChange({
@@ -165,7 +184,8 @@ export async function runMacroWorkflow(
 
     state.activeNodeId = runnableNodes[0]?.id;
     state.activeNodeIds = runnableNodes.map((node) => node.id);
-    state.activeNodeExecutions = Object.keys(activeNodeExecutions).length > 0 ? activeNodeExecutions : undefined;
+    state.activeNodeExecutions =
+      Object.keys(activeNodeExecutions).length > 0 ? activeNodeExecutions : undefined;
     for (const node of runnableNodes) {
       emitReplayEvent({
         kind: WorkflowReplayEventKind.NODE_STATUS_CHANGED,
@@ -173,13 +193,24 @@ export async function runMacroWorkflow(
         nodeId: node.id,
         status: WorkflowNodeState.RUNNING,
       });
-      emitStateChange({ type: MacroWorkflowEventKind.NODE_STARTED, planId: plan.id, nodeId: node.id, timestamp: new Date() });
+      emitStateChange({
+        type: MacroWorkflowEventKind.NODE_STARTED,
+        planId: plan.id,
+        nodeId: node.id,
+        timestamp: new Date(),
+      });
     }
 
-    const batchResults = await Promise.all(runnableNodes.map(async (node) => ({
-      node,
-      result: await executeNode(node, runnableContexts.get(node.id) ?? { payloads, artifacts, objective: plan.objective }, dependencies.harnesses),
-    })));
+    const batchResults = await Promise.all(
+      runnableNodes.map(async (node) => ({
+        node,
+        result: await executeNode(
+          node,
+          runnableContexts.get(node.id) ?? { payloads, artifacts, objective: plan.objective },
+          dependencies.harnesses,
+        ),
+      })),
+    );
     state.activeNodeId = undefined;
     state.activeNodeIds = undefined;
     state.activeNodeExecutions = undefined;
@@ -235,11 +266,23 @@ export async function runMacroWorkflow(
           phase: "completed",
           status: WorkflowNodeState.FAILED,
         });
-        emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
+        emitStateChange({
+          type: MacroWorkflowEventKind.RUN_COMPLETED,
+          planId: plan.id,
+          status: "failed",
+          timestamp: new Date(),
+        });
         return state;
       }
 
-      const patch = await createReplanPatch(failedNode.id, failedResult.error ?? failedResult.output, remainingPlan, completedNodeIds, remainingReplans, dependencies.replanner);
+      const patch = await createReplanPatch(
+        failedNode.id,
+        failedResult.error ?? failedResult.output,
+        remainingPlan,
+        completedNodeIds,
+        remainingReplans,
+        dependencies.replanner,
+      );
       if (!patch) {
         state.status = "failed";
         state.completedAt = new Date();
@@ -248,11 +291,20 @@ export async function runMacroWorkflow(
           phase: "completed",
           status: WorkflowNodeState.FAILED,
         });
-        emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
+        emitStateChange({
+          type: MacroWorkflowEventKind.RUN_COMPLETED,
+          planId: plan.id,
+          status: "failed",
+          timestamp: new Date(),
+        });
         return state;
       }
 
-      const verification = verifyWorkflowReplanPatch(remainingPlan, patch, Array.from(completedNodeIds));
+      const verification = verifyWorkflowReplanPatch(
+        remainingPlan,
+        patch,
+        Array.from(completedNodeIds),
+      );
       if (!verification.valid) {
         state.status = "failed";
         state.completedAt = new Date();
@@ -261,7 +313,12 @@ export async function runMacroWorkflow(
           phase: "completed",
           status: WorkflowNodeState.FAILED,
         });
-        emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", timestamp: new Date() });
+        emitStateChange({
+          type: MacroWorkflowEventKind.RUN_COMPLETED,
+          planId: plan.id,
+          status: "failed",
+          timestamp: new Date(),
+        });
         return state;
       }
 
@@ -283,7 +340,13 @@ export async function runMacroWorkflow(
         reason: patch.reason,
         patch,
       });
-      emitStateChange({ type: MacroWorkflowEventKind.REPLAN_APPLIED, planId: plan.id, nodeId: failedNode.id, reason: patch.reason, timestamp: new Date() });
+      emitStateChange({
+        type: MacroWorkflowEventKind.REPLAN_APPLIED,
+        planId: plan.id,
+        nodeId: failedNode.id,
+        reason: patch.reason,
+        timestamp: new Date(),
+      });
       continue;
     }
 
@@ -304,7 +367,13 @@ export async function runMacroWorkflow(
           phase: "completed",
           status: WorkflowNodeState.FAILED,
         });
-        emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "failed", reason: expansion.error, timestamp: new Date() });
+        emitStateChange({
+          type: MacroWorkflowEventKind.RUN_COMPLETED,
+          planId: plan.id,
+          status: "failed",
+          reason: expansion.error,
+          timestamp: new Date(),
+        });
         return state;
       }
       if (expansion.nodes.length > 0) {
@@ -338,7 +407,12 @@ export async function runMacroWorkflow(
     phase: "completed",
     status: WorkflowNodeState.PASSED,
   });
-  emitStateChange({ type: MacroWorkflowEventKind.RUN_COMPLETED, planId: plan.id, status: "passed", timestamp: new Date() });
+  emitStateChange({
+    type: MacroWorkflowEventKind.RUN_COMPLETED,
+    planId: plan.id,
+    status: "passed",
+    timestamp: new Date(),
+  });
   return state;
 }
 
@@ -349,20 +423,24 @@ async function expandDynamicNodes(args: {
   payloads: Map<string, WorkflowNodePayload>;
   completedNodeIds: Set<string>;
   expander?: WorkflowDynamicExpander;
-}): Promise<{ failed: false; plan: RuntimeWorkflowPlan; nodes: RuntimeWorkflowNode[] } | { failed: true; error: string }> {
+}): Promise<
+  | { failed: false; plan: RuntimeWorkflowPlan; nodes: RuntimeWorkflowNode[] }
+  | { failed: true; error: string }
+> {
   if (!args.expander) {
     return { failed: false, plan: args.remainingPlan, nodes: [] };
   }
 
   let nodes: RuntimeWorkflowNode[];
   try {
-    nodes = await args.expander({
-      node: args.node,
-      result: args.result,
-      currentPlan: args.remainingPlan,
-      payloads: args.payloads,
-      completedNodeIds: args.completedNodeIds,
-    }) ?? [];
+    nodes =
+      (await args.expander({
+        node: args.node,
+        result: args.result,
+        currentPlan: args.remainingPlan,
+        payloads: args.payloads,
+        completedNodeIds: args.completedNodeIds,
+      })) ?? [];
   } catch (error) {
     return { failed: true, error: error instanceof Error ? error.message : String(error) };
   }
@@ -392,8 +470,15 @@ async function expandDynamicNodes(args: {
   return { failed: false, plan: expandedPlan, nodes: newNodes };
 }
 
-function selectReadyNodes(plan: RuntimeWorkflowPlan, completedNodeIds: Set<string>): RuntimeWorkflowPlan["nodes"] {
-  return plan.nodes.filter((node) => !completedNodeIds.has(node.id) && node.dependsOn.every((dependency) => completedNodeIds.has(dependency)));
+function selectReadyNodes(
+  plan: RuntimeWorkflowPlan,
+  completedNodeIds: Set<string>,
+): RuntimeWorkflowPlan["nodes"] {
+  return plan.nodes.filter(
+    (node) =>
+      !completedNodeIds.has(node.id) &&
+      node.dependsOn.every((dependency) => completedNodeIds.has(dependency)),
+  );
 }
 
 function shouldRunNode(
@@ -423,7 +508,11 @@ async function executeNode(
 ): Promise<WorkflowNodeExecutionResult> {
   const adapter = harnesses ? resolveHarnessAdapter(harnesses, node.harness) : undefined;
   if (!adapter) {
-    return { nodeId: node.id, status: WorkflowNodeState.PASSED, output: `No harness registered for ${node.harness}.` };
+    return {
+      nodeId: node.id,
+      status: WorkflowNodeState.PASSED,
+      output: `No harness registered for ${node.harness}.`,
+    };
   }
 
   let result;
@@ -459,7 +548,9 @@ async function prepareNodeExecution(
   try {
     return { execution: await adapter?.prepareExecution?.(node, context) };
   } catch (error) {
-    return { warning: `Harness ${node.harness} prepareExecution failed for ${node.id}: ${error instanceof Error ? error.message : String(error)}` };
+    return {
+      warning: `Harness ${node.harness} prepareExecution failed for ${node.id}: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
@@ -511,8 +602,14 @@ async function createReplanPatch(
   return patch;
 }
 
-export function applyReplanPatch(plan: RuntimeWorkflowPlan, patch: WorkflowReplanPatch, completedNodeIds: Set<string>): RuntimeWorkflowPlan {
-  const remainingNodes = plan.nodes.filter((node) => !completedNodeIds.has(node.id) && !patch.replaceRemainingNodeIds.includes(node.id));
+export function applyReplanPatch(
+  plan: RuntimeWorkflowPlan,
+  patch: WorkflowReplanPatch,
+  completedNodeIds: Set<string>,
+): RuntimeWorkflowPlan {
+  const remainingNodes = plan.nodes.filter(
+    (node) => !completedNodeIds.has(node.id) && !patch.replaceRemainingNodeIds.includes(node.id),
+  );
   return {
     ...plan,
     nodes: [...remainingNodes, ...patch.newNodes],

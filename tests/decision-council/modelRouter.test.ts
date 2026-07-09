@@ -16,7 +16,11 @@ describe("smoke routing", () => {
   it("pins every task kind to gpt-5-mini", async () => {
     const router = createSmokeModelRouter();
 
-    for (const taskKind of [RouteTaskKind.NORMALIZE, RouteTaskKind.ASSESS, RouteTaskKind.REPORT] as const) {
+    for (const taskKind of [
+      RouteTaskKind.NORMALIZE,
+      RouteTaskKind.ASSESS,
+      RouteTaskKind.REPORT,
+    ] as const) {
       const decision = await router.route({ taskKind });
       expect(decision.clientName).toBe("CopilotProxyGpt5Mini");
       expect(decision.model).toBe("gpt-5-mini");
@@ -67,7 +71,11 @@ describe("PolicyModelRouter", () => {
   it("honors a custom policy table", async () => {
     const custom = {
       ...DEFAULT_ROUTING_POLICY,
-      [RouteTaskKind.NORMALIZE]: { clientName: "CopilotProxyGrokCodeFast1", model: "grok-code-fast-1", rationale: "override" },
+      [RouteTaskKind.NORMALIZE]: {
+        clientName: "CopilotProxyGrokCodeFast1",
+        model: "grok-code-fast-1",
+        rationale: "override",
+      },
     };
     const router = new PolicyModelRouter(custom);
     await expect(router.route({ taskKind: RouteTaskKind.NORMALIZE })).resolves.toMatchObject({
@@ -84,9 +92,14 @@ describe("LlmModelRouter", () => {
       reasoningEffort: undefined,
       rationale: "capable",
     });
-    const router = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall: call });
+    const router = new LlmModelRouter({
+      fallback: new PolicyModelRouter(),
+      callRouteModelCall: call,
+    });
 
-    await expect(router.route({ taskKind: RouteTaskKind.ASSESS, dynamic: true })).resolves.toMatchObject({
+    await expect(
+      router.route({ taskKind: RouteTaskKind.ASSESS, dynamic: true }),
+    ).resolves.toMatchObject({
       clientName: "CopilotProxyGpt54",
     });
   });
@@ -110,7 +123,10 @@ describe("LlmModelRouter", () => {
     const call: RouteModelCallFn = async () => {
       throw new Error("proxy down");
     };
-    const router = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall: call });
+    const router = new LlmModelRouter({
+      fallback: new PolicyModelRouter(),
+      callRouteModelCall: call,
+    });
 
     await expect(router.route({ taskKind: RouteTaskKind.NORMALIZE })).resolves.toMatchObject({
       clientName: "CopilotProxyGpt5Mini",
@@ -123,9 +139,14 @@ describe("LlmModelRouter", () => {
       model: "made-up",
       rationale: "bad",
     });
-    const router = new LlmModelRouter({ fallback: new PolicyModelRouter(), callRouteModelCall: call });
+    const router = new LlmModelRouter({
+      fallback: new PolicyModelRouter(),
+      callRouteModelCall: call,
+    });
 
-    await expect(router.route({ taskKind: RouteTaskKind.ASSESS, dynamic: true })).resolves.toMatchObject({
+    await expect(
+      router.route({ taskKind: RouteTaskKind.ASSESS, dynamic: true }),
+    ).resolves.toMatchObject({
       clientName: "CopilotProxyGpt54",
     });
   });
@@ -220,7 +241,11 @@ describe("HybridModelRouter", () => {
     const llm = {
       async route() {
         llmCalls += 1;
-        return { clientName: "CopilotProxyGrokCodeFast1", model: "grok-code-fast-1", rationale: "x" };
+        return {
+          clientName: "CopilotProxyGrokCodeFast1",
+          model: "grok-code-fast-1",
+          rationale: "x",
+        };
       },
     };
     const router = new HybridModelRouter({ policy: new PolicyModelRouter(), llm });
@@ -235,7 +260,11 @@ describe("HybridModelRouter", () => {
     const llm = {
       async route() {
         llmCalls += 1;
-        return { clientName: "CopilotProxyGrokCodeFast1", model: "grok-code-fast-1", rationale: "x" };
+        return {
+          clientName: "CopilotProxyGrokCodeFast1",
+          model: "grok-code-fast-1",
+          rationale: "x",
+        };
       },
     };
     const router = new HybridModelRouter({ policy: new PolicyModelRouter(), llm });
@@ -247,7 +276,9 @@ describe("HybridModelRouter", () => {
 
   it("falls back to policy for dynamic requests when no LLM router is configured", async () => {
     const router = new HybridModelRouter({ policy: new PolicyModelRouter() });
-    await expect(router.route({ taskKind: RouteTaskKind.REPORT, dynamic: true })).resolves.toMatchObject({
+    await expect(
+      router.route({ taskKind: RouteTaskKind.REPORT, dynamic: true }),
+    ).resolves.toMatchObject({
       clientName: "CopilotProxyClaudeOpus48",
     });
   });

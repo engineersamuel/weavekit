@@ -39,20 +39,32 @@ type UserInputResponse = {
 };
 
 type CopilotSession = {
-  sendAndWait(message: { prompt: string }, timeout?: number): Promise<{ data?: { content?: string } } | null | undefined>;
+  sendAndWait(
+    message: { prompt: string },
+    timeout?: number,
+  ): Promise<{ data?: { content?: string } } | null | undefined>;
   disconnect(): Promise<void>;
 };
 
 export function buildTelegramQuestion(request: UserInputRequest): string {
   const parts = [request.question.trim()];
   if (request.choices && request.choices.length > 0) {
-    parts.push(`Choices:\n${request.choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`);
-    parts.push(request.allowFreeform === false ? "Reply with one of the choices." : "Reply with a choice or your own answer.");
+    parts.push(
+      `Choices:\n${request.choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`,
+    );
+    parts.push(
+      request.allowFreeform === false
+        ? "Reply with one of the choices."
+        : "Reply with a choice or your own answer.",
+    );
   }
   return parts.join("\n\n");
 }
 
-export function createUserInputResponse(answer: string, choices: string[] | undefined): UserInputResponse {
+export function createUserInputResponse(
+  answer: string,
+  choices: string[] | undefined,
+): UserInputResponse {
   const trimmed = answer.trim();
   return {
     answer: trimmed,
@@ -106,7 +118,10 @@ async function main(): Promise<void> {
     await copilot.start();
     session = (await copilot.createSession({
       model: config.copilot.model ?? "gpt-5-mini",
-      onPermissionRequest: () => ({ kind: "denied-interactively-by-user", feedback: "This example only allows ask_user." }),
+      onPermissionRequest: () => ({
+        kind: "denied-interactively-by-user",
+        feedback: "This example only allows ask_user.",
+      }),
       onUserInputRequest: async (request: UserInputRequest) => {
         const question = buildTelegramQuestion(request);
         console.log(`Copilot asked: ${request.question}`);
@@ -117,7 +132,10 @@ async function main(): Promise<void> {
       },
     })) as CopilotSession;
 
-    await telegram.sendMessage(chatId, "Starting Copilot dinner planner. It will ask you a question here.");
+    await telegram.sendMessage(
+      chatId,
+      "Starting Copilot dinner planner. It will ask you a question here.",
+    );
     const response = await session.sendAndWait(
       {
         prompt:

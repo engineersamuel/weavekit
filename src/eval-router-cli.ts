@@ -1,7 +1,11 @@
 import { pathToFileURL } from "node:url";
 import { runRouteClassificationEval } from "./eval/routerRunner.js";
 
-function parseCliArgs(argv: string[]): { corpusDir?: string; resultsDir?: string; maxConcurrency?: number } {
+function parseCliArgs(argv: string[]): {
+  corpusDir?: string;
+  resultsDir?: string;
+  maxConcurrency?: number;
+} {
   const options: { corpusDir?: string; resultsDir?: string; maxConcurrency?: number } = {};
 
   for (let index = 0; index < argv.length; index += 1) {

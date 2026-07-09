@@ -6,7 +6,12 @@ describe("macro workflow planner adapter seam", () => {
     const calls: Array<{ operation: string; options: unknown }> = [];
     const planner = new GeneratedWorkflowPlannerAdapter({
       plannerClient: {
-        async PlanWorkflow(objective: string, prompt: string, templateId: string, options: unknown) {
+        async PlanWorkflow(
+          objective: string,
+          prompt: string,
+          templateId: string,
+          options: unknown,
+        ) {
           calls.push({ operation: `plan:${templateId}`, options });
           return {
             objective,
@@ -30,7 +35,13 @@ describe("macro workflow planner adapter seam", () => {
             ],
           };
         },
-        async GenerateReplanPatch(reason: string, maxRemainingReplans: number, _completedNodeIds: string[] | undefined, _currentPlan: unknown, options: unknown) {
+        async GenerateReplanPatch(
+          reason: string,
+          maxRemainingReplans: number,
+          _completedNodeIds: string[] | undefined,
+          _currentPlan: unknown,
+          options: unknown,
+        ) {
           calls.push({ operation: `replan:${reason}:${maxRemainingReplans}`, options });
           return {
             reason,
@@ -41,8 +52,15 @@ describe("macro workflow planner adapter seam", () => {
       } as never,
     });
 
-    const plan = await planner.planWorkflow({ objective: "Ship the feature", prompt: "Do the work", templateId: "implementation-review" });
-    const patch = await planner.generateReplanPatch({ reason: "verification-failure", maxRemainingReplans: 1 });
+    const plan = await planner.planWorkflow({
+      objective: "Ship the feature",
+      prompt: "Do the work",
+      templateId: "implementation-review",
+    });
+    const patch = await planner.generateReplanPatch({
+      reason: "verification-failure",
+      maxRemainingReplans: 1,
+    });
 
     expect(plan.templateId).toBe("implementation-review");
     expect(plan.nodes[0]).toMatchObject({
@@ -53,14 +71,22 @@ describe("macro workflow planner adapter seam", () => {
     expect(patch.reason).toBe("verification-failure");
     expect(calls).toEqual([
       { operation: "plan:implementation-review", options: { client: "CopilotProxyGpt55" } },
-      { operation: "replan:verification-failure:1", options: { client: "CopilotProxyClaudeOpus48" } },
+      {
+        operation: "replan:verification-failure:1",
+        options: { client: "CopilotProxyClaudeOpus48" },
+      },
     ]);
   });
 
   it("binds planner methods so generated BAML clients keep their instance context", async () => {
     const plannerClient = {
       invoked: true,
-      async PlanWorkflow(this: { invoked: boolean }, objective: string, prompt: string, templateId: string) {
+      async PlanWorkflow(
+        this: { invoked: boolean },
+        objective: string,
+        prompt: string,
+        templateId: string,
+      ) {
         expect(this.invoked).toBe(true);
         return {
           objective,
@@ -72,7 +98,13 @@ describe("macro workflow planner adapter seam", () => {
     };
     const planner = new GeneratedWorkflowPlannerAdapter({ plannerClient: plannerClient as never });
 
-    await expect(planner.planWorkflow({ objective: "Ship the feature", prompt: "Do the work", templateId: "implementation-review" })).resolves.toMatchObject({
+    await expect(
+      planner.planWorkflow({
+        objective: "Ship the feature",
+        prompt: "Do the work",
+        templateId: "implementation-review",
+      }),
+    ).resolves.toMatchObject({
       templateId: "implementation-review",
     });
   });
@@ -81,7 +113,12 @@ describe("macro workflow planner adapter seam", () => {
     const seen: Array<Record<string, unknown>> = [];
     const planner = new GeneratedWorkflowPlannerAdapter({
       plannerClient: {
-        async GenerateReplanPatch(reason: string, maxRemainingReplans: number, completedNodeIds: string[] | undefined, currentPlan: unknown) {
+        async GenerateReplanPatch(
+          reason: string,
+          maxRemainingReplans: number,
+          completedNodeIds: string[] | undefined,
+          currentPlan: unknown,
+        ) {
           seen.push({ reason, maxRemainingReplans, completedNodeIds, currentPlan });
           return {
             reason,
@@ -132,9 +169,15 @@ describe("macro workflow planner adapter seam", () => {
       } as never,
     });
 
-    await planner.planWorkflow({ objective: "Ship the feature", prompt: "Do the work", templateId: "implementation-review" });
+    await planner.planWorkflow({
+      objective: "Ship the feature",
+      prompt: "Do the work",
+      templateId: "implementation-review",
+    });
 
-    expect(seen).toEqual([["Ship the feature", "Do the work", "implementation-review", { client: "CopilotProxyGpt55" }]]);
+    expect(seen).toEqual([
+      ["Ship the feature", "Do the work", "implementation-review", { client: "CopilotProxyGpt55" }],
+    ]);
   });
 
   it("infers description and model metadata for BAML-normalized nodes that omit it", async () => {
@@ -185,7 +228,11 @@ describe("macro workflow planner adapter seam", () => {
       } as never,
     });
 
-    const plan = await planner.planWorkflow({ objective: "Ship", prompt: "Do the work", templateId: "implementation-review" });
+    const plan = await planner.planWorkflow({
+      objective: "Ship",
+      prompt: "Do the work",
+      templateId: "implementation-review",
+    });
 
     expect(plan.nodes.find((node) => node.id === "plan")).toMatchObject({
       description: "Plan the work",

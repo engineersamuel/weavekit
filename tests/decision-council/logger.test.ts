@@ -63,7 +63,8 @@ describe("council logger", () => {
         personaId: "pragmatic",
         operation: "normalize",
         durationMs: 4500,
-        summary: "Pragmatic persona recommends a minimal validation spike before adopting Flue/BAML.",
+        summary:
+          "Pragmatic persona recommends a minimal validation spike before adopting Flue/BAML.",
       },
       { color: false },
     );

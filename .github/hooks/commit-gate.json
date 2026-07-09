@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "./scripts/hooks/commit-gate.sh",
+        "cwd": ".",
+        "timeoutSec": 120,
+        "matcher": "bash"
+      }
+    ]
+  }
+}

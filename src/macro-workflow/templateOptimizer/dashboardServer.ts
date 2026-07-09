@@ -100,7 +100,12 @@ const CONTENT_TYPES = new Map<string, string>([
   [".txt", "text/plain; charset=utf-8"],
 ]);
 
-const ALLOWED_ARTIFACTS = new Set(["optimizer-run.json", "summary.md", "apply-dry-run.md", "apply-summary.md"]);
+const ALLOWED_ARTIFACTS = new Set([
+  "optimizer-run.json",
+  "summary.md",
+  "apply-dry-run.md",
+  "apply-summary.md",
+]);
 
 export async function createTemplateOptimizerDashboardServer(
   options: TemplateOptimizerDashboardServerOptions = {},
@@ -138,7 +143,9 @@ export async function createTemplateOptimizerDashboardServer(
     }
 
     if (requestUrl.pathname === "/api/runs") {
-      const runs = await listTemplateOptimizerDashboardRuns(runsRoot, { templateId }).catch(() => []);
+      const runs = await listTemplateOptimizerDashboardRuns(runsRoot, { templateId }).catch(
+        () => [],
+      );
       response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       response.end(JSON.stringify({ runs, latestRunId: runs[0]?.runId }));
       return;
@@ -146,7 +153,9 @@ export async function createTemplateOptimizerDashboardServer(
 
     if (requestUrl.pathname === "/api/run") {
       const runId = requestUrl.searchParams.get("runId") ?? undefined;
-      const detail = await readTemplateOptimizerDashboardRun(runsRoot, runId, { templateId }).catch(() => undefined);
+      const detail = await readTemplateOptimizerDashboardRun(runsRoot, runId, { templateId }).catch(
+        () => undefined,
+      );
       if (!detail) {
         response.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify({ error: "Run not found." }));
@@ -158,7 +167,9 @@ export async function createTemplateOptimizerDashboardServer(
     }
 
     if (requestUrl.pathname === "/api/artifact") {
-      const filePath = await resolveArtifactRequest(requestUrl, runsRoot, { templateId }).catch(() => undefined);
+      const filePath = await resolveArtifactRequest(requestUrl, runsRoot, { templateId }).catch(
+        () => undefined,
+      );
       if (!filePath) {
         response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
         response.end("Artifact not found.");
@@ -179,7 +190,11 @@ export async function createTemplateOptimizerDashboardServer(
       return;
     }
 
-    const filePath = resolveTemplateOptimizerStaticPath(requestUrl.pathname, dashboardDir, repoRoot);
+    const filePath = resolveTemplateOptimizerStaticPath(
+      requestUrl.pathname,
+      dashboardDir,
+      repoRoot,
+    );
     if (filePath) {
       const contentType = CONTENT_TYPES.get(extname(filePath)) ?? "application/octet-stream";
       try {
@@ -224,7 +239,11 @@ export async function listTemplateOptimizerDashboardRuns(
       // Ignore partially written runs while an optimizer process is still updating files.
     }
   }
-  return runs.sort((left, right) => Date.parse(right.generatedAt ?? right.updatedAt) - Date.parse(left.generatedAt ?? left.updatedAt));
+  return runs.sort(
+    (left, right) =>
+      Date.parse(right.generatedAt ?? right.updatedAt) -
+      Date.parse(left.generatedAt ?? left.updatedAt),
+  );
 }
 
 export async function readTemplateOptimizerDashboardRun(
@@ -412,12 +431,16 @@ function summarizeTemplateOptimizerRun(
   };
 }
 
-async function readTemplateOptimizerRunArtifact(filePath: string): Promise<TemplateOptimizerRunArtifact> {
+async function readTemplateOptimizerRunArtifact(
+  filePath: string,
+): Promise<TemplateOptimizerRunArtifact> {
   const contents = await readFile(filePath, "utf8");
   return JSON.parse(contents) as TemplateOptimizerRunArtifact;
 }
 
-async function listOptimizerRunFiles(rootDir: string): Promise<Array<{ path: string; mtimeMs: number }>> {
+async function listOptimizerRunFiles(
+  rootDir: string,
+): Promise<Array<{ path: string; mtimeMs: number }>> {
   const results: Array<{ path: string; mtimeMs: number }> = [];
   async function visit(currentDir: string) {
     try {
@@ -497,7 +520,11 @@ async function close(server: Server): Promise<void> {
   });
 }
 
-function resolveTemplateOptimizerStaticPath(pathname: string, dashboardDir: string, repoRoot: string): string | undefined {
+function resolveTemplateOptimizerStaticPath(
+  pathname: string,
+  dashboardDir: string,
+  repoRoot: string,
+): string | undefined {
   const normalizedPath = pathname === "/" ? "/index.html" : pathname;
   if (normalizedPath.startsWith("/node_modules/")) {
     const relative = normalizedPath.slice("/node_modules/".length);

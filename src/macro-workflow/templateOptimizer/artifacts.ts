@@ -26,7 +26,9 @@ export type TemplateOptimizerArtifactsArgsSnapshot = {
   outputRoot: string;
 };
 
-type TemplateOptimizerArtifactResult = TemplateOptimizerResult | TemplateOptimizerWithLiveGateResult;
+type TemplateOptimizerArtifactResult =
+  | TemplateOptimizerResult
+  | TemplateOptimizerWithLiveGateResult;
 
 export type TemplateOptimizerRunArtifact = {
   status: "keep-current-template" | "candidate-ready" | TemplateOptimizerLiveGateStatus;
@@ -100,7 +102,11 @@ export async function writeTemplateOptimizerArtifacts(args: {
     `${JSON.stringify(payload, null, 2)}\n`,
     "utf8",
   );
-  await writeFile(join(args.outputDir, "summary.md"), renderTemplateOptimizerSummary(payload), "utf8");
+  await writeFile(
+    join(args.outputDir, "summary.md"),
+    renderTemplateOptimizerSummary(payload),
+    "utf8",
+  );
   return payload;
 }
 
@@ -117,7 +123,9 @@ function buildTemplateOptimizerRunArtifact(args: {
       : "adopt-candidate";
   const liveResult = isLiveGateResult(args.result) ? args.result : undefined;
   return {
-    status: liveResult?.status ?? (recommendation === "keep-current-template" ? "keep-current-template" : "candidate-ready"),
+    status:
+      liveResult?.status ??
+      (recommendation === "keep-current-template" ? "keep-current-template" : "candidate-ready"),
     note: liveResult
       ? "Template optimizer completed with fixture judging and live source-to-project acceptance gating."
       : "Template optimizer completed with live BAML candidate generation and judging.",
@@ -222,7 +230,9 @@ function renderTemplateOptimizerSummary(run: TemplateOptimizerRunArtifact): stri
   ].join("\n");
 }
 
-function isLiveGateResult(result: TemplateOptimizerArtifactResult): result is TemplateOptimizerWithLiveGateResult {
+function isLiveGateResult(
+  result: TemplateOptimizerArtifactResult,
+): result is TemplateOptimizerWithLiveGateResult {
   return "liveGate" in result;
 }
 
@@ -235,20 +245,14 @@ function renderFinalRecommendationRationale(result: TemplateOptimizerResult): st
   return result.finalIncumbent.rationale;
 }
 
-function renderFixtureList(
-  fixtures: TemplateOptimizerRunArtifact["fixtures"],
-): string[] {
+function renderFixtureList(fixtures: TemplateOptimizerRunArtifact["fixtures"]): string[] {
   if (fixtures.length === 0) {
     return ["No fixtures recorded."];
   }
-  return fixtures.map(
-    (fixture) => `- ${fixture.id} (${fixture.mode}): ${fixture.scenarioSummary}`,
-  );
+  return fixtures.map((fixture) => `- ${fixture.id} (${fixture.mode}): ${fixture.scenarioSummary}`);
 }
 
-function renderIterationSummary(
-  iterations: TemplateOptimizerRunArtifact["iterations"],
-): string[] {
+function renderIterationSummary(iterations: TemplateOptimizerRunArtifact["iterations"]): string[] {
   if (iterations.length === 0) {
     return ["No iterations ran."];
   }
@@ -283,7 +287,12 @@ function renderLiveGateSummary(run: TemplateOptimizerRunArtifact): string[] {
     );
   }
   if (run.liveRejectedMoves.length > 0) {
-    lines.push("", "### Live Rejected Moves", "", ...run.liveRejectedMoves.map((move) => `- ${move}`));
+    lines.push(
+      "",
+      "### Live Rejected Moves",
+      "",
+      ...run.liveRejectedMoves.map((move) => `- ${move}`),
+    );
   }
   return lines;
 }

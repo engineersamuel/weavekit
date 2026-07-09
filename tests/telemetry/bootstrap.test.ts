@@ -3,7 +3,11 @@ import type { NodeSDK } from "@opentelemetry/sdk-node";
 
 type NodeSDKConfig = NonNullable<ConstructorParameters<typeof NodeSDK>[0]>;
 
-const nodeSdkConstructors: Array<{ config: NodeSDKConfig; start: ReturnType<typeof vi.fn>; shutdown: ReturnType<typeof vi.fn> }> = [];
+const nodeSdkConstructors: Array<{
+  config: NodeSDKConfig;
+  start: ReturnType<typeof vi.fn>;
+  shutdown: ReturnType<typeof vi.fn>;
+}> = [];
 const batchSpanProcessorConstructors: unknown[] = [];
 const otlpExporterConstructors: unknown[] = [];
 const langfuseProcessorConstructors: unknown[] = [];
@@ -30,7 +34,10 @@ vi.mock("@langfuse/otel", () => ({
       langfuseProcessorConstructors.push(params);
     }
   },
-  isDefaultExportSpan: vi.fn((span: { instrumentationScope?: { name?: string } }) => span.instrumentationScope?.name !== "skip"),
+  isDefaultExportSpan: vi.fn(
+    (span: { instrumentationScope?: { name?: string } }) =>
+      span.instrumentationScope?.name !== "skip",
+  ),
 }));
 
 vi.mock("@opentelemetry/sdk-node", () => ({
@@ -120,8 +127,12 @@ describe("telemetry bootstrap", () => {
     expect(langfuseProcessorConstructors[0]).toHaveProperty("mask");
     expect(langfuseProcessorConstructors[0]).toHaveProperty("shouldExportSpan");
 
-    const mask = (langfuseProcessorConstructors[0] as { mask?: (params: { data: unknown }) => unknown })?.mask;
-    expect(mask?.({ data: "hello" })).toBe("<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>");
+    const mask = (
+      langfuseProcessorConstructors[0] as { mask?: (params: { data: unknown }) => unknown }
+    )?.mask;
+    expect(mask?.({ data: "hello" })).toBe(
+      "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>",
+    );
     expect(mask?.({ data: { nested: ["secret", { keep: true }] } })).toBe(
       "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>",
     );
@@ -153,8 +164,11 @@ describe("telemetry bootstrap", () => {
 
     await startTelemetry("weavekit-test");
 
-    const shouldExportSpan = (langfuseProcessorConstructors[0] as { shouldExportSpan?: (args: { otelSpan?: unknown }) => boolean })
-      ?.shouldExportSpan;
+    const shouldExportSpan = (
+      langfuseProcessorConstructors[0] as {
+        shouldExportSpan?: (args: { otelSpan?: unknown }) => boolean;
+      }
+    )?.shouldExportSpan;
     expect(shouldExportSpan).toBeTypeOf("function");
     expect(() => shouldExportSpan?.({})).not.toThrow();
     expect(shouldExportSpan?.({})).toBe(false);
@@ -166,8 +180,11 @@ describe("telemetry bootstrap", () => {
 
     await startTelemetry("weavekit-test");
 
-    const shouldExportSpan = (langfuseProcessorConstructors[0] as { shouldExportSpan?: (args: { otelSpan?: Record<string, unknown> }) => boolean })
-      ?.shouldExportSpan;
+    const shouldExportSpan = (
+      langfuseProcessorConstructors[0] as {
+        shouldExportSpan?: (args: { otelSpan?: Record<string, unknown> }) => boolean;
+      }
+    )?.shouldExportSpan;
     const legacySpan: Record<string, unknown> = {
       name: "run.council.baml.assess",
       attributes: {},
