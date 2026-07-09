@@ -3,13 +3,13 @@ set -euo pipefail
 
 usage() {
   echo 'Usage: mise run source-to-project [--project <id>] "<prompt>"' >&2
-  echo '       WEAKEKIT_PROJECT=<id> mise run source-to-project "<prompt>"' >&2
+  echo '       WEAVEKIT_PROJECT=<id> mise run source-to-project "<prompt>"' >&2
   echo '' >&2
   echo 'Project selection priority:' >&2
   echo '  1. --project <id> / -p <id> flag' >&2
-  echo '  2. WEAKEKIT_PROJECT env var' >&2
+  echo '  2. WEAVEKIT_PROJECT env var' >&2
   echo '  3. "project: <id>" parsed from the prompt text' >&2
-  echo '  4. Default: weakekit' >&2
+  echo '  4. Default: weavekit' >&2
 }
 
 if [[ $# -eq 0 ]]; then
@@ -18,7 +18,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 # Parse optional --project / -p flag before the prompt
-project="${WEAKEKIT_PROJECT:-}"
+project="${WEAVEKIT_PROJECT:-${WEAKEKIT_PROJECT:-}}"
 prompt_args=()
 
 while [[ $# -gt 0 ]]; do
@@ -65,11 +65,11 @@ if [[ -z "$project" ]]; then
   fi
 fi
 
-# Default to weakekit
-project="${project:-weakekit}"
+# Default to weavekit
+project="${project:-weavekit}"
 
-dashboard_mode="${WEAKEKIT_DASHBOARD:-embedded}"
-dashboard_url="${WEAKEKIT_DASHBOARD_URL:-}"
+dashboard_mode="${WEAVEKIT_DASHBOARD:-${WEAKEKIT_DASHBOARD:-embedded}}"
+dashboard_url="${WEAVEKIT_DASHBOARD_URL:-${WEAKEKIT_DASHBOARD_URL:-}}"
 
 args=(
   --template source-to-project \
@@ -93,13 +93,18 @@ case "$dashboard_mode" in
   off|none)
     ;;
   *)
-    echo 'WEAKEKIT_DASHBOARD must be "embedded" or "off".' >&2
+    echo 'WEAVEKIT_DASHBOARD must be "embedded" or "off".' >&2
     exit 2
     ;;
 esac
 
+if [[ ! -d node_modules ]]; then
+  echo '[weavekit] node_modules missing; running nub install --prefer-frozen-lockfile.' >&2
+  nub install --prefer-frozen-lockfile
+fi
+
 if [[ "$run_with_portless" == "true" ]]; then
-  nubx portless run --name weakekit-source-to-project nub src/cli.ts workflow run "${args[@]}"
+  nubx portless run --name weavekit-source-to-project nub src/cli.ts workflow run "${args[@]}"
 else
   nub src/cli.ts workflow run "${args[@]}"
 fi

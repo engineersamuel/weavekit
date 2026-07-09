@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { WorkflowHarnessKind, WorkflowNodeKind } from "../../../src/macro-workflow/types.js";
 import { runMacroWorkflow } from "../../../src/macro-workflow/runner.js";
 import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.js";
+import type { OpportunityCouncilReview } from "../../../src/generated/baml_client/index.js";
 import {
   createCopilotSdkHarnessClient,
   createSourceToProjectUserInputRequestHandler,
@@ -1373,6 +1374,124 @@ describe("source-to-project harness registry", () => {
       model: "deterministic",
     });
     expect(nodes?.filter((node) => node.kind === WorkflowNodeKind.REPORT)).toHaveLength(3);
+  });
+
+  it("promotes a valid bundle instead of overlapping accepted member opportunities", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+    });
+    const review: OpportunityCouncilReview = {
+      ...latestRunCouncilReviewFixture(),
+      bundles: [{
+        id: "bundle-loop-budgeting",
+        opportunityIds: ["opp-1", "opp-3", "opp-4"],
+        rationale: "These accepted opportunities share one loop-budgeting change surface and should be planned together.",
+        sharedChangeSurface: "workflow templates, runner, verifier",
+        combinedUserValue: "A single coherent budgeting workflow improvement instead of three duplicate plans.",
+        separationRisk: "Separate implementation plans would repeat the same score and budget plumbing.",
+        maxPrScope: "Update the loop template, telemetry, and verifier rules together.",
+      }],
+    };
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: review },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    expect(nodes?.map((node) => node.id)).toEqual([
+      "plan-opportunity-bundle-loop-budgeting",
+      "review-opportunity-bundle-loop-budgeting",
+      "report-opportunity-bundle-loop-budgeting",
+      "visual-design-opportunity-bundle-loop-budgeting",
+    ]);
+    const planNode = nodes?.find((node) => node.id === "plan-opportunity-bundle-loop-budgeting");
+    expect(planNode?.input).toMatchObject({
+      selectedCandidate: {
+        kind: "bundle",
+        id: "bundle-loop-budgeting",
+        opportunityIds: ["opp-1", "opp-3", "opp-4"],
+      },
+    });
+  });
+
+  it("does not promote a bundle that includes rejected member opportunities", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+    });
+    const review: OpportunityCouncilReview = {
+      ...latestRunCouncilReviewFixture(),
+      bundles: [{
+        id: "bundle-with-rejected-member",
+        opportunityIds: ["opp-1", "opp-2", "opp-3"],
+        rationale: "This bundle incorrectly includes a speculative opportunity.",
+        sharedChangeSurface: "workflow templates and harnesses",
+        combinedUserValue: "One joined change.",
+        separationRisk: "Plans could overlap.",
+        maxPrScope: "Update the accepted and speculative changes together.",
+      }],
+    };
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: review },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    const nodeIds = nodes?.map((node) => node.id) ?? [];
+    expect(nodeIds).not.toContain("plan-opportunity-bundle-with-rejected-member");
+    expect(nodeIds).toContain("plan-opportunity-opp-1");
+    expect(nodeIds).toContain("plan-opportunity-opp-3");
   });
 
   it("prepares the full execution prompt for dynamic opportunity plan nodes", async () => {

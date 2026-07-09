@@ -33,6 +33,22 @@ async function installCommandCapture(binDir: string, capturePath: string, comman
   await chmod(commandPath, 0o755);
 }
 
+async function installAppendCommandCapture(binDir: string, command: "nub" | "nubx"): Promise<void> {
+  const commandPath = join(binDir, command);
+  await writeFile(commandPath, [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    "printf 'CALL\\n' >> \"$CAPTURE_NUB_ARGS\"",
+    `printf '%s\\n' '${command}' >> "$CAPTURE_NUB_ARGS"`,
+    "for arg in \"$@\"; do",
+    "  printf '%s\\n' \"$arg\" >> \"$CAPTURE_NUB_ARGS\"",
+    "done",
+    "printf 'END\\n' >> \"$CAPTURE_NUB_ARGS\"",
+    "",
+  ].join("\n"));
+  await chmod(commandPath, 0o755);
+}
+
 async function installSourceToProjectOptimizeNubCapture(
   binDir: string,
   capturePath: string,
@@ -97,6 +113,28 @@ async function runSourceToProjectTask(env: Record<string, string | undefined> = 
   });
 
   return (await readFile(capturePath, "utf8")).trimEnd().split("\n");
+}
+
+async function runSourceToProjectTaskInFreshWorktree(): Promise<string[][]> {
+  const repoRoot = process.cwd();
+  const tempDir = await mkdtemp(join(tmpdir(), "weavekit-fresh-worktree-"));
+  tempDirs.push(tempDir);
+  const binDir = join(tempDir, "bin");
+  await mkdir(binDir);
+  const capturePath = join(tempDir, "nub-calls.txt");
+  await installAppendCommandCapture(binDir, "nub");
+  await installAppendCommandCapture(binDir, "nubx");
+
+  await execFileAsync(join(repoRoot, ".mise/tasks/source-to-project"), ["Adapt https://example.com/source"], {
+    cwd: tempDir,
+    env: {
+      ...process.env,
+      CAPTURE_NUB_ARGS: capturePath,
+      PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+    },
+  });
+
+  return parseCapturedCalls(await readFile(capturePath, "utf8"));
 }
 
 async function runVerificationOptimizerTask(
@@ -302,6 +340,21 @@ describe("mise source-to-project task", () => {
     ]);
     expect(args).toContain("--dashboard");
     expect(args).not.toContain("--dashboard-url");
+  });
+
+  it("bootstraps dependencies before source-to-project runs in a fresh worktree", async () => {
+    const calls = await runSourceToProjectTaskInFreshWorktree();
+
+    expect(calls[0]).toEqual(["nub", "install", "--prefer-frozen-lockfile"]);
+    expect(calls[1].slice(0, 7)).toEqual([
+      "nubx",
+      "portless",
+      "run",
+      "--name",
+      "weavekit-source-to-project",
+      "nub",
+      "src/cli.ts",
+    ]);
   });
 
   it("publishes source-to-project runs to an explicit dashboard URL when configured", async () => {

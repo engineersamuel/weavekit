@@ -641,6 +641,12 @@ function readPluginConfigs(value: unknown, env: NodeJS.ProcessEnv): PluginConfig
 function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry> {
   return Object.fromEntries(Object.entries(asRecord(value)).map(([id, raw]) => {
     const record = asRecord(raw);
+    const thresholds: Partial<SourceToProjectThresholds> = {};
+    if (typeof record.min_applicability === "number") thresholds.minApplicability = record.min_applicability;
+    if (typeof record.min_confidence === "number") thresholds.minConfidence = record.min_confidence;
+    if (typeof record.min_impact === "number") thresholds.minImpact = record.min_impact;
+    if (typeof record.min_acceptance_average === "number") thresholds.minAcceptanceAverage = record.min_acceptance_average;
+    if (typeof record.max_risk === "number") thresholds.maxRisk = record.max_risk;
     return [id, {
       id,
       displayName: readString(record.display_name, id),
@@ -651,13 +657,7 @@ function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry>
       validationCommands: readStringArray(record.validation_commands),
       autonomousPrAllowed: readBoolean(record.autonomous_pr_allowed, false),
       maxOpportunities: typeof record.max_opportunities === "number" ? Math.max(0, Math.floor(record.max_opportunities)) : undefined,
-      thresholds: {
-        minApplicability: typeof record.min_applicability === "number" ? record.min_applicability : undefined,
-        minConfidence: typeof record.min_confidence === "number" ? record.min_confidence : undefined,
-        minImpact: typeof record.min_impact === "number" ? record.min_impact : undefined,
-        minAcceptanceAverage: typeof record.min_acceptance_average === "number" ? record.min_acceptance_average : undefined,
-        maxRisk: typeof record.max_risk === "number" ? record.max_risk : undefined,
-      },
+      thresholds,
       notification: readNotificationPolicy(record.notification),
       knowledgeExport: record.knowledge_export === "sanitized" ? "sanitized" : "off",
     }];

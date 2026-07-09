@@ -171,6 +171,8 @@ function MapSourceToProject(
     {{ _.role("system") }}
     Map source lessons to this project. Produce project-specific opportunities, explicit non-applicable lessons, and any valid bundles.
     Bundles require rationale, shared change surface, combined user value, separation risk, and max PR scope.
+    Do not emit overlapping standalone opportunities that are implementation subsets of the same change. If multiple changes must ship together, emit one cohesive opportunity or one valid bundle, and make the member opportunities non-overlapping slices with clear separation risk.
+    If one opportunity's implementation outline already includes another opportunity's target change (for example schema change + adapter + tests for the same score model), merge them into a single opportunity or represent them only through a bundle so downstream planning does not produce duplicate plans.
     Prioritize actionable product/project improvements that apply the source artifact's core behavior to the target project.
     Do not promote implementation plumbing, endpoint abstraction, adapter layers, logging, or safety controls unless the ProjectBrief evidence shows the target project currently has that exact problem.
     If a source lesson is only an implementation detail of the source and does not improve the target project's user workflow, put it in nonApplicableLessons.
