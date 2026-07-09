@@ -1375,7 +1375,12 @@ describe("source-to-project harness registry", () => {
       {
         command: "nub",
         args: ["x", "@agent-native/skills@0.2.249", "add", "--skill", "visual-plan"],
-        cwd: "/tmp/secondbrain",
+        // The visual-plan installer intentionally uses the workflow runner's own
+        // cwd (process.cwd()), not the target project's workingTree, so npm config
+        // (.npmrc trust policy etc.) from the weavekit repo is respected. See the
+        // comment on this behavior in the copilotAdapter's visual-plan-preflight
+        // handling in src/macro-workflow/sourceToProject/harnesses.ts.
+        cwd: process.cwd(),
       },
     ]);
     expect(result).toMatchObject({
@@ -1458,7 +1463,12 @@ describe("source-to-project harness registry", () => {
       mode: "advisory",
       shell: {
         async run() {
-          throw new Error("ERR_NUB_TRUST_DOWNGRADE");
+          // A generic, non-special-cased install failure — unlike
+          // ERR_NUB_TRUST_DOWNGRADE or hosted-auth-pending, this is not
+          // caught and downgraded to a warning by
+          // ensureAgentNativeSkillInstalledForAdvisoryWorkflow, so it should
+          // still fail the node and block source-reading.
+          throw new Error("ENOENT: command not found: nub");
         },
       },
       copilot: {
@@ -1475,7 +1485,7 @@ describe("source-to-project harness registry", () => {
     expect(state.nodeResults.map((result) => result.nodeId)).toEqual(["visual-plan-preflight"]);
     expect(state.nodeResults[0]).toMatchObject({
       status: "failed",
-      error: "ERR_NUB_TRUST_DOWNGRADE",
+      error: "ENOENT: command not found: nub",
     });
     expect(copilotCalls).toEqual([]);
   });
@@ -1517,10 +1527,6 @@ describe("source-to-project harness registry", () => {
     });
 
     expect(nodes?.map((node) => node.id)).toEqual([
-      "plan-opportunity-opp-1",
-      "review-opportunity-opp-1",
-      "report-opportunity-opp-1",
-      "visual-design-opportunity-opp-1",
       "plan-opportunity-opp-3",
       "review-opportunity-opp-3",
       "report-opportunity-opp-3",
@@ -1529,6 +1535,10 @@ describe("source-to-project harness registry", () => {
       "review-opportunity-opp-4",
       "report-opportunity-opp-4",
       "visual-design-opportunity-opp-4",
+      "plan-opportunity-opp-1",
+      "review-opportunity-opp-1",
+      "report-opportunity-opp-1",
+      "visual-design-opportunity-opp-1",
     ]);
     expect(nodes?.find((node) => node.id === "report-opportunity-opp-1")).toMatchObject({
       kind: WorkflowNodeKind.REPORT,
@@ -3027,7 +3037,10 @@ describe("source-to-project harness registry", () => {
           replanPolicy: "never",
         },
         {
-          payloads: new Map([["council-review", { councilReview }]]),
+          payloads: new Map([
+            ["council-review", { councilReview }],
+            ["project-research", { projectBrief: projectBriefFixture() }],
+          ]),
           artifacts: new Map(),
           outputDir,
         },
