@@ -17,10 +17,16 @@ describe("source-to-project semantic verifier", () => {
             changeSurface: "src/workflow",
             score: {
               applicability: 0.9,
+              applicabilityReasoning: "Test fixture reasoning for applicability score 0.9.",
               impact: 0.8,
+              impactReasoning: "Test fixture reasoning for impact score 0.8.",
               confidence: 0.9,
+              confidenceReasoning: "Test fixture reasoning for confidence score 0.9.",
               implementationCost: 0.4,
+              implementationCostReasoning:
+                "Test fixture reasoning for implementation cost score 0.4.",
               risk: 0.3,
+              riskReasoning: "Test fixture reasoning for risk score 0.3.",
             },
             evidence: [],
             speculative: false,
@@ -33,10 +39,16 @@ describe("source-to-project semantic verifier", () => {
             changeSurface: "src/other",
             score: {
               applicability: 0.2,
+              applicabilityReasoning: "Test fixture reasoning for applicability score 0.2.",
               impact: 0.7,
+              impactReasoning: "Test fixture reasoning for impact score 0.7.",
               confidence: 0.9,
+              confidenceReasoning: "Test fixture reasoning for confidence score 0.9.",
               implementationCost: 0.4,
+              implementationCostReasoning:
+                "Test fixture reasoning for implementation cost score 0.4.",
               risk: 0.3,
+              riskReasoning: "Test fixture reasoning for risk score 0.3.",
             },
             evidence: [{ id: "e1", source: "https://example.com", quote: "Evidence" }],
             speculative: false,

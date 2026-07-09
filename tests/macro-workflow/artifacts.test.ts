@@ -187,10 +187,17 @@ describe("macro workflow artifacts", () => {
                       changeSurface: "agent entrypoints",
                       score: {
                         applicability: 0.9,
+                        applicabilityReasoning:
+                          "Test fixture reasoning for applicability score 0.9.",
                         impact: 0.8,
+                        impactReasoning: "Test fixture reasoning for impact score 0.8.",
                         confidence: 0.85,
+                        confidenceReasoning: "Test fixture reasoning for confidence score 0.85.",
                         implementationCost: 0.5,
+                        implementationCostReasoning:
+                          "Test fixture reasoning for implementation cost score 0.5.",
                         risk: 0.3,
+                        riskReasoning: "Test fixture reasoning for risk score 0.3.",
                       },
                       evidence: [],
                       speculative: false,

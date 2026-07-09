@@ -71,7 +71,7 @@ export default class TypeBuilder {
     
     OpportunityCouncilReview: ClassViewer<'OpportunityCouncilReview', "opportunities" | "nonApplicableLessons" | "bundles" | "rankingRationale">;
     
-    OpportunityScore: ClassViewer<'OpportunityScore', "applicability" | "impact" | "confidence" | "implementationCost" | "risk">;
+    OpportunityScore: ClassViewer<'OpportunityScore', "applicability" | "applicabilityReasoning" | "impact" | "impactReasoning" | "confidence" | "confidenceReasoning" | "implementationCost" | "implementationCostReasoning" | "risk" | "riskReasoning">;
     
     PersonaChoiceCandidate: ClassViewer<'PersonaChoiceCandidate', "id" | "name" | "description" | "archetype" | "tags" | "useWhen" | "avoidWhen">;
     
@@ -231,7 +231,7 @@ export default class TypeBuilder {
         ]);
         
         this.OpportunityScore = this.tb.classViewer("OpportunityScore", [
-          "applicability","impact","confidence","implementationCost","risk",
+          "applicability","applicabilityReasoning","impact","impactReasoning","confidence","confidenceReasoning","implementationCost","implementationCostReasoning","risk","riskReasoning",
         ]);
         
         this.PersonaChoiceCandidate = this.tb.classViewer("PersonaChoiceCandidate", [

@@ -210,10 +210,15 @@ export namespace partial_types {
     }
     export interface OpportunityScore {
       applicability?: number | null
+      applicabilityReasoning?: string | null
       impact?: number | null
+      impactReasoning?: string | null
       confidence?: number | null
+      confidenceReasoning?: string | null
       implementationCost?: number | null
+      implementationCostReasoning?: string | null
       risk?: number | null
+      riskReasoning?: string | null
     }
     export interface PersonaChoiceCandidate {
       id?: string | null

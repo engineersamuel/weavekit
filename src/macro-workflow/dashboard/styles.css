@@ -592,6 +592,30 @@ body {
   padding: 5px 7px;
 }
 
+.score-reasoning-list {
+  display: grid;
+  gap: 2px 10px;
+  grid-template-columns: max-content 1fr;
+  margin: 4px 0 0;
+}
+
+.score-reasoning-list dt {
+  color: #7dd3fc;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.score-reasoning-list dd {
+  color: #cbd5f5;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin: 0 0 0.35em;
+  overflow-wrap: anywhere;
+}
+
 .acceptance-row {
   align-items: center;
   display: flex;
