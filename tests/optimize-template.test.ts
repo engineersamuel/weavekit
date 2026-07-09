@@ -49,6 +49,18 @@ describe("optimize-template args", () => {
     );
   });
 
+  it("accepts a budget override reason for audited high-cost optimizer runs", () => {
+    expect(
+      parseOptimizeTemplateArgs([
+        ...requiredArgs,
+        "--budget-override",
+        "Approved template optimizer calibration run.",
+      ]),
+    ).toMatchObject({
+      budgetOverrideReason: "Approved template optimizer calibration run.",
+    });
+  });
+
   it("rejects non-default model flags until BAML override wiring exists", () => {
     expect(() => parseOptimizeTemplateArgs([...requiredArgs, "--judge-model", "gpt-5.4"])).toThrow(
       "--judge-model only supports gpt-5.5 until BAML model override wiring exists.",

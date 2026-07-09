@@ -96,5 +96,5 @@ function isExpired(fetchedAt: string, ttlHours: number): boolean {
     return true;
   }
   const ttlMs = ttlHours * 60 * 60 * 1000;
-  return Date.now() - fetchedAtMs > ttlMs;
+  return ttlMs <= 0 || Date.now() - fetchedAtMs >= ttlMs;
 }

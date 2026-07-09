@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { BudgetGateBlockedError } from "../../src/macro-workflow/budgetGate.js";
 import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js";
 import { MacroWorkflowEventKind } from "../../src/macro-workflow/logger.js";
 import type { WorkflowExecutionMetadata } from "../../src/macro-workflow/types.js";
@@ -27,6 +28,36 @@ describe("macro workflow runner", () => {
     expect(state.status).toBe("passed");
     expect(state.nodeResults).toHaveLength(plan.nodes.length);
     expect(state.nodeResults.at(-1)?.status).toBe("passed");
+  });
+
+  it("runs the pre-run gate before dispatching any harness node", async () => {
+    const plan = materializeWorkflowPlan("implementation-review", {
+      objective: "Implement rich logging",
+    });
+    const researchHarness = vi.fn(async () => ({ status: "passed" as const, output: "insights" }));
+    const harnesses = createStaticHarnessRegistry({
+      [WorkflowHarnessKind.RESEARCH]: researchHarness,
+    });
+
+    await expect(
+      runMacroWorkflow(plan, {
+        harnesses,
+        preRunGate: () => ({
+          outcome: "block",
+          projectedCostUsd: 30,
+          projectedTokens: 100000,
+          effectiveProjectionUsd: 45,
+          ceilingUsd: 25,
+          marginFactor: 1.5,
+          overCeiling: true,
+          unpricedModels: [],
+          overrideApplied: false,
+          reason: "Projected cost $45.00 exceeds budget ceiling $25.00.",
+        }),
+      }),
+    ).rejects.toBeInstanceOf(BudgetGateBlockedError);
+
+    expect(researchHarness).not.toHaveBeenCalled();
   });
 
   it("passes typed payloads from completed nodes to dependent harnesses", async () => {

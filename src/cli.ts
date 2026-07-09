@@ -72,6 +72,7 @@ export type WorkflowCliArgs = {
   templateCandidateRunId?: string;
   templateCandidateId?: string;
   templateCandidateRunsRoot?: string;
+  budgetOverrideReason?: string;
 };
 
 export type WorkflowRunDescriptor = {
@@ -221,6 +222,7 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   const templateCandidateRunIndex = argv.indexOf("--template-candidate-run");
   const templateCandidateIndex = argv.indexOf("--template-candidate");
   const templateCandidateRunsRootIndex = argv.indexOf("--template-candidate-runs-root");
+  const budgetOverrideIndex = argv.indexOf("--budget-override");
 
   if (templateIndex !== -1 && !argv[templateIndex + 1]) {
     throw new Error("Missing value for --template <id>.");
@@ -275,6 +277,9 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   }
   if (promptIndex !== -1 && !argv[promptIndex + 1]) {
     throw new Error("Missing value for --prompt <text>.");
+  }
+  if (budgetOverrideIndex !== -1 && !argv[budgetOverrideIndex + 1]) {
+    throw new Error("Missing value for --budget-override <reason>.");
   }
 
   const template = templateIndex === -1 ? undefined : argv[templateIndex + 1];
@@ -389,6 +394,9 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   }
   if (templateCandidateRunsRootIndex !== -1) {
     parsed.templateCandidateRunsRoot = argv[templateCandidateRunsRootIndex + 1];
+  }
+  if (budgetOverrideIndex !== -1) {
+    parsed.budgetOverrideReason = argv[budgetOverrideIndex + 1];
   }
   return parsed;
 }
@@ -883,6 +891,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     workflowDeepResearchModule,
     workflowVerificationOptimizerModule,
     workflowUsageModule,
+    workflowNodeCostHistoryModule,
     workflowTemplateCandidateModule,
   ] = await Promise.all([
     import("./macro-workflow/artifacts.js"),
@@ -896,6 +905,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     import("./macro-workflow/deepResearch/harnesses.js"),
     import("./macro-workflow/verificationOptimizer/harnesses.js"),
     import("./macro-workflow/usage.js"),
+    import("./macro-workflow/nodeCostHistory.js"),
     import("./macro-workflow/templateOptimizer/candidatePlan.js"),
   ]);
   const usageCollector = new workflowUsageModule.WorkflowUsageCollector();
@@ -1051,6 +1061,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
             ...sourceToProjectProject!.thresholds,
           },
           sourceToProject: typedConfig.sourceToProject,
+          budgetOverrideReason: args.budgetOverrideReason,
           tooling: typedConfig.tooling,
           plugins: typedConfig.plugins,
           notifier: sourceToProjectNotifier,
@@ -1326,6 +1337,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     state.runId = runDescriptor.runId;
     state.runName = runDescriptor.runName;
     state.usage = usageCollector.summarize();
+    await workflowNodeCostHistoryModule.recordNodeCostHistoryFromUsage({ summary: state.usage });
     await workflowArtifactsModule.writeMacroWorkflowArtifacts({
       outputDir: runDescriptor.outputDir,
       state,

@@ -1,4 +1,5 @@
 import { Collector } from "@boundaryml/baml";
+import { buildNodeCostHistoryKey, type NodeCostHistory } from "./nodeCostHistory.js";
 
 export type WorkflowTokenUsage = {
   inputTokens?: number;
@@ -27,6 +28,24 @@ export type WorkflowUsageSummary = WorkflowTokenUsage & {
 
 type WorkflowUsageRecordInput = Omit<WorkflowUsageRecord, "id" | "label" | "estimatedCostUsd"> & {
   label?: string;
+};
+
+export type WorkflowCostProjectionCall = WorkflowTokenUsage & {
+  nodeId?: string;
+  harness?: string;
+  model?: string;
+  callCount?: number;
+};
+
+export type WorkflowCostProjectionInput = {
+  calls: WorkflowCostProjectionCall[];
+  nodeCostHistory?: NodeCostHistory;
+};
+
+export type WorkflowCostProjection = {
+  projectedCostUsd?: number;
+  projectedTokens: number;
+  unpricedModels: string[];
 };
 
 type ModelPricing = {
@@ -122,7 +141,7 @@ export class WorkflowUsageCollector {
     ) {
       return;
     }
-    const estimatedCostUsd = estimateUsageCostUsd(input.model, usage);
+    const estimatedCostUsd = estimateCostUsdForUsage(input.model, usage);
     const totalTokens = totalTokenCount(usage);
     this.records.push({
       id: `usage-${this.nextId++}`,
@@ -273,7 +292,7 @@ export function renderWorkflowUsageMarkdown(summary: WorkflowUsageSummary | unde
   ];
 }
 
-function estimateUsageCostUsd(
+export function estimateCostUsdForUsage(
   model: string | undefined,
   usage: WorkflowTokenUsage,
 ): number | undefined {
@@ -293,6 +312,53 @@ function estimateUsageCostUsd(
       outputTokens * pricing.outputUsdPerMillion) /
     1_000_000
   );
+}
+
+export function projectWorkflowCostUsd(input: WorkflowCostProjectionInput): WorkflowCostProjection {
+  let projectedCostUsd: number | undefined;
+  let projectedTokens = 0;
+  const unpricedModels = new Set<string>();
+
+  for (const call of input.calls) {
+    const callCount = Math.max(1, Math.floor(call.callCount ?? 1));
+    const historical = findHistoricalProjection(call, input.nodeCostHistory);
+    const staticTokens = totalTokenCount(call) ?? 0;
+    const callTokens = Math.max(staticTokens, historical?.tokens ?? 0);
+    projectedTokens += callTokens * callCount;
+
+    const staticCost = estimateCostUsdForUsage(call.model, call);
+    const callCost =
+      staticCost === undefined && historical?.costUsd === undefined
+        ? undefined
+        : Math.max(staticCost ?? 0, historical?.costUsd ?? 0);
+    if (callCost === undefined) {
+      if (call.model) {
+        unpricedModels.add(call.model);
+      }
+      continue;
+    }
+    projectedCostUsd = (projectedCostUsd ?? 0) + callCost * callCount;
+  }
+
+  return {
+    ...(projectedCostUsd === undefined ? {} : { projectedCostUsd }),
+    projectedTokens,
+    unpricedModels: Array.from(unpricedModels).sort(),
+  };
+}
+
+function findHistoricalProjection(
+  call: WorkflowCostProjectionCall,
+  history: NodeCostHistory | undefined,
+): { tokens: number; costUsd?: number } | undefined {
+  const node = history?.nodes[buildNodeCostHistoryKey(call)];
+  if (!node || node.samples <= 0) {
+    return undefined;
+  }
+  return {
+    tokens: node.averageTokens,
+    ...(node.averageCostUsd === undefined ? {} : { costUsd: node.averageCostUsd }),
+  };
 }
 
 function normalizeUsage(value: unknown): WorkflowTokenUsage {

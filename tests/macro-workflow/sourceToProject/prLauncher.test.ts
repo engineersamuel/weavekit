@@ -1,10 +1,129 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { BudgetGateBlockedError } from "../../../src/macro-workflow/budgetGate.js";
 import {
   buildSourceToProjectPrAgentPrompt,
   launchSourceToProjectPrAgent,
 } from "../../../src/macro-workflow/sourceToProject/prLauncher.js";
 
 describe("source-to-project manual PR launcher", () => {
+  it("blocks before creating a Herdr worktree when the pre-run budget gate exceeds the ceiling", async () => {
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-budget-audit-"));
+    const auditPath = join(dir, "budget-gate-audit.jsonl");
+
+    try {
+      await expect(
+        launchSourceToProjectPrAgent({
+          config: {
+            provider: "herdr",
+            agentCommand: "codex",
+            agentArgs: [],
+            split: "right",
+            agentOptions: [],
+          },
+          context: { ...launchContextFixture(), initialPromptMode: "implement" },
+          budgetGate: {
+            config: {
+              enabled: true,
+              mode: "block",
+              ceilingUsd: 1,
+              marginFactor: 2,
+            },
+            projection: {
+              projectedCostUsd: 2,
+              projectedTokens: 50000,
+              unpricedModels: [],
+            },
+          },
+          budgetGateAuditLogPath: auditPath,
+          shell: {
+            async run(command, args, options) {
+              commands.push({ command, args, cwd: options.cwd });
+              return "";
+            },
+          },
+        }),
+      ).rejects.toBeInstanceOf(BudgetGateBlockedError);
+
+      expect(commands).toEqual([]);
+      expect(JSON.parse((await readFile(auditPath, "utf8")).trim())).toMatchObject({
+        workflowPath: "autonomous-pr",
+        runId: "run-1",
+        nodeId: "visual-design-opportunity-opp-1",
+        projectId: "weavekit",
+        opportunityId: "opp-1",
+        outcome: "block",
+        projectedCostUsd: 2,
+        effectiveProjectionUsd: 4,
+        ceilingUsd: 1,
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("allows a blocked source-to-project PR launch when an override reason is supplied", async () => {
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-budget-audit-"));
+    const auditPath = join(dir, "budget-gate-audit.jsonl");
+
+    try {
+      await launchSourceToProjectPrAgent({
+        config: {
+          provider: "herdr",
+          agentCommand: "/Users/smendenhall/.local/bin/codex",
+          agentArgs: [],
+          split: "right",
+          agentOptions: [],
+        },
+        context: { ...launchContextFixture(), initialPromptMode: "implement" },
+        budgetGate: {
+          config: {
+            enabled: true,
+            mode: "block",
+            ceilingUsd: 1,
+            marginFactor: 2,
+          },
+          projection: {
+            projectedCostUsd: 2,
+            projectedTokens: 50000,
+            unpricedModels: [],
+          },
+          override: { reason: "Approved emergency production fix." },
+        },
+        budgetGateAuditLogPath: auditPath,
+        shell: {
+          async run(command, args, options) {
+            commands.push({ command, args, cwd: options.cwd });
+            if (command === "herdr" && args[0] === "worktree") {
+              return JSON.stringify({
+                result: {
+                  worktree: {
+                    path: "/Users/smendenhall/.herdr/worktrees/weavekit/worktree-source-to-project-opp-1",
+                  },
+                },
+              });
+            }
+            return "";
+          },
+        },
+      });
+
+      expect(commands[0]?.args.slice(0, 2)).toEqual(["worktree", "create"]);
+      expect(JSON.parse((await readFile(auditPath, "utf8")).trim())).toMatchObject({
+        workflowPath: "autonomous-pr",
+        outcome: "allow",
+        overrideApplied: true,
+        reason: expect.stringContaining("Approved emergency production fix."),
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("creates a Herdr worktree, starts the configured agent, and sends the reviewed opportunity prompt", async () => {
     const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
 
