@@ -4,6 +4,7 @@ export type WorkflowTokenUsage = {
   inputTokens?: number;
   outputTokens?: number;
   cachedInputTokens?: number;
+  totalTokens?: number;
 };
 
 export type WorkflowUsageRecord = WorkflowTokenUsage & {
@@ -116,15 +117,18 @@ export class WorkflowUsageCollector {
     if (
       usage.inputTokens === undefined &&
       usage.outputTokens === undefined &&
-      usage.cachedInputTokens === undefined
+      usage.cachedInputTokens === undefined &&
+      usage.totalTokens === undefined
     ) {
       return;
     }
     const estimatedCostUsd = estimateUsageCostUsd(input.model, usage);
+    const totalTokens = totalTokenCount(usage);
     this.records.push({
       id: `usage-${this.nextId++}`,
       ...input,
       ...usage,
+      ...(totalTokens === undefined ? {} : { totalTokens }),
       label: input.label ?? defaultUsageLabel(input),
       ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
     });
@@ -136,6 +140,7 @@ export class WorkflowUsageCollector {
         inputTokens: addOptional(total.inputTokens, record.inputTokens),
         outputTokens: addOptional(total.outputTokens, record.outputTokens),
         cachedInputTokens: addOptional(total.cachedInputTokens, record.cachedInputTokens),
+        totalTokens: addOptional(total.totalTokens, record.totalTokens),
       }),
       {},
     );
@@ -193,12 +198,20 @@ export function extractUsageFromCopilotEventData(data: unknown): WorkflowTokenUs
       readRecord(record.prompt_tokens_details).cached_tokens,
       readRecord(record.input_token_details).cache_read,
     );
+    const totalTokens = readNumber(
+      record.totalTokens,
+      record.total_tokens,
+      record.total,
+      record.totalTokensUsed,
+      record.total_tokens_used,
+    );
     if (
       inputTokens !== undefined ||
       outputTokens !== undefined ||
-      cachedInputTokens !== undefined
+      cachedInputTokens !== undefined ||
+      totalTokens !== undefined
     ) {
-      return { inputTokens, outputTokens, cachedInputTokens };
+      return { inputTokens, outputTokens, cachedInputTokens, totalTokens };
     }
   }
   return undefined;
@@ -209,12 +222,12 @@ export function renderWorkflowUsageSummary(summary: WorkflowUsageSummary): strin
     return "[weavekit] Token usage: no model token usage was reported.\n";
   }
   const lines = [
-    `[weavekit] Token usage: input ${formatInteger(summary.inputTokens)}, cached ${formatInteger(summary.cachedInputTokens)}, output ${formatInteger(summary.outputTokens)}${summary.estimatedCostUsd === undefined ? "" : `, estimated cost ${formatUsd(summary.estimatedCostUsd)}`}`,
+    `[weavekit] Token usage: total ${formatInteger(summary.totalTokens)} tokens, input ${formatInteger(summary.inputTokens)}, cached ${formatInteger(summary.cachedInputTokens)}, output ${formatInteger(summary.outputTokens)}${summary.estimatedCostUsd === undefined ? "" : `, estimated cost ${formatUsd(summary.estimatedCostUsd)}`}`,
     ...summary.records.map((record) => {
       const cost =
         record.estimatedCostUsd === undefined ? "" : `, est ${formatUsd(record.estimatedCostUsd)}`;
       const model = record.model ? ` model=${record.model}` : "";
-      return `[weavekit]   - ${record.label}${model}: input ${formatInteger(record.inputTokens)}, cached ${formatInteger(record.cachedInputTokens)}, output ${formatInteger(record.outputTokens)}${cost}`;
+      return `[weavekit]   - ${record.label}${model}: total ${formatInteger(record.totalTokens)} tokens, input ${formatInteger(record.inputTokens)}, cached ${formatInteger(record.cachedInputTokens)}, output ${formatInteger(record.outputTokens)}${cost}`;
     }),
     ...(summary.unpricedModels.length > 0
       ? [`[weavekit]   Unpriced models: ${summary.unpricedModels.join(", ")}`]
@@ -230,22 +243,24 @@ export function renderWorkflowUsageMarkdown(summary: WorkflowUsageSummary | unde
   return [
     "## Token Usage and Cost",
     "",
+    `- Total tokens: ${formatInteger(summary.totalTokens)}`,
     `- Total input tokens: ${formatInteger(summary.inputTokens)}`,
     `- Cached input tokens: ${formatInteger(summary.cachedInputTokens)}`,
     `- Output tokens: ${formatInteger(summary.outputTokens)}`,
-    `- Estimated cost: ${summary.estimatedCostUsd === undefined ? "n/a" : formatUsd(summary.estimatedCostUsd)}`,
+    `- Total estimated cost: ${summary.estimatedCostUsd === undefined ? "n/a" : formatUsd(summary.estimatedCostUsd)}`,
     ...(summary.unpricedModels.length > 0
       ? [`- Unpriced models: ${summary.unpricedModels.join(", ")}`]
       : []),
     "",
-    "| Call | Executor | Model | Input | Cached | Output | Estimated cost |",
-    "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+    "| Call | Executor | Model | Total | Input | Cached | Output | Estimated cost |",
+    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
     ...summary.records
       .map((record) =>
         [
           escapeMarkdownTableCell(record.label),
           record.executor,
           escapeMarkdownTableCell(record.model ?? "n/a"),
+          formatInteger(record.totalTokens),
           formatInteger(record.inputTokens),
           formatInteger(record.cachedInputTokens),
           formatInteger(record.outputTokens),
@@ -285,7 +300,12 @@ function normalizeUsage(value: unknown): WorkflowTokenUsage {
   const inputTokens = readNumber(record.inputTokens, record.input_tokens);
   const outputTokens = readNumber(record.outputTokens, record.output_tokens);
   const cachedInputTokens = readNumber(record.cachedInputTokens, record.cached_input_tokens);
-  return { inputTokens, outputTokens, cachedInputTokens };
+  const totalTokens = totalTokenCount({
+    inputTokens,
+    outputTokens,
+    totalTokens: readNumber(record.totalTokens, record.total_tokens),
+  });
+  return { inputTokens, outputTokens, cachedInputTokens, totalTokens };
 }
 
 function normalizeModelName(model: string): string {
@@ -328,6 +348,13 @@ function addOptional(left: number | undefined, right: number | undefined): numbe
     return undefined;
   }
   return (left ?? 0) + (right ?? 0);
+}
+
+function totalTokenCount(usage: WorkflowTokenUsage): number | undefined {
+  if (usage.inputTokens !== undefined || usage.outputTokens !== undefined) {
+    return (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+  }
+  return usage.totalTokens;
 }
 
 function formatInteger(value: number | undefined): string {

@@ -977,6 +977,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
         usage: usageCollector.summarize(),
       },
     });
+    process.stderr.write(
+      workflowUsageModule.renderWorkflowUsageSummary(usageCollector.summarize()),
+    );
     return formatWorkflowCliSuccessMessage({ outputDir: runDescriptor.outputDir });
   }
 
@@ -1136,7 +1139,9 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
                   }),
               baml: typedConfig.sourceToProject.offline
                 ? undefined
-                : workflowVerificationOptimizerModule.createLiveVerificationOptimizerBamlClient(),
+                : workflowVerificationOptimizerModule.createLiveVerificationOptimizerBamlClient({
+                    usageCollector,
+                  }),
               deepResearch: typedConfig.verificationOptimizer.externalResearch
                 ? {
                     config: deepResearchConfig,

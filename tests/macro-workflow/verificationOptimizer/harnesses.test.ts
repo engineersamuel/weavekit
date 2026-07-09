@@ -10,10 +10,12 @@ import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.j
 import {
   createVerificationOptimizerDynamicExpander,
   createVerificationOptimizerHarnessRegistry,
+  createLiveVerificationOptimizerBamlClient,
   deriveBestPracticeVerificationOpportunities,
   prepareVerificationOptimizerCopilotExecution,
   selectVerificationOpportunity,
 } from "../../../src/macro-workflow/verificationOptimizer/harnesses.js";
+import { WorkflowUsageCollector } from "../../../src/macro-workflow/usage.js";
 import { buildVerificationAuditPrompt } from "../../../src/macro-workflow/verificationOptimizer/prompts.js";
 import type { ProjectCatalogEntry, VerificationOptimizerThresholds } from "../../../src/config.js";
 import type {
@@ -25,6 +27,24 @@ import type {
 } from "../../../src/generated/baml_client/index.js";
 import type { RuntimeWorkflowNode } from "../../../src/macro-workflow/types.js";
 import type { WorkflowExecutionContext } from "../../../src/macro-workflow/harness.js";
+
+type BamlOptionsFixture = {
+  client?: string;
+  collector?: { usage: Record<string, number | undefined> };
+};
+
+class MutableWorkflowUsageCollector extends WorkflowUsageCollector {
+  override createBamlCollector(_name: string): never {
+    return { usage: {} } as never;
+  }
+}
+
+function recordBamlUsage(options: BamlOptionsFixture | undefined, usage: Record<string, number>) {
+  if (!options?.collector?.usage) {
+    return;
+  }
+  Object.assign(options.collector.usage, usage);
+}
 
 describe("verification-optimizer harnesses", () => {
   it("prepares the full project verification audit prompt before Copilot execution", () => {
@@ -129,6 +149,101 @@ describe("verification-optimizer harnesses", () => {
     expect(execution?.calls?.[0]?.prompt).not.toBe(
       "Map the verification audit into strict verification-only opportunities.",
     );
+  });
+
+  it("records usage for live verification optimizer BAML calls", async () => {
+    const usageCollector = new MutableWorkflowUsageCollector();
+    const calls: Array<{ operation: string; client?: string }> = [];
+    const audit = verificationAuditFixture();
+    const review: VerificationOpportunityReview = {
+      opportunities: [verificationOpportunityFixture()],
+      nonApplicableGaps: [],
+      rankingRationale: "Ranked.",
+    };
+    const baml = createLiveVerificationOptimizerBamlClient({
+      usageCollector,
+      client: {
+        async DistillVerificationAudit(
+          _projectJson: string,
+          _rawAudit: string,
+          options?: BamlOptionsFixture,
+        ) {
+          calls.push({ operation: "DistillVerificationAudit", client: options?.client });
+          recordBamlUsage(options, {
+            inputTokens: 100,
+            cachedInputTokens: 10,
+            outputTokens: 20,
+          });
+          return audit;
+        },
+        async MapVerificationOpportunities(
+          _audit: VerificationAudit,
+          options?: BamlOptionsFixture,
+        ) {
+          calls.push({ operation: "MapVerificationOpportunities", client: options?.client });
+          recordBamlUsage(options, {
+            inputTokens: 200,
+            outputTokens: 30,
+          });
+          return review;
+        },
+        async RefineVerificationOpportunitiesWithResearch(
+          _audit: VerificationAudit,
+          initialReview: VerificationOpportunityReview,
+          _reports: unknown[],
+          options?: BamlOptionsFixture,
+        ) {
+          calls.push({
+            operation: "RefineVerificationOpportunitiesWithResearch",
+            client: options?.client,
+          });
+          recordBamlUsage(options, {
+            inputTokens: 300,
+            outputTokens: 40,
+          });
+          return initialReview;
+        },
+        async ReviewVerificationRecommendation(
+          _audit: VerificationAudit,
+          selectedOpportunity: VerificationOpportunity | undefined,
+          options?: BamlOptionsFixture,
+        ) {
+          calls.push({ operation: "ReviewVerificationRecommendation", client: options?.client });
+          recordBamlUsage(options, {
+            inputTokens: 400,
+            outputTokens: 50,
+          });
+          return {
+            status: "accepted",
+            selectedOpportunity,
+            rationale: "Accepted.",
+            proofCommands: selectedOpportunity?.proofCommands ?? [],
+          };
+        },
+      } as never,
+    });
+
+    await baml.DistillVerificationAudit(JSON.stringify(projectFixture()), "raw audit");
+    await baml.MapVerificationOpportunities(audit);
+    await baml.RefineVerificationOpportunitiesWithResearch(audit, review, []);
+    await baml.ReviewVerificationRecommendation(audit, review.opportunities[0]);
+
+    expect(calls).toEqual([
+      { operation: "DistillVerificationAudit", client: "CopilotProxyGpt55" },
+      { operation: "MapVerificationOpportunities", client: "CopilotProxyClaudeOpus48" },
+      { operation: "RefineVerificationOpportunitiesWithResearch", client: "CopilotProxyGpt55" },
+      { operation: "ReviewVerificationRecommendation", client: "CopilotProxyGpt55" },
+    ]);
+    expect(usageCollector.summarize().records).toMatchObject([
+      { operation: "DistillVerificationAudit", model: "gpt-5.5", totalTokens: 120 },
+      { operation: "MapVerificationOpportunities", model: "claude-opus-4.8", totalTokens: 230 },
+      {
+        operation: "RefineVerificationOpportunitiesWithResearch",
+        model: "gpt-5.5",
+        totalTokens: 340,
+      },
+      { operation: "ReviewVerificationRecommendation", model: "gpt-5.5", totalTokens: 450 },
+    ]);
   });
 
   it("runs replanned verification opportunity refinement retry nodes and compacts research reports", async () => {

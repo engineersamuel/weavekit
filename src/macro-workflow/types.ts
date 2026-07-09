@@ -278,6 +278,7 @@ export type WorkflowTokenUsage = {
   inputTokens?: number;
   outputTokens?: number;
   cachedInputTokens?: number;
+  totalTokens?: number;
 };
 
 export type WorkflowUsageRecord = WorkflowTokenUsage & {
