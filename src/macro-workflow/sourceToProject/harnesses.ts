@@ -2294,6 +2294,7 @@ export function createSourceToProjectHarnessRegistry(
       const rawPlanMarkdown = await readRawPlanMarkdownForReport(
         context.outputDir,
         plan?.rawPlanArtifactPath,
+        plan?.planFilePath,
       );
       const sourceToProjectReportMarkdown = buildOpportunityReportMarkdown({
         mode: options.mode,
@@ -2372,7 +2373,11 @@ export function createSourceToProjectHarnessRegistry(
       const plans = collectPlansFromDependencies(context, node);
       const rawPlanMarkdownByPlanIndex = await Promise.all(
         plans.map((plan) =>
-          readRawPlanMarkdownForReport(context.outputDir, plan.rawPlanArtifactPath),
+          readRawPlanMarkdownForReport(
+            context.outputDir,
+            plan.rawPlanArtifactPath,
+            plan.planFilePath,
+          ),
         ),
       );
       const sourceToProjectReportMarkdown = buildAggregateReportMarkdown({
@@ -2976,7 +2981,19 @@ function withRawPlanArtifactPath(
 async function readRawPlanMarkdownForReport(
   outputDir: string | undefined,
   rawPlanArtifactPath: string | undefined | null,
+  planFilePath?: string | undefined | null,
 ): Promise<string | undefined> {
+  // Prefer the full Copilot session plan.md (planFilePath, already absolute) when it was
+  // captured -- the short rawPlanArtifactPath is often just the plan-mode agent's brief
+  // conversational acknowledgment (e.g. "Let me write the plan."), not the actual plan content.
+  if (planFilePath) {
+    try {
+      const fullPlanMarkdown = await readFile(planFilePath, "utf8");
+      return stripPlanningAgentPreamble(fullPlanMarkdown);
+    } catch {
+      // Fall through to the raw plan artifact below.
+    }
+  }
   if (!outputDir || !rawPlanArtifactPath) {
     return undefined;
   }
