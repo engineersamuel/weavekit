@@ -76,6 +76,7 @@ describe("macro workflow artifacts", () => {
             inputTokens: 1000,
             cachedInputTokens: 100,
             outputTokens: 200,
+            totalTokens: 1200,
             estimatedCostUsd: 0.01045,
             unpricedModels: [],
             records: [
@@ -88,6 +89,7 @@ describe("macro workflow artifacts", () => {
                 inputTokens: 1000,
                 cachedInputTokens: 100,
                 outputTokens: 200,
+                totalTokens: 1200,
                 estimatedCostUsd: 0.01045,
               },
             ],
@@ -98,8 +100,13 @@ describe("macro workflow artifacts", () => {
       const report = await readFile(artifacts.reportPath, "utf8");
 
       expect(report).toContain("## Token Usage and Cost");
+      expect(report).toContain("- Total tokens: 1,200");
+      expect(report).toContain("- Total estimated cost: $0.01");
       expect(report).toContain(
-        "| Copilot source reading | copilot-sdk | gpt-5.5 | 1,000 | 100 | 200 | $0.01 |",
+        "| Call | Executor | Model | Total | Input | Cached | Output | Estimated cost |",
+      );
+      expect(report).toContain(
+        "| Copilot source reading | copilot-sdk | gpt-5.5 | 1,200 | 1,000 | 100 | 200 | $0.01 |",
       );
     } finally {
       await rm(outputDir, { recursive: true, force: true });

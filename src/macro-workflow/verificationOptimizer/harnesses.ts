@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import type { Collector } from "@boundaryml/baml";
 import { b } from "../../generated/baml_client/index.js";
 import type {
   DeepResearchReport,
@@ -48,6 +49,7 @@ import {
   buildVerificationImplementationPrompt,
   buildVerificationImplementationReviewPrompt,
 } from "./prompts.js";
+import type { WorkflowUsageCollector } from "../usage.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -74,17 +76,53 @@ export type VerificationExternalResearchCandidate = {
 };
 
 export type VerificationOptimizerBamlClient = {
-  DistillVerificationAudit(projectJson: string, rawAudit: string): Promise<VerificationAudit>;
-  MapVerificationOpportunities(audit: VerificationAudit): Promise<VerificationOpportunityReview>;
+  DistillVerificationAudit(
+    projectJson: string,
+    rawAudit: string,
+    options?: VerificationOptimizerBamlCallOptions,
+  ): Promise<VerificationAudit>;
+  MapVerificationOpportunities(
+    audit: VerificationAudit,
+    options?: VerificationOptimizerBamlCallOptions,
+  ): Promise<VerificationOpportunityReview>;
   RefineVerificationOpportunitiesWithResearch(
     audit: VerificationAudit,
     initialReview: VerificationOpportunityReview,
     researchReports: VerificationOpportunityResearchReport[],
+    options?: VerificationOptimizerBamlCallOptions,
   ): Promise<VerificationOpportunityReview>;
   ReviewVerificationRecommendation(
     audit: VerificationAudit,
     selectedOpportunity: VerificationOpportunity | undefined,
+    options?: VerificationOptimizerBamlCallOptions,
   ): Promise<VerificationRecommendationReview>;
+};
+
+type VerificationOptimizerBamlCallOptions = {
+  client: string;
+  collector?: Collector;
+};
+
+type VerificationOptimizerBamlFunctionName =
+  | "DistillVerificationAudit"
+  | "MapVerificationOpportunities"
+  | "RefineVerificationOpportunitiesWithResearch"
+  | "ReviewVerificationRecommendation";
+
+const VERIFICATION_OPTIMIZER_BAML_ROUTES: Record<
+  VerificationOptimizerBamlFunctionName,
+  { client: string; model: string }
+> = {
+  DistillVerificationAudit: { client: "CopilotProxyGpt55", model: "gpt-5.5" },
+  MapVerificationOpportunities: {
+    client: "CopilotProxyClaudeOpus48",
+    model: "claude-opus-4.8",
+  },
+  RefineVerificationOpportunitiesWithResearch: {
+    client: "CopilotProxyGpt55",
+    model: "gpt-5.5",
+  },
+  ReviewVerificationRecommendation: { client: "CopilotProxyGpt55", model: "gpt-5.5" },
 };
 
 export type VerificationOptimizerCopilotClient = {
@@ -134,15 +172,102 @@ export function createOfflineVerificationOptimizerHarnessClient(): VerificationO
   };
 }
 
-export function createLiveVerificationOptimizerBamlClient(): VerificationOptimizerBamlClient {
+export type GeneratedVerificationOptimizerBamlAdapterOptions = {
+  client?: VerificationOptimizerBamlClient;
+  usageCollector?: WorkflowUsageCollector;
+};
+
+export class GeneratedVerificationOptimizerBamlAdapter implements VerificationOptimizerBamlClient {
+  private readonly client: VerificationOptimizerBamlClient;
+  private readonly usageCollector?: WorkflowUsageCollector;
+
+  constructor(options: GeneratedVerificationOptimizerBamlAdapterOptions = {}) {
+    this.client = options.client ?? defaultVerificationOptimizerBamlClient();
+    this.usageCollector = options.usageCollector;
+  }
+
+  async DistillVerificationAudit(
+    projectJson: string,
+    rawAudit: string,
+  ): Promise<VerificationAudit> {
+    return this.invoke("DistillVerificationAudit", (options) =>
+      this.client.DistillVerificationAudit(projectJson, rawAudit, options),
+    );
+  }
+
+  async MapVerificationOpportunities(
+    audit: VerificationAudit,
+  ): Promise<VerificationOpportunityReview> {
+    return this.invoke("MapVerificationOpportunities", (options) =>
+      this.client.MapVerificationOpportunities(audit, options),
+    );
+  }
+
+  async RefineVerificationOpportunitiesWithResearch(
+    audit: VerificationAudit,
+    initialReview: VerificationOpportunityReview,
+    researchReports: VerificationOpportunityResearchReport[],
+  ): Promise<VerificationOpportunityReview> {
+    return this.invoke("RefineVerificationOpportunitiesWithResearch", (options) =>
+      this.client.RefineVerificationOpportunitiesWithResearch(
+        audit,
+        initialReview,
+        researchReports,
+        options,
+      ),
+    );
+  }
+
+  async ReviewVerificationRecommendation(
+    audit: VerificationAudit,
+    selectedOpportunity: VerificationOpportunity | undefined,
+  ): Promise<VerificationRecommendationReview> {
+    return this.invoke("ReviewVerificationRecommendation", (options) =>
+      this.client.ReviewVerificationRecommendation(audit, selectedOpportunity, options),
+    );
+  }
+
+  private async invoke<T>(
+    functionName: VerificationOptimizerBamlFunctionName,
+    call: (options: VerificationOptimizerBamlCallOptions) => Promise<T>,
+  ): Promise<T> {
+    const route = VERIFICATION_OPTIMIZER_BAML_ROUTES[functionName];
+    const collector = this.usageCollector?.createBamlCollector(
+      `verification-optimizer.${functionName}`,
+    );
+    try {
+      return await call({
+        client: route.client,
+        ...(collector ? { collector } : {}),
+      });
+    } finally {
+      if (collector) {
+        this.usageCollector?.recordBamlCollector({
+          operation: functionName,
+          model: route.model,
+          collector,
+        });
+      }
+    }
+  }
+}
+
+export function createLiveVerificationOptimizerBamlClient(
+  options: GeneratedVerificationOptimizerBamlAdapterOptions = {},
+): VerificationOptimizerBamlClient {
+  return new GeneratedVerificationOptimizerBamlAdapter(options);
+}
+
+function defaultVerificationOptimizerBamlClient(): VerificationOptimizerBamlClient {
   return {
-    DistillVerificationAudit: (projectJson, rawAudit) =>
-      b.DistillVerificationAudit(projectJson, rawAudit),
-    MapVerificationOpportunities: (audit) => b.MapVerificationOpportunities(audit),
-    RefineVerificationOpportunitiesWithResearch: (audit, initialReview, researchReports) =>
-      b.RefineVerificationOpportunitiesWithResearch(audit, initialReview, researchReports),
-    ReviewVerificationRecommendation: (audit, selectedOpportunity) =>
-      b.ReviewVerificationRecommendation(audit, selectedOpportunity ?? null),
+    DistillVerificationAudit: (projectJson, rawAudit, options) =>
+      b.DistillVerificationAudit(projectJson, rawAudit, options),
+    MapVerificationOpportunities: (audit, options) =>
+      b.MapVerificationOpportunities(audit, options),
+    RefineVerificationOpportunitiesWithResearch: (audit, initialReview, researchReports, options) =>
+      b.RefineVerificationOpportunitiesWithResearch(audit, initialReview, researchReports, options),
+    ReviewVerificationRecommendation: (audit, selectedOpportunity, options) =>
+      b.ReviewVerificationRecommendation(audit, selectedOpportunity ?? null, options),
   };
 }
 

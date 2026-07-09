@@ -62,7 +62,29 @@ vi.mock("../../src/entities/index.js", async () => {
 
 vi.mock("../../src/macro-workflow/bamlAdapters.js", () => ({
   GeneratedWorkflowPlannerAdapter: class {
-    planWorkflow = workflowPlanner.planWorkflow;
+    private readonly usageCollector?: {
+      record(input: Record<string, unknown>): void;
+    };
+
+    constructor(
+      options: { usageCollector?: { record(input: Record<string, unknown>): void } } = {},
+    ) {
+      this.usageCollector = options.usageCollector;
+    }
+
+    async planWorkflow(args: { objective: string; prompt: string; templateId: string }) {
+      const plan = await workflowPlanner.planWorkflow(args);
+      this.usageCollector?.record({
+        executor: "baml",
+        operation: "PlanWorkflow",
+        model: "gpt-5.5",
+        label: "BAML PlanWorkflow",
+        inputTokens: 1000,
+        cachedInputTokens: 100,
+        outputTokens: 200,
+      });
+      return plan;
+    }
   },
 }));
 
@@ -735,6 +757,32 @@ autonomous_pr_allowed = false
     expect(message).toContain("runs/workflow");
   });
 
+  it("prints token usage for dry-run planning calls", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-plan-usage-"));
+    const outputRoot = join(rootDir, "runs");
+    const stderrWrites: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    });
+
+    try {
+      await runWorkflowCli({
+        command: "plan",
+        prompt: "Plan model usage reporting",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: true,
+      });
+
+      expect(stderrWrites.join("")).toContain(
+        "Token usage: total 1,200 tokens, input 1,000, cached 100, output 200, estimated cost $0.01",
+      );
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("formats an initial run id message", () => {
     const message = formatWorkflowRunStartedMessage({
       runId: "run-123",
@@ -934,6 +982,28 @@ autonomous_pr_allowed = false
       expect(state).toContain('"runName": "Ship Replay Dashboard Follow Mode"');
       expect(events).toContain('"kind":"planning-started"');
       expect(events).toContain('"kind":"run-completed"');
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes final token usage into state for a planned workflow run", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-run-usage-"));
+    const outputRoot = join(rootDir, "runs");
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        prompt: "Ship usage state",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+      });
+
+      const runDirs = await readdir(outputRoot);
+      const state = await readFile(join(outputRoot, runDirs[0]!, "workflow-state.json"), "utf8");
+
+      expect(state).toContain('"totalTokens": 1200');
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }
