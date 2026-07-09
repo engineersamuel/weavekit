@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadLocalEnvFiles, loadTypedWeavekitConfig, resolveProjectCatalogEntry, type ProjectCatalogEntry } from "../src/config.js";
 import { createWorkflowDashboardServer } from "../src/macro-workflow/dashboardServer.js";

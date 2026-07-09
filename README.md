@@ -33,6 +33,12 @@ nub install
 nub run baml-generate
 ```
 
+Install the local pre-commit hook (lints/auto-fixes and formats staged files with oxlint + oxfmt via `mise run pre-commit`; this must be run once per clone since `.git/hooks` isn't version-controlled):
+
+```bash
+mise generate git-pre-commit --write
+```
+
 Run the local Copilot proxy on port 8080 before running the real workflow. The BAML clients use the proxy's OpenAI-compatible `/v1/chat/completions` endpoint. Set `BAML_MODEL` for the fallback `DefaultClient` (e.g., `gpt-5-mini`); note the decision council routes its BAML calls to fixed policy clients by default, so `BAML_MODEL` does not drive them (see [Model + effort routing](#model--effort-routing)).
 
 ```bash

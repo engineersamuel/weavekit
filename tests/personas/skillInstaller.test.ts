@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Hoist mocks before any module import
 vi.mock("node:fs", () => ({
@@ -25,7 +25,6 @@ const mockRealpathSync = vi.mocked(realpathSync);
 const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 
 const FAKE_PKG_ROOT = "/fake/claude-superskills";
-const FAKE_CLI = join(FAKE_PKG_ROOT, "bin", "cli.js");
 const FAKE_CACHE_DIR = "/fake/cache/skills";
 const FAKE_DISCOVERY_DIR = join(FAKE_CACHE_DIR, ".github", "skills");
 

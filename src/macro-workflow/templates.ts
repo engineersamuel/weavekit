@@ -275,7 +275,6 @@ function makeDeepResearchPlan(objective: string, input: WorkflowTemplateInput = 
 }
 
 function makeSourceToProjectPlan(objective: string, input: WorkflowTemplateInput = { objective }): RuntimeWorkflowPlan {
-  const mode = input.mode ?? "advisory";
   const advisoryNodes: RuntimeWorkflowPlan["nodes"] = [
     {
       id: "visual-plan-preflight",

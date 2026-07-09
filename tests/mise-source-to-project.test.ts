@@ -51,7 +51,7 @@ async function installAppendCommandCapture(binDir: string, command: "nub" | "nub
 
 async function installSourceToProjectOptimizeNubCapture(
   binDir: string,
-  capturePath: string,
+  _capturePath: string,
 ): Promise<void> {
   const nubPath = join(binDir, "nub");
   await writeFile(nubPath, [
@@ -78,7 +78,7 @@ async function installSourceToProjectOptimizeNubCapture(
   await chmod(nubPath, 0o755);
 }
 
-async function installOpenCapture(binDir: string, capturePath: string): Promise<void> {
+async function installOpenCapture(binDir: string, _capturePath: string): Promise<void> {
   const openPath = join(binDir, "open");
   await writeFile(openPath, [
     "#!/usr/bin/env bash",

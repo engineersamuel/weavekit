@@ -85,8 +85,8 @@ describe("deep-research harnesses", () => {
     const providerNodes = (expansion ?? []).filter((node) => node.input?.deepResearchStep === "provider-research");
     expect(providerNodes.map((node) => ({
       id: node.id,
-      questionIds: (node.input?.questions as Array<{ id: string }>).map((question) => question.id),
-      queryCount: (node.input?.queries as string[]).length,
+      questionIds: ((node.input?.questions ?? []) as Array<{ id: string }>).map((question) => question.id),
+      queryCount: ((node.input?.queries ?? []) as string[]).length,
     }))).toEqual([
       {
         id: "deep-research-grok-1",
@@ -161,7 +161,7 @@ describe("deep-research harnesses", () => {
     const providerNodes = (expansion ?? []).filter((node) => node.input?.deepResearchStep === "provider-research");
     expect(providerNodes.map((node) => ({
       id: node.id,
-      questionIds: (node.input?.questions as Array<{ id: string }>).map((question) => question.id),
+      questionIds: ((node.input?.questions ?? []) as Array<{ id: string }>).map((question) => question.id),
     }))).toEqual([
       {
         id: "deep-research-grok-1",

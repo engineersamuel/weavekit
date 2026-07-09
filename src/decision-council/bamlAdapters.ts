@@ -108,11 +108,11 @@ export class GeneratedBamlAdapters implements CritiqueNormalizer, JudgeReducer {
   ): BamlRouteOptions {
     const telemetryOptions = createBamlTelemetryOptions(telemetryContext);
     return {
-      ...(options ?? {}),
+      ...options,
       ...telemetryOptions,
       tags: {
-        ...(options?.tags ?? {}),
-        ...(telemetryOptions.tags ?? {}),
+        ...options?.tags,
+        ...telemetryOptions.tags,
       },
     };
   }

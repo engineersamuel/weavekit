@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, doctor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Install mise + tools
+        uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
+        with:
+          install: true
+          cache: true
+
+      - name: Install dependencies
+        run: nub install
+
+      - name: Regenerate BAML client and check for drift
+        run: |
+          nub run baml-generate
+          if ! git diff --exit-code -- src/generated/baml_client; then
+            echo "::error::Generated BAML client is out of date. Run 'nub run baml-generate' and commit the result."
+            exit 1
+          fi
+
+      - name: Lint
+        run: nub run lint
+
+      - name: Format check (newly added files only)
+        # Oxfmt formats whole files, not diffs, and this repo has not been
+        # fully reformatted yet. So this only gates brand-new files
+        # (diff-filter=A) rather than edits to pre-existing, unformatted
+        # files. Widen to ACMR once a one-time repo-wide `nub run fmt` lands.
+        if: github.event_name == 'pull_request'
+        run: |
+          mapfile -t files < <(git diff --name-only --diff-filter=A "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.json' '*.yaml' '*.yml' '*.md')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No newly added formattable files."
+            exit 0
+          fi
+          printf '%s\n' "${files[@]}"
+          nubx oxfmt --check "${files[@]}"
+
+      - name: Typecheck
+        run: nub run typecheck
+
+      - name: Test
+        run: nub run test
+
+      - name: Doctor (entity manifests, prompts, BAML outputs, skill capabilities)
+        run: mise run doctor

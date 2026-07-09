@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Opportunity, OpportunityCouncilReview, TemplateCandidate, TemplateExpansionCase, WorkflowNode } from "../../generated/baml_client/index.js";
+import type { Opportunity, OpportunityCouncilReview, TemplateCandidate, TemplateExpansionCase } from "../../generated/baml_client/index.js";
 import type { SourceToProjectMode, SourceToProjectThresholds } from "../../config.js";
 import type { WorkflowDynamicExpander } from "../runner.js";
 import {

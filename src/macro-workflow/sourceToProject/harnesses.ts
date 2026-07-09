@@ -530,7 +530,7 @@ export function createCopilotSdkHarnessClient(args: {
     const telemetryOptions = buildCopilotClientOptions();
     const runtimeUrl = args.copilot?.runtimeUrl ?? args.copilot?.cliUrl;
     const cliPath = args.copilot?.cliPath ?? resolveCopilotCliPathFromSdkModuleUrl(import.meta.resolve("@github/copilot-sdk"));
-    const clientOptions: Record<string, unknown> = { ...(telemetryOptions ?? {}) };
+    const clientOptions: Record<string, unknown> = { ...telemetryOptions };
     if (runtimeUrl) {
       clientOptions.connection = RuntimeConnection.forUri(runtimeUrl);
     } else if (cliPath) {
@@ -695,10 +695,9 @@ export function createCopilotSdkHarnessClient(args: {
               mode: runArgs.mode,
               model,
               cwd: runArgs.cwd,
-              message: `Copilot SDK session disconnect failed: ${errorMessage(error)}`,
+              message: `Copilot SDK session disconnect failed (suppressed in favor of primary error, if any): ${errorMessage(error)}`,
               elapsedMs: elapsedSince(startedAt),
             }, verboseEvents);
-            throw error;
           }
         }
         logCopilotHarnessEvent(args.onLog, {
@@ -715,10 +714,9 @@ export function createCopilotSdkHarnessClient(args: {
             mode: runArgs.mode,
             model,
             cwd: runArgs.cwd,
-            message: `Copilot SDK client stop failed: ${errorMessage(stopErrors[0])}`,
+            message: `Copilot SDK client stop failed (suppressed in favor of primary error, if any): ${errorMessage(stopErrors[0])}`,
             elapsedMs: elapsedSince(startedAt),
           }, verboseEvents);
-          throw stopErrors[0];
         }
       }
     },
@@ -3109,10 +3107,6 @@ function resolveCopilotModel(operation: SourceToProjectModelOperation, config?: 
 
 function resolveBamlModel(operation: SourceToProjectModelOperation): string {
   return sourceToProjectBamlRoute(operation).model;
-}
-
-function bamlOptionsForFunction(functionName: SourceToProjectBamlFunctionName): SourceToProjectBamlCallOptions {
-  return bamlOptionsForRoute(sourceToProjectBamlFunctionRoute(functionName));
 }
 
 function bamlOptionsForRoute(route: ReturnType<typeof sourceToProjectBamlFunctionRoute>): SourceToProjectBamlCallOptions {

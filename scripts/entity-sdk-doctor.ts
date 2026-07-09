@@ -499,6 +499,7 @@ export async function runEntitySdkDoctor(options: EntitySdkDoctorOptions = {}): 
   const client = await (options.clientFactory ? options.clientFactory() : createLiveCopilotClient(config.copilot));
   const model = options.model ?? config.copilot.sdkDoctorModel;
   await withTimeout("Copilot SDK client start", timeoutMs, client.start());
+  let primaryError: unknown;
   try {
     for (const check of skillChecks) {
       lines.push(...await verifyEntitySkillsInSession({
@@ -516,12 +517,20 @@ export async function runEntitySdkDoctor(options: EntitySdkDoctorOptions = {}): 
       timeoutMs,
       onProgress: options.onProgress,
     }));
+  } catch (error) {
+    primaryError = error;
   } finally {
     progress(options, "Stopping Copilot SDK doctor client...");
     const stopErrors = await withTimeout("Copilot SDK client stop", timeoutMs, client.stop());
-    if (stopErrors?.length) {
-      throw stopErrors[0];
+    if (stopErrors?.length && !primaryError) {
+      primaryError = stopErrors[0];
+    } else if (stopErrors?.length) {
+      const stopErrorMessage = stopErrors[0] instanceof Error ? stopErrors[0].message : String(stopErrors[0]);
+      process.stderr.write(`Copilot SDK client stop failed (suppressed in favor of primary error): ${stopErrorMessage}\n`);
     }
+  }
+  if (primaryError) {
+    throw primaryError;
   }
 
   return formatDoctorOutput(lines);

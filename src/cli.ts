@@ -1216,7 +1216,6 @@ export async function main(): Promise<void> {
       const message = await runEntityCli(entityArgs);
       process.stdout.write(message);
     } else {
-      const { DecisionCouncilRunFailedError } = await import("./decision-council/errors.js");
       const { createSmokeModelRouter } = await import("./decision-council/modelRouter.js");
       const { runDecisionCouncil } = await import("./decision-council/runner.js");
       const args = parseDecisionCouncilCliArgs(argv);
