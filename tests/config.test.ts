@@ -129,6 +129,13 @@ max_tool_calls = 50
 source_reading_max_tool_calls = 20
 project_research_max_tool_calls = 30
 
+[source_to_project.budget_gate]
+enabled = true
+mode = "block"
+ceiling_usd = 40
+margin_factor = 2
+token_ceiling = 250000
+
 [deep_research]
 providers = ["exa", "perplexity"]
 max_iterations = 4
@@ -159,6 +166,10 @@ autonomous_pr_allowed = true
 max_opportunities = 2
 notification = "telegram"
 knowledge_export = "off"
+
+[projects.weavekit.budget_gate]
+ceiling_usd = 60
+mode = "warn"
 `,
       "utf8",
     );
@@ -182,6 +193,13 @@ knowledge_export = "off"
     expect(config.sourceToProject.maxToolCalls).toBe(50);
     expect(config.sourceToProject.sourceReadingMaxToolCalls).toBe(20);
     expect(config.sourceToProject.projectResearchMaxToolCalls).toBe(30);
+    expect(config.sourceToProject.budgetGate).toEqual({
+      enabled: true,
+      mode: "block",
+      ceilingUsd: 40,
+      marginFactor: 2,
+      tokenCeiling: 250000,
+    });
     expect(config.deepResearch).toEqual({
       providers: ["exa", "perplexity"],
       maxIterations: 4,
@@ -229,6 +247,17 @@ knowledge_export = "off"
       autonomousPrAllowed: true,
       maxOpportunities: 2,
       notification: "telegram",
+      budgetGate: {
+        ceilingUsd: 60,
+        mode: "warn",
+      },
+    });
+    expect(resolveProjectCatalogEntry(config, "weavekit").budgetGate).toEqual({
+      enabled: true,
+      mode: "warn",
+      ceilingUsd: 60,
+      marginFactor: 2,
+      tokenCeiling: 250000,
     });
   });
 
@@ -495,6 +524,12 @@ directory = "/config/hve-core"
           split: "right" as const,
           agentOptions: [],
         },
+        budgetGate: {
+          enabled: true,
+          mode: "warn" as const,
+          ceilingUsd: 25,
+          marginFactor: 1.5,
+        },
         autoImplementOnReport: false,
       },
       deepResearch: {
@@ -550,11 +585,37 @@ directory = "/config/hve-core"
     );
   });
 
+  it("rejects invalid budget gate config instead of silently disabling the gate", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[source_to_project.budget_gate]
+mode = "abort"
+ceiling_usd = -10
+margin_factor = 0.5
+`,
+      "utf8",
+    );
+
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      "source_to_project.budget_gate.mode must be warn or block.",
+    );
+  });
+
   it("defaults Copilot verbose event logging to false when config is missing", () => {
     const config = loadTypedWeavekitConfig("/tmp/weavekit-missing-config.toml", {});
 
     expect(config.copilot.verboseEvents).toBe(false);
     expect(config.sourceToProject.offline).toBe(false);
+    expect(config.sourceToProject.budgetGate).toEqual({
+      enabled: true,
+      mode: "warn",
+      ceilingUsd: 25,
+      marginFactor: 1.5,
+    });
     expect(config.deepResearch).toEqual({
       providers: ["grok", "exa", "copilot-last30days"],
       maxIterations: 3,

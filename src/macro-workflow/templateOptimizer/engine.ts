@@ -4,6 +4,7 @@ import type {
   TemplateFixtureJudgment,
   TemplateOptimizationFixture,
 } from "../../generated/baml_client/index.js";
+import { BudgetGateBlockedError, type PreRunGate } from "../budgetGate.js";
 
 export interface TemplateOptimizerDeps {
   generateChallenger(args: GenerateChallengerArgs): Promise<TemplateCandidate>;
@@ -22,6 +23,7 @@ export interface TemplateOptimizerArgs {
   minimumDelta: number;
   minimumDecisionConfidence: number;
   compactLiveTrialTraceSummary?: string;
+  preRunGate?: PreRunGate;
   deps: TemplateOptimizerDeps;
 }
 
@@ -85,6 +87,12 @@ export async function optimizeTemplate(
 ): Promise<TemplateOptimizerResult> {
   if (args.fixtures.length === 0) {
     throw new Error("Template optimizer requires at least one fixture.");
+  }
+  if (args.preRunGate) {
+    const decision = await args.preRunGate();
+    if (decision.outcome === "block") {
+      throw new BudgetGateBlockedError(decision);
+    }
   }
 
   let incumbent = args.baseline;

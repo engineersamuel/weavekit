@@ -6,6 +6,15 @@ import { promisify } from "node:util";
 import { parse as parseToml } from "smol-toml";
 import type { ProjectCatalogEntry, SourceToProjectPrLauncherConfig } from "../../config.js";
 import type { ProjectBrief } from "../../generated/baml_client/index.js";
+import {
+  appendBudgetGateAuditLog,
+  BudgetGateBlockedError,
+  evaluateBudgetGate,
+  type BudgetGateConfig,
+  type BudgetGateDecision,
+  type BudgetGateOverride,
+  type BudgetGateProjection,
+} from "../budgetGate.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -50,6 +59,13 @@ export type SourceToProjectPrLaunchArgs = {
   config: SourceToProjectPrLauncherConfig;
   context: SourceToProjectPrLaunchContext;
   shell?: SourceToProjectPrLauncherShell;
+  budgetGate?: {
+    config: BudgetGateConfig;
+    projection: BudgetGateProjection;
+    override?: BudgetGateOverride;
+  };
+  budgetGateAuditLogPath?: string;
+  onBudgetGateDecision?: (decision: BudgetGateDecision) => void;
   /**
    * Detects whether the "superpowers" Codex plugin (which provides the subagent-driven-development
    * skill) is installed and enabled for the *local machine* running the agent -- this is a global
@@ -70,6 +86,34 @@ export async function launchSourceToProjectPrAgent(
     throw new Error(
       `Unsupported source-to-project PR launcher provider: ${String(args.config.provider)}`,
     );
+  }
+  if (args.budgetGate) {
+    const decision = evaluateBudgetGate(
+      args.budgetGate.projection,
+      args.budgetGate.config,
+      args.budgetGate.override,
+    );
+    args.onBudgetGateDecision?.(decision);
+    if (decision.outcome !== "allow" || decision.overrideApplied) {
+      await appendBudgetGateAuditLog({
+        decision,
+        workflowPath: "autonomous-pr",
+        runId: args.context.runId,
+        nodeId: args.context.nodeId,
+        projectId: args.context.project.id,
+        opportunityId: args.context.opportunityId,
+        source: args.context.source,
+        path: args.budgetGateAuditLogPath,
+      });
+    }
+    if (decision.overrideApplied) {
+      process.stderr.write(`[weavekit] budget_gate override: ${decision.reason}\n`);
+    } else if (decision.outcome === "warn") {
+      process.stderr.write(`[weavekit] budget_gate warning: ${decision.reason}\n`);
+    }
+    if (decision.outcome === "block") {
+      throw new BudgetGateBlockedError(decision);
+    }
   }
   const shell = args.shell ?? { run: defaultRun };
   const launchIds = sourceToProjectPrLaunchIds(args.context);

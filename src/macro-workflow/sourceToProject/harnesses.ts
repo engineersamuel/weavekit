@@ -10,6 +10,7 @@ import {
   resolveWeavekitPluginDirectory,
   SupportedPluginId,
   type CopilotDefaults,
+  defaultBudgetGateConfig,
   type PluginConfigs,
   type ProjectCatalogEntry,
   type SourceToProjectDefaults,
@@ -37,9 +38,11 @@ import type {
   WorkflowExecutionContext,
 } from "../harness.js";
 import { createStaticHarnessRegistry } from "../harness.js";
+import { loadNodeCostHistory } from "../nodeCostHistory.js";
 import type { WorkflowDynamicExpander } from "../runner.js";
 import {
   extractUsageFromCopilotEventData,
+  projectWorkflowCostUsd,
   type WorkflowTokenUsage,
   type WorkflowUsageCollector,
 } from "../usage.js";
@@ -445,6 +448,7 @@ export type SourceToProjectHarnessOptions = {
   baml?: Partial<SourceToProjectBamlClient>;
   notifier?: SourceToProjectNotifier;
   sourceToProject?: SourceToProjectDefaults;
+  budgetOverrideReason?: string;
   tooling?: ToolingDefaults;
   plugins?: PluginConfigs;
   worktree?: {
@@ -3112,9 +3116,42 @@ async function maybeAutoImplementOpportunity(args: {
     initialPromptMode: "implement",
   };
   try {
+    const nodeCostHistory = await loadNodeCostHistory();
+    const budgetGateConfig = {
+      ...defaultBudgetGateConfig(),
+      ...options.sourceToProject.budgetGate,
+      ...options.project.budgetGate,
+    };
+    const launchPromptTokens = Math.ceil(
+      [context.objective, options.source, opportunity.title, reportMarkdown, plan?.recommendation]
+        .filter(Boolean)
+        .join("\n\n").length / 4,
+    );
+    const budgetProjection = projectWorkflowCostUsd({
+      nodeCostHistory,
+      calls: [
+        {
+          nodeId: "source-to-project.autonomous-pr-agent",
+          harness: "copilot-sdk",
+          model: options.sourceToProject.copilotModel ?? "gpt-5.3-codex",
+          inputTokens: Math.max(launchPromptTokens, 12000),
+          outputTokens: 80000,
+        },
+      ],
+    });
+    const budgetOverrideReason =
+      options.budgetOverrideReason ??
+      (process.env.WEAVEKIT_BUDGET_OVERRIDE === "1"
+        ? process.env.WEAVEKIT_BUDGET_OVERRIDE_REASON
+        : undefined);
     const launch: SourceToProjectPrLaunchResult = await launcher.launch({
       config: options.sourceToProject.prLauncher,
       context: launchContext,
+      budgetGate: {
+        config: budgetGateConfig,
+        projection: budgetProjection,
+        override: { reason: budgetOverrideReason },
+      },
     });
     return {
       status: "launched",

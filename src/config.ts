@@ -16,6 +16,14 @@ export type SourceToProjectThresholds = {
   maxRisk: number;
 };
 
+export type BudgetGateConfig = {
+  enabled: boolean;
+  mode: "warn" | "block";
+  ceilingUsd: number;
+  marginFactor: number;
+  tokenCeiling?: number;
+};
+
 export type SourceToProjectPrLauncherAgentOption = {
   id: string;
   label: string;
@@ -43,6 +51,7 @@ export type SourceToProjectDefaults = {
   maxToolCalls?: number;
   sourceReadingMaxToolCalls?: number;
   projectResearchMaxToolCalls?: number;
+  budgetGate?: BudgetGateConfig;
   prLauncher: SourceToProjectPrLauncherConfig;
   /**
    * When true, automatically create a Herdr worktree and start the configured agent to
@@ -135,6 +144,7 @@ export type ProjectCatalogEntry = {
   /** Cap on accepted opportunities promoted per run. 0 or undefined means unlimited (falls back to the global default, which also defaults to unlimited). */
   maxOpportunities?: number;
   thresholds?: Partial<SourceToProjectThresholds>;
+  budgetGate?: Partial<BudgetGateConfig>;
   notification: NotificationPolicy;
   knowledgeExport: KnowledgeExportPolicy;
 };
@@ -402,7 +412,23 @@ export function resolveProjectCatalogEntry(
   if (!project) {
     throw new Error(`Unknown project id: ${projectId}`);
   }
-  return project;
+  return {
+    ...project,
+    budgetGate: {
+      ...defaultBudgetGateConfig(),
+      ...config.sourceToProject.budgetGate,
+      ...project.budgetGate,
+    },
+  };
+}
+
+export function defaultBudgetGateConfig(): BudgetGateConfig {
+  return {
+    enabled: true,
+    mode: "warn",
+    ceilingUsd: 25,
+    marginFactor: 1.5,
+  };
 }
 
 function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
@@ -417,6 +443,7 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
     },
     mode: "advisory",
     offline: false,
+    budgetGate: defaultBudgetGateConfig(),
     prLauncher: {
       provider: "herdr",
       agentCommand: "codex",
@@ -538,6 +565,104 @@ function readNotificationPolicy(value: unknown): NotificationPolicy {
   return value === "telegram" ? "telegram" : "cli";
 }
 
+function readBudgetGateConfig(
+  value: unknown,
+  defaults: BudgetGateConfig,
+  path: string,
+): BudgetGateConfig {
+  const record = asRecord(value);
+  const mode = readBudgetGateMode(record.mode, defaults.mode, `${path}.mode`);
+  const ceilingUsd = readPositiveNumber(
+    record.ceiling_usd,
+    defaults.ceilingUsd,
+    `${path}.ceiling_usd`,
+  );
+  const marginFactor = readAtLeastOneNumber(
+    record.margin_factor,
+    defaults.marginFactor,
+    `${path}.margin_factor`,
+  );
+  const tokenCeiling =
+    record.token_ceiling === undefined
+      ? defaults.tokenCeiling
+      : readPositiveInteger(record.token_ceiling, `${path}.token_ceiling`);
+  return {
+    enabled: readBoolean(record.enabled, defaults.enabled),
+    mode,
+    ceilingUsd,
+    marginFactor,
+    ...(tokenCeiling === undefined ? {} : { tokenCeiling }),
+  };
+}
+
+function readBudgetGateOverride(
+  value: unknown,
+  path: string,
+): Partial<BudgetGateConfig> | undefined {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) {
+    return undefined;
+  }
+  const result: Partial<BudgetGateConfig> = {};
+  if (record.enabled !== undefined) {
+    result.enabled = readBoolean(record.enabled, true);
+  }
+  if (record.mode !== undefined) {
+    result.mode = readBudgetGateMode(record.mode, "warn", `${path}.mode`);
+  }
+  if (record.ceiling_usd !== undefined) {
+    result.ceilingUsd = readPositiveNumber(record.ceiling_usd, 25, `${path}.ceiling_usd`);
+  }
+  if (record.margin_factor !== undefined) {
+    result.marginFactor = readAtLeastOneNumber(record.margin_factor, 1.5, `${path}.margin_factor`);
+  }
+  if (record.token_ceiling !== undefined) {
+    result.tokenCeiling = readPositiveInteger(record.token_ceiling, `${path}.token_ceiling`);
+  }
+  return result;
+}
+
+function readBudgetGateMode(
+  value: unknown,
+  fallback: "warn" | "block",
+  path: string,
+): "warn" | "block" {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value === "warn" || value === "block") {
+    return value;
+  }
+  throw new Error(`${path} must be warn or block.`);
+}
+
+function readPositiveNumber(value: unknown, fallback: number, path: string): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${path} must be greater than 0.`);
+  }
+  return value;
+}
+
+function readAtLeastOneNumber(value: unknown, fallback: number, path: string): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+    throw new Error(`${path} must be greater than or equal to 1.`);
+  }
+  return value;
+}
+
+function readPositiveInteger(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${path} must be a positive integer.`);
+  }
+  return value;
+}
+
 function readSourceToProjectDefaults(
   value: unknown,
   env: NodeJS.ProcessEnv,
@@ -570,6 +695,11 @@ function readSourceToProjectDefaults(
     projectResearchMaxToolCalls:
       readOptionalInteger(record.project_research_max_tool_calls) ??
       readEnvPositiveInteger(env, "WEAVEKIT_PROJECT_RESEARCH_MAX_TOOL_CALLS"),
+    budgetGate: readBudgetGateConfig(
+      record.budget_gate,
+      defaults.budgetGate ?? defaultBudgetGateConfig(),
+      "source_to_project.budget_gate",
+    ),
     prLauncher: readSourceToProjectPrLauncherConfig(record.pr_launcher, defaults.prLauncher),
     autoImplementOnReport: readBoolean(
       record.auto_implement_on_report,
@@ -813,6 +943,7 @@ function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry>
       if (typeof record.min_acceptance_average === "number")
         thresholds.minAcceptanceAverage = record.min_acceptance_average;
       if (typeof record.max_risk === "number") thresholds.maxRisk = record.max_risk;
+      const budgetGate = readBudgetGateOverride(record.budget_gate, `projects.${id}.budget_gate`);
       return [
         id,
         {
@@ -829,6 +960,7 @@ function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry>
               ? Math.max(0, Math.floor(record.max_opportunities))
               : undefined,
           thresholds,
+          ...(budgetGate === undefined ? {} : { budgetGate }),
           notification: readNotificationPolicy(record.notification),
           knowledgeExport: record.knowledge_export === "sanitized" ? "sanitized" : "off",
         },

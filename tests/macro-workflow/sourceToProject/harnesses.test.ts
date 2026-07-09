@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  BudgetGateBlockedError,
+  evaluateBudgetGate,
+} from "../../../src/macro-workflow/budgetGate.js";
 import { WorkflowHarnessKind, WorkflowNodeKind } from "../../../src/macro-workflow/types.js";
 import { runMacroWorkflow } from "../../../src/macro-workflow/runner.js";
 import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.js";
@@ -1905,9 +1909,16 @@ describe("source-to-project harness registry", () => {
       source: "https://example.com/loops",
       project: { ...projectFixture(), autonomousPrAllowed: true },
       mode: "advisory",
+      budgetOverrideReason: "Approved emergency auto-implement run.",
       sourceToProject: {
         ...defaultSourceToProjectDefaultsFixture(),
         autoImplementOnReport: true,
+        budgetGate: {
+          enabled: true,
+          mode: "block",
+          ceilingUsd: 25,
+          marginFactor: 2,
+        },
       },
       prLauncher: {
         async launch(args) {
@@ -1964,12 +1975,104 @@ describe("source-to-project harness registry", () => {
     expect(launchCalls[0]?.context.reportMarkdown).toBe(
       reportResult.payload?.sourceToProjectReportMarkdown,
     );
+    expect(launchCalls[0]?.budgetGate).toMatchObject({
+      config: {
+        enabled: true,
+        mode: "block",
+        ceilingUsd: 25,
+        marginFactor: 2,
+      },
+      projection: {
+        projectedTokens: expect.any(Number),
+        unpricedModels: [],
+      },
+      override: {
+        reason: "Approved emergency auto-implement run.",
+      },
+    });
     expect(reportResult.payload?.autoImplementLaunch).toEqual({
       status: "launched",
       worktreePath: "/Users/smendenhall/.herdr/worktrees/secondbrain/worktree-opp-1",
       branchName: "source-to-project/opp-1-run-1",
       agentName: "source-to-project-opp-1-run-1",
       startedCommand: "herdr agent start source-to-project-opp-1-run-1",
+    });
+  });
+
+  it("surfaces an auto-implement budget block before launch work proceeds", async () => {
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).find((candidate) => candidate.id === "opp-1")!;
+    let launchWorkStarted = false;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: { ...projectFixture(), autonomousPrAllowed: true },
+      mode: "advisory",
+      sourceToProject: {
+        ...defaultSourceToProjectDefaultsFixture(),
+        autoImplementOnReport: true,
+        budgetGate: {
+          enabled: true,
+          mode: "block",
+          ceilingUsd: 0.01,
+          marginFactor: 1,
+        },
+      },
+      prLauncher: {
+        async launch(args) {
+          const decision = evaluateBudgetGate(
+            args.budgetGate!.projection,
+            args.budgetGate!.config,
+            args.budgetGate!.override,
+          );
+          if (decision.outcome === "block") {
+            throw new BudgetGateBlockedError(decision);
+          }
+          launchWorkStarted = true;
+          return {} as never;
+        },
+      },
+    });
+
+    const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(
+      {
+        id: "report-opportunity-opp-1",
+        kind: WorkflowNodeKind.REPORT,
+        harness: WorkflowHarnessKind.REPORTER,
+        title: "Report opp-1",
+        prompt: "Report",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: ["review-opportunity-opp-1"],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
+      },
+      {
+        payloads: new Map([
+          [
+            "review-opportunity-opp-1",
+            {
+              finalRecommendationReview: acceptedFinalRecommendationReviewFixture(),
+              plan: planSummaryFixture("Loop init plan"),
+            },
+          ],
+        ]),
+        artifacts: new Map(),
+        outputDir: "/tmp/runs/run-1",
+      },
+    );
+
+    expect(launchWorkStarted).toBe(false);
+    expect(reportResult.payload?.autoImplementLaunch).toMatchObject({
+      status: "failed",
+      error: expect.stringContaining("Budget gate blocked pre-run workflow"),
     });
   });
 

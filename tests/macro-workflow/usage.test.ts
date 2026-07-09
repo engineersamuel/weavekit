@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   extractUsageFromCopilotEventData,
+  estimateCostUsdForUsage,
+  projectWorkflowCostUsd,
   renderWorkflowUsageMarkdown,
   renderWorkflowUsageSummary,
   WorkflowUsageCollector,
@@ -135,6 +137,116 @@ describe("workflow usage", () => {
       inputTokens: 20,
       cachedInputTokens: 4,
       outputTokens: 7,
+    });
+  });
+
+  it("exports the per-call estimator used by usage summaries", () => {
+    expect(
+      estimateCostUsdForUsage("gpt-5.5", {
+        inputTokens: 1000,
+        cachedInputTokens: 100,
+        outputTokens: 200,
+      }),
+    ).toBe(0.01055);
+  });
+
+  it("projects workflow cost from planned calls and reports unpriced models", () => {
+    const projection = projectWorkflowCostUsd({
+      calls: [
+        {
+          nodeId: "source-reading",
+          model: "gpt-5.5",
+          inputTokens: 1000,
+          cachedInputTokens: 100,
+          outputTokens: 200,
+          callCount: 2,
+        },
+        {
+          nodeId: "unknown",
+          model: "not-priced",
+          inputTokens: 50,
+          outputTokens: 25,
+        },
+      ],
+    });
+
+    expect(projection).toMatchObject({
+      projectedCostUsd: 0.0211,
+      projectedTokens: 2475,
+      unpricedModels: ["not-priced"],
+    });
+  });
+
+  it("uses historical node averages as a conservative floor over static estimates", () => {
+    const projection = projectWorkflowCostUsd({
+      calls: [
+        {
+          nodeId: "plan-opportunity",
+          harness: "copilot-sdk",
+          model: "gpt-5.5",
+          inputTokens: 1000,
+          outputTokens: 200,
+        },
+      ],
+      nodeCostHistory: {
+        version: 1,
+        updatedAt: "2026-07-09T00:00:00.000Z",
+        nodes: {
+          "copilot-sdk:gpt-5.5:plan-opportunity": {
+            key: "copilot-sdk:gpt-5.5:plan-opportunity",
+            nodeId: "plan-opportunity",
+            harness: "copilot-sdk",
+            model: "gpt-5.5",
+            samples: 3,
+            averageTokens: 5000,
+            averageCostUsd: 0.25,
+            updatedAt: "2026-07-09T00:00:00.000Z",
+          },
+        },
+      },
+    });
+
+    expect(projection).toMatchObject({
+      projectedCostUsd: 0.25,
+      projectedTokens: 5000,
+      unpricedModels: [],
+    });
+  });
+
+  it("does not let cheap historical node averages reduce a larger static projection", () => {
+    const projection = projectWorkflowCostUsd({
+      calls: [
+        {
+          nodeId: "plan-opportunity",
+          harness: "copilot-sdk",
+          model: "gpt-5.5",
+          inputTokens: 1000,
+          outputTokens: 200,
+        },
+      ],
+      nodeCostHistory: {
+        version: 1,
+        updatedAt: "2026-07-09T00:00:00.000Z",
+        nodes: {
+          "copilot-sdk:gpt-5.5:plan-opportunity": {
+            key: "copilot-sdk:gpt-5.5:plan-opportunity",
+            nodeId: "plan-opportunity",
+            harness: "copilot-sdk",
+            model: "gpt-5.5",
+            samples: 3,
+            averageTokens: 10,
+            costSamples: 3,
+            averageCostUsd: 0.00001,
+            updatedAt: "2026-07-09T00:00:00.000Z",
+          },
+        },
+      },
+    });
+
+    expect(projection).toMatchObject({
+      projectedCostUsd: 0.011,
+      projectedTokens: 1200,
+      unpricedModels: [],
     });
   });
 });

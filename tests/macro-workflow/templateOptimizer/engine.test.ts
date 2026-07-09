@@ -5,6 +5,7 @@ import type {
   TemplateFixtureJudgment,
   TemplateOptimizationFixture,
 } from "../../../src/generated/baml_client/index.js";
+import { BudgetGateBlockedError } from "../../../src/macro-workflow/budgetGate.js";
 import { optimizeTemplate } from "../../../src/macro-workflow/templateOptimizer/engine.js";
 
 const baseline = candidate("baseline");
@@ -264,6 +265,47 @@ describe("template optimizer engine", () => {
         },
       }),
     ).rejects.toThrow("Template optimizer requires at least one fixture.");
+
+    expect(generateChallenger).not.toHaveBeenCalled();
+    expect(judgeFixture).not.toHaveBeenCalled();
+    expect(aggregateJudgments).not.toHaveBeenCalled();
+  });
+
+  it("runs the pre-run budget gate before generating challengers", async () => {
+    const generateChallenger = vi.fn(async () => challenger);
+    const judgeFixture = vi.fn(async () => judgment({ winner: "challenger" }));
+    const aggregateJudgments = vi.fn(async () => aggregate({}));
+
+    await expect(
+      optimizeTemplate({
+        objective,
+        constraintsSummary,
+        baseline,
+        fixtures: [fixture],
+        iterations: 1,
+        candidatesPerIteration: 1,
+        strategies: ["coverage-focused"],
+        minimumDelta: 0.1,
+        minimumDecisionConfidence: 0.6,
+        preRunGate: () => ({
+          outcome: "block",
+          projectedCostUsd: 50,
+          projectedTokens: 250000,
+          effectiveProjectionUsd: 75,
+          ceilingUsd: 25,
+          marginFactor: 1.5,
+          overCeiling: true,
+          unpricedModels: [],
+          overrideApplied: false,
+          reason: "Projected template optimizer cost exceeds budget ceiling.",
+        }),
+        deps: {
+          generateChallenger,
+          judgeFixture,
+          aggregateJudgments,
+        },
+      }),
+    ).rejects.toBeInstanceOf(BudgetGateBlockedError);
 
     expect(generateChallenger).not.toHaveBeenCalled();
     expect(judgeFixture).not.toHaveBeenCalled();

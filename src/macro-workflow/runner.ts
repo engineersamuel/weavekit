@@ -1,3 +1,4 @@
+import { BudgetGateBlockedError, type PreRunGate } from "./budgetGate.js";
 import type { HarnessRegistry, WorkflowExecutionContext } from "./harness.js";
 import { resolveHarnessAdapter } from "./harness.js";
 import type { MacroWorkflowEvent, MacroWorkflowLogger } from "./logger.js";
@@ -38,6 +39,7 @@ export type MacroWorkflowRunnerDependencies = {
   replanner?: WorkflowReplanner;
   expandAfterNode?: WorkflowDynamicExpander;
   logger?: MacroWorkflowLogger;
+  preRunGate?: PreRunGate;
   outputDir?: string;
   onStateChange?: (state: MacroWorkflowRunState, event: MacroWorkflowEvent) => void;
   onReplayEvent?: (event: WorkflowReplayEvent) => void;
@@ -110,6 +112,35 @@ export async function runMacroWorkflow(
     planId: plan.id,
     timestamp: new Date(),
   });
+
+  if (dependencies.preRunGate) {
+    const decision = await dependencies.preRunGate();
+    emitStateChange({
+      type: "budget_gate",
+      planId: plan.id,
+      status: decision.outcome,
+      reason: decision.reason,
+      payload: { decision },
+      timestamp: new Date(),
+    });
+    if (decision.outcome === "block") {
+      state.status = "failed";
+      state.completedAt = new Date();
+      emitReplayEvent({
+        kind: WorkflowReplayEventKind.RUN_COMPLETED,
+        phase: "completed",
+        status: WorkflowNodeState.FAILED,
+      });
+      emitStateChange({
+        type: MacroWorkflowEventKind.RUN_COMPLETED,
+        planId: plan.id,
+        status: "failed",
+        reason: decision.reason,
+        timestamp: new Date(),
+      });
+      throw new BudgetGateBlockedError(decision);
+    }
+  }
 
   let remainingPlan = plan;
   const completedNodeIds = new Set<string>();

@@ -14,6 +14,8 @@ The apply stage uses an implementation agent or LLM guided by the structured ado
 
 The optimize CLI requires an explicit template id and mode. It defaults to 5 iterations, allows an `--iterations` override with a hard max of 10, defaults to one challenger per iteration, and allows `--candidates-per-iteration` up to 3. Candidate diversity uses internal prompt-strategy rotation by default, with explicit strategy override flags for reproducible runs. The default judge model is GPT-5.5 and the default generator model is Opus 4.8, with CLI model overrides. Judge confidence is recorded and may be enforced with an optional minimum confidence threshold, but it is not replacement-blocking by default.
 
+The optimize CLI also honors the pre-run budget gate from ADR 0006 after fixtures and candidate counts are known and before challenger generation starts. This budget gate is an admission check alongside `mise run doctor` and the iteration/candidate caps; it does not replace those caps, serialize parallel Autonomous PR worktrees, or add a concurrency cap.
+
 The apply CLI supports `--dry-run`, which asks the implementation agent to produce a planned diff summary from the winning adoption package without modifying files.
 
 Optimizer run artifacts persist enough context for audit and best-effort reproduction: template id, git/working-tree summary, CLI options, model ids, strategy order, fixture ids, baseline template snapshot, generated candidates, judge outputs, and the final recommendation. Exact deterministic replay is not promised because live LLM calls are nondeterministic.

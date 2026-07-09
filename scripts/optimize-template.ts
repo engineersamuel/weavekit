@@ -3,13 +3,17 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
+import { defaultBudgetGateConfig, loadTypedWeavekitConfig } from "../src/config.js";
+import { appendBudgetGateAuditLog, evaluateBudgetGate } from "../src/macro-workflow/budgetGate.js";
 import { defaultWorkflowGrammar } from "../src/macro-workflow/grammar.js";
+import { loadNodeCostHistory } from "../src/macro-workflow/nodeCostHistory.js";
 import { createSourceToProjectTemplateAdapter } from "../src/macro-workflow/sourceToProject/templateAdapter.js";
 import { writeTemplateOptimizerArtifacts } from "../src/macro-workflow/templateOptimizer/artifacts.js";
 import { createTemplateOptimizerBamlAdapters } from "../src/macro-workflow/templateOptimizer/bamlAdapters.js";
 import { renderTemplateOptimizerConstraints } from "../src/macro-workflow/templateOptimizer/constraints.js";
 import { optimizeTemplate } from "../src/macro-workflow/templateOptimizer/engine.js";
 import { loadTemplateOptimizationFixtures } from "../src/macro-workflow/templateOptimizer/fixtures.js";
+import { projectWorkflowCostUsd } from "../src/macro-workflow/usage.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,6 +31,7 @@ type OptimizeTemplateArgs = {
   maxLiveTrials: number;
   minLiveDelta: number;
   minLiveDecisionConfidence: number;
+  budgetOverrideReason?: string;
   outputRoot: string;
 };
 
@@ -137,6 +142,10 @@ export function parseOptimizeTemplateArgs(argv: string[]): OptimizeTemplateArgs 
       parsed.outputRoot = readNext(argv, ++index, arg);
       continue;
     }
+    if (arg === "--budget-override") {
+      parsed.budgetOverrideReason = readNext(argv, ++index, arg);
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -173,6 +182,23 @@ export async function runOptimizeTemplate(
     templateId: args.template,
     mode: args.mode,
   });
+  const config = loadTypedWeavekitConfig();
+  const nodeCostHistory = await loadNodeCostHistory();
+  const budgetProjection = projectWorkflowCostUsd({
+    nodeCostHistory,
+    calls: buildTemplateOptimizerProjectionCalls({
+      iterations: args.iterations,
+      candidatesPerIteration: args.candidatesPerIteration,
+      fixtureCount: fixtures.length,
+      generatorModel: args.generatorModel,
+      judgeModel: args.judgeModel,
+    }),
+  });
+  const budgetOverrideReason =
+    args.budgetOverrideReason ??
+    (process.env.WEAVEKIT_BUDGET_OVERRIDE === "1"
+      ? process.env.WEAVEKIT_BUDGET_OVERRIDE_REASON
+      : undefined);
   const constraintsSummary = renderTemplateOptimizerConstraints({
     grammar: defaultWorkflowGrammar,
     templateId: args.template,
@@ -187,6 +213,29 @@ export async function runOptimizeTemplate(
     candidatesPerIteration: args.candidatesPerIteration,
     minimumDelta: 0.03,
     minimumDecisionConfidence: args.minDecisionConfidence,
+    preRunGate: async () => {
+      const decision = evaluateBudgetGate(
+        budgetProjection,
+        config.sourceToProject.budgetGate ?? defaultBudgetGateConfig(),
+        {
+          reason: budgetOverrideReason,
+        },
+      );
+      if (decision.outcome !== "allow" || decision.overrideApplied) {
+        await appendBudgetGateAuditLog({
+          decision,
+          workflowPath: "template-optimizer",
+          runId,
+          source: `${args.template}:${args.mode}`,
+        });
+      }
+      if (decision.overrideApplied) {
+        process.stderr.write(`[weavekit] budget_gate override: ${decision.reason}\n`);
+      } else if (decision.outcome === "warn") {
+        process.stderr.write(`[weavekit] budget_gate warning: ${decision.reason}\n`);
+      }
+      return decision;
+    },
     strategies: [
       "coverage-focused",
       "minimalist",
@@ -204,6 +253,42 @@ export async function runOptimizeTemplate(
     result,
   });
   return { runId, outputDir };
+}
+
+function buildTemplateOptimizerProjectionCalls(args: {
+  iterations: number;
+  candidatesPerIteration: number;
+  fixtureCount: number;
+  generatorModel: string;
+  judgeModel: string;
+}) {
+  const candidateCount = args.iterations * args.candidatesPerIteration;
+  return [
+    {
+      nodeId: "template-optimizer.generate-challenger",
+      harness: "baml",
+      model: args.generatorModel,
+      inputTokens: 12000,
+      outputTokens: 4000,
+      callCount: candidateCount,
+    },
+    {
+      nodeId: "template-optimizer.judge-fixture",
+      harness: "baml",
+      model: args.judgeModel,
+      inputTokens: 10000,
+      outputTokens: 2500,
+      callCount: candidateCount * args.fixtureCount,
+    },
+    {
+      nodeId: "template-optimizer.aggregate-judgments",
+      harness: "baml",
+      model: args.judgeModel,
+      inputTokens: 8000,
+      outputTokens: 2000,
+      callCount: candidateCount,
+    },
+  ];
 }
 
 function readNext(argv: string[], index: number, flag: string): string {
