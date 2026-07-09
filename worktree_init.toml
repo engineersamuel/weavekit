@@ -4,3 +4,5 @@
 copy = ".env*"
 # copy = ".env*\n.dev.vars\n.dev.vars.production\nlogo-wide.png\n.wrangler\npublic"
 
+# Shell command run *inside* the new worktree checkout (after cd to it)
+setup = "mise trust -a && nub install"
