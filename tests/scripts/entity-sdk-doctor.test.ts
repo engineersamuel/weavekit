@@ -126,14 +126,16 @@ describe("entity SDK doctor", () => {
       "dist",
       "index.js",
     );
+    const platformVariant = process.platform === "linux" ? "linux" : process.platform;
+    const platformPackageName = `copilot-${platformVariant}-${process.arch}`;
     const copilotCli = join(
       root,
       "node_modules",
       ".nub",
-      "@github+copilot-darwin-arm64@1.0.65-b",
+      `@github+${platformPackageName}@1.0.65-b`,
       "node_modules",
       "@github",
-      "copilot-darwin-arm64",
+      platformPackageName,
       "index.js",
     );
     await write(
@@ -143,7 +145,7 @@ describe("entity SDK doctor", () => {
     );
     await write(
       root,
-      "node_modules/.nub/@github+copilot-darwin-arm64@1.0.65-b/node_modules/@github/copilot-darwin-arm64/index.js",
+      `node_modules/.nub/@github+${platformPackageName}@1.0.65-b/node_modules/@github/${platformPackageName}/index.js`,
       "#!/usr/bin/env node\n",
     );
 
@@ -331,6 +333,7 @@ sdk_doctor_model = "gpt-5-mini"
 
   it("fails the visual-plan installer dry run when hosted auth is pending", async () => {
     const repoRoot = await createRepoWithSkillBackedPersona();
+    const { configPath } = await createHveCorePluginConfig(repoRoot);
     const client = {
       start: vi.fn(async () => undefined),
       createSession: vi.fn(),
@@ -340,6 +343,7 @@ sdk_doctor_model = "gpt-5-mini"
     await expect(
       runEntitySdkDoctor({
         repoRoot,
+        configPath,
         shell: {
           async run() {
             return [
@@ -359,6 +363,7 @@ sdk_doctor_model = "gpt-5-mini"
 
   it("times out when the visual-plan installer dry run hangs", async () => {
     const repoRoot = await createRepoWithSkillBackedPersona();
+    const { configPath } = await createHveCorePluginConfig(repoRoot);
     const client = {
       start: vi.fn(async () => undefined),
       createSession: vi.fn(),
@@ -368,6 +373,7 @@ sdk_doctor_model = "gpt-5-mini"
     await expect(
       runEntitySdkDoctor({
         repoRoot,
+        configPath,
         timeoutMs: 1,
         shell: {
           async run() {
