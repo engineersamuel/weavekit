@@ -317,21 +317,37 @@ export async function createWorkflowDashboardServer(
     }
 
     const filePath = resolveStaticPath(requestUrl.pathname, dashboardDir, repoRoot);
-    if (!filePath) {
-      response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      response.end("Not found.");
+    if (filePath) {
+      const contentType = CONTENT_TYPES.get(extname(filePath)) ?? "application/octet-stream";
+      try {
+        const contents = await readFile(filePath);
+        response.writeHead(200, { "Content-Type": contentType });
+        response.end(contents);
+      } catch {
+        response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Not found.");
+      }
       return;
     }
 
-    const contentType = CONTENT_TYPES.get(extname(filePath)) ?? "application/octet-stream";
-    try {
-      const contents = await readFile(filePath);
-      response.writeHead(200, { "Content-Type": contentType });
-      response.end(contents);
-    } catch {
-      response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      response.end("Not found.");
+    const isDashboardClientRoute =
+      requestUrl.pathname === "/" ||
+      requestUrl.pathname === "/runs" ||
+      requestUrl.pathname.startsWith("/runs/");
+    if (request.method === "GET" && extname(requestUrl.pathname) === "" && isDashboardClientRoute) {
+      try {
+        const contents = await readFile(resolve(dashboardDir, "index.html"));
+        response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        response.end(contents);
+      } catch {
+        response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Not found.");
+      }
+      return;
     }
+
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Not found.");
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -860,6 +876,9 @@ function resolveStaticPath(
   repoRoot: string,
 ): string | undefined {
   const normalizedPath = pathname === "/" ? "/index.html" : pathname;
+  if (normalizedPath !== "/index.html" && extname(normalizedPath) === "") {
+    return undefined;
+  }
   if (normalizedPath.startsWith("/node_modules/")) {
     const relative = normalizedPath.slice("/node_modules/".length);
     const candidate = resolve(repoRoot, "node_modules", relative);

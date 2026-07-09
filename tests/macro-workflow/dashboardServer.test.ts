@@ -212,6 +212,49 @@ describe("workflow dashboard replay bootstrap", () => {
     }
   });
 
+  it("serves the dashboard shell for bookmarkable run paths", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
+    try {
+      await writeWorkflowRunFixture(rootDir, "run-1", "First Run", "running");
+      const server = await createWorkflowDashboardServer(undefined, { watchDir: rootDir });
+      servers.push(server);
+
+      const response = await fetch(new URL("/runs/run-1", server.url));
+      const text = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("text/html");
+      expect(text).toContain('<div id="root"></div>');
+      expect(text).toContain("/dist/main.js");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps unknown API routes as missing endpoints", async () => {
+    const server = await createWorkflowDashboardServer(undefined);
+    servers.push(server);
+
+    const response = await fetch(new URL("/api/not-real", server.url));
+    const text = await response.text();
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(text).toBe("Not found.");
+  });
+
+  it("keeps missing dashboard assets as not found", async () => {
+    const server = await createWorkflowDashboardServer(undefined);
+    servers.push(server);
+
+    const response = await fetch(new URL("/dist/missing.js", server.url));
+    const text = await response.text();
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(text).toBe("Not found.");
+  });
+
   it("serves selected run artifacts without allowing path traversal", async () => {
     const outputDir = await writeWorkflowRunFixture();
     const watchDir = join(outputDir, "..");
