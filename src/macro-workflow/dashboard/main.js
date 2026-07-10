@@ -10,13 +10,18 @@ import {
   Position,
 } from "@xyflow/react";
 import { layoutWorkflowGraph } from "./layout.ts";
-import { createWorkflowViewportFitKey, shouldFitWorkflowViewport } from "./viewport.ts";
+import {
+  createWorkflowViewportFitKey,
+  shouldFitWorkflowViewport,
+  shouldResetWorkflowViewportFitKey,
+} from "./viewport.ts";
 import {
   resolveBlockedNodeDisplay,
   resolveNodeExecutionDisplay,
   resolveNodeModelDisplay,
 } from "./executionContext.ts";
 import { buildNodeArtifactLinks } from "./artifactLinks.ts";
+import { getObjectivePreview, shouldShowObjectiveExpansion } from "./objective.ts";
 import {
   buildDeepResearchQuestionBatchSummary,
   buildDeepResearchProviderFailureSummary,
@@ -1251,6 +1256,27 @@ function formatScoreValue(value) {
   return Number.isFinite(value) ? value.toFixed(2) : "n/a";
 }
 
+function ObjectiveSummary({ objective }) {
+  const [expanded, setExpanded] = useState(false);
+  const canExpand = shouldShowObjectiveExpansion(objective);
+  const text = expanded ? String(objective ?? "").trim() : getObjectivePreview(objective);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [objective]);
+
+  return (
+    <div className={`objective-summary ${expanded ? "is-expanded" : ""}`}>
+      <p>{text || "No objective recorded."}</p>
+      {canExpand ? (
+        <button type="button" className="objective-toggle" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function NodeExecutionContext({ node, result, state }) {
   const isPlanningNode = node?.id === PLANNING_NODE_ID;
   const { plannedPrompt, execution, calls, hasActualExecution } = resolveNodeExecutionDisplay({
@@ -1642,14 +1668,30 @@ function humanizeKey(key) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function parseRunIdFromLocation() {
+  const match = /^\/runs\/([^/]+)\/?$/.exec(window.location.pathname);
+  if (!match) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return "";
+  }
+}
+
+function runUrlFor(runId) {
+  return runId ? `/runs/${encodeURIComponent(runId)}` : "/";
+}
+
 function App() {
   const [snapshot, setSnapshot] = useState(null);
   const [history, setHistory] = useState([]);
   const [runs, setRuns] = useState([]);
-  const [selectedRunId, setSelectedRunId] = useState("");
+  const [selectedRunId, setSelectedRunId] = useState(() => parseRunIdFromLocation());
   const [replayIndex, setReplayIndex] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
-  const [autoTrackNewRuns, setAutoTrackNewRuns] = useState(true);
+  const [autoTrackNewRuns, setAutoTrackNewRuns] = useState(() => !parseRunIdFromLocation());
   const [flowInstance, setFlowInstance] = useState(null);
   const [artifactModal, setArtifactModal] = useState(null);
   const [prLaunches, setPrLaunches] = useState({});
@@ -1673,8 +1715,17 @@ function App() {
     };
   }, []);
 
+  const subscribedRunId = autoTrackNewRuns ? "" : selectedRunId;
+
   useEffect(() => {
     let active = true;
+    const replayUrl = subscribedRunId
+      ? `/api/replay?runId=${encodeURIComponent(subscribedRunId)}`
+      : "/api/replay";
+    const eventsUrl = subscribedRunId
+      ? `/events?runId=${encodeURIComponent(subscribedRunId)}`
+      : "/events";
+
     function applyPayload(payload, options = {}) {
       if (!active || !payload) {
         return;
@@ -1682,22 +1733,32 @@ function App() {
       if (Array.isArray(payload.runs)) {
         setRuns(payload.runs);
       }
-      if (payload.activeRunId) {
-        setSelectedRunId(payload.activeRunId);
-      }
       if (options.onlyRuns) {
         return;
       }
+      const payloadRunId = payload.activeRunId ?? payload.run?.runId ?? payload.state?.runId ?? "";
+      if (
+        !autoTrackNewRuns &&
+        subscribedRunId &&
+        payloadRunId &&
+        payloadRunId !== subscribedRunId
+      ) {
+        return;
+      }
+      if (autoTrackNewRuns && payload.activeRunId) {
+        setSelectedRunId(payload.activeRunId);
+      } else if (!autoTrackNewRuns && payloadRunId === subscribedRunId) {
+        setSelectedRunId(payloadRunId);
+      }
       setSnapshot(payload);
-      if (Array.isArray(payload.history)) {
-        setHistory(payload.history);
-        if (autoTrackNewRuns) {
-          setReplayIndex(null);
-        }
+      const nextHistory = Array.isArray(payload.history) ? payload.history : [];
+      setHistory(nextHistory);
+      if (autoTrackNewRuns || nextHistory.length === 0) {
+        setReplayIndex(null);
       }
     }
 
-    fetch("/api/replay")
+    fetch(replayUrl)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => applyPayload(payload))
       .catch(() => undefined);
@@ -1707,15 +1768,9 @@ function App() {
       .then((payload) => applyPayload(payload, { onlyRuns: true }))
       .catch(() => undefined);
 
-    const source = new EventSource("/events");
+    const source = new EventSource(eventsUrl);
     source.addEventListener("state", (event) => {
       const payload = JSON.parse(event.data);
-      if (!autoTrackNewRuns) {
-        if (Array.isArray(payload.runs)) {
-          setRuns(payload.runs);
-        }
-        return;
-      }
       applyPayload(payload);
     });
     source.onerror = () => {
@@ -1725,42 +1780,30 @@ function App() {
       active = false;
       source.close();
     };
-  }, [autoTrackNewRuns]);
+  }, [autoTrackNewRuns, subscribedRunId]);
 
-  function loadRun(runId) {
-    if (!runId) {
-      setAutoTrackNewRuns(true);
-      setReplayIndex(null);
-      void fetch("/api/replay")
-        .then((response) => (response.ok ? response.json() : null))
-        .then((payload) => {
-          if (!payload) {
-            return;
-          }
-          setSnapshot(payload);
-          setRuns(Array.isArray(payload.runs) ? payload.runs : runs);
-          setSelectedRunId(payload.activeRunId ?? "");
-          setHistory(Array.isArray(payload.history) ? payload.history : []);
-        })
-        .catch(() => undefined);
-      return;
+  function loadRun(runId, options = {}) {
+    const nextRunId = runId || "";
+    const nextUrl = runUrlFor(nextRunId);
+    if (window.location.pathname !== nextUrl) {
+      const method = options.replace ? "replaceState" : "pushState";
+      window.history[method](null, "", nextUrl);
     }
-
-    setAutoTrackNewRuns(false);
+    if (shouldResetWorkflowViewportFitKey({ currentRunId: selectedRunId, nextRunId })) {
+      lastViewportFitKey.current = null;
+    }
     setReplayIndex(null);
-    void fetch(`/api/replay?runId=${encodeURIComponent(runId)}`)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => {
-        if (!payload) {
-          return;
-        }
-        setSnapshot(payload);
-        setRuns(Array.isArray(payload.runs) ? payload.runs : runs);
-        setSelectedRunId(payload.activeRunId ?? runId);
-        setHistory(Array.isArray(payload.history) ? payload.history : []);
-      })
-      .catch(() => undefined);
+    setSelectedRunId(nextRunId);
+    setAutoTrackNewRuns(!nextRunId);
   }
+
+  useEffect(() => {
+    function onPopState() {
+      loadRun(parseRunIdFromLocation(), { replace: true });
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   async function openArtifact(link) {
     const loadingArtifact = {
@@ -1899,6 +1942,7 @@ function App() {
     [graph, prLaunches, snapshot, agentOptions, defaultAgentId, selectedAgentByNode],
   );
   const activeRunId = snapshot?.activeRunId ?? snapshot?.run?.runId ?? snapshot?.state?.runId;
+  const replayControlRunId = autoTrackNewRuns ? activeRunId || selectedRunId : selectedRunId;
   const viewportFitKey = useMemo(
     () =>
       createWorkflowViewportFitKey({
@@ -2021,7 +2065,7 @@ function App() {
         </div>
         <div className="card">
           <h2>Objective</h2>
-          <p>{objective}</p>
+          <ObjectiveSummary objective={objective} />
           <div className="meta-grid">
             <div>
               <strong>Plan:</strong> {planId}
@@ -2042,10 +2086,7 @@ function App() {
             <h2>Replay</h2>
             <button
               type="button"
-              onClick={() => {
-                setAutoTrackNewRuns(true);
-                setReplayIndex(null);
-              }}
+              onClick={() => setReplayIndex(null)}
               disabled={!hasHistory || (autoTrackNewRuns && replayIndex === null)}
             >
               Live
@@ -2057,8 +2098,16 @@ function App() {
               checked={autoTrackNewRuns}
               onChange={(event) => {
                 const checked = event.target.checked;
-                setAutoTrackNewRuns(checked);
-                setReplayIndex(checked ? null : effectiveReplayIndex);
+                if (checked) {
+                  loadRun("");
+                  return;
+                }
+                const runId = replayControlRunId;
+                if (!runId) {
+                  return;
+                }
+                loadRun(runId);
+                setReplayIndex(effectiveReplayIndex);
               }}
             />
             <span>Track new runs</span>
@@ -2070,8 +2119,13 @@ function App() {
             value={effectiveReplayIndex}
             disabled={!hasHistory}
             onChange={(event) => {
-              setAutoTrackNewRuns(false);
-              setReplayIndex(Number(event.target.value));
+              const nextReplayIndex = Number(event.target.value);
+              const runId = replayControlRunId;
+              if (!runId) {
+                return;
+              }
+              loadRun(runId);
+              setReplayIndex(nextReplayIndex);
             }}
           />
           <div className="replay-meta">
