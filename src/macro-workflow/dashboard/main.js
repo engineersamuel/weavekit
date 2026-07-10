@@ -10,13 +10,18 @@ import {
   Position,
 } from "@xyflow/react";
 import { layoutWorkflowGraph } from "./layout.ts";
-import { createWorkflowViewportFitKey, shouldFitWorkflowViewport } from "./viewport.ts";
+import {
+  createWorkflowViewportFitKey,
+  shouldFitWorkflowViewport,
+  shouldResetWorkflowViewportFitKey,
+} from "./viewport.ts";
 import {
   resolveBlockedNodeDisplay,
   resolveNodeExecutionDisplay,
   resolveNodeModelDisplay,
 } from "./executionContext.ts";
 import { buildNodeArtifactLinks } from "./artifactLinks.ts";
+import { getObjectivePreview, shouldShowObjectiveExpansion } from "./objective.ts";
 import {
   buildDeepResearchQuestionBatchSummary,
   buildDeepResearchProviderFailureSummary,
@@ -1251,6 +1256,27 @@ function formatScoreValue(value) {
   return Number.isFinite(value) ? value.toFixed(2) : "n/a";
 }
 
+function ObjectiveSummary({ objective }) {
+  const [expanded, setExpanded] = useState(false);
+  const canExpand = shouldShowObjectiveExpansion(objective);
+  const text = expanded ? String(objective ?? "").trim() : getObjectivePreview(objective);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [objective]);
+
+  return (
+    <div className={`objective-summary ${expanded ? "is-expanded" : ""}`}>
+      <p>{text || "No objective recorded."}</p>
+      {canExpand ? (
+        <button type="button" className="objective-toggle" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function NodeExecutionContext({ node, result, state }) {
   const isPlanningNode = node?.id === PLANNING_NODE_ID;
   const { plannedPrompt, execution, calls, hasActualExecution } = resolveNodeExecutionDisplay({
@@ -1763,6 +1789,9 @@ function App() {
       const method = options.replace ? "replaceState" : "pushState";
       window.history[method](null, "", nextUrl);
     }
+    if (shouldResetWorkflowViewportFitKey({ currentRunId: selectedRunId, nextRunId })) {
+      lastViewportFitKey.current = null;
+    }
     setReplayIndex(null);
     setSelectedRunId(nextRunId);
     setAutoTrackNewRuns(!nextRunId);
@@ -2036,7 +2065,7 @@ function App() {
         </div>
         <div className="card">
           <h2>Objective</h2>
-          <p>{objective}</p>
+          <ObjectiveSummary objective={objective} />
           <div className="meta-grid">
             <div>
               <strong>Plan:</strong> {planId}

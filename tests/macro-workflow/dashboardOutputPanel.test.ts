@@ -15,4 +15,12 @@ describe("workflow dashboard output panel", () => {
     expect(payloadIndex).toBeGreaterThan(summaryIndex);
     expect(artifactLinksIndex).toBeGreaterThan(payloadIndex);
   });
+
+  it("renders long objectives behind a compact expandable summary", async () => {
+    const source = await readFile("src/macro-workflow/dashboard/main.js", "utf8");
+
+    expect(source).toContain("<ObjectiveSummary objective={objective} />");
+    expect(source).toContain('className="objective-toggle"');
+    expect(source).toContain('expanded ? "Show less" : "Show more"');
+  });
 });

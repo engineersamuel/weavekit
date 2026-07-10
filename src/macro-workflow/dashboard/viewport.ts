@@ -31,5 +31,16 @@ export function shouldFitWorkflowViewport(args: {
   fitKey: string;
   previousFitKey?: string | null;
 }): boolean {
-  return args.autoTrackNewRuns && args.nodeCount > 0 && args.fitKey !== args.previousFitKey;
+  return (
+    args.nodeCount > 0 &&
+    args.fitKey !== args.previousFitKey &&
+    (args.autoTrackNewRuns || !args.previousFitKey)
+  );
+}
+
+export function shouldResetWorkflowViewportFitKey(args: {
+  currentRunId?: string;
+  nextRunId?: string;
+}): boolean {
+  return (args.currentRunId ?? "") !== (args.nextRunId ?? "");
 }

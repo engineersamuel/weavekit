@@ -86,6 +86,42 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
+.objective-summary {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.objective-summary p {
+  color: #dce7ff;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.objective-summary:not(.is-expanded) p {
+  max-height: 6.75rem;
+  overflow: hidden;
+}
+
+.objective-toggle {
+  background: transparent;
+  border: 0;
+  color: #67e8f9;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  justify-self: start;
+  padding: 0;
+}
+
+.objective-toggle:hover {
+  color: #cffafe;
+  text-decoration: underline;
+}
+
 .meta-grid {
   display: grid;
   gap: 10px;
