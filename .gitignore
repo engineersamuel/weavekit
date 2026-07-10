@@ -16,3 +16,4 @@ docs/superpowers/specs/
 .playwright-mcp/
 manual-pr-toolbar-check.png
 .copilot-tracking/
+.codebase-memory/
