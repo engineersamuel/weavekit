@@ -3,6 +3,7 @@ import type { OpportunityCouncilReview } from "../../generated/baml_client/index
 
 export type SourceToProjectIssueCode =
   | "missing-citation"
+  | "missing-rival-hypotheses"
   | "below-opportunity-threshold"
   | "invalid-bundle"
   | "autonomous-pr-disabled"
@@ -26,9 +27,12 @@ export function verifyOpportunityPromotion(
   maxOpportunities: number,
 ): SourceToProjectVerificationResult {
   const issues: SourceToProjectIssue[] = [];
+  let hasBlockingIssue = false;
 
   for (const opportunity of review.opportunities.slice(0, maxOpportunities)) {
-    if (opportunity.evidence.length === 0 || opportunity.speculative) {
+    const hasRequiredEvidence = opportunity.evidence.length > 0 && !opportunity.speculative;
+    if (!hasRequiredEvidence) {
+      hasBlockingIssue = true;
       issues.push({
         code: "missing-citation",
         message: `Opportunity ${opportunity.id} lacks required evidence.`,
@@ -36,22 +40,43 @@ export function verifyOpportunityPromotion(
       });
     }
 
-    const acceptanceAverage =
-      (opportunity.score.applicability + opportunity.score.impact + opportunity.score.confidence) /
-      3;
-    if (
-      acceptanceAverage < thresholds.minAcceptanceAverage ||
-      opportunity.score.risk > thresholds.maxRisk
-    ) {
+    const meetsPromotionThresholds = opportunityMeetsPromotionThresholds(opportunity, thresholds);
+    if (!meetsPromotionThresholds) {
+      hasBlockingIssue = true;
       issues.push({
         code: "below-opportunity-threshold",
         message: `Opportunity ${opportunity.id} does not meet promotion thresholds.`,
         opportunityId: opportunity.id,
       });
     }
+
+    if (
+      hasRequiredEvidence &&
+      meetsPromotionThresholds &&
+      !opportunity.rivalExplanationsConsidered?.some((rival) => rival.trim())
+    ) {
+      issues.push({
+        code: "missing-rival-hypotheses",
+        message: `Opportunity ${opportunity.id} lacks meaningful rival hypotheses.`,
+        opportunityId: opportunity.id,
+      });
+    }
   }
 
-  return { valid: issues.length === 0, issues };
+  return { valid: !hasBlockingIssue, issues };
+}
+
+function opportunityMeetsPromotionThresholds(
+  opportunity: OpportunityCouncilReview["opportunities"][number],
+  thresholds: SourceToProjectThresholds,
+): boolean {
+  const acceptanceAverage =
+    (opportunity.score.applicability + opportunity.score.impact + opportunity.score.confidence) / 3;
+
+  return (
+    acceptanceAverage >= thresholds.minAcceptanceAverage &&
+    opportunity.score.risk <= thresholds.maxRisk
+  );
 }
 
 export function verifyBundles(review: OpportunityCouncilReview): SourceToProjectVerificationResult {
