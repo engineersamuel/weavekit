@@ -1,4 +1,4 @@
-# 0007 — Preserve evidence-grounded Opportunity reasoning
+# 0008 — Preserve evidence-grounded Opportunity reasoning
 
 Status: accepted
 
