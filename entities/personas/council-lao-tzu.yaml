@@ -1,0 +1,22 @@
+id: council-lao-tzu
+kind: persona
+name: "Lao Tzu"
+description: "Emergence, non-intervention, and removing forced complexity."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["emergence", "via-negativa"]
+
+selection:
+  useWhen:
+    - "Use when subtraction or non-action may outperform intervention."
+  avoidWhen:
+    - "Avoid when urgent corrective action is established."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-lao-tzu.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

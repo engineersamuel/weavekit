@@ -11,7 +11,16 @@ const foundationalCouncilAnchors = {
   "council-machiavelli": "incentive backward induction",
 } as const;
 
-const foundationalCouncilOutputLabels = [
+const practicalCouncilAnchors = {
+  "council-lao-tzu": "via negativa",
+  "council-feynman": "first-principles reconstruction",
+  "council-torvalds": "empirical reduction to practice",
+  "council-musashi": "timing and tempo analysis",
+  "council-watts": "frame dissolution",
+  "council-karpathy": "gradient empiricism",
+} as const;
+
+const councilOutputLabels = [
   "- `claims`:",
   "- `risks`:",
   "- `questions`:",
@@ -53,9 +62,15 @@ describe("manifest-backed council personas", () => {
       "council-ada",
       "council-aristotle",
       "council-aurelius",
+      "council-feynman",
+      "council-karpathy",
+      "council-lao-tzu",
       "council-machiavelli",
+      "council-musashi",
       "council-socrates",
       "council-sun-tzu",
+      "council-torvalds",
+      "council-watts",
       "deep-module-dry",
       "dialectic-adversary",
       "dialectic-advocate",
@@ -102,7 +117,27 @@ describe("manifest-backed council personas", () => {
       expect(persona.prompt).toContain(
         "Do not claim to represent the named person's actual views.",
       );
-      for (const outputLabel of foundationalCouncilOutputLabels) {
+      for (const outputLabel of councilOutputLabels) {
+        expect(persona.prompt).toContain(outputLabel);
+      }
+      expect(persona.prompt).not.toMatch(forbiddenImportedPromptInstructions);
+    }
+  });
+
+  it("ships substantive normalized prompts for the practical council personas", () => {
+    for (const [id, anchor] of Object.entries(practicalCouncilAnchors)) {
+      const persona = PersonaDefinitionSchema.parse(getPersona(id));
+
+      expect(persona.description.length).toBeGreaterThanOrEqual(20);
+      expect(persona.useWhen.length).toBeGreaterThan(0);
+      expect(persona.avoidWhen.length).toBeGreaterThan(0);
+      expect(persona.prompt.length).toBeGreaterThanOrEqual(600);
+      expect(persona.prompt.toLowerCase()).toContain(anchor.toLowerCase());
+      expect(persona.prompt).toContain("## Weavekit Council Output");
+      expect(persona.prompt).toContain(
+        "Do not claim to represent the named person's actual views.",
+      );
+      for (const outputLabel of councilOutputLabels) {
         expect(persona.prompt).toContain(outputLabel);
       }
       expect(persona.prompt).not.toMatch(forbiddenImportedPromptInstructions);

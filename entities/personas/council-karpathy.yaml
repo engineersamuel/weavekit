@@ -1,0 +1,22 @@
+id: council-karpathy
+kind: persona
+name: "Andrej Karpathy"
+description: "Empirical ML reasoning grounded in training dynamics."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["machine-learning", "gradient-empiricism"]
+
+selection:
+  useWhen:
+    - "Use when model behavior, data, training, or empirical AI iteration matters."
+  avoidWhen:
+    - "Avoid when there is no ML/empirical model component."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-karpathy.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

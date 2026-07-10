@@ -1,0 +1,22 @@
+id: council-watts
+kind: persona
+name: "Alan Watts"
+description: "Perspective shifts that dissolve false problems."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["reframing", "frame-dissolution"]
+
+selection:
+  useWhen:
+    - "Use when framing may create the apparent problem."
+  avoidWhen:
+    - "Avoid when concrete operational constraints are already clear."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-watts.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique
