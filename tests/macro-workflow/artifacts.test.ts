@@ -1,13 +1,50 @@
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   appendWorkflowReplayEvent,
+  readWorkflowReplayEvents,
   writeMacroWorkflowArtifacts,
 } from "../../src/macro-workflow/artifacts.js";
 
 describe("macro workflow artifacts", () => {
+  it("reads validated replay JSONL and reports a corrupt line", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    const eventLogPath = join(outputDir, "workflow-events.jsonl");
+    try {
+      await writeFile(
+        eventLogPath,
+        [
+          JSON.stringify({
+            seq: 4,
+            ts: "2026-07-10T10:00:00.000Z",
+            kind: "planning-started",
+          }),
+          JSON.stringify({
+            seq: 5,
+            ts: "2026-07-10T10:00:01.000Z",
+            kind: "planning-complete",
+          }),
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      await expect(readWorkflowReplayEvents(outputDir)).resolves.toMatchObject([
+        { seq: 4, kind: "planning-started" },
+        { seq: 5, kind: "planning-complete" },
+      ]);
+
+      await writeFile(eventLogPath, '{"seq":5,"kind":"not-real"}\n', "utf8");
+      await expect(readWorkflowReplayEvents(outputDir)).rejects.toThrow(
+        "Invalid workflow replay event at line 1",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a sensitive replan replay event before appending JSONL", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
     try {

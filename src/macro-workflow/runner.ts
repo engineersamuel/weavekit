@@ -43,6 +43,7 @@ export type MacroWorkflowRunnerDependencies = {
   logger?: MacroWorkflowLogger;
   preRunGate?: PreRunGate;
   outputDir?: string;
+  initialReplaySeq?: number;
   onStateChange?: (state: MacroWorkflowRunState, event: MacroWorkflowEvent) => void;
   onReplayEvent?: (event: WorkflowReplayEvent) => void;
 };
@@ -58,7 +59,7 @@ export async function runMacroWorkflow(
     logger?.emit(event);
     dependencies.onStateChange?.(state, event);
   };
-  let replaySeq = 0;
+  let replaySeq = dependencies.initialReplaySeq ?? 0;
   const emitReplayEvent = (event: Omit<WorkflowReplayEvent, "seq" | "ts">) => {
     const replayEvent = {
       seq: ++replaySeq,

@@ -1,3 +1,4 @@
+import type { Stats } from "node:fs";
 import { open, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { MacroWorkflowRunStateLike } from "./types.js";
@@ -7,10 +8,12 @@ export const WORKFLOW_STATE_SCHEMA_VERSION = 1;
 export type MacroWorkflowStateStoreOptions = {
   lockRetryMs?: number;
   lockTimeoutMs?: number;
+  staleLockThresholdMs?: number;
 };
 
 const DEFAULT_LOCK_RETRY_MS = 25;
 const DEFAULT_LOCK_TIMEOUT_MS = 2_000;
+const DEFAULT_STALE_LOCK_THRESHOLD_MS = 5 * 60_000;
 const SENSITIVE_KEYS = new Set([
   "token",
   "secret",
@@ -27,6 +30,7 @@ export class MacroWorkflowStateStore {
   private readonly outputDir: string;
   private readonly lockRetryMs: number;
   private readonly lockTimeoutMs: number;
+  private readonly staleLockThresholdMs: number;
 
   constructor(outputDir: string, options: MacroWorkflowStateStoreOptions = {}) {
     this.outputDir = outputDir;
@@ -34,6 +38,7 @@ export class MacroWorkflowStateStore {
     this.lockPath = `${this.statePath}.lock`;
     this.lockRetryMs = options.lockRetryMs ?? DEFAULT_LOCK_RETRY_MS;
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
+    this.staleLockThresholdMs = options.staleLockThresholdMs ?? DEFAULT_STALE_LOCK_THRESHOLD_MS;
   }
 
   async read(): Promise<MacroWorkflowRunStateLike> {
@@ -92,6 +97,17 @@ export class MacroWorkflowStateStore {
     while (true) {
       try {
         const handle = await open(this.lockPath, "wx");
+        try {
+          await handle.writeFile(
+            JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }),
+            "utf8",
+          );
+          await handle.sync();
+        } catch (error) {
+          await handle.close();
+          await rm(this.lockPath, { force: true });
+          throw error;
+        }
         return async () => {
           try {
             await handle.close();
@@ -103,6 +119,9 @@ export class MacroWorkflowStateStore {
         if (!isFileExistsError(error)) {
           throw error;
         }
+        if (await this.reclaimStaleLockIfSafe()) {
+          continue;
+        }
         if (Date.now() - startedAt >= this.lockTimeoutMs) {
           throw new Error(
             `Timed out acquiring workflow state lock after ${this.lockTimeoutMs}ms: ${this.lockPath}`,
@@ -111,6 +130,102 @@ export class MacroWorkflowStateStore {
         await delay(this.lockRetryMs);
       }
     }
+  }
+
+  private async reclaimStaleLockIfSafe(): Promise<boolean> {
+    let fileStats;
+    try {
+      fileStats = await stat(this.lockPath);
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return true;
+      }
+      throw error;
+    }
+
+    let metadata: unknown;
+    try {
+      metadata = JSON.parse(await readFile(this.lockPath, "utf8"));
+    } catch {
+      if (Date.now() - fileStats.mtimeMs < this.staleLockThresholdMs) {
+        return false;
+      }
+      return this.removeReclaimableLock(fileStats);
+    }
+
+    const owner = readLockOwnerMetadata(metadata);
+    if (!owner) {
+      if (Date.now() - fileStats.mtimeMs < this.staleLockThresholdMs) {
+        return false;
+      }
+      return this.removeReclaimableLock(fileStats);
+    }
+    if (isProcessAlive(owner.pid)) {
+      return false;
+    }
+    return this.removeReclaimableLock(fileStats);
+  }
+
+  private async removeReclaimableLock(inspectedStats: Stats): Promise<boolean> {
+    let currentStats;
+    try {
+      currentStats = await stat(this.lockPath);
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return true;
+      }
+      throw error;
+    }
+    if (!isSameLockFile(inspectedStats, currentStats)) {
+      return false;
+    }
+    try {
+      await rm(this.lockPath);
+      return true;
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return true;
+      }
+      throw error;
+    }
+  }
+}
+
+function isSameLockFile(inspected: Stats, current: Stats): boolean {
+  return (
+    inspected.dev === current.dev &&
+    inspected.ino === current.ino &&
+    inspected.size === current.size &&
+    inspected.mtimeMs === current.mtimeMs
+  );
+}
+
+function readLockOwnerMetadata(value: unknown): { pid: number; createdAt: string } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.pid !== "number" ||
+    !Number.isInteger(record.pid) ||
+    record.pid <= 0 ||
+    typeof record.createdAt !== "string" ||
+    Number.isNaN(Date.parse(record.createdAt))
+  ) {
+    return undefined;
+  }
+  return { pid: record.pid, createdAt: record.createdAt };
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (isErrnoCode(error, "ESRCH")) {
+      return false;
+    }
+    return true;
   }
 }
 
@@ -154,7 +269,15 @@ function normalizeSensitiveKey(key: string): string {
 }
 
 function isFileExistsError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
+  return isErrnoCode(error, "EEXIST");
+}
+
+function isFileNotFoundError(error: unknown): error is NodeJS.ErrnoException {
+  return isErrnoCode(error, "ENOENT");
+}
+
+function isErrnoCode(error: unknown, code: string): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === code;
 }
 
 function delay(milliseconds: number): Promise<void> {

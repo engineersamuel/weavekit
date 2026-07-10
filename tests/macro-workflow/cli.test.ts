@@ -54,6 +54,10 @@ const workflowPlanner = vi.hoisted(() => ({
   })),
 }));
 
+const nodeCostHistory = vi.hoisted(() => ({
+  recordNodeCostHistoryFromUsage: vi.fn(async () => undefined),
+}));
+
 vi.mock("../../src/entities/index.js", async () => {
   const actual = await vi.importActual<typeof import("../../src/entities/index.js")>(
     "../../src/entities/index.js",
@@ -130,10 +134,21 @@ vi.mock("../../src/macro-workflow/verificationOptimizer/harnesses.js", async () 
   };
 });
 
+vi.mock("../../src/macro-workflow/nodeCostHistory.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../src/macro-workflow/nodeCostHistory.js")
+  >("../../src/macro-workflow/nodeCostHistory.js");
+  return {
+    ...actual,
+    recordNodeCostHistoryFromUsage: nodeCostHistory.recordNodeCostHistoryFromUsage,
+  };
+});
+
 beforeEach(() => {
   entityValidation.assertValidEntityCatalog.mockReset();
   entityValidation.assertValidEntityCatalog.mockImplementation(() => {});
   workflowPlanner.planWorkflow.mockClear();
+  nodeCostHistory.recordNodeCostHistoryFromUsage.mockClear();
   deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockReset();
   deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReset();
   deepResearchHarnesses.createBoundedDeepResearchRunner.mockReset();
@@ -1118,6 +1133,25 @@ autonomous_pr_allowed = false
       replans: [],
     };
     await new MacroWorkflowStateStore(outputDir).write(initialState);
+    const priorReplayEvents = [
+      {
+        seq: 7,
+        ts: "2026-07-10T10:00:00.000Z",
+        kind: "planning-started",
+        phase: "planning",
+      },
+      {
+        seq: 8,
+        ts: "2026-07-10T10:00:01.000Z",
+        kind: "planning-complete",
+        phase: "running",
+      },
+    ];
+    await writeFile(
+      join(outputDir, "workflow-events.jsonl"),
+      `${priorReplayEvents.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8",
+    );
 
     try {
       await runWorkflowCli({
@@ -1140,6 +1174,16 @@ autonomous_pr_allowed = false
         ["completed-research", "passed"],
         ["remaining-report", "passed"],
       ]);
+      const replayEvents = (await readFile(join(outputDir, "workflow-events.jsonl"), "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { seq: number; kind: string });
+      expect(replayEvents.slice(0, priorReplayEvents.length)).toEqual(priorReplayEvents);
+      expect(replayEvents[priorReplayEvents.length]?.seq).toBe(9);
+      expect(replayEvents.at(-1)?.kind).toBe("run-completed");
+      const replaySeqs = replayEvents.map((event) => event.seq);
+      expect(replaySeqs).toEqual([...replaySeqs].sort((left, right) => left - right));
+      expect(new Set(replaySeqs).size).toBe(replaySeqs.length);
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }
@@ -1265,6 +1309,26 @@ autonomous_pr_allowed = false
         },
       ],
       replans: [],
+      usage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        totalTokens: 120,
+        estimatedCostUsd: 0.0011,
+        unpricedModels: [],
+        records: [
+          {
+            id: "usage-1",
+            executor: "copilot-sdk",
+            label: "Persisted research",
+            model: "gpt-5.5",
+            nodeId: "completed-node",
+            inputTokens: 100,
+            outputTokens: 20,
+            totalTokens: 120,
+            estimatedCostUsd: 0.0011,
+          },
+        ],
+      },
       resumeContext: {
         version: 1,
         templateId: "deep-research",
@@ -1281,6 +1345,30 @@ autonomous_pr_allowed = false
         [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "resumed" }),
       }),
     );
+    sourceToProjectHarnesses.createCopilotSdkHarnessClient.mockImplementationOnce(
+      (options: {
+        onUsage?: (event: {
+          operation: string;
+          mode: string;
+          model: string;
+          cwd: string;
+          nodeId: string;
+          label: string;
+          usage: { inputTokens: number; outputTokens: number };
+        }) => void;
+      }) => {
+        options.onUsage?.({
+          operation: "resume-research",
+          mode: "research",
+          model: "gpt-5.5",
+          cwd: rootDir,
+          nodeId: "remaining-node",
+          label: "Resumed research",
+          usage: { inputTokens: 200, outputTokens: 40 },
+        });
+        return { model: "fake-copilot", run: vi.fn(async () => "fake copilot output") };
+      },
+    );
 
     try {
       await runWorkflowCli({
@@ -1294,6 +1382,20 @@ autonomous_pr_allowed = false
       expect(deepResearchHarnesses.createDeepResearchHarnessRegistry).toHaveBeenCalledWith(
         expect.objectContaining({ config: persistedDeepResearch }),
       );
+      const resumed = await new MacroWorkflowStateStore(outputDir).read();
+      expect(resumed.usage).toMatchObject({
+        inputTokens: 300,
+        outputTokens: 60,
+        totalTokens: 360,
+        estimatedCostUsd: 0.0033,
+        records: [
+          { id: "usage-1", label: "Persisted research" },
+          { id: "usage-2", label: "Resumed research" },
+        ],
+      });
+      expect(nodeCostHistory.recordNodeCostHistoryFromUsage).toHaveBeenCalledWith({
+        summary: resumed.usage,
+      });
 
       await expect(
         runWorkflowCli({

@@ -39,6 +39,13 @@ the lock, the store writes a temporary file in the Run directory and renames it 
 snapshot. This provides conservative single-machine writer serialization and prevents readers
 from observing partial JSON without introducing a database or distributed lock.
 
+The lock records its owning process id and creation timestamp. An existing lock with a live owner
+is never removed merely because an acquisition timeout elapsed; permission errors while probing the
+PID are treated as evidence that the owner is alive. A lock can be reclaimed when its recorded PID
+is confirmed dead. Incomplete or unreadable metadata is reclaimed only after a conservative
+five-minute stale threshold. Reclaim races return to exclusive creation, where another writer's
+successful acquisition remains authoritative.
+
 One recursive validator rejects objects containing common sensitive key names: `token`, `secret`,
 `password`, `apiKey`/`api_key`, `authorization`, and `accessToken`/`access_token`. The validator
 runs before replay emission and before any state snapshot, JSONL event, typed payload, or report is
@@ -68,6 +75,18 @@ and does not execute them again. Failed, running, and pending work is eligible t
 interrupted result records and active-node metadata are cleared before dispatch. Replan budget is
 reduced by persisted replan events, the original `startedAt` is preserved, and completion produces
 the normal final state and artifacts.
+
+Resume also loads and validates the existing `workflow-events.jsonl` at the artifact boundary.
+Event sequence numbers must be positive and strictly increasing, timestamps and event kinds must be
+valid, and corrupt history fails with its source line. The runner starts after the highest persisted
+sequence, new events append during execution, and final artifact generation writes the complete
+prior-plus-new history rather than truncating the earlier invocation.
+
+Persisted usage records seed the resumed usage collector. Duplicate records retain one copy, ID
+collisions between distinct calls receive new stable `usage-N` identifiers, and totals, estimated
+cost, and unpriced-model lists are recomputed from the merged records. Final state, reporting, and
+node-cost history therefore receive cumulative usage for the whole Run rather than only the latest
+process invocation.
 
 ## Consequences
 

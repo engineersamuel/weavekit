@@ -11,6 +11,21 @@ import { runMacroWorkflow } from "../../src/macro-workflow/runner.js";
 import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
 
 describe("macro workflow runner", () => {
+  it("continues replay sequence numbering from a persisted seed", async () => {
+    const plan = materializeWorkflowPlan("implementation-review", {
+      objective: "Continue replay history",
+    });
+    const replaySeqs: number[] = [];
+
+    await runMacroWorkflow(plan, {
+      initialReplaySeq: 12,
+      onReplayEvent: (event) => replaySeqs.push(event.seq),
+    });
+
+    expect(replaySeqs[0]).toBe(13);
+    expect(new Set(replaySeqs).size).toBe(replaySeqs.length);
+  });
+
   it("resumes the persisted current plan without rerunning completed nodes", async () => {
     const currentPlan = {
       id: "resume-plan",

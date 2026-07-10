@@ -28,7 +28,6 @@ import {
   type RuntimeWorkflowNode,
   type WorkflowArtifactRef,
   type WorkflowPlanTemplateId,
-  type WorkflowReplayEvent,
 } from "./macro-workflow/types.js";
 import { MacroWorkflowEventKind } from "./macro-workflow/logger.js";
 import { MacroWorkflowStateStore } from "./macro-workflow/stateStore.js";
@@ -1278,7 +1277,10 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     import("./macro-workflow/nodeCostHistory.js"),
     import("./macro-workflow/templateOptimizer/candidatePlan.js"),
   ]);
-  const usageCollector = new workflowUsageModule.WorkflowUsageCollector();
+  const usageCollector = new workflowUsageModule.WorkflowUsageCollector(resumedState?.usage);
+  const replayEvents = resumedState
+    ? await workflowArtifactsModule.readWorkflowReplayEvents(runDescriptor.outputDir)
+    : [];
   const planner = new workflowBamlAdapterModule.GeneratedWorkflowPlannerAdapter({ usageCollector });
   const progress = createWorkflowProgressReporter();
   let plan;
@@ -1387,7 +1389,6 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   let dashboardPublisher:
     | Awaited<ReturnType<typeof workflowDashboardModule.createWorkflowDashboardPublisher>>
     | undefined;
-  const replayEvents: WorkflowReplayEvent[] = [];
   let replayEventWrite = Promise.resolve();
   let stateSnapshotWrite = Promise.resolve();
   const initialRunState: MacroWorkflowRunState = resumedInitialState ?? {
@@ -1576,6 +1577,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
 
     const state = await workflowRunnerModule.runMacroWorkflow(plan, {
       initialState: resumedInitialState,
+      initialReplaySeq: replayEvents.at(-1)?.seq ?? 0,
       harnesses,
       outputDir: runDescriptor.outputDir,
       replanner: planner,

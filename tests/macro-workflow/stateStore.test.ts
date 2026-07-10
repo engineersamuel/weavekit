@@ -1,4 +1,4 @@
-import { open, readdir, writeFile } from "node:fs/promises";
+import { readdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -122,23 +122,75 @@ describe("macro workflow state store", () => {
     }
   });
 
-  it("uses an adjacent bounded lock and leaves only an atomically renamed snapshot", async () => {
+  it("does not reclaim an adjacent lock owned by a live process", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "workflow-state-store-"));
     const blockedStore = new MacroWorkflowStateStore(outputDir, {
       lockRetryMs: 5,
       lockTimeoutMs: 20,
+      staleLockThresholdMs: 0,
     });
     const store = new MacroWorkflowStateStore(outputDir);
-    let lockHandle;
     try {
-      lockHandle = await open(store.lockPath, "wx");
+      await writeFile(
+        store.lockPath,
+        JSON.stringify({ pid: process.pid, createdAt: new Date(0).toISOString() }),
+        "utf8",
+      );
       await expect(blockedStore.write(createState())).rejects.toThrow(
         "Timed out acquiring workflow state lock",
       );
-      await lockHandle.close();
-      lockHandle = undefined;
-      await rm(store.lockPath, { force: true });
+      await expect(readFile(store.lockPath, "utf8")).resolves.toContain(`"pid":${process.pid}`);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
 
+  it("reclaims a lock whose recorded owner process is dead", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "workflow-state-store-"));
+    const store = new MacroWorkflowStateStore(outputDir, {
+      lockRetryMs: 5,
+      lockTimeoutMs: 100,
+    });
+    try {
+      await writeFile(
+        store.lockPath,
+        JSON.stringify({ pid: 2_147_483_647, createdAt: new Date().toISOString() }),
+        "utf8",
+      );
+
+      await store.write(createState({ runName: "Recovered Writer" }));
+
+      await expect(store.read()).resolves.toMatchObject({ runName: "Recovered Writer" });
+      await expect(readdir(outputDir)).resolves.toEqual(["workflow-state.json"]);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reclaims incomplete owner metadata only after the stale threshold", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "workflow-state-store-"));
+    const store = new MacroWorkflowStateStore(outputDir, {
+      lockRetryMs: 5,
+      lockTimeoutMs: 100,
+      staleLockThresholdMs: 10,
+    });
+    try {
+      await writeFile(store.lockPath, JSON.stringify({ pid: process.pid }), "utf8");
+      const oldTimestamp = new Date(Date.now() - 1_000);
+      await utimes(store.lockPath, oldTimestamp, oldTimestamp);
+
+      await store.write(createState({ runName: "Recovered Partial Lock" }));
+
+      await expect(store.read()).resolves.toMatchObject({ runName: "Recovered Partial Lock" });
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent writers and leaves only an atomically renamed snapshot", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "workflow-state-store-"));
+    const store = new MacroWorkflowStateStore(outputDir);
+    try {
       await Promise.all([
         store.write(createState({ runName: "Writer One" })),
         store.write(createState({ runName: "Writer Two" })),
@@ -148,7 +200,6 @@ describe("macro workflow state store", () => {
       expect(["Writer One", "Writer Two"]).toContain(state.runName);
       expect(await readdir(outputDir)).toEqual(["workflow-state.json"]);
     } finally {
-      await lockHandle?.close();
       await rm(outputDir, { recursive: true, force: true });
     }
   });
