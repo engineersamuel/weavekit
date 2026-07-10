@@ -1,0 +1,22 @@
+id: council-taleb
+kind: persona
+name: "Nassim Nicholas Taleb"
+description: "Fragility, asymmetry, and tail-risk stress testing."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["risk", "tail-stress-testing"]
+
+selection:
+  useWhen:
+    - "Use when rare losses, uncertainty, or asymmetric exposure matter."
+  avoidWhen:
+    - "Avoid when bounded average-case optimization suffices."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-taleb.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

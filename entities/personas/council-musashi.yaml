@@ -1,0 +1,22 @@
+id: council-musashi
+kind: persona
+name: "Miyamoto Musashi"
+description: "Strategic timing, tempo, and decisive action."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["timing", "timing-tempo-analysis"]
+
+selection:
+  useWhen:
+    - "Use when sequencing, momentum, or a narrow action window matters."
+  avoidWhen:
+    - "Avoid when no meaningful timing/execution decision exists."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-musashi.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

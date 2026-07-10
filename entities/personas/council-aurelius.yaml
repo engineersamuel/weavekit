@@ -1,0 +1,22 @@
+id: council-aurelius
+kind: persona
+name: "Marcus Aurelius"
+description: "Clarifies resilience, moral duty, controllable action, and a steady response to difficult consequences."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["resilience", "negative-visualization"]
+
+selection:
+  useWhen:
+    - "Use when consequences, controllability, or ethical steadiness matter."
+  avoidWhen:
+    - "Avoid when competitive tactics or technical mechanics dominate."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-aurelius.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

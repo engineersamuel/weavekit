@@ -19,6 +19,17 @@ describe("personas.baml contract", () => {
     expect(source).toContain("client CopilotProxyGpt5Mini");
   });
 
+  it("instructs the chooser to prefer complementary methods and fill later-round gaps", async () => {
+    const source = await readFile("baml_src/personas.baml", "utf8");
+
+    expect(source).toContain("distinct reasoning methods");
+    expect(source).toContain("materially overlapping domains and methods");
+    expect(source).toContain("deliberate opposition");
+    expect(source).toContain("previousSelectionIds");
+    expect(source).toContain("previousRoundSignals");
+    expect(source).toContain("missing lens");
+  });
+
   it("exposes generated candidate fields and async client binding", async () => {
     const generatedTypes = await readFile("src/generated/baml_client/types.ts", "utf8");
     const generatedClient = await readFile("src/generated/baml_client/async_client.ts", "utf8");

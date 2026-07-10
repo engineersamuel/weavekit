@@ -5,6 +5,7 @@ import {
   getPersona,
   listPersonas,
 } from "../../src/personas/registry.js";
+import { COUNCIL_PERSONA_ANCHORS, COUNCIL_PERSONA_IDS } from "./councilRoster.js";
 
 describe("manifest-backed persona registry", () => {
   it("loads personas from the entity catalog", () => {
@@ -48,6 +49,26 @@ describe("manifest-backed persona registry", () => {
       expect(persona.description.trim().length).toBeGreaterThanOrEqual(20);
       expect(persona.useWhen.length).toBeGreaterThan(0);
       expect(persona.avoidWhen.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("loads the complete canonical council roster through the runtime registry", () => {
+    const listedIds = new Set(listPersonas().map((persona) => persona.id));
+    const councilIds = new Set(COUNCIL_PERSONA_IDS);
+
+    expect(COUNCIL_PERSONA_IDS).toHaveLength(18);
+    expect(councilIds).toHaveLength(18);
+
+    for (const [id, anchor] of Object.entries(COUNCIL_PERSONA_ANCHORS)) {
+      expect(listedIds.has(id)).toBe(true);
+
+      const persona = getPersona(id);
+      expect(persona.description.length).toBeGreaterThanOrEqual(20);
+      expect(persona.tags.length).toBeGreaterThan(0);
+      expect(persona.useWhen.length).toBeGreaterThan(0);
+      expect(persona.avoidWhen.length).toBeGreaterThan(0);
+      expect(persona.prompt.length).toBeGreaterThanOrEqual(600);
+      expect(persona.prompt.toLowerCase()).toContain(anchor.toLowerCase());
     }
   });
 

@@ -1,6 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { getPersona, listPersonas } from "../../src/personas/index.js";
 import { PersonaDefinitionSchema } from "../../src/decision-council/types.js";
+import { COUNCIL_PERSONA_ANCHORS } from "../personas/councilRoster.js";
+
+const councilOutputLabels = [
+  "- `claims`:",
+  "- `risks`:",
+  "- `questions`:",
+  "- `recommendations`:",
+] as const;
+
+const forbiddenImportedPromptInstructions =
+  /^[ \t]*(?:model|tools):|\/council\b|\bRound\s+\d+\b|\b\d+\s+words?\s+or\s+(?:less|fewer)\b|\bprovider(?:_affinity|\s+routing)\b|\bcoordinator\b|\bword limit\b|\bengage\s+at\s+least\s+\d+\s+other\s+members?\b|\brespond\s+to\s+peers?\b|\bchallenge\s+other\s+members?\b|Output Format \(Standalone\)/im;
+
+const forbiddenImportedPromptExamples = [
+  "model: opus",
+  'tools: ["Read", "Bash"]',
+  "Run this persona through /council.",
+  "Council Round 2",
+  "In Round 3 (Synthesis), state your final position.",
+  "If the council is past Round 2, act before Round 3.",
+  "Contribute your analysis in 300 words or less.",
+  'provider_affinity: ["anthropic", "openai"]',
+  "Use provider routing for this persona.",
+  "Engage at least 2 other members' positions.",
+  "Respond to peers before giving your verdict.",
+  "Challenge other members when they disagree.",
+  "Output Format (Standalone)",
+] as const;
+
+const legitimatePromptExamples = [
+  "Use a compact model: inputs, outputs, and constraints.",
+  "This claim needs peer review.",
+  "Model uncertainty explicitly.",
+] as const;
 
 describe("manifest-backed council personas", () => {
   it("loads the shipped manifest personas", () => {
@@ -9,6 +42,24 @@ describe("manifest-backed council personas", () => {
         .map((persona) => persona.id)
         .sort(),
     ).toEqual([
+      "council-ada",
+      "council-aristotle",
+      "council-aurelius",
+      "council-feynman",
+      "council-kahneman",
+      "council-karpathy",
+      "council-lao-tzu",
+      "council-machiavelli",
+      "council-meadows",
+      "council-munger",
+      "council-musashi",
+      "council-rams",
+      "council-socrates",
+      "council-sun-tzu",
+      "council-sutskever",
+      "council-taleb",
+      "council-torvalds",
+      "council-watts",
       "deep-module-dry",
       "dialectic-adversary",
       "dialectic-advocate",
@@ -32,6 +83,34 @@ describe("manifest-backed council personas", () => {
     expect(pragmatic.useWhen).toEqual([
       "Use for defining minimal experiments, incremental delivery plans, and practical next actions.",
     ]);
+  });
+
+  it.each(forbiddenImportedPromptExamples)("rejects imported host instruction: %s", (snippet) => {
+    expect(snippet).toMatch(forbiddenImportedPromptInstructions);
+  });
+
+  it.each(legitimatePromptExamples)("allows legitimate analytical prose: %s", (snippet) => {
+    expect(snippet).not.toMatch(forbiddenImportedPromptInstructions);
+  });
+
+  it("ships substantive normalized prompts for the canonical council personas", () => {
+    for (const [id, anchor] of Object.entries(COUNCIL_PERSONA_ANCHORS)) {
+      const persona = PersonaDefinitionSchema.parse(getPersona(id));
+
+      expect(persona.description.length).toBeGreaterThanOrEqual(20);
+      expect(persona.useWhen.length).toBeGreaterThan(0);
+      expect(persona.avoidWhen.length).toBeGreaterThan(0);
+      expect(persona.prompt.length).toBeGreaterThanOrEqual(600);
+      expect(persona.prompt.toLowerCase()).toContain(anchor.toLowerCase());
+      expect(persona.prompt).toContain("## Weavekit Council Output");
+      expect(persona.prompt).toContain(
+        "Do not claim to represent the named person's actual views.",
+      );
+      for (const outputLabel of councilOutputLabels) {
+        expect(persona.prompt).toContain(outputLabel);
+      }
+      expect(persona.prompt).not.toMatch(forbiddenImportedPromptInstructions);
+    }
   });
 
   it("keeps strategic personas and skill provenance available by id", () => {

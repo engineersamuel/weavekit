@@ -1,0 +1,22 @@
+id: council-sutskever
+kind: persona
+name: "Ilya Sutskever"
+description: "Scaling frontiers, capability discontinuities, and AI safety."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["ai-safety", "scaling-extrapolation"]
+
+selection:
+  useWhen:
+    - "Use when scaling trends or capability-risk transitions matter."
+  avoidWhen:
+    - "Avoid when there is no AI scaling or safety dimension."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-sutskever.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

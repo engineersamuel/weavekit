@@ -6,6 +6,7 @@ import {
   type PersonaSelectionInput,
 } from "../../src/personas/selector.js";
 import { createBamlPersonaSelector as createFromPersonasIndex } from "../../src/personas/index.js";
+import { COUNCIL_PERSONA_IDS } from "./councilRoster.js";
 
 const candidateA: PersonaDefinition = {
   id: "socratic",
@@ -44,6 +45,36 @@ const baseInput: PersonaSelectionInput = {
 };
 
 describe("createBamlPersonaSelector", () => {
+  it("includes the complete canonical council roster in the default candidate pool", async () => {
+    let capturedRequest: PersonaSelectionRequest | undefined;
+    const selector = createBamlPersonaSelector({
+      bamlClient: {
+        async ChoosePersonasForTask(request) {
+          capturedRequest = request;
+          return {
+            personaIds: ["council-aristotle", "council-rams"],
+            rationale: "Combine classification with subtractive design.",
+          };
+        },
+      },
+    });
+
+    const result = await selector.choosePersonas(baseInput);
+
+    expect(capturedRequest).toBeDefined();
+    const candidateIds = capturedRequest?.candidates.map((candidate) => candidate.id) ?? [];
+    for (const id of COUNCIL_PERSONA_IDS) {
+      expect(candidateIds).toContain(id);
+    }
+    const importedCandidateIds = candidateIds.filter((id) => COUNCIL_PERSONA_IDS.includes(id));
+    expect(importedCandidateIds).toHaveLength(18);
+    expect(new Set(importedCandidateIds)).toHaveLength(18);
+    expect(result.personaSet.personas.map((persona) => persona.id)).toEqual([
+      "council-aristotle",
+      "council-rams",
+    ]);
+  });
+
   it("sends manifest selector fields and excludes raw persona prompts", async () => {
     let capturedRequest: PersonaSelectionRequest | undefined;
     const selector = createBamlPersonaSelector({

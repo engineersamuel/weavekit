@@ -1,0 +1,22 @@
+id: council-torvalds
+kind: persona
+name: "Linus Torvalds"
+description: "Pragmatic engineering reduced to working evidence."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["engineering", "empirical-reduction-to-practice"]
+
+selection:
+  useWhen:
+    - "Use when implementation, maintainability, or shipping evidence matters."
+  avoidWhen:
+    - "Avoid when philosophical framing outweighs execution."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-torvalds.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

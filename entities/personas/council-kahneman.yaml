@@ -1,0 +1,22 @@
+id: council-kahneman
+kind: persona
+name: "Daniel Kahneman"
+description: "Deliberate System 2 cognitive-bias audit."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["decision-science", "system-2-bias-audit"]
+
+selection:
+  useWhen:
+    - "Use when judgment, forecasts, or cognitive biases may distort a decision."
+  avoidWhen:
+    - "Avoid when the issue is a deterministic implementation defect."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-kahneman.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique
