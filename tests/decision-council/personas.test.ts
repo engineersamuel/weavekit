@@ -19,7 +19,7 @@ const foundationalCouncilOutputLabels = [
 ] as const;
 
 const forbiddenImportedPromptInstructions =
-  /^[ \t]*(?:model|tools):|\/council\b|\b(?:Council Round|In Round)\s+\d+\b|\b\d+\s+words?\s+or\s+(?:less|fewer)\b|\bprovider(?:_affinity|\s+routing)\b|\bcoordinator\b|\bword limit\b|\bengage\s+at\s+least\s+\d+\s+other\s+members?\b|\brespond\s+to\s+peers?\b|\bchallenge\s+other\s+members?\b|Output Format \(Standalone\)/im;
+  /^[ \t]*(?:model|tools):|\/council\b|\bRound\s+\d+\b|\b\d+\s+words?\s+or\s+(?:less|fewer)\b|\bprovider(?:_affinity|\s+routing)\b|\bcoordinator\b|\bword limit\b|\bengage\s+at\s+least\s+\d+\s+other\s+members?\b|\brespond\s+to\s+peers?\b|\bchallenge\s+other\s+members?\b|Output Format \(Standalone\)/im;
 
 const forbiddenImportedPromptExamples = [
   "model: opus",
@@ -27,6 +27,7 @@ const forbiddenImportedPromptExamples = [
   "Run this persona through /council.",
   "Council Round 2",
   "In Round 3 (Synthesis), state your final position.",
+  "If the council is past Round 2, act before Round 3.",
   "Contribute your analysis in 300 words or less.",
   'provider_affinity: ["anthropic", "openai"]',
   "Use provider routing for this persona.",
