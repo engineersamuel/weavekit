@@ -56,6 +56,10 @@ interactive and bounded to before the Run. Durable, out-of-band elicitation that
 process restart — or durably resuming a persona's mid-turn `ask_user` — would reopen ADR 0001 and
 ADR 0002 (Rivet territory) and is out of scope here.
 
+ADR 0007 permits a macro-workflow Run to resume from a completed node-boundary snapshot. It does
+not resume a live harness turn or an outstanding `ask_user`; those mid-interaction cases remain out
+of scope under this decision.
+
 ## Considered options
 
 1. **Distinguish elicitation from verification gates — chosen.** Lets weavekit gather missing

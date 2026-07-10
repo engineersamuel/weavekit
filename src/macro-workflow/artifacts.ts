@@ -1,4 +1,4 @@
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   FinalRecommendationReview,
@@ -7,7 +7,9 @@ import type {
   ProjectBrief,
   SourceAnalysis,
 } from "../generated/baml_client/index.js";
+import { WorkflowReplayEventKind } from "./types.js";
 import type { MacroWorkflowRunStateLike, WorkflowReplayEvent } from "./types.js";
+import { assertNoSensitiveMacroWorkflowData, MacroWorkflowStateStore } from "./stateStore.js";
 import { renderWorkflowUsageMarkdown } from "./usage.js";
 
 export type MacroWorkflowArtifactPaths = {
@@ -25,11 +27,13 @@ export type MacroWorkflowArtifactsInput = {
 export async function writeMacroWorkflowArtifacts(
   input: MacroWorkflowArtifactsInput,
 ): Promise<MacroWorkflowArtifactPaths> {
+  assertNoSensitiveMacroWorkflowData(input);
   await mkdir(input.outputDir, { recursive: true });
 
   const reportPath = join(input.outputDir, "workflow-report.md");
   const statePath = join(input.outputDir, "workflow-state.json");
   const eventLogPath = join(input.outputDir, "workflow-events.jsonl");
+  await writeMacroWorkflowStateArtifact(input.outputDir, input.state);
   await Promise.all(
     input.state.nodeResults
       .filter((result) => result.payload)
@@ -92,9 +96,8 @@ export async function writeMacroWorkflowArtifacts(
   ].join("\n");
 
   await writeFile(reportPath, report, "utf8");
-  await writeMacroWorkflowStateArtifact(input.outputDir, input.state);
   if (input.replayEvents) {
-    await writeFile(eventLogPath, formatWorkflowReplayEvents(input.replayEvents), "utf8");
+    await writeWorkflowReplayEventsAtomically(input.outputDir, eventLogPath, input.replayEvents);
   }
 
   return { reportPath, statePath, eventLogPath };
@@ -311,20 +314,96 @@ export async function writeMacroWorkflowStateArtifact(
   outputDir: string,
   state: MacroWorkflowRunStateLike,
 ): Promise<string> {
-  await mkdir(outputDir, { recursive: true });
-  const statePath = join(outputDir, "workflow-state.json");
-  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
-  return statePath;
+  return new MacroWorkflowStateStore(outputDir).write(state);
 }
 
 export async function appendWorkflowReplayEvent(
   outputDir: string,
   event: WorkflowReplayEvent,
 ): Promise<string> {
+  assertNoSensitiveMacroWorkflowData(event, "replayEvent");
   await mkdir(outputDir, { recursive: true });
   const eventLogPath = join(outputDir, "workflow-events.jsonl");
   await appendFile(eventLogPath, `${JSON.stringify(event)}\n`, "utf8");
   return eventLogPath;
+}
+
+export async function readWorkflowReplayEvents(outputDir: string): Promise<WorkflowReplayEvent[]> {
+  const eventLogPath = join(outputDir, "workflow-events.jsonl");
+  let contents: string;
+  try {
+    contents = await readFile(eventLogPath, "utf8");
+  } catch (error) {
+    if (isFileNotFoundError(error)) {
+      return [];
+    }
+    throw error;
+  }
+
+  const events: WorkflowReplayEvent[] = [];
+  let previousSeq = 0;
+  for (const [index, line] of contents.split(/\r?\n/u).entries()) {
+    if (!line.trim()) {
+      continue;
+    }
+    const event = parseWorkflowReplayEvent(line, index + 1, eventLogPath, previousSeq);
+    events.push(event);
+    previousSeq = event.seq;
+  }
+  return events;
+}
+
+function parseWorkflowReplayEvent(
+  line: string,
+  lineNumber: number,
+  eventLogPath: string,
+  previousSeq: number,
+): WorkflowReplayEvent {
+  let value: unknown;
+  try {
+    value = JSON.parse(line);
+  } catch (error) {
+    throw invalidReplayEventError(eventLogPath, lineNumber, "invalid JSON", error);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw invalidReplayEventError(eventLogPath, lineNumber, "expected an object");
+  }
+  const event = value as Record<string, unknown>;
+  if (!Number.isInteger(event.seq) || (event.seq as number) <= previousSeq) {
+    throw invalidReplayEventError(
+      eventLogPath,
+      lineNumber,
+      `seq must be an integer greater than ${previousSeq}`,
+    );
+  }
+  if (typeof event.ts !== "string" || Number.isNaN(Date.parse(event.ts))) {
+    throw invalidReplayEventError(eventLogPath, lineNumber, "ts must be an ISO date string");
+  }
+  if (
+    typeof event.kind !== "string" ||
+    !Object.values(WorkflowReplayEventKind).includes(
+      event.kind as (typeof WorkflowReplayEventKind)[keyof typeof WorkflowReplayEventKind],
+    )
+  ) {
+    throw invalidReplayEventError(eventLogPath, lineNumber, "kind is not recognized");
+  }
+  return value as WorkflowReplayEvent;
+}
+
+function invalidReplayEventError(
+  eventLogPath: string,
+  lineNumber: number,
+  reason: string,
+  cause?: unknown,
+): Error {
+  return new Error(
+    `Invalid workflow replay event at line ${lineNumber} in ${eventLogPath}: ${reason}.`,
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function isFileNotFoundError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 function formatWorkflowReplayEvents(events: WorkflowReplayEvent[]): string {
@@ -332,4 +411,18 @@ function formatWorkflowReplayEvents(events: WorkflowReplayEvent[]): string {
     return "";
   }
   return `${events.map((event) => JSON.stringify(event)).join("\n")}\n`;
+}
+
+async function writeWorkflowReplayEventsAtomically(
+  outputDir: string,
+  eventLogPath: string,
+  events: WorkflowReplayEvent[],
+): Promise<void> {
+  const temporaryPath = join(outputDir, `.workflow-events.jsonl.${process.pid}.${Date.now()}.tmp`);
+  try {
+    await writeFile(temporaryPath, formatWorkflowReplayEvents(events), "utf8");
+    await rename(temporaryPath, eventLogPath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
 }

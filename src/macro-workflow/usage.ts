@@ -1,4 +1,5 @@
 import { Collector } from "@boundaryml/baml";
+import { isDeepStrictEqual } from "node:util";
 import { buildNodeCostHistoryKey, type NodeCostHistory } from "./nodeCostHistory.js";
 
 export type WorkflowTokenUsage = {
@@ -111,6 +112,18 @@ export class WorkflowUsageCollector {
   private nextId = 1;
   private readonly records: WorkflowUsageRecord[] = [];
 
+  constructor(initialSummary?: WorkflowUsageSummary) {
+    if (initialSummary) {
+      this.seed(initialSummary);
+    }
+  }
+
+  seed(summary: WorkflowUsageSummary): void {
+    const merged = mergeWorkflowUsageSummaries(this.summarize(), summary);
+    this.records.splice(0, this.records.length, ...merged.records);
+    this.nextId = findNextUsageId(this.records);
+  }
+
   createBamlCollector(name: string): Collector {
     return new Collector(name);
   }
@@ -143,8 +156,10 @@ export class WorkflowUsageCollector {
     }
     const estimatedCostUsd = estimateCostUsdForUsage(input.model, usage);
     const totalTokens = totalTokenCount(usage);
+    const id = nextAvailableUsageId(this.records, this.nextId);
+    this.nextId = Number(id.slice("usage-".length)) + 1;
     this.records.push({
-      id: `usage-${this.nextId++}`,
+      id,
       ...input,
       ...usage,
       ...(totalTokens === undefined ? {} : { totalTokens }),
@@ -154,34 +169,78 @@ export class WorkflowUsageCollector {
   }
 
   summarize(): WorkflowUsageSummary {
-    const totals = this.records.reduce<WorkflowTokenUsage>(
-      (total, record) => ({
-        inputTokens: addOptional(total.inputTokens, record.inputTokens),
-        outputTokens: addOptional(total.outputTokens, record.outputTokens),
-        cachedInputTokens: addOptional(total.cachedInputTokens, record.cachedInputTokens),
-        totalTokens: addOptional(total.totalTokens, record.totalTokens),
-      }),
-      {},
-    );
-    const costRecords = this.records.filter((record) => record.estimatedCostUsd !== undefined);
-    const estimatedCostUsd =
-      costRecords.length > 0
-        ? costRecords.reduce((total, record) => total + (record.estimatedCostUsd ?? 0), 0)
-        : undefined;
-    const unpricedModels = Array.from(
-      new Set(
-        this.records
-          .filter((record) => record.model && record.estimatedCostUsd === undefined)
-          .map((record) => record.model!),
-      ),
-    ).sort();
-    return {
-      records: [...this.records],
-      ...totals,
-      ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
-      unpricedModels,
-    };
+    return summarizeWorkflowUsageRecords(this.records);
   }
+}
+
+export function mergeWorkflowUsageSummaries(
+  ...summaries: Array<WorkflowUsageSummary | undefined>
+): WorkflowUsageSummary {
+  const records: WorkflowUsageRecord[] = [];
+  const sourceRecordsById = new Map<string, WorkflowUsageRecord[]>();
+  const usedIds = new Set<string>();
+  for (const summary of summaries) {
+    for (const record of summary?.records ?? []) {
+      const sourceRecords = sourceRecordsById.get(record.id) ?? [];
+      if (sourceRecords.some((existing) => isDeepStrictEqual(existing, record))) {
+        continue;
+      }
+      sourceRecords.push(record);
+      sourceRecordsById.set(record.id, sourceRecords);
+      const mergedRecord = usedIds.has(record.id)
+        ? { ...record, id: nextAvailableUsageId(records, findNextUsageId(records)) }
+        : { ...record };
+      records.push(mergedRecord);
+      usedIds.add(mergedRecord.id);
+    }
+  }
+  return summarizeWorkflowUsageRecords(records);
+}
+
+function summarizeWorkflowUsageRecords(records: WorkflowUsageRecord[]): WorkflowUsageSummary {
+  const totals = records.reduce<WorkflowTokenUsage>(
+    (total, record) => ({
+      inputTokens: addOptional(total.inputTokens, record.inputTokens),
+      outputTokens: addOptional(total.outputTokens, record.outputTokens),
+      cachedInputTokens: addOptional(total.cachedInputTokens, record.cachedInputTokens),
+      totalTokens: addOptional(total.totalTokens, record.totalTokens),
+    }),
+    {},
+  );
+  const costRecords = records.filter((record) => record.estimatedCostUsd !== undefined);
+  const estimatedCostUsd =
+    costRecords.length > 0
+      ? costRecords.reduce((total, record) => total + (record.estimatedCostUsd ?? 0), 0)
+      : undefined;
+  const unpricedModels = Array.from(
+    new Set(
+      records
+        .filter((record) => record.model && record.estimatedCostUsd === undefined)
+        .map((record) => record.model!),
+    ),
+  ).sort();
+  return {
+    records: records.map((record) => ({ ...record })),
+    ...totals,
+    ...(estimatedCostUsd === undefined ? {} : { estimatedCostUsd }),
+    unpricedModels,
+  };
+}
+
+function findNextUsageId(records: WorkflowUsageRecord[]): number {
+  return records.reduce((nextId, record) => {
+    const match = /^usage-(\d+)$/u.exec(record.id);
+    return match ? Math.max(nextId, Number(match[1]) + 1) : nextId;
+  }, 1);
+}
+
+function nextAvailableUsageId(records: WorkflowUsageRecord[], startAt: number): string {
+  const usedIds = new Set(records.map((record) => record.id));
+  let nextId = startAt;
+  while (usedIds.has(`usage-${nextId}`)) {
+    nextId += 1;
+  }
+  return `usage-${nextId}`;
 }
 
 export function extractUsageFromCopilotEventData(data: unknown): WorkflowTokenUsage | undefined {

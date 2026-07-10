@@ -1,10 +1,175 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { writeMacroWorkflowArtifacts } from "../../src/macro-workflow/artifacts.js";
+import {
+  appendWorkflowReplayEvent,
+  readWorkflowReplayEvents,
+  writeMacroWorkflowArtifacts,
+} from "../../src/macro-workflow/artifacts.js";
 
 describe("macro workflow artifacts", () => {
+  it("reads validated replay JSONL and reports a corrupt line", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    const eventLogPath = join(outputDir, "workflow-events.jsonl");
+    try {
+      await writeFile(
+        eventLogPath,
+        [
+          JSON.stringify({
+            seq: 4,
+            ts: "2026-07-10T10:00:00.000Z",
+            kind: "planning-started",
+          }),
+          JSON.stringify({
+            seq: 5,
+            ts: "2026-07-10T10:00:01.000Z",
+            kind: "planning-complete",
+          }),
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+
+      await expect(readWorkflowReplayEvents(outputDir)).resolves.toMatchObject([
+        { seq: 4, kind: "planning-started" },
+        { seq: 5, kind: "planning-complete" },
+      ]);
+
+      await writeFile(eventLogPath, '{"seq":5,"kind":"not-real"}\n', "utf8");
+      await expect(readWorkflowReplayEvents(outputDir)).rejects.toThrow(
+        "Invalid workflow replay event at line 1",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a sensitive replan replay event before appending JSONL", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    try {
+      await expect(
+        appendWorkflowReplayEvent(outputDir, {
+          seq: 1,
+          ts: "2026-07-10T10:00:00.000Z",
+          kind: "replan-applied",
+          patch: {
+            reason: "contract-failure",
+            replaceRemainingNodeIds: [],
+            newNodes: [
+              {
+                id: "replacement",
+                kind: "research",
+                harness: "research",
+                title: "Replacement",
+                prompt: "Retry",
+                input: { nested: { apiKey: "do-not-write" } },
+                dependsOn: [],
+                gates: ["output-contract"],
+                writeMode: "read-only",
+                replanPolicy: "never",
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow("Refusing to persist sensitive workflow state key");
+      await expect(readFile(join(outputDir, "workflow-events.jsonl"), "utf8")).rejects.toThrow(
+        "ENOENT",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects sensitive replay history before writing any final artifacts", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    try {
+      await expect(
+        writeMacroWorkflowArtifacts({
+          outputDir,
+          state: {
+            planId: "test-plan",
+            objective: "Protect replay secrets",
+            templateId: "implementation-review",
+            status: "running",
+            startedAt: new Date("2026-07-10T10:00:00.000Z"),
+            currentPlan: {
+              id: "test-plan",
+              objective: "Protect replay secrets",
+              templateId: "implementation-review",
+              maxReplans: 0,
+              nodes: [],
+            },
+            nodeResults: [],
+            replans: [],
+          },
+          replayEvents: [
+            {
+              seq: 1,
+              ts: "2026-07-10T10:00:00.000Z",
+              kind: "node-added",
+              node: {
+                id: "dynamic-node",
+                kind: "research",
+                harness: "research",
+                title: "Dynamic node",
+                input: { access_token: "do-not-write" },
+                dependsOn: [],
+              },
+            },
+          ],
+        }),
+      ).rejects.toThrow("Refusing to persist sensitive workflow state key");
+
+      await expect(readdir(outputDir)).resolves.toEqual([]);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses sensitive state before writing derived payload artifacts", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    try {
+      await expect(
+        writeMacroWorkflowArtifacts({
+          outputDir,
+          state: {
+            planId: "test-plan",
+            objective: "Protect secrets",
+            templateId: "implementation-review",
+            status: "passed",
+            startedAt: new Date("2026-06-29T00:00:00Z"),
+            currentPlan: {
+              id: "test-plan",
+              objective: "Protect secrets",
+              templateId: "implementation-review",
+              maxReplans: 0,
+              nodes: [],
+            },
+            nodeResults: [
+              {
+                nodeId: "research",
+                status: "passed",
+                output: "complete",
+                payload: { access_token: "do-not-write" },
+              },
+            ],
+            replans: [],
+          },
+        }),
+      ).rejects.toThrow("Refusing to persist sensitive workflow state key");
+
+      await expect(readFile(join(outputDir, "research.payload.json"), "utf8")).rejects.toThrow(
+        "ENOENT",
+      );
+      await expect(readFile(join(outputDir, "workflow-report.md"), "utf8")).rejects.toThrow(
+        "ENOENT",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
   it("writes report and state artifacts", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
     try {
@@ -45,6 +210,11 @@ describe("macro workflow artifacts", () => {
       expect(report).toContain("Macro Workflow Run Report");
       expect(report).toContain("## Token Usage and Cost");
       expect(stateFile).toContain('"status": "passed"');
+      expect(JSON.parse(stateFile)).toMatchObject({
+        schemaVersion: 1,
+        runId: expect.any(String),
+        lastUpdatedAt: expect.any(String),
+      });
       expect(eventLog).toContain('"kind":"planning-started"');
     } finally {
       await rm(outputDir, { recursive: true, force: true });

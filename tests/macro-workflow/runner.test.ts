@@ -2,12 +2,210 @@ import { describe, expect, it, vi } from "vitest";
 import { BudgetGateBlockedError } from "../../src/macro-workflow/budgetGate.js";
 import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js";
 import { MacroWorkflowEventKind } from "../../src/macro-workflow/logger.js";
-import type { WorkflowExecutionMetadata } from "../../src/macro-workflow/types.js";
+import type {
+  MacroWorkflowRunState,
+  WorkflowExecutionMetadata,
+} from "../../src/macro-workflow/types.js";
 import { materializeWorkflowPlan } from "../../src/macro-workflow/templates.js";
 import { runMacroWorkflow } from "../../src/macro-workflow/runner.js";
 import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
 
 describe("macro workflow runner", () => {
+  it("continues replay sequence numbering from a persisted seed", async () => {
+    const plan = materializeWorkflowPlan("implementation-review", {
+      objective: "Continue replay history",
+    });
+    const replaySeqs: number[] = [];
+
+    await runMacroWorkflow(plan, {
+      initialReplaySeq: 12,
+      onReplayEvent: (event) => replaySeqs.push(event.seq),
+    });
+
+    expect(replaySeqs[0]).toBe(13);
+    expect(new Set(replaySeqs).size).toBe(replaySeqs.length);
+  });
+
+  it("resumes the persisted current plan without rerunning completed nodes", async () => {
+    const currentPlan = {
+      id: "resume-plan",
+      objective: "Resume interrupted work",
+      templateId: "implementation-review",
+      maxReplans: 1,
+      nodes: [
+        {
+          id: "research",
+          kind: "research" as const,
+          harness: WorkflowHarnessKind.RESEARCH,
+          title: "Research",
+          prompt: "Research",
+          dependsOn: [],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+        {
+          id: "dynamic-report",
+          kind: "report" as const,
+          harness: WorkflowHarnessKind.REPORTER,
+          title: "Dynamic report",
+          prompt: "Report",
+          dependsOn: ["research"],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const originalStartedAt = new Date("2026-07-10T10:00:00.000Z");
+    const initialState: MacroWorkflowRunState = {
+      runId: "run-123",
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: originalStartedAt,
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [
+        {
+          nodeId: "research",
+          status: "passed",
+          output: "persisted research",
+          payload: { answer: 42 },
+          artifacts: [{ kind: "notes", path: "research.md", description: "Research notes" }],
+        },
+        {
+          nodeId: "dynamic-report",
+          status: "failed",
+          output: "interrupted",
+          error: "process exited",
+        },
+      ],
+      replans: [],
+      activeNodeId: "dynamic-report",
+      activeNodeIds: ["dynamic-report"],
+    };
+    const researchHarness = vi.fn(async () => ({
+      status: "passed" as const,
+      output: "should not run",
+    }));
+    const reportHarness = vi.fn(async (_node, context) => {
+      expect(context.payloads.get("research")).toEqual({ answer: 42 });
+      expect(context.artifacts.get("research")).toEqual([
+        { kind: "notes", path: "research.md", description: "Research notes" },
+      ]);
+      return { status: "passed" as const, output: "resumed report" };
+    });
+    const harnesses = createStaticHarnessRegistry({
+      [WorkflowHarnessKind.RESEARCH]: researchHarness,
+      [WorkflowHarnessKind.REPORTER]: reportHarness,
+    });
+
+    const state = await runMacroWorkflow(currentPlan, { initialState, harnesses });
+
+    expect(researchHarness).not.toHaveBeenCalled();
+    expect(reportHarness).toHaveBeenCalledTimes(1);
+    expect(state.status).toBe("passed");
+    expect(state.startedAt).toEqual(originalStartedAt);
+    expect(state.currentPlan).toEqual(currentPlan);
+    expect(state.nodeResults.map((result) => [result.nodeId, result.status])).toEqual([
+      ["research", "passed"],
+      ["dynamic-report", "passed"],
+    ]);
+  });
+
+  it("rejects a persisted state whose current plan differs from the supplied resume plan", async () => {
+    const plan = materializeWorkflowPlan("implementation-review", {
+      objective: "Expected objective",
+    });
+    const incompatiblePlan = { ...plan, objective: "Different objective" };
+    const initialState: MacroWorkflowRunState = {
+      planId: plan.id,
+      objective: plan.objective,
+      templateId: plan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan,
+      currentPlan: plan,
+      nodeResults: [],
+      replans: [],
+    };
+
+    await expect(runMacroWorkflow(incompatiblePlan, { initialState })).rejects.toThrow(
+      "Cannot resume workflow with an incompatible plan",
+    );
+  });
+
+  it("rejects persisted plan metadata that conflicts with the resumed current plan", async () => {
+    const plan = materializeWorkflowPlan("implementation-review", {
+      objective: "Expected objective",
+    });
+    const initialState: MacroWorkflowRunState = {
+      planId: plan.id,
+      objective: plan.objective,
+      templateId: plan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: { ...plan, objective: "Conflicting stored objective" },
+      currentPlan: plan,
+      nodeResults: [],
+      replans: [],
+    };
+
+    await expect(runMacroWorkflow(plan, { initialState })).rejects.toThrow(
+      "Cannot resume workflow with incompatible persisted plan metadata",
+    );
+  });
+
+  it("refuses sensitive dynamic nodes before emitting replay events", async () => {
+    const plan = {
+      id: "sensitive-expansion-plan",
+      objective: "Protect replay events",
+      templateId: "implementation-review",
+      maxReplans: 0,
+      nodes: [
+        {
+          id: "research",
+          kind: "research" as const,
+          harness: WorkflowHarnessKind.RESEARCH,
+          title: "Research",
+          prompt: "Research",
+          dependsOn: [],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const replayEvents: unknown[] = [];
+
+    await expect(
+      runMacroWorkflow(plan, {
+        expandAfterNode: () => [
+          {
+            id: "dynamic-sensitive",
+            kind: "research",
+            harness: WorkflowHarnessKind.RESEARCH,
+            title: "Sensitive",
+            prompt: "Sensitive",
+            input: { apiKey: "do-not-emit" },
+            dependsOn: ["research"],
+            gates: ["output-contract"],
+            writeMode: "read-only",
+            replanPolicy: "never",
+          },
+        ],
+        onReplayEvent(event) {
+          replayEvents.push(event);
+        },
+      }),
+    ).rejects.toThrow("Refusing to persist sensitive workflow state key");
+    expect(replayEvents).not.toContainEqual(
+      expect.objectContaining({ nodeId: "dynamic-sensitive" }),
+    );
+  });
+
   it("executes a plan end to end using the static harness registry", async () => {
     const plan = materializeWorkflowPlan("implementation-review", {
       objective: "Implement rich logging",

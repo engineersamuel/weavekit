@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DeepResearchDefaults } from "../../src/config.js";
 import {
   assertWorkflowRunSucceeded,
   createWorkflowProgressReporter,
@@ -19,6 +20,8 @@ import {
   runWorkflowCli,
 } from "../../src/cli.js";
 import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js";
+import { MacroWorkflowStateStore } from "../../src/macro-workflow/stateStore.js";
+import type { MacroWorkflowRunState } from "../../src/macro-workflow/types.js";
 import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
 
 const entityValidation = vi.hoisted(() => ({
@@ -33,6 +36,7 @@ const deepResearchHarnesses = vi.hoisted(() => ({
 
 const sourceToProjectHarnesses = vi.hoisted(() => ({
   createCopilotSdkHarnessClient: vi.fn(),
+  createSourceToProjectHarnessRegistry: vi.fn(),
 }));
 
 const verificationOptimizerHarnesses = vi.hoisted(() => ({
@@ -48,6 +52,10 @@ const workflowPlanner = vi.hoisted(() => ({
     maxReplans: 0,
     nodes: [],
   })),
+}));
+
+const nodeCostHistory = vi.hoisted(() => ({
+  recordNodeCostHistoryFromUsage: vi.fn(async () => undefined),
 }));
 
 vi.mock("../../src/entities/index.js", async () => {
@@ -108,6 +116,8 @@ vi.mock("../../src/macro-workflow/sourceToProject/harnesses.js", async () => {
   return {
     ...actual,
     createCopilotSdkHarnessClient: sourceToProjectHarnesses.createCopilotSdkHarnessClient,
+    createSourceToProjectHarnessRegistry:
+      sourceToProjectHarnesses.createSourceToProjectHarnessRegistry,
   };
 });
 
@@ -124,10 +134,21 @@ vi.mock("../../src/macro-workflow/verificationOptimizer/harnesses.js", async () 
   };
 });
 
+vi.mock("../../src/macro-workflow/nodeCostHistory.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../src/macro-workflow/nodeCostHistory.js")
+  >("../../src/macro-workflow/nodeCostHistory.js");
+  return {
+    ...actual,
+    recordNodeCostHistoryFromUsage: nodeCostHistory.recordNodeCostHistoryFromUsage,
+  };
+});
+
 beforeEach(() => {
   entityValidation.assertValidEntityCatalog.mockReset();
   entityValidation.assertValidEntityCatalog.mockImplementation(() => {});
   workflowPlanner.planWorkflow.mockClear();
+  nodeCostHistory.recordNodeCostHistoryFromUsage.mockClear();
   deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockReset();
   deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReset();
   deepResearchHarnesses.createBoundedDeepResearchRunner.mockReset();
@@ -149,6 +170,12 @@ beforeEach(() => {
     model: "fake-copilot",
     run: vi.fn(async () => "fake copilot output"),
   }));
+  sourceToProjectHarnesses.createSourceToProjectHarnessRegistry.mockReset();
+  sourceToProjectHarnesses.createSourceToProjectHarnessRegistry.mockReturnValue(
+    createStaticHarnessRegistry({
+      [WorkflowHarnessKind.REPORTER]: async () => ({ status: "passed", output: "mock report" }),
+    }),
+  );
   verificationOptimizerHarnesses.createVerificationOptimizerHarnessRegistry.mockReset();
   verificationOptimizerHarnesses.createVerificationOptimizerHarnessRegistry.mockReturnValue(
     createStaticHarnessRegistry({
@@ -346,6 +373,22 @@ describe("macro workflow CLI", () => {
     });
   });
 
+  it("parses an explicit resume run without requiring a new prompt", () => {
+    expect(
+      parseWorkflowCliArgs(["workflow", "run", "--resume", "run-123", "--output", "saved-runs"]),
+    ).toEqual({
+      command: "run",
+      outputDir: "saved-runs",
+      staticTemplate: false,
+      dryRun: false,
+      noCache: false,
+      resumeRunId: "run-123",
+    });
+    expect(() => parseWorkflowCliArgs(["workflow", "run", "--resume"])).toThrow(
+      "Missing value for --resume <run-id>.",
+    );
+  });
+
   it("rejects ambiguous workflow prompt sources", () => {
     expect(() =>
       parseWorkflowCliArgs(["workflow", "run", "--input", "question.md", "--prompt", "Question"]),
@@ -407,6 +450,35 @@ describe("macro workflow CLI", () => {
         maxResultsPerQuestion: 7,
         visualize: true,
       },
+    });
+  });
+
+  it("parses every deep-research setting required for legacy resume reconstruction", () => {
+    const parsed = parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--resume",
+      "legacy-deep",
+      "--providers",
+      "grok",
+      "--max-iterations",
+      "3",
+      "--questions-per-iteration",
+      "4",
+      "--max-results-per-question",
+      "5",
+      "--provider-retry-attempts",
+      "2",
+      "--no-visualize",
+    ]);
+
+    expect(parsed.deepResearch).toEqual({
+      providers: ["grok"],
+      maxIterations: 3,
+      questionsPerIteration: 4,
+      maxResultsPerQuestion: 5,
+      providerRetryAttempts: 2,
+      visualize: false,
     });
   });
 
@@ -803,6 +875,17 @@ autonomous_pr_allowed = false
     expect(descriptor.runName).toBe("Ship Replay Dashboard Follow Mode");
   });
 
+  it("creates a resume descriptor that reuses the requested run directory", () => {
+    expect(createWorkflowRunDescriptor("runs", "Persisted objective", "run-123")).toEqual({
+      runId: "run-123",
+      runName: "Persisted Objective",
+      outputDir: join("runs", "run-123"),
+    });
+    expect(() => createWorkflowRunDescriptor("runs", "Objective", "../escape")).toThrow(
+      "Invalid workflow run id",
+    );
+  });
+
   it("emits progress updates while a long-running workflow action is in flight", () => {
     vi.useFakeTimers();
     const writes: string[] = [];
@@ -987,6 +1070,522 @@ autonomous_pr_allowed = false
     }
   });
 
+  it("resumes from persisted objective and current plan in the same run directory", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-resume-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "run-123";
+    const outputDir = join(outputRoot, runId);
+    const startedAt = new Date("2026-07-10T10:00:00.000Z");
+    const currentPlan = {
+      id: "persisted-plan",
+      objective: "Persisted objective",
+      templateId: "implementation-review",
+      maxReplans: 0,
+      nodes: [
+        {
+          id: "completed-research",
+          kind: "research" as const,
+          harness: WorkflowHarnessKind.RESEARCH,
+          title: "Completed research",
+          prompt: "Research",
+          dependsOn: [],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+        {
+          id: "remaining-report",
+          kind: "report" as const,
+          harness: WorkflowHarnessKind.REPORTER,
+          title: "Remaining report",
+          prompt: "Report",
+          dependsOn: ["completed-research"],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const initialState: MacroWorkflowRunState = {
+      runId,
+      runName: "Persisted Run",
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt,
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [
+        {
+          nodeId: "completed-research",
+          status: "passed",
+          output: "already complete",
+          payload: { evidence: true },
+        },
+        {
+          nodeId: "remaining-report",
+          status: "failed",
+          output: "interrupted",
+          error: "process exited",
+        },
+      ],
+      replans: [],
+    };
+    await new MacroWorkflowStateStore(outputDir).write(initialState);
+    const priorReplayEvents = [
+      {
+        seq: 7,
+        ts: "2026-07-10T10:00:00.000Z",
+        kind: "planning-started",
+        phase: "planning",
+      },
+      {
+        seq: 8,
+        ts: "2026-07-10T10:00:01.000Z",
+        kind: "planning-complete",
+        phase: "running",
+      },
+    ];
+    await writeFile(
+      join(outputDir, "workflow-events.jsonl"),
+      `${priorReplayEvents.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8",
+    );
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+      });
+
+      expect(workflowPlanner.planWorkflow).not.toHaveBeenCalled();
+      expect(await readdir(outputRoot)).toEqual([runId]);
+      const resumed = await new MacroWorkflowStateStore(outputDir).read();
+      expect(resumed.runId).toBe(runId);
+      expect(resumed.runName).toBe("Persisted Run");
+      expect(resumed.objective).toBe("Persisted objective");
+      expect(resumed.startedAt).toEqual(startedAt);
+      expect(resumed.status).toBe("passed");
+      expect(resumed.nodeResults.map((result) => [result.nodeId, result.status])).toEqual([
+        ["completed-research", "passed"],
+        ["remaining-report", "passed"],
+      ]);
+      const replayEvents = (await readFile(join(outputDir, "workflow-events.jsonl"), "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { seq: number; kind: string });
+      expect(replayEvents.slice(0, priorReplayEvents.length)).toEqual(priorReplayEvents);
+      expect(replayEvents[priorReplayEvents.length]?.seq).toBe(9);
+      expect(replayEvents.at(-1)?.kind).toBe("run-completed");
+      const replaySeqs = replayEvents.map((event) => event.seq);
+      expect(replaySeqs).toEqual([...replaySeqs].sort((left, right) => left - right));
+      expect(new Set(replaySeqs).size).toBe(replaySeqs.length);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reconstructs source-to-project runtime context and rejects conflicting resume flags", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-source-resume-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "source-run";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("source-to-project", WorkflowHarnessKind.REPORTER);
+    const project = createResumeProject(rootDir);
+    const state: MacroWorkflowRunState = {
+      runId,
+      runName: "Source Resume",
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [
+        {
+          nodeId: "remaining-node",
+          status: "failed",
+          output: "interrupted",
+          error: "process exited",
+        },
+      ],
+      replans: [],
+      resumeContext: {
+        version: 1,
+        templateId: "source-to-project",
+        source: "https://example.com/source",
+        project: "weavekit",
+        mode: "advisory",
+        resolvedProject: project,
+        sourceToProject: {
+          maxOpportunities: 2,
+          thresholds: {
+            minApplicability: 0.81,
+            minConfidence: 0.82,
+            minImpact: 0.83,
+            minAcceptanceAverage: 0.84,
+            maxRisk: 0.25,
+          },
+          offline: true,
+          autoImplementOnReport: false,
+        },
+      },
+    };
+    await new MacroWorkflowStateStore(outputDir).write(state);
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+      });
+
+      expect(sourceToProjectHarnesses.createSourceToProjectHarnessRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: "https://example.com/source",
+          project,
+          mode: "advisory",
+          maxOpportunities: 2,
+          thresholds: expect.objectContaining({ minApplicability: 0.81, maxRisk: 0.25 }),
+          sourceToProject: expect.objectContaining({ offline: true }),
+        }),
+      );
+
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: true,
+          dryRun: false,
+          resumeRunId: runId,
+          template: "source-to-project",
+          project: "different-project",
+        }),
+      ).rejects.toThrow(
+        "Resume flag --project conflicts with persisted workflow context: expected weavekit",
+      );
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reconstructs deep-research settings and rejects conflicting resume overrides", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-deep-resume-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "deep-run";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("deep-research", WorkflowHarnessKind.RESEARCH);
+    const persistedDeepResearch: DeepResearchDefaults = {
+      providers: ["grok", "copilot-last30days"],
+      maxIterations: 4,
+      questionsPerIteration: 5,
+      maxResultsPerQuestion: 6,
+      providerRetryAttempts: 2,
+      visualize: false,
+    };
+    const state: MacroWorkflowRunState = {
+      runId,
+      runName: "Deep Resume",
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [
+        {
+          nodeId: "remaining-node",
+          status: "failed",
+          output: "interrupted",
+          error: "process exited",
+        },
+      ],
+      replans: [],
+      usage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        totalTokens: 120,
+        estimatedCostUsd: 0.0011,
+        unpricedModels: [],
+        records: [
+          {
+            id: "usage-1",
+            executor: "copilot-sdk",
+            label: "Persisted research",
+            model: "gpt-5.5",
+            nodeId: "completed-node",
+            inputTokens: 100,
+            outputTokens: 20,
+            totalTokens: 120,
+            estimatedCostUsd: 0.0011,
+          },
+        ],
+      },
+      resumeContext: {
+        version: 1,
+        templateId: "deep-research",
+        deepResearch: persistedDeepResearch,
+      },
+    };
+    await new MacroWorkflowStateStore(outputDir).write(state);
+    deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockResolvedValue({
+      client: { web_search_exa: vi.fn() },
+      close: vi.fn(async () => {}),
+    });
+    deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReturnValue(
+      createStaticHarnessRegistry({
+        [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "resumed" }),
+      }),
+    );
+    sourceToProjectHarnesses.createCopilotSdkHarnessClient.mockImplementationOnce(
+      (options: {
+        onUsage?: (event: {
+          operation: string;
+          mode: string;
+          model: string;
+          cwd: string;
+          nodeId: string;
+          label: string;
+          usage: { inputTokens: number; outputTokens: number };
+        }) => void;
+      }) => {
+        options.onUsage?.({
+          operation: "resume-research",
+          mode: "research",
+          model: "gpt-5.5",
+          cwd: rootDir,
+          nodeId: "remaining-node",
+          label: "Resumed research",
+          usage: { inputTokens: 200, outputTokens: 40 },
+        });
+        return { model: "fake-copilot", run: vi.fn(async () => "fake copilot output") };
+      },
+    );
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+      });
+
+      expect(deepResearchHarnesses.createDeepResearchHarnessRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({ config: persistedDeepResearch }),
+      );
+      const resumed = await new MacroWorkflowStateStore(outputDir).read();
+      expect(resumed.usage).toMatchObject({
+        inputTokens: 300,
+        outputTokens: 60,
+        totalTokens: 360,
+        estimatedCostUsd: 0.0033,
+        records: [
+          { id: "usage-1", label: "Persisted research" },
+          { id: "usage-2", label: "Resumed research" },
+        ],
+      });
+      expect(nodeCostHistory.recordNodeCostHistoryFromUsage).toHaveBeenCalledWith({
+        summary: resumed.usage,
+      });
+
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: false,
+          dryRun: false,
+          resumeRunId: runId,
+          deepResearch: { providers: ["exa"] },
+        }),
+      ).rejects.toThrow(
+        "Resume flag --providers conflicts with persisted workflow context: expected grok,copilot-last30days",
+      );
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists the effective deep-research context when a run is created", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-deep-context-"));
+    const outputRoot = join(rootDir, "runs");
+    const deepResearch: DeepResearchDefaults = {
+      providers: ["grok"],
+      maxIterations: 3,
+      questionsPerIteration: 4,
+      maxResultsPerQuestion: 5,
+      providerRetryAttempts: 2,
+      visualize: false,
+    };
+    try {
+      await runWorkflowCli({
+        command: "run",
+        prompt: "Research durable contexts",
+        outputDir: outputRoot,
+        staticTemplate: true,
+        dryRun: true,
+        template: "deep-research",
+        deepResearch,
+      });
+
+      const [runId] = await readdir(outputRoot);
+      const state = await new MacroWorkflowStateStore(join(outputRoot, runId!)).read();
+      expect(state.resumeContext).toEqual({
+        version: 1,
+        templateId: "deep-research",
+        deepResearch,
+      });
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("requires explicit legacy source context and upgrades it after a safe resume", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-source-legacy-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "legacy-source";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("source-to-project", WorkflowHarnessKind.REPORTER);
+    await new MacroWorkflowStateStore(outputDir).write({
+      runId,
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [],
+      replans: [],
+    });
+
+    try {
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: false,
+          dryRun: false,
+          resumeRunId: runId,
+        }),
+      ).rejects.toThrow(
+        "Required flags: --source <url-or-path>, --project <id> or --project-path <path>, --mode <advisory|autonomous-pr>",
+      );
+
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+        source: "https://example.com/legacy-source",
+        projectPath: rootDir,
+        mode: "advisory",
+      });
+
+      const upgraded = await new MacroWorkflowStateStore(outputDir).read();
+      expect(upgraded.resumeContext).toMatchObject({
+        version: 1,
+        templateId: "source-to-project",
+        source: "https://example.com/legacy-source",
+        projectPath: rootDir,
+        mode: "advisory",
+        resolvedProject: { workingTree: rootDir },
+        sourceToProject: expect.any(Object),
+      });
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("requires all effective deep-research flags to resume a legacy snapshot", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-deep-legacy-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "legacy-deep";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("deep-research", WorkflowHarnessKind.RESEARCH);
+    await new MacroWorkflowStateStore(outputDir).write({
+      runId,
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [],
+      replans: [],
+    });
+    deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockResolvedValue({
+      client: { web_search_exa: vi.fn() },
+      close: vi.fn(async () => {}),
+    });
+    deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReturnValue(
+      createStaticHarnessRegistry({
+        [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "resumed" }),
+      }),
+    );
+    const deepResearch: DeepResearchDefaults = {
+      providers: ["grok"],
+      maxIterations: 3,
+      questionsPerIteration: 4,
+      maxResultsPerQuestion: 5,
+      providerRetryAttempts: 2,
+      visualize: false,
+    };
+
+    try {
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: false,
+          dryRun: false,
+          resumeRunId: runId,
+          deepResearch: { providers: ["grok"] },
+        }),
+      ).rejects.toThrow("Required deep-research flags: --max-iterations");
+
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+        deepResearch,
+      });
+      const upgraded = await new MacroWorkflowStateStore(outputDir).read();
+      expect(upgraded.resumeContext?.deepResearch).toEqual(deepResearch);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a useful error when the requested resume snapshot is unavailable", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-resume-missing-"));
+    try {
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: join(rootDir, "runs"),
+          staticTemplate: false,
+          dryRun: false,
+          resumeRunId: "missing-run",
+        }),
+      ).rejects.toThrow("Cannot resume workflow missing-run: failed to read workflow-state.json");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("writes final token usage into state for a planned workflow run", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-run-usage-"));
     const outputRoot = join(rootDir, "runs");
@@ -1042,3 +1641,44 @@ autonomous_pr_allowed = false
     }
   });
 });
+
+function createResumePlan(
+  templateId: "source-to-project" | "deep-research",
+  harness: typeof WorkflowHarnessKind.REPORTER | typeof WorkflowHarnessKind.RESEARCH,
+) {
+  return {
+    id: `${templateId}-resume-plan`,
+    objective: `Resume ${templateId}`,
+    templateId,
+    maxReplans: 0,
+    nodes: [
+      {
+        id: "remaining-node",
+        kind:
+          harness === WorkflowHarnessKind.REPORTER ? ("report" as const) : ("research" as const),
+        harness,
+        title: "Remaining node",
+        prompt: "Continue",
+        dependsOn: [],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
+      },
+    ],
+  };
+}
+
+function createResumeProject(workingTree: string) {
+  return {
+    id: "weavekit",
+    displayName: "Weavekit",
+    workingTree,
+    mainline: "origin main",
+    remote: "origin",
+    contextDocs: ["CONTEXT.md"],
+    validationCommands: ["nub run test"],
+    autonomousPrAllowed: false,
+    notification: "cli" as const,
+    knowledgeExport: "off" as const,
+  };
+}

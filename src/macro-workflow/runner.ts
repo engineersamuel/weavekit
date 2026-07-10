@@ -16,6 +16,7 @@ import type {
 } from "./types.js";
 import { WorkflowNodeStatus as WorkflowNodeState, WorkflowReplayEventKind } from "./types.js";
 import { verifyWorkflowPlan, verifyWorkflowReplanPatch } from "./verifier.js";
+import { assertNoSensitiveMacroWorkflowData } from "./stateStore.js";
 
 export type WorkflowReplanner = {
   generateReplanPatch(args: {
@@ -35,12 +36,14 @@ export type WorkflowDynamicExpander = (args: {
 }) => Promise<RuntimeWorkflowNode[] | undefined> | RuntimeWorkflowNode[] | undefined;
 
 export type MacroWorkflowRunnerDependencies = {
+  initialState?: MacroWorkflowRunState;
   harnesses?: HarnessRegistry;
   replanner?: WorkflowReplanner;
   expandAfterNode?: WorkflowDynamicExpander;
   logger?: MacroWorkflowLogger;
   preRunGate?: PreRunGate;
   outputDir?: string;
+  initialReplaySeq?: number;
   onStateChange?: (state: MacroWorkflowRunState, event: MacroWorkflowEvent) => void;
   onReplayEvent?: (event: WorkflowReplayEvent) => void;
 };
@@ -49,31 +52,22 @@ export async function runMacroWorkflow(
   plan: RuntimeWorkflowPlan,
   dependencies: MacroWorkflowRunnerDependencies = {},
 ): Promise<MacroWorkflowRunState> {
-  const state: MacroWorkflowRunState = {
-    planId: plan.id,
-    objective: plan.objective,
-    templateId: plan.templateId,
-    status: "running",
-    startedAt: new Date(),
-    plan,
-    currentPlan: plan,
-    nodeResults: [],
-    replans: [],
-    activeNodeId: undefined,
-  };
+  const state = createInitialRunState(plan, dependencies.initialState);
 
   const logger = dependencies.logger;
   const emitStateChange = (event: MacroWorkflowEvent) => {
     logger?.emit(event);
     dependencies.onStateChange?.(state, event);
   };
-  let replaySeq = 0;
+  let replaySeq = dependencies.initialReplaySeq ?? 0;
   const emitReplayEvent = (event: Omit<WorkflowReplayEvent, "seq" | "ts">) => {
-    dependencies.onReplayEvent?.({
+    const replayEvent = {
       seq: ++replaySeq,
       ts: new Date().toISOString(),
       ...event,
-    });
+    } satisfies WorkflowReplayEvent;
+    assertNoSensitiveMacroWorkflowData(replayEvent, "replayEvent");
+    dependencies.onReplayEvent?.(replayEvent);
   };
   const planningReplayNode = {
     id: "workflow-planning",
@@ -142,11 +136,19 @@ export async function runMacroWorkflow(
     }
   }
 
-  let remainingPlan = plan;
-  const completedNodeIds = new Set<string>();
-  let remainingReplans = remainingPlan.maxReplans;
+  let remainingPlan = state.currentPlan;
+  const completedNodeIds = new Set(state.nodeResults.map((result) => result.nodeId));
+  let remainingReplans = Math.max(0, remainingPlan.maxReplans - state.replans.length);
   const payloads = new Map<string, WorkflowNodePayload>();
   const artifacts = new Map<string, WorkflowArtifactRef[]>();
+  for (const result of state.nodeResults) {
+    if (result.payload) {
+      payloads.set(result.nodeId, result.payload);
+    }
+    if (result.artifacts) {
+      artifacts.set(result.nodeId, result.artifacts);
+    }
+  }
 
   while (true) {
     const readyNodes = selectReadyNodes(remainingPlan, completedNodeIds);
@@ -445,6 +447,59 @@ export async function runMacroWorkflow(
     timestamp: new Date(),
   });
   return state;
+}
+
+function createInitialRunState(
+  plan: RuntimeWorkflowPlan,
+  persistedState: MacroWorkflowRunState | undefined,
+): MacroWorkflowRunState {
+  if (!persistedState) {
+    return {
+      planId: plan.id,
+      objective: plan.objective,
+      templateId: plan.templateId,
+      status: "running",
+      startedAt: new Date(),
+      plan,
+      currentPlan: plan,
+      nodeResults: [],
+      replans: [],
+      activeNodeId: undefined,
+    };
+  }
+
+  if (
+    persistedState.plan.id !== persistedState.planId ||
+    persistedState.plan.objective !== persistedState.objective ||
+    persistedState.plan.templateId !== persistedState.templateId
+  ) {
+    throw new Error("Cannot resume workflow with incompatible persisted plan metadata.");
+  }
+
+  if (
+    persistedState.planId !== plan.id ||
+    persistedState.objective !== plan.objective ||
+    persistedState.templateId !== plan.templateId ||
+    JSON.stringify(persistedState.currentPlan) !== JSON.stringify(plan)
+  ) {
+    throw new Error(
+      `Cannot resume workflow with an incompatible plan: persisted ${persistedState.planId}, supplied ${plan.id}.`,
+    );
+  }
+
+  return {
+    ...persistedState,
+    status: "running",
+    completedAt: undefined,
+    currentPlan: plan,
+    nodeResults: persistedState.nodeResults.filter(
+      (result) =>
+        result.status === WorkflowNodeState.PASSED || result.status === WorkflowNodeState.SKIPPED,
+    ),
+    activeNodeId: undefined,
+    activeNodeIds: undefined,
+    activeNodeExecutions: undefined,
+  };
 }
 
 async function expandDynamicNodes(args: {

@@ -20,6 +20,10 @@ The apply CLI supports `--dry-run`, which asks the implementation agent to produ
 
 Optimizer run artifacts persist enough context for audit and best-effort reproduction: template id, git/working-tree summary, CLI options, model ids, strategy order, fixture ids, baseline template snapshot, generated candidates, judge outputs, and the final recommendation. Exact deterministic replay is not promised because live LLM calls are nondeterministic.
 
+ADR 0007's `workflow run --resume` contract applies to live macro-workflow Run snapshots, including
+their dynamically expanded current plans. Template Optimizer evaluation artifacts remain a
+separate audit/reproduction contract and are not made resumable by this decision.
+
 Once invoked, the apply stage proceeds automatically without a second confirmation prompt unless it detects conflicting worktree changes or broader-scope edits. The optimize stage must run `mise run doctor` before candidate generation so it does not optimize from a broken baseline. Before reporting apply success in v1, the apply stage must run `mise run doctor` again plus focused source-to-project/template optimizer validation.
 
 Each optimizer run starts from the current checked-in template and writes machine-readable output plus a Markdown summary under `evals/template-optimizer/runs/<run-id>/`. During a run, challengers compare against the current Incumbent template; at the end, the final Incumbent is compared back to the checked-in baseline so the net improvement remains clear. Prior optimizer runs are optional explicit context, not implicit memory.
