@@ -128,6 +128,12 @@ describe("shipped entity catalog", () => {
         .personas.map((persona) => persona.id)
         .sort(),
     ).toEqual([
+      "council-ada",
+      "council-aristotle",
+      "council-aurelius",
+      "council-machiavelli",
+      "council-socrates",
+      "council-sun-tzu",
       "deep-module-dry",
       "dialectic-adversary",
       "dialectic-advocate",

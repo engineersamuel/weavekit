@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { getPersona, listPersonas } from "../../src/personas/index.js";
 import { PersonaDefinitionSchema } from "../../src/decision-council/types.js";
 
+const foundationalCouncilAnchors = {
+  "council-aristotle": "taxonomic decomposition",
+  "council-socrates": "elenchic questioning",
+  "council-sun-tzu": "adversarial simulation",
+  "council-ada": "formal stepwise verification",
+  "council-aurelius": "negative visualization",
+  "council-machiavelli": "incentive backward induction",
+} as const;
+
 describe("manifest-backed council personas", () => {
   it("loads the shipped manifest personas", () => {
     expect(
@@ -9,6 +18,12 @@ describe("manifest-backed council personas", () => {
         .map((persona) => persona.id)
         .sort(),
     ).toEqual([
+      "council-ada",
+      "council-aristotle",
+      "council-aurelius",
+      "council-machiavelli",
+      "council-socrates",
+      "council-sun-tzu",
       "deep-module-dry",
       "dialectic-adversary",
       "dialectic-advocate",
@@ -32,6 +47,20 @@ describe("manifest-backed council personas", () => {
     expect(pragmatic.useWhen).toEqual([
       "Use for defining minimal experiments, incremental delivery plans, and practical next actions.",
     ]);
+  });
+
+  it("ships substantive normalized prompts for the foundational council personas", () => {
+    for (const [id, anchor] of Object.entries(foundationalCouncilAnchors)) {
+      const persona = PersonaDefinitionSchema.parse(getPersona(id));
+
+      expect(persona.description.length).toBeGreaterThanOrEqual(20);
+      expect(persona.useWhen.length).toBeGreaterThan(0);
+      expect(persona.avoidWhen.length).toBeGreaterThan(0);
+      expect(persona.prompt.length).toBeGreaterThanOrEqual(600);
+      expect(persona.prompt.toLowerCase()).toContain(anchor.toLowerCase());
+      expect(persona.prompt).toContain("## Weavekit Council Output");
+      expect(persona.prompt).not.toMatch(/tools:|model:|\/council|Council Round 2/i);
+    }
   });
 
   it("keeps strategic personas and skill provenance available by id", () => {
