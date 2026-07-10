@@ -1,24 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getPersona, listPersonas } from "../../src/personas/index.js";
 import { PersonaDefinitionSchema } from "../../src/decision-council/types.js";
-
-const foundationalCouncilAnchors = {
-  "council-aristotle": "taxonomic decomposition",
-  "council-socrates": "elenchic questioning",
-  "council-sun-tzu": "adversarial simulation",
-  "council-ada": "formal stepwise verification",
-  "council-aurelius": "negative visualization",
-  "council-machiavelli": "incentive backward induction",
-} as const;
-
-const practicalCouncilAnchors = {
-  "council-lao-tzu": "via negativa",
-  "council-feynman": "first-principles reconstruction",
-  "council-torvalds": "empirical reduction to practice",
-  "council-musashi": "timing and tempo analysis",
-  "council-watts": "frame dissolution",
-  "council-karpathy": "gradient empiricism",
-} as const;
+import { COUNCIL_PERSONA_ANCHORS } from "../personas/councilRoster.js";
 
 const councilOutputLabels = [
   "- `claims`:",
@@ -63,12 +46,18 @@ describe("manifest-backed council personas", () => {
       "council-aristotle",
       "council-aurelius",
       "council-feynman",
+      "council-kahneman",
       "council-karpathy",
       "council-lao-tzu",
       "council-machiavelli",
+      "council-meadows",
+      "council-munger",
       "council-musashi",
+      "council-rams",
       "council-socrates",
       "council-sun-tzu",
+      "council-sutskever",
+      "council-taleb",
       "council-torvalds",
       "council-watts",
       "deep-module-dry",
@@ -104,28 +93,8 @@ describe("manifest-backed council personas", () => {
     expect(snippet).not.toMatch(forbiddenImportedPromptInstructions);
   });
 
-  it("ships substantive normalized prompts for the foundational council personas", () => {
-    for (const [id, anchor] of Object.entries(foundationalCouncilAnchors)) {
-      const persona = PersonaDefinitionSchema.parse(getPersona(id));
-
-      expect(persona.description.length).toBeGreaterThanOrEqual(20);
-      expect(persona.useWhen.length).toBeGreaterThan(0);
-      expect(persona.avoidWhen.length).toBeGreaterThan(0);
-      expect(persona.prompt.length).toBeGreaterThanOrEqual(600);
-      expect(persona.prompt.toLowerCase()).toContain(anchor.toLowerCase());
-      expect(persona.prompt).toContain("## Weavekit Council Output");
-      expect(persona.prompt).toContain(
-        "Do not claim to represent the named person's actual views.",
-      );
-      for (const outputLabel of councilOutputLabels) {
-        expect(persona.prompt).toContain(outputLabel);
-      }
-      expect(persona.prompt).not.toMatch(forbiddenImportedPromptInstructions);
-    }
-  });
-
-  it("ships substantive normalized prompts for the practical council personas", () => {
-    for (const [id, anchor] of Object.entries(practicalCouncilAnchors)) {
+  it("ships substantive normalized prompts for the canonical council personas", () => {
+    for (const [id, anchor] of Object.entries(COUNCIL_PERSONA_ANCHORS)) {
       const persona = PersonaDefinitionSchema.parse(getPersona(id));
 
       expect(persona.description.length).toBeGreaterThanOrEqual(20);

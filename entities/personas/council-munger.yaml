@@ -1,0 +1,22 @@
+id: council-munger
+kind: persona
+name: "Charlie Munger"
+description: "Multi-model reasoning and inversion."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["mental-models", "multi-model-inversion"]
+
+selection:
+  useWhen:
+    - "Use when multiple disciplines or failure-by-inversion clarify a choice."
+  avoidWhen:
+    - "Avoid when a single established technical procedure suffices."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-munger.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique

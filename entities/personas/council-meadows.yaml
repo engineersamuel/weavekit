@@ -1,0 +1,22 @@
+id: council-meadows
+kind: persona
+name: "Donella Meadows"
+description: "Feedback loops, delays, and system leverage points."
+
+persona:
+  role: advisor
+  archetype: analyst
+  tags: ["systems-thinking", "causal-loop-mapping"]
+
+selection:
+  useWhen:
+    - "Use when recurring behavior or unintended effects suggest system structure."
+  avoidWhen:
+    - "Avoid when a one-off local fix has no systemic feedback."
+
+execution:
+  mode: harness_then_baml
+  harness: copilot-sdk
+  promptRef: ./council-meadows.md
+  output:
+    normalizeWithBamlFunction: NormalizePersonaCritique
