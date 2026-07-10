@@ -115,6 +115,106 @@ describe("source-to-project semantic verifier", () => {
     ]);
   });
 
+  it("treats a zero opportunity cap as unlimited advisory evaluation", () => {
+    const result = verifyOpportunityPromotion(
+      {
+        opportunities: [opportunityWithoutReasoningArtifacts],
+        nonApplicableLessons: [],
+        bundles: [],
+        rankingRationale: "Promote every accepted opportunity.",
+      },
+      promotionThresholds,
+      0,
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([
+      {
+        code: "missing-rival-hypotheses",
+        message: "Opportunity opp-without-reasoning-artifacts lacks meaningful rival hypotheses.",
+        opportunityId: "opp-without-reasoning-artifacts",
+      },
+    ]);
+  });
+
+  it("applies a positive advisory cap after ranking promotable opportunities", () => {
+    const lowerRankedWithRivals = {
+      ...opportunityWithReasoningArtifacts,
+      id: "opp-lower-ranked",
+      score: {
+        ...opportunityWithReasoningArtifacts.score,
+        applicability: 0.86,
+        impact: 0.86,
+        confidence: 0.86,
+      },
+    };
+    const higherRankedWithoutRivals = {
+      ...opportunityWithoutReasoningArtifacts,
+      id: "opp-higher-ranked",
+      score: {
+        ...opportunityWithoutReasoningArtifacts.score,
+        applicability: 0.95,
+        impact: 0.95,
+        confidence: 0.95,
+      },
+    };
+    const result = verifyOpportunityPromotion(
+      {
+        opportunities: [lowerRankedWithRivals, higherRankedWithoutRivals],
+        nonApplicableLessons: [],
+        bundles: [],
+        rankingRationale: "Promote the highest acceptance average first.",
+      },
+      promotionThresholds,
+      1,
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([
+      {
+        code: "missing-rival-hypotheses",
+        message: "Opportunity opp-higher-ranked lacks meaningful rival hypotheses.",
+        opportunityId: "opp-higher-ranked",
+      },
+    ]);
+  });
+
+  it("reports blocking issues and ranked advisories together in deterministic order", () => {
+    const blockingOpportunity = {
+      ...opportunityWithoutReasoningArtifacts,
+      id: "opp-missing-evidence",
+      evidence: [],
+    };
+    const promotedAdvisoryOpportunity = {
+      ...opportunityWithoutReasoningArtifacts,
+      id: "opp-promoted-advisory",
+    };
+    const result = verifyOpportunityPromotion(
+      {
+        opportunities: [blockingOpportunity, promotedAdvisoryOpportunity],
+        nonApplicableLessons: [],
+        bundles: [],
+        rankingRationale: "Validate every opportunity before promotion.",
+      },
+      promotionThresholds,
+      1,
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.issues).toEqual([
+      {
+        code: "missing-citation",
+        message: "Opportunity opp-missing-evidence lacks required evidence.",
+        opportunityId: "opp-missing-evidence",
+      },
+      {
+        code: "missing-rival-hypotheses",
+        message: "Opportunity opp-promoted-advisory lacks meaningful rival hypotheses.",
+        opportunityId: "opp-promoted-advisory",
+      },
+    ]);
+  });
+
   it("does not report the advisory when a meaningful rival explanation exists", () => {
     const opportunityWithMixedRivals = {
       ...opportunityWithReasoningArtifacts,
