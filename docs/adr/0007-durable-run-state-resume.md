@@ -12,7 +12,15 @@ still happens in one CLI process through the in-process scheduler.
 The canonical snapshot is `<runs-root>/<run-id>/workflow-state.json`. The JSON keeps the existing
 top-level dashboard shape and adds `schemaVersion`, `runId`, and `lastUpdatedAt`; it does not wrap
 state in another object. Schema version 1 persists plan metadata, the current plan including dynamic
-nodes and replans, node results, active-node metadata, usage, and Run timestamps.
+nodes and replans, node results, active-node metadata, usage, Run timestamps, and a versioned
+`resumeContext`.
+
+`resumeContext` records non-secret template execution identity rather than relying on whatever live
+configuration happens to exist later. It includes the template id, Source identity, project
+selector and resolved project snapshot, mode, the effective Source-to-project expansion settings,
+Verification-optimizer settings, and effective Deep-research provider/iteration/retry/visualization
+settings where those templates use them. X-article context stores only the Source URL/path identity,
+not prefetched article content.
 
 Reads revive `startedAt`, `completedAt`, `lastUpdatedAt`, and replan `timestamp` values as `Date`
 objects. An unversioned snapshot is treated as legacy version 0: its existing fields are loaded,
@@ -31,20 +39,28 @@ the lock, the store writes a temporary file in the Run directory and renames it 
 snapshot. This provides conservative single-machine writer serialization and prevents readers
 from observing partial JSON without introducing a database or distributed lock.
 
-Before acquiring the lock, the store recursively rejects objects containing common sensitive key
-names: `token`, `secret`, `password`, `apiKey`/`api_key`, `authorization`, and
-`accessToken`/`access_token`. The write fails with the offending property path; secrets are never
-silently serialized. `runs/` remains gitignored, but ignore rules are defense in depth rather than
-the secret policy.
+One recursive validator rejects objects containing common sensitive key names: `token`, `secret`,
+`password`, `apiKey`/`api_key`, `authorization`, and `accessToken`/`access_token`. The validator
+runs before replay emission and before any state snapshot, JSONL event, typed payload, or report is
+created, so a rejected value cannot leave partial derived artifacts. The write fails with the
+offending property path; secrets are never silently serialized. `runs/` remains gitignored, but
+ignore rules are defense in depth rather than the secret policy.
 
 ## Resume semantics
 
 `weavekit workflow run --resume <run-id> --output <runs-root>` reads
 `<runs-root>/<run-id>/workflow-state.json`. `--output` defaults to `runs`. Resume does not accept a
 replacement `--input` or `--prompt`: the persisted objective, template, Run identity, start time,
-and current plan are authoritative. Template-specific flags such as Source-to-project source and
-project selectors remain available when a harness cannot be reconstructed from an older snapshot;
-the CLI fails with the existing missing-context error instead of inventing context.
+and current plan are authoritative. New snapshots reconstruct Source-to-project,
+Verification-optimizer, X-article-summary, and Deep-research harness/expander inputs from
+`resumeContext`. A supplied template-specific flag must exactly match the persisted value or resume
+fails with a conflict error.
+
+Legacy snapshots without `resumeContext` fail with an actionable list of required reconstruction
+flags. Source-to-project requires Source, project selector, and mode; Verification-optimizer
+requires project selector and mode; X-article-summary requires Source identity; and Deep-research
+requires every effective provider/iteration/result/retry/visualization setting. A successful legacy
+resume writes the reconstructed version-1 context into subsequent snapshots.
 
 The runner validates that the supplied resume plan exactly matches the persisted current plan.
 It seeds payload and artifact maps from passed/skipped results, treats those nodes as completed,

@@ -16,6 +16,7 @@ import type {
 } from "./types.js";
 import { WorkflowNodeStatus as WorkflowNodeState, WorkflowReplayEventKind } from "./types.js";
 import { verifyWorkflowPlan, verifyWorkflowReplanPatch } from "./verifier.js";
+import { assertNoSensitiveMacroWorkflowData } from "./stateStore.js";
 
 export type WorkflowReplanner = {
   generateReplanPatch(args: {
@@ -59,11 +60,13 @@ export async function runMacroWorkflow(
   };
   let replaySeq = 0;
   const emitReplayEvent = (event: Omit<WorkflowReplayEvent, "seq" | "ts">) => {
-    dependencies.onReplayEvent?.({
+    const replayEvent = {
       seq: ++replaySeq,
       ts: new Date().toISOString(),
       ...event,
-    });
+    } satisfies WorkflowReplayEvent;
+    assertNoSensitiveMacroWorkflowData(replayEvent, "replayEvent");
+    dependencies.onReplayEvent?.(replayEvent);
   };
   const planningReplayNode = {
     id: "workflow-planning",

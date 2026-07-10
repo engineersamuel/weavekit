@@ -143,6 +143,54 @@ describe("macro workflow runner", () => {
     );
   });
 
+  it("refuses sensitive dynamic nodes before emitting replay events", async () => {
+    const plan = {
+      id: "sensitive-expansion-plan",
+      objective: "Protect replay events",
+      templateId: "implementation-review",
+      maxReplans: 0,
+      nodes: [
+        {
+          id: "research",
+          kind: "research" as const,
+          harness: WorkflowHarnessKind.RESEARCH,
+          title: "Research",
+          prompt: "Research",
+          dependsOn: [],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const replayEvents: unknown[] = [];
+
+    await expect(
+      runMacroWorkflow(plan, {
+        expandAfterNode: () => [
+          {
+            id: "dynamic-sensitive",
+            kind: "research",
+            harness: WorkflowHarnessKind.RESEARCH,
+            title: "Sensitive",
+            prompt: "Sensitive",
+            input: { apiKey: "do-not-emit" },
+            dependsOn: ["research"],
+            gates: ["output-contract"],
+            writeMode: "read-only",
+            replanPolicy: "never",
+          },
+        ],
+        onReplayEvent(event) {
+          replayEvents.push(event);
+        },
+      }),
+    ).rejects.toThrow("Refusing to persist sensitive workflow state key");
+    expect(replayEvents).not.toContainEqual(
+      expect.objectContaining({ nodeId: "dynamic-sensitive" }),
+    );
+  });
+
   it("executes a plan end to end using the static harness registry", async () => {
     const plan = materializeWorkflowPlan("implementation-review", {
       objective: "Implement rich logging",

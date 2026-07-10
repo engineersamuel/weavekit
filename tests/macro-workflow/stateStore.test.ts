@@ -124,11 +124,15 @@ describe("macro workflow state store", () => {
 
   it("uses an adjacent bounded lock and leaves only an atomically renamed snapshot", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "workflow-state-store-"));
-    const store = new MacroWorkflowStateStore(outputDir, { lockRetryMs: 5, lockTimeoutMs: 20 });
+    const blockedStore = new MacroWorkflowStateStore(outputDir, {
+      lockRetryMs: 5,
+      lockTimeoutMs: 20,
+    });
+    const store = new MacroWorkflowStateStore(outputDir);
     let lockHandle;
     try {
       lockHandle = await open(store.lockPath, "wx");
-      await expect(store.write(createState())).rejects.toThrow(
+      await expect(blockedStore.write(createState())).rejects.toThrow(
         "Timed out acquiring workflow state lock",
       );
       await lockHandle.close();

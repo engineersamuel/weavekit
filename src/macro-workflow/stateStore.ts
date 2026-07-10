@@ -61,7 +61,7 @@ export class MacroWorkflowStateStore {
   }
 
   async write(state: MacroWorkflowRunStateLike): Promise<string> {
-    assertNoSensitiveState(state);
+    assertNoSensitiveMacroWorkflowData(state);
     await mkdir(this.outputDir, { recursive: true });
     const release = await this.acquireLock();
     const temporaryPath = join(
@@ -121,7 +121,7 @@ function reviveStateDate(key: string, value: unknown): unknown {
   return value;
 }
 
-function assertNoSensitiveState(
+export function assertNoSensitiveMacroWorkflowData(
   value: unknown,
   path = "state",
   seen = new WeakSet<object>(),
@@ -135,7 +135,9 @@ function assertNoSensitiveState(
   seen.add(value);
 
   if (Array.isArray(value)) {
-    value.forEach((entry, index) => assertNoSensitiveState(entry, `${path}[${index}]`, seen));
+    value.forEach((entry, index) =>
+      assertNoSensitiveMacroWorkflowData(entry, `${path}[${index}]`, seen),
+    );
     return;
   }
 
@@ -143,7 +145,7 @@ function assertNoSensitiveState(
     if (SENSITIVE_KEYS.has(normalizeSensitiveKey(key))) {
       throw new Error(`Refusing to persist sensitive workflow state key: ${path}.${key}`);
     }
-    assertNoSensitiveState(entry, `${path}.${key}`, seen);
+    assertNoSensitiveMacroWorkflowData(entry, `${path}.${key}`, seen);
   }
 }
 

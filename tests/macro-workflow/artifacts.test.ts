@@ -1,10 +1,95 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { writeMacroWorkflowArtifacts } from "../../src/macro-workflow/artifacts.js";
+import {
+  appendWorkflowReplayEvent,
+  writeMacroWorkflowArtifacts,
+} from "../../src/macro-workflow/artifacts.js";
 
 describe("macro workflow artifacts", () => {
+  it("refuses a sensitive replan replay event before appending JSONL", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    try {
+      await expect(
+        appendWorkflowReplayEvent(outputDir, {
+          seq: 1,
+          ts: "2026-07-10T10:00:00.000Z",
+          kind: "replan-applied",
+          patch: {
+            reason: "contract-failure",
+            replaceRemainingNodeIds: [],
+            newNodes: [
+              {
+                id: "replacement",
+                kind: "research",
+                harness: "research",
+                title: "Replacement",
+                prompt: "Retry",
+                input: { nested: { apiKey: "do-not-write" } },
+                dependsOn: [],
+                gates: ["output-contract"],
+                writeMode: "read-only",
+                replanPolicy: "never",
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow("Refusing to persist sensitive workflow state key");
+      await expect(readFile(join(outputDir, "workflow-events.jsonl"), "utf8")).rejects.toThrow(
+        "ENOENT",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects sensitive replay history before writing any final artifacts", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    try {
+      await expect(
+        writeMacroWorkflowArtifacts({
+          outputDir,
+          state: {
+            planId: "test-plan",
+            objective: "Protect replay secrets",
+            templateId: "implementation-review",
+            status: "running",
+            startedAt: new Date("2026-07-10T10:00:00.000Z"),
+            currentPlan: {
+              id: "test-plan",
+              objective: "Protect replay secrets",
+              templateId: "implementation-review",
+              maxReplans: 0,
+              nodes: [],
+            },
+            nodeResults: [],
+            replans: [],
+          },
+          replayEvents: [
+            {
+              seq: 1,
+              ts: "2026-07-10T10:00:00.000Z",
+              kind: "node-added",
+              node: {
+                id: "dynamic-node",
+                kind: "research",
+                harness: "research",
+                title: "Dynamic node",
+                input: { access_token: "do-not-write" },
+                dependsOn: [],
+              },
+            },
+          ],
+        }),
+      ).rejects.toThrow("Refusing to persist sensitive workflow state key");
+
+      await expect(readdir(outputDir)).resolves.toEqual([]);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses sensitive state before writing derived payload artifacts", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
     try {
@@ -38,6 +123,9 @@ describe("macro workflow artifacts", () => {
       ).rejects.toThrow("Refusing to persist sensitive workflow state key");
 
       await expect(readFile(join(outputDir, "research.payload.json"), "utf8")).rejects.toThrow(
+        "ENOENT",
+      );
+      await expect(readFile(join(outputDir, "workflow-report.md"), "utf8")).rejects.toThrow(
         "ENOENT",
       );
     } finally {

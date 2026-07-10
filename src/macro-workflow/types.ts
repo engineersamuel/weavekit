@@ -1,3 +1,11 @@
+import type {
+  BudgetGateConfig,
+  DeepResearchDefaults,
+  ProjectCatalogEntry,
+  SourceToProjectThresholds,
+  VerificationOptimizerDefaults,
+} from "../config.js";
+
 export const WorkflowNodeKind = {
   RESEARCH: "research",
   DELIBERATION: "deliberation",
@@ -160,11 +168,40 @@ export type WorkflowReplanEvent = {
   timestamp: Date;
 };
 
+export const MacroWorkflowResumeContextVersion = 1;
+
+export type SourceToProjectResumeSettings = {
+  maxOpportunities: number;
+  thresholds: SourceToProjectThresholds;
+  offline: boolean;
+  copilotModel?: string;
+  timeoutMs?: number;
+  maxToolCalls?: number;
+  sourceReadingMaxToolCalls?: number;
+  projectResearchMaxToolCalls?: number;
+  budgetGate?: BudgetGateConfig;
+  autoImplementOnReport: boolean;
+};
+
+export type MacroWorkflowResumeContext = {
+  version: typeof MacroWorkflowResumeContextVersion;
+  templateId: WorkflowPlanTemplateId;
+  source?: string;
+  project?: string;
+  projectPath?: string;
+  mode?: SourceToProjectMode | VerificationOptimizerMode;
+  resolvedProject?: ProjectCatalogEntry;
+  sourceToProject?: SourceToProjectResumeSettings;
+  verificationOptimizer?: VerificationOptimizerDefaults;
+  deepResearch?: DeepResearchDefaults;
+};
+
 export type MacroWorkflowRunState = {
   schemaVersion?: number;
   runId?: string;
   runName?: string;
   lastUpdatedAt?: Date;
+  resumeContext?: MacroWorkflowResumeContext;
   planId: string;
   objective: string;
   templateId: string;

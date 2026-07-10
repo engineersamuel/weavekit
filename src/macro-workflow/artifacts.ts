@@ -8,7 +8,7 @@ import type {
   SourceAnalysis,
 } from "../generated/baml_client/index.js";
 import type { MacroWorkflowRunStateLike, WorkflowReplayEvent } from "./types.js";
-import { MacroWorkflowStateStore } from "./stateStore.js";
+import { assertNoSensitiveMacroWorkflowData, MacroWorkflowStateStore } from "./stateStore.js";
 import { renderWorkflowUsageMarkdown } from "./usage.js";
 
 export type MacroWorkflowArtifactPaths = {
@@ -26,6 +26,7 @@ export type MacroWorkflowArtifactsInput = {
 export async function writeMacroWorkflowArtifacts(
   input: MacroWorkflowArtifactsInput,
 ): Promise<MacroWorkflowArtifactPaths> {
+  assertNoSensitiveMacroWorkflowData(input);
   await mkdir(input.outputDir, { recursive: true });
 
   const reportPath = join(input.outputDir, "workflow-report.md");
@@ -319,6 +320,7 @@ export async function appendWorkflowReplayEvent(
   outputDir: string,
   event: WorkflowReplayEvent,
 ): Promise<string> {
+  assertNoSensitiveMacroWorkflowData(event, "replayEvent");
   await mkdir(outputDir, { recursive: true });
   const eventLogPath = join(outputDir, "workflow-events.jsonl");
   await appendFile(eventLogPath, `${JSON.stringify(event)}\n`, "utf8");

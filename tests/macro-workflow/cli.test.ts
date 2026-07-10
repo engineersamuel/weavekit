@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DeepResearchDefaults } from "../../src/config.js";
 import {
   assertWorkflowRunSucceeded,
   createWorkflowProgressReporter,
@@ -35,6 +36,7 @@ const deepResearchHarnesses = vi.hoisted(() => ({
 
 const sourceToProjectHarnesses = vi.hoisted(() => ({
   createCopilotSdkHarnessClient: vi.fn(),
+  createSourceToProjectHarnessRegistry: vi.fn(),
 }));
 
 const verificationOptimizerHarnesses = vi.hoisted(() => ({
@@ -110,6 +112,8 @@ vi.mock("../../src/macro-workflow/sourceToProject/harnesses.js", async () => {
   return {
     ...actual,
     createCopilotSdkHarnessClient: sourceToProjectHarnesses.createCopilotSdkHarnessClient,
+    createSourceToProjectHarnessRegistry:
+      sourceToProjectHarnesses.createSourceToProjectHarnessRegistry,
   };
 });
 
@@ -151,6 +155,12 @@ beforeEach(() => {
     model: "fake-copilot",
     run: vi.fn(async () => "fake copilot output"),
   }));
+  sourceToProjectHarnesses.createSourceToProjectHarnessRegistry.mockReset();
+  sourceToProjectHarnesses.createSourceToProjectHarnessRegistry.mockReturnValue(
+    createStaticHarnessRegistry({
+      [WorkflowHarnessKind.REPORTER]: async () => ({ status: "passed", output: "mock report" }),
+    }),
+  );
   verificationOptimizerHarnesses.createVerificationOptimizerHarnessRegistry.mockReset();
   verificationOptimizerHarnesses.createVerificationOptimizerHarnessRegistry.mockReturnValue(
     createStaticHarnessRegistry({
@@ -425,6 +435,35 @@ describe("macro workflow CLI", () => {
         maxResultsPerQuestion: 7,
         visualize: true,
       },
+    });
+  });
+
+  it("parses every deep-research setting required for legacy resume reconstruction", () => {
+    const parsed = parseWorkflowCliArgs([
+      "workflow",
+      "run",
+      "--resume",
+      "legacy-deep",
+      "--providers",
+      "grok",
+      "--max-iterations",
+      "3",
+      "--questions-per-iteration",
+      "4",
+      "--max-results-per-question",
+      "5",
+      "--provider-retry-attempts",
+      "2",
+      "--no-visualize",
+    ]);
+
+    expect(parsed.deepResearch).toEqual({
+      providers: ["grok"],
+      maxIterations: 3,
+      questionsPerIteration: 4,
+      maxResultsPerQuestion: 5,
+      providerRetryAttempts: 2,
+      visualize: false,
     });
   });
 
@@ -1106,6 +1145,328 @@ autonomous_pr_allowed = false
     }
   });
 
+  it("reconstructs source-to-project runtime context and rejects conflicting resume flags", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-source-resume-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "source-run";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("source-to-project", WorkflowHarnessKind.REPORTER);
+    const project = createResumeProject(rootDir);
+    const state: MacroWorkflowRunState = {
+      runId,
+      runName: "Source Resume",
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [
+        {
+          nodeId: "remaining-node",
+          status: "failed",
+          output: "interrupted",
+          error: "process exited",
+        },
+      ],
+      replans: [],
+      resumeContext: {
+        version: 1,
+        templateId: "source-to-project",
+        source: "https://example.com/source",
+        project: "weavekit",
+        mode: "advisory",
+        resolvedProject: project,
+        sourceToProject: {
+          maxOpportunities: 2,
+          thresholds: {
+            minApplicability: 0.81,
+            minConfidence: 0.82,
+            minImpact: 0.83,
+            minAcceptanceAverage: 0.84,
+            maxRisk: 0.25,
+          },
+          offline: true,
+          autoImplementOnReport: false,
+        },
+      },
+    };
+    await new MacroWorkflowStateStore(outputDir).write(state);
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+      });
+
+      expect(sourceToProjectHarnesses.createSourceToProjectHarnessRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: "https://example.com/source",
+          project,
+          mode: "advisory",
+          maxOpportunities: 2,
+          thresholds: expect.objectContaining({ minApplicability: 0.81, maxRisk: 0.25 }),
+          sourceToProject: expect.objectContaining({ offline: true }),
+        }),
+      );
+
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: true,
+          dryRun: false,
+          resumeRunId: runId,
+          template: "source-to-project",
+          project: "different-project",
+        }),
+      ).rejects.toThrow(
+        "Resume flag --project conflicts with persisted workflow context: expected weavekit",
+      );
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reconstructs deep-research settings and rejects conflicting resume overrides", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-deep-resume-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "deep-run";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("deep-research", WorkflowHarnessKind.RESEARCH);
+    const persistedDeepResearch: DeepResearchDefaults = {
+      providers: ["grok", "copilot-last30days"],
+      maxIterations: 4,
+      questionsPerIteration: 5,
+      maxResultsPerQuestion: 6,
+      providerRetryAttempts: 2,
+      visualize: false,
+    };
+    const state: MacroWorkflowRunState = {
+      runId,
+      runName: "Deep Resume",
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [
+        {
+          nodeId: "remaining-node",
+          status: "failed",
+          output: "interrupted",
+          error: "process exited",
+        },
+      ],
+      replans: [],
+      resumeContext: {
+        version: 1,
+        templateId: "deep-research",
+        deepResearch: persistedDeepResearch,
+      },
+    };
+    await new MacroWorkflowStateStore(outputDir).write(state);
+    deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockResolvedValue({
+      client: { web_search_exa: vi.fn() },
+      close: vi.fn(async () => {}),
+    });
+    deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReturnValue(
+      createStaticHarnessRegistry({
+        [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "resumed" }),
+      }),
+    );
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+      });
+
+      expect(deepResearchHarnesses.createDeepResearchHarnessRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({ config: persistedDeepResearch }),
+      );
+
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: false,
+          dryRun: false,
+          resumeRunId: runId,
+          deepResearch: { providers: ["exa"] },
+        }),
+      ).rejects.toThrow(
+        "Resume flag --providers conflicts with persisted workflow context: expected grok,copilot-last30days",
+      );
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists the effective deep-research context when a run is created", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-deep-context-"));
+    const outputRoot = join(rootDir, "runs");
+    const deepResearch: DeepResearchDefaults = {
+      providers: ["grok"],
+      maxIterations: 3,
+      questionsPerIteration: 4,
+      maxResultsPerQuestion: 5,
+      providerRetryAttempts: 2,
+      visualize: false,
+    };
+    try {
+      await runWorkflowCli({
+        command: "run",
+        prompt: "Research durable contexts",
+        outputDir: outputRoot,
+        staticTemplate: true,
+        dryRun: true,
+        template: "deep-research",
+        deepResearch,
+      });
+
+      const [runId] = await readdir(outputRoot);
+      const state = await new MacroWorkflowStateStore(join(outputRoot, runId!)).read();
+      expect(state.resumeContext).toEqual({
+        version: 1,
+        templateId: "deep-research",
+        deepResearch,
+      });
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("requires explicit legacy source context and upgrades it after a safe resume", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-source-legacy-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "legacy-source";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("source-to-project", WorkflowHarnessKind.REPORTER);
+    await new MacroWorkflowStateStore(outputDir).write({
+      runId,
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [],
+      replans: [],
+    });
+
+    try {
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: false,
+          dryRun: false,
+          resumeRunId: runId,
+        }),
+      ).rejects.toThrow(
+        "Required flags: --source <url-or-path>, --project <id> or --project-path <path>, --mode <advisory|autonomous-pr>",
+      );
+
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+        source: "https://example.com/legacy-source",
+        projectPath: rootDir,
+        mode: "advisory",
+      });
+
+      const upgraded = await new MacroWorkflowStateStore(outputDir).read();
+      expect(upgraded.resumeContext).toMatchObject({
+        version: 1,
+        templateId: "source-to-project",
+        source: "https://example.com/legacy-source",
+        projectPath: rootDir,
+        mode: "advisory",
+        resolvedProject: { workingTree: rootDir },
+        sourceToProject: expect.any(Object),
+      });
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("requires all effective deep-research flags to resume a legacy snapshot", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-deep-legacy-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "legacy-deep";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("deep-research", WorkflowHarnessKind.RESEARCH);
+    await new MacroWorkflowStateStore(outputDir).write({
+      runId,
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-10T10:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [],
+      replans: [],
+    });
+    deepResearchHarnesses.createDefaultDeepResearchExaMcpConnection.mockResolvedValue({
+      client: { web_search_exa: vi.fn() },
+      close: vi.fn(async () => {}),
+    });
+    deepResearchHarnesses.createDeepResearchHarnessRegistry.mockReturnValue(
+      createStaticHarnessRegistry({
+        [WorkflowHarnessKind.RESEARCH]: async () => ({ status: "passed", output: "resumed" }),
+      }),
+    );
+    const deepResearch: DeepResearchDefaults = {
+      providers: ["grok"],
+      maxIterations: 3,
+      questionsPerIteration: 4,
+      maxResultsPerQuestion: 5,
+      providerRetryAttempts: 2,
+      visualize: false,
+    };
+
+    try {
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: false,
+          dryRun: false,
+          resumeRunId: runId,
+          deepResearch: { providers: ["grok"] },
+        }),
+      ).rejects.toThrow("Required deep-research flags: --max-iterations");
+
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+        deepResearch,
+      });
+      const upgraded = await new MacroWorkflowStateStore(outputDir).read();
+      expect(upgraded.resumeContext?.deepResearch).toEqual(deepResearch);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("reports a useful error when the requested resume snapshot is unavailable", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-resume-missing-"));
     try {
@@ -1178,3 +1539,44 @@ autonomous_pr_allowed = false
     }
   });
 });
+
+function createResumePlan(
+  templateId: "source-to-project" | "deep-research",
+  harness: typeof WorkflowHarnessKind.REPORTER | typeof WorkflowHarnessKind.RESEARCH,
+) {
+  return {
+    id: `${templateId}-resume-plan`,
+    objective: `Resume ${templateId}`,
+    templateId,
+    maxReplans: 0,
+    nodes: [
+      {
+        id: "remaining-node",
+        kind:
+          harness === WorkflowHarnessKind.REPORTER ? ("report" as const) : ("research" as const),
+        harness,
+        title: "Remaining node",
+        prompt: "Continue",
+        dependsOn: [],
+        gates: ["output-contract" as const],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
+      },
+    ],
+  };
+}
+
+function createResumeProject(workingTree: string) {
+  return {
+    id: "weavekit",
+    displayName: "Weavekit",
+    workingTree,
+    mainline: "origin main",
+    remote: "origin",
+    contextDocs: ["CONTEXT.md"],
+    validationCommands: ["nub run test"],
+    autonomousPrAllowed: false,
+    notification: "cli" as const,
+    knowledgeExport: "off" as const,
+  };
+}
