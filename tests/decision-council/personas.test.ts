@@ -11,6 +11,16 @@ const foundationalCouncilAnchors = {
   "council-machiavelli": "incentive backward induction",
 } as const;
 
+const foundationalCouncilOutputLabels = [
+  "- `claims`:",
+  "- `risks`:",
+  "- `questions`:",
+  "- `recommendations`:",
+] as const;
+
+const forbiddenImportedPromptInstructions =
+  /tools:|model:|\/council|Council Round 2|provider_affinity|provider routing|coordinator|engage at least|\bpeer(?:-|\s+)(?:engagement|review|response|critique|argument|position|analysis|member)s?\b|word limit|Output Format \(Standalone\)/i;
+
 describe("manifest-backed council personas", () => {
   it("loads the shipped manifest personas", () => {
     expect(
@@ -59,7 +69,13 @@ describe("manifest-backed council personas", () => {
       expect(persona.prompt.length).toBeGreaterThanOrEqual(600);
       expect(persona.prompt.toLowerCase()).toContain(anchor.toLowerCase());
       expect(persona.prompt).toContain("## Weavekit Council Output");
-      expect(persona.prompt).not.toMatch(/tools:|model:|\/council|Council Round 2/i);
+      expect(persona.prompt).toContain(
+        "Do not claim to represent the named person's actual views.",
+      );
+      for (const outputLabel of foundationalCouncilOutputLabels) {
+        expect(persona.prompt).toContain(outputLabel);
+      }
+      expect(persona.prompt).not.toMatch(forbiddenImportedPromptInstructions);
     }
   });
 
