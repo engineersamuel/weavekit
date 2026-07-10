@@ -33,18 +33,25 @@ observe one path and serialization policy.
 
 ## Atomicity, locking, and sensitive data
 
-Writes acquire an adjacent `workflow-state.json.lock` with exclusive create. Acquisition retries
-for a bounded period, and the lock handle and file are released in a `finally` path. While holding
-the lock, the store writes a temporary file in the Run directory and renames it over the canonical
-snapshot. This provides conservative single-machine writer serialization and prevents readers
-from observing partial JSON without introducing a database or distributed lock.
+Writes acquire an adjacent `workflow-state.json.lock` directory with exclusive `mkdir`, then create
+a generation-specific `owner-<pid>-<uuid>.json` file inside it. Acquisition retries for a bounded
+period, and the owner handle, owner file, and empty lock directory are released in a `finally` path.
+While holding the lock, the store writes a temporary file in the Run directory and renames it over
+the canonical snapshot. This provides conservative single-machine writer serialization and
+prevents readers from observing partial JSON without introducing a database or distributed lock.
 
-The lock records its owning process id and creation timestamp. An existing lock with a live owner
-is never removed merely because an acquisition timeout elapsed; permission errors while probing the
-PID are treated as evidence that the owner is alive. A lock can be reclaimed when its recorded PID
-is confirmed dead. Incomplete or unreadable metadata is reclaimed only after a conservative
-five-minute stale threshold. Reclaim races return to exclusive creation, where another writer's
-successful acquisition remains authoritative.
+The owner file records its process id and creation timestamp. An owner with a live PID is never
+removed merely because an acquisition timeout elapsed; permission errors while probing the PID are
+treated as evidence that the owner is alive. A dead owner can be reclaimed immediately. Incomplete
+or unreadable owner metadata, or an empty directory left by a crash during owner creation/removal,
+is reclaimed only after a conservative five-minute stale threshold.
+
+Reclamation removes only the generation-specific owner filename that was inspected, then removes
+the directory only if it is empty. If another reclaimer has already installed a successor lock, the
+old filename is absent and the successor directory is non-empty, so the delayed reclaimer cannot
+delete it. A crash after owner removal leaves an empty directory that follows the same stale rule.
+Legacy file-form locks remain readable and reclaimable; new acquisitions always use directories, so
+a delayed legacy-file `unlink` also cannot delete a successor directory.
 
 One recursive validator rejects objects containing common sensitive key names: `token`, `secret`,
 `password`, `apiKey`/`api_key`, `authorization`, and `accessToken`/`access_token`. The validator

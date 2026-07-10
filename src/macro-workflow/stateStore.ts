@@ -1,5 +1,17 @@
 import type { Stats } from "node:fs";
-import { open, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  open,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  rmdir,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { MacroWorkflowRunStateLike } from "./types.js";
 
@@ -9,6 +21,14 @@ export type MacroWorkflowStateStoreOptions = {
   lockRetryMs?: number;
   lockTimeoutMs?: number;
   staleLockThresholdMs?: number;
+  testHooks?: MacroWorkflowStateStoreTestHooks;
+};
+
+export type MacroWorkflowStateStoreTestHooks = {
+  beforeReclaim?: (ownerPath: string) => void | Promise<void>;
+  afterReclaimAttempt?: (ownerPath: string) => void | Promise<void>;
+  onLockAcquired?: (ownerPath: string) => void | Promise<void>;
+  beforeLockRelease?: (ownerPath: string) => void | Promise<void>;
 };
 
 const DEFAULT_LOCK_RETRY_MS = 25;
@@ -31,6 +51,7 @@ export class MacroWorkflowStateStore {
   private readonly lockRetryMs: number;
   private readonly lockTimeoutMs: number;
   private readonly staleLockThresholdMs: number;
+  private readonly testHooks: MacroWorkflowStateStoreTestHooks | undefined;
 
   constructor(outputDir: string, options: MacroWorkflowStateStoreOptions = {}) {
     this.outputDir = outputDir;
@@ -39,6 +60,7 @@ export class MacroWorkflowStateStore {
     this.lockRetryMs = options.lockRetryMs ?? DEFAULT_LOCK_RETRY_MS;
     this.lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
     this.staleLockThresholdMs = options.staleLockThresholdMs ?? DEFAULT_STALE_LOCK_THRESHOLD_MS;
+    this.testHooks = options.testHooks;
   }
 
   async read(): Promise<MacroWorkflowRunStateLike> {
@@ -96,25 +118,7 @@ export class MacroWorkflowStateStore {
     const startedAt = Date.now();
     while (true) {
       try {
-        const handle = await open(this.lockPath, "wx");
-        try {
-          await handle.writeFile(
-            JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }),
-            "utf8",
-          );
-          await handle.sync();
-        } catch (error) {
-          await handle.close();
-          await rm(this.lockPath, { force: true });
-          throw error;
-        }
-        return async () => {
-          try {
-            await handle.close();
-          } finally {
-            await rm(this.lockPath, { force: true });
-          }
-        };
+        await mkdir(this.lockPath);
       } catch (error) {
         if (!isFileExistsError(error)) {
           throw error;
@@ -128,14 +132,92 @@ export class MacroWorkflowStateStore {
           );
         }
         await delay(this.lockRetryMs);
+        continue;
+      }
+
+      const release = await this.initializeLockOwner();
+      if (release) {
+        return release;
       }
     }
   }
 
-  private async reclaimStaleLockIfSafe(): Promise<boolean> {
-    let fileStats;
+  private async initializeLockOwner(): Promise<(() => Promise<void>) | undefined> {
+    const ownerPath = join(this.lockPath, `owner-${process.pid}-${randomUUID()}.json`);
+    let handle;
     try {
-      fileStats = await stat(this.lockPath);
+      handle = await open(ownerPath, "wx");
+      await handle.writeFile(
+        JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }),
+        "utf8",
+      );
+      await handle.sync();
+      await this.testHooks?.onLockAcquired?.(ownerPath);
+    } catch (error) {
+      await handle?.close();
+      await unlink(ownerPath).catch(ignoreMissingPath);
+      await rmdir(this.lockPath).catch(ignoreMissingOrNonEmptyDirectory);
+      if (isFileNotFoundError(error)) {
+        return undefined;
+      }
+      throw error;
+    }
+
+    return async () => {
+      try {
+        await this.testHooks?.beforeLockRelease?.(ownerPath);
+      } finally {
+        try {
+          await handle.close();
+        } finally {
+          await unlink(ownerPath).catch(ignoreMissingPath);
+          await rmdir(this.lockPath).catch(ignoreMissingPath);
+        }
+      }
+    };
+  }
+
+  private async reclaimStaleLockIfSafe(): Promise<boolean> {
+    let lockStats;
+    try {
+      lockStats = await stat(this.lockPath);
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return true;
+      }
+      throw error;
+    }
+
+    if (!lockStats.isDirectory()) {
+      return this.reclaimLegacyFileLockIfSafe(lockStats);
+    }
+
+    let entries;
+    try {
+      entries = await readdir(this.lockPath, { withFileTypes: true });
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return true;
+      }
+      throw error;
+    }
+    const ownerEntries = entries.filter(
+      (entry) => entry.isFile() && /^owner-.+\.json$/u.test(entry.name),
+    );
+    if (ownerEntries.length === 0 && entries.length === 0) {
+      if (Date.now() - lockStats.mtimeMs < this.staleLockThresholdMs) {
+        return false;
+      }
+      return this.reclaimEmptyLockDirectory();
+    }
+    if (ownerEntries.length !== 1 || entries.length !== 1) {
+      return false;
+    }
+
+    const ownerPath = join(this.lockPath, ownerEntries[0]!.name);
+    let ownerStats;
+    try {
+      ownerStats = await stat(ownerPath);
     } catch (error) {
       if (isFileNotFoundError(error)) {
         return true;
@@ -145,28 +227,52 @@ export class MacroWorkflowStateStore {
 
     let metadata: unknown;
     try {
-      metadata = JSON.parse(await readFile(this.lockPath, "utf8"));
+      metadata = JSON.parse(await readFile(ownerPath, "utf8"));
     } catch {
-      if (Date.now() - fileStats.mtimeMs < this.staleLockThresholdMs) {
+      if (Date.now() - ownerStats.mtimeMs < this.staleLockThresholdMs) {
         return false;
       }
-      return this.removeReclaimableLock(fileStats);
+      return this.reclaimDirectoryOwner(ownerPath);
     }
 
     const owner = readLockOwnerMetadata(metadata);
     if (!owner) {
-      if (Date.now() - fileStats.mtimeMs < this.staleLockThresholdMs) {
+      if (Date.now() - ownerStats.mtimeMs < this.staleLockThresholdMs) {
         return false;
       }
-      return this.removeReclaimableLock(fileStats);
+      return this.reclaimDirectoryOwner(ownerPath);
     }
     if (isProcessAlive(owner.pid)) {
       return false;
     }
-    return this.removeReclaimableLock(fileStats);
+    return this.reclaimDirectoryOwner(ownerPath);
   }
 
-  private async removeReclaimableLock(inspectedStats: Stats): Promise<boolean> {
+  private async reclaimLegacyFileLockIfSafe(inspectedStats: Stats): Promise<boolean> {
+    let metadata: unknown;
+    try {
+      metadata = JSON.parse(await readFile(this.lockPath, "utf8"));
+    } catch {
+      if (Date.now() - inspectedStats.mtimeMs < this.staleLockThresholdMs) {
+        return false;
+      }
+      return this.removeLegacyFileLock(inspectedStats);
+    }
+    const owner = readLockOwnerMetadata(metadata);
+    if (!owner) {
+      if (Date.now() - inspectedStats.mtimeMs < this.staleLockThresholdMs) {
+        return false;
+      }
+      return this.removeLegacyFileLock(inspectedStats);
+    }
+    if (isProcessAlive(owner.pid)) {
+      return false;
+    }
+    return this.removeLegacyFileLock(inspectedStats);
+  }
+
+  private async removeLegacyFileLock(inspectedStats: Stats): Promise<boolean> {
+    await this.testHooks?.beforeReclaim?.(this.lockPath);
     let currentStats;
     try {
       currentStats = await stat(this.lockPath);
@@ -180,19 +286,69 @@ export class MacroWorkflowStateStore {
       return false;
     }
     try {
-      await rm(this.lockPath);
+      await unlink(this.lockPath);
       return true;
     } catch (error) {
       if (isFileNotFoundError(error)) {
         return true;
       }
+      if (isDirectoryUnlinkError(error)) {
+        return false;
+      }
       throw error;
+    } finally {
+      await this.testHooks?.afterReclaimAttempt?.(this.lockPath);
+    }
+  }
+
+  private async reclaimDirectoryOwner(ownerPath: string): Promise<boolean> {
+    await this.testHooks?.beforeReclaim?.(ownerPath);
+    try {
+      await unlink(ownerPath);
+    } catch (error) {
+      if (!isFileNotFoundError(error)) {
+        throw error;
+      }
+    }
+    try {
+      await rmdir(this.lockPath);
+      return true;
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return true;
+      }
+      if (isDirectoryNotEmptyError(error)) {
+        return false;
+      }
+      throw error;
+    } finally {
+      await this.testHooks?.afterReclaimAttempt?.(ownerPath);
+    }
+  }
+
+  private async reclaimEmptyLockDirectory(): Promise<boolean> {
+    await this.testHooks?.beforeReclaim?.(this.lockPath);
+    try {
+      await rmdir(this.lockPath);
+      return true;
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        return true;
+      }
+      if (isDirectoryNotEmptyError(error)) {
+        return false;
+      }
+      throw error;
+    } finally {
+      await this.testHooks?.afterReclaimAttempt?.(this.lockPath);
     }
   }
 }
 
 function isSameLockFile(inspected: Stats, current: Stats): boolean {
   return (
+    inspected.isFile() &&
+    current.isFile() &&
     inspected.dev === current.dev &&
     inspected.ino === current.ino &&
     inspected.size === current.size &&
@@ -276,10 +432,30 @@ function isFileNotFoundError(error: unknown): error is NodeJS.ErrnoException {
   return isErrnoCode(error, "ENOENT");
 }
 
+function isDirectoryNotEmptyError(error: unknown): error is NodeJS.ErrnoException {
+  return isErrnoCode(error, "ENOTEMPTY") || isErrnoCode(error, "EEXIST");
+}
+
+function isDirectoryUnlinkError(error: unknown): error is NodeJS.ErrnoException {
+  return isErrnoCode(error, "EISDIR") || isErrnoCode(error, "EPERM");
+}
+
 function isErrnoCode(error: unknown, code: string): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === code;
 }
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function ignoreMissingPath(error: unknown): void {
+  if (!isFileNotFoundError(error)) {
+    throw error;
+  }
+}
+
+function ignoreMissingOrNonEmptyDirectory(error: unknown): void {
+  if (!isFileNotFoundError(error) && !isDirectoryNotEmptyError(error)) {
+    throw error;
+  }
 }

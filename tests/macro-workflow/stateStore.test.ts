@@ -1,4 +1,4 @@
-import { readdir, readFile, utimes, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, utimes, writeFile } from "node:fs/promises";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -47,6 +47,83 @@ function createState(overrides: Partial<MacroWorkflowRunState> = {}): MacroWorkf
 }
 
 describe("macro workflow state store", () => {
+  it("does not let a delayed stale-lock reclaimer delete a successor owner", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "workflow-state-store-"));
+    const lockPath = join(outputDir, "workflow-state.json.lock");
+    const staleOwnerPath = join(lockPath, "owner-dead.json");
+    const bothInspected = createDeferred<void>();
+    const firstWriterAcquired = createDeferred<void>();
+    const delayedReclaimAttempted = createDeferred<void>();
+    let inspectedCount = 0;
+    let activeWriters = 0;
+    let maxActiveWriters = 0;
+    const markInspected = async () => {
+      inspectedCount += 1;
+      if (inspectedCount === 2) {
+        bothInspected.resolve(undefined);
+      }
+      await bothInspected.promise;
+    };
+    const trackAcquired = () => {
+      activeWriters += 1;
+      maxActiveWriters = Math.max(maxActiveWriters, activeWriters);
+    };
+    const trackReleased = () => {
+      activeWriters -= 1;
+    };
+    const firstStore = new MacroWorkflowStateStore(outputDir, {
+      lockRetryMs: 2,
+      lockTimeoutMs: 500,
+      staleLockThresholdMs: 0,
+      testHooks: {
+        beforeReclaim: markInspected,
+        onLockAcquired: async (ownerPath) => {
+          trackAcquired();
+          firstWriterAcquired.resolve(undefined);
+          await delayedReclaimAttempted.promise;
+          await expect(readFile(ownerPath, "utf8")).resolves.toContain(`"pid":${process.pid}`);
+        },
+        beforeLockRelease: trackReleased,
+      },
+    });
+    const delayedStore = new MacroWorkflowStateStore(outputDir, {
+      lockRetryMs: 2,
+      lockTimeoutMs: 500,
+      staleLockThresholdMs: 0,
+      testHooks: {
+        beforeReclaim: async () => {
+          await markInspected();
+          await firstWriterAcquired.promise;
+        },
+        afterReclaimAttempt: () => delayedReclaimAttempted.resolve(undefined),
+        onLockAcquired: trackAcquired,
+        beforeLockRelease: trackReleased,
+      },
+    });
+    try {
+      await mkdir(lockPath);
+      await writeFile(
+        staleOwnerPath,
+        JSON.stringify({ pid: 2_147_483_647, createdAt: new Date().toISOString() }),
+        "utf8",
+      );
+
+      await Promise.all([
+        firstStore.write(createState({ runName: "First Writer" })),
+        delayedStore.write(createState({ runName: "Delayed Writer" })),
+      ]);
+
+      expect(maxActiveWriters).toBe(1);
+      expect(activeWriters).toBe(0);
+      await expect(firstStore.read()).resolves.toMatchObject({
+        runName: expect.stringMatching(/^(First|Delayed) Writer$/u),
+      });
+      await expect(readdir(outputDir)).resolves.toEqual(["workflow-state.json"]);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
   it("round-trips versioned state and revives every persisted Date field", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "workflow-state-store-"));
     try {
@@ -130,16 +207,18 @@ describe("macro workflow state store", () => {
       staleLockThresholdMs: 0,
     });
     const store = new MacroWorkflowStateStore(outputDir);
+    const ownerPath = join(store.lockPath, "owner-live.json");
     try {
+      await mkdir(store.lockPath);
       await writeFile(
-        store.lockPath,
+        ownerPath,
         JSON.stringify({ pid: process.pid, createdAt: new Date(0).toISOString() }),
         "utf8",
       );
       await expect(blockedStore.write(createState())).rejects.toThrow(
         "Timed out acquiring workflow state lock",
       );
-      await expect(readFile(store.lockPath, "utf8")).resolves.toContain(`"pid":${process.pid}`);
+      await expect(readFile(ownerPath, "utf8")).resolves.toContain(`"pid":${process.pid}`);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
@@ -174,10 +253,12 @@ describe("macro workflow state store", () => {
       lockTimeoutMs: 100,
       staleLockThresholdMs: 10,
     });
+    const ownerPath = join(store.lockPath, "owner-incomplete.json");
     try {
-      await writeFile(store.lockPath, JSON.stringify({ pid: process.pid }), "utf8");
+      await mkdir(store.lockPath);
+      await writeFile(ownerPath, JSON.stringify({ pid: process.pid }), "utf8");
       const oldTimestamp = new Date(Date.now() - 1_000);
-      await utimes(store.lockPath, oldTimestamp, oldTimestamp);
+      await utimes(ownerPath, oldTimestamp, oldTimestamp);
 
       await store.write(createState({ runName: "Recovered Partial Lock" }));
 
@@ -204,3 +285,14 @@ describe("macro workflow state store", () => {
     }
   });
 });
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T | PromiseLike<T>): void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
+}
