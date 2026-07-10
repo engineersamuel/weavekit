@@ -11,6 +11,8 @@ class PersonaCritique {
   risks string[]
   questions string[]
   recommendations string[]
+  rivalExplanations string[]? @description("Materially distinct rival hypotheses preserved from the persona response.")
+  negativeCases string[]? @description("Negative or disconfirming cases preserved from the persona response.")
 }
 
 // Lean per-persona view fed to CreateCouncilReport. The full PersonaCritique (with
@@ -68,6 +70,8 @@ function NormalizePersonaCritique(raw: RawPersonaResult) -> PersonaCritique {
     Preserve the personaId exactly.
     Set overallSummary to one short sentence for CLI progress that summarizes
     the persona's overall stance, conclusion, or decision.
+    Preserve materially distinct rival hypotheses in rivalExplanations and negative cases
+    from the raw persona response when present. Otherwise omit these optional fields.
 
     {{ _.role("user") }}
     Persona ID: {{ raw.personaId }}

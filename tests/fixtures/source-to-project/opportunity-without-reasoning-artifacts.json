@@ -1,0 +1,27 @@
+{
+  "id": "opp-without-reasoning-artifacts",
+  "title": "Preserve legacy opportunities",
+  "lesson": "Optional reasoning fields must remain backward compatible.",
+  "projectChange": "Accept legacy Opportunity artifacts while reporting missing rival hypotheses.",
+  "changeSurface": "src/macro-workflow/sourceToProject/verifier.ts",
+  "score": {
+    "applicability": 0.9,
+    "applicabilityReasoning": "The source lesson directly applies to opportunity verification.",
+    "impact": 0.9,
+    "impactReasoning": "Advisory feedback improves future artifacts without rejecting existing ones.",
+    "confidence": 0.9,
+    "confidenceReasoning": "Source and project evidence both support the change.",
+    "implementationCost": 0.2,
+    "implementationCostReasoning": "The change is limited to verifier logic and tests.",
+    "risk": 0.2,
+    "riskReasoning": "Advisory-only verification preserves existing promotion behavior."
+  },
+  "evidence": [
+    {
+      "id": "evidence-1",
+      "source": "CONTEXT.md",
+      "quote": "Verification gates are automated checks."
+    }
+  ],
+  "speculative": false
+}

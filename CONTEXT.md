@@ -62,6 +62,7 @@ _Avoid_: insight extraction, improvement list
 
 **Opportunity**:
 A project-specific, source-grounded improvement candidate that can be ranked, planned, accepted as advisory, or rejected as not worth pursuing.
+An Opportunity may also preserve optional, evidence-grounded rival explanations, a disconfirming or negative signal, and negative cases for downstream automation and review.
 _Avoid_: insight, idea, recommendation (too broad)
 
 **Non-applicable lesson**:

@@ -1,0 +1,34 @@
+{
+  "id": "opp-with-reasoning-artifacts",
+  "title": "Record competing explanations",
+  "lesson": "Keep alternative explanations visible when evidence supports them.",
+  "projectChange": "Record evidence-grounded rival hypotheses with promoted opportunities.",
+  "changeSurface": "src/macro-workflow/sourceToProject/verifier.ts",
+  "score": {
+    "applicability": 0.9,
+    "applicabilityReasoning": "The source lesson directly applies to opportunity verification.",
+    "impact": 0.9,
+    "impactReasoning": "Visible rival hypotheses improve the quality of promotion decisions.",
+    "confidence": 0.9,
+    "confidenceReasoning": "Source and project evidence both support the change.",
+    "implementationCost": 0.2,
+    "implementationCostReasoning": "The change is limited to verifier logic and tests.",
+    "risk": 0.2,
+    "riskReasoning": "Advisory-only verification preserves existing promotion behavior."
+  },
+  "evidence": [
+    {
+      "id": "evidence-1",
+      "source": "CONTEXT.md",
+      "quote": "Verification gates are automated checks."
+    }
+  ],
+  "speculative": false,
+  "rivalExplanationsConsidered": [
+    "The observed weakness may come from insufficient source evidence rather than verifier behavior."
+  ],
+  "negativeSignal": "The optional field may be absent in older Opportunity artifacts.",
+  "negativeCases": [
+    "Do not require rival hypotheses for speculative or below-threshold opportunities."
+  ]
+}

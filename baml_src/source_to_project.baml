@@ -56,6 +56,9 @@ class Opportunity {
   score OpportunityScore
   evidence EvidenceReference[]
   speculative bool
+  rivalExplanationsConsidered string[]? @description("Materially distinct alternative explanations supported by source and project evidence.")
+  negativeSignal string? @description("Strongest evidence that weakens or contradicts this opportunity.")
+  negativeCases string[]? @description("Evidence-backed cases where this opportunity should not apply.")
 }
 
 class NonApplicableLesson {
@@ -183,6 +186,7 @@ function MapSourceToProject(
     If a source lesson is only an implementation detail of the source and does not improve the target project's user workflow, put it in nonApplicableLessons.
     If no high-quality source-to-project improvement exists, return low scores or nonApplicableLessons instead of forcing a recommendation.
     Every score field must be paired with its own one-or-two sentence *Reasoning field that cites specific evidence (source lesson content, project-brief facts, or change-surface constraints) rather than restating the score in words.
+    Populate the optional reasoning artifacts only when source and project evidence support them: record materially distinct rival explanations in rivalExplanationsConsidered, and negative or disconfirming evidence and cases in negativeSignal and negativeCases. Otherwise omit these optional fields rather than inventing content.
     CRITICAL: Opportunities must propose changes exclusively within the target project's working tree (identified by projectBrief.projectId and projectBrief.displayName). Never propose changes to the workflow automation tool that ran this analysis (e.g., weakekit), its orchestration scripts, its plans/ directory, its src/ code, its CI configuration, or any validation plan documents stored in the workflow runner's repository. Those are the runner, not the target project. If a lesson only reveals a problem with how the workflow runner processes or identifies the target project, put it in nonApplicableLessons rather than creating an opportunity.
 
     {{ _.role("user") }}
