@@ -16,7 +16,7 @@ Actions use a green/yellow/red authorization model:
 
 - **Green:** bounded local reads and writes to run artifacts and repository files, including repeatable checks. These actions may run unattended.
 - **Yellow:** preparation of externally consequential changes for human review. A loop may publish a review-only artifact, such as opening a pull request, but it never merges or self-approves it.
-- **Red:** explicit financial transactions, spend beyond pre-authorized or configured budget-gate bounds, production mutations, or direct communication to customers or the public beyond publishing a review-only change artifact. These actions never run unattended and require explicit human authorization. Ordinary model calls admitted within [ADR 0006](0006-pre-run-budget-gate.md)'s configured bounds are not Red solely because they incur usage cost.
+- **Red:** explicit financial transactions, LLM spend not admitted by [ADR 0006](0006-pre-run-budget-gate.md)'s active budget-gate policy without a valid override, production mutations, or direct communication to customers or the public beyond publishing a review-only change artifact. These actions never run unattended and require explicit human authorization. Model usage admitted by the budget gate—whether admitted directly, through advisory warn mode, or by a valid override—is not Red solely because it incurs usage cost.
 
 Yellow and Red define publication or execution boundaries before or after the Run. Authorization occurs at that boundary; neither tier introduces a blocking in-Run Verification checkpoint. Automated in-Run verification therefore continues to compose with [ADR 0003](0003-elicitation-vs-verification-gates.md).
 
