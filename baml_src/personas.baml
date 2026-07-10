@@ -42,6 +42,13 @@ function ChoosePersonasForTask(request: PersonaSelectionRequest) -> PersonaSelec
     - personaIds MUST be candidate ids from request.candidates.
     - Return between request.minPersonas and request.maxPersonas ids.
     - Prefer fewer personas when the task is narrow.
+    - After establishing task relevance, prefer distinct reasoning methods that
+      complement one another.
+    - Avoid candidates with materially overlapping domains and methods unless
+      deliberate opposition would expose a useful conflict.
+    - On later rounds, use request.previousSelectionIds,
+      request.previousRoundSignals, and request.roundFocus to add a missing lens
+      instead of mechanically repeating the previous panel.
     - Include strategic/philosophical/political personas only when the prompt
       involves incentives, negotiation, internal politics, positioning, career,
       power, timing, or human systems.
