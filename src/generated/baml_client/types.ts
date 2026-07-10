@@ -241,6 +241,9 @@ export interface Opportunity {
   score: OpportunityScore
   evidence: EvidenceReference[]
   speculative: boolean
+  rivalExplanationsConsidered?: string[] | null
+  negativeSignal?: string | null
+  negativeCases?: string[] | null
   
 }
 
@@ -296,6 +299,8 @@ export interface PersonaCritique {
   risks: string[]
   questions: string[]
   recommendations: string[]
+  rivalExplanations?: string[] | null
+  negativeCases?: string[] | null
   
 }
 

@@ -192,6 +192,9 @@ export namespace partial_types {
       score?: OpportunityScore | null
       evidence: EvidenceReference[]
       speculative?: boolean | null
+      rivalExplanationsConsidered?: string[] | null
+      negativeSignal?: string | null
+      negativeCases?: string[] | null
     }
     export interface OpportunityBundle {
       id?: string | null
@@ -237,6 +240,8 @@ export namespace partial_types {
       risks: string[]
       questions: string[]
       recommendations: string[]
+      rivalExplanations?: string[] | null
+      negativeCases?: string[] | null
     }
     export interface PersonaCritiqueSummary {
       personaId?: string | null

@@ -65,7 +65,7 @@ export default class TypeBuilder {
     
     NonApplicableLesson: ClassViewer<'NonApplicableLesson', "lesson" | "reason" | "evidence">;
     
-    Opportunity: ClassViewer<'Opportunity', "id" | "title" | "lesson" | "projectChange" | "changeSurface" | "score" | "evidence" | "speculative">;
+    Opportunity: ClassViewer<'Opportunity', "id" | "title" | "lesson" | "projectChange" | "changeSurface" | "score" | "evidence" | "speculative" | "rivalExplanationsConsidered" | "negativeSignal" | "negativeCases">;
     
     OpportunityBundle: ClassViewer<'OpportunityBundle', "id" | "opportunityIds" | "rationale" | "sharedChangeSurface" | "combinedUserValue" | "separationRisk" | "maxPrScope">;
     
@@ -75,7 +75,7 @@ export default class TypeBuilder {
     
     PersonaChoiceCandidate: ClassViewer<'PersonaChoiceCandidate', "id" | "name" | "description" | "archetype" | "tags" | "useWhen" | "avoidWhen">;
     
-    PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "overallSummary" | "summary" | "claims" | "risks" | "questions" | "recommendations">;
+    PersonaCritique: ClassViewer<'PersonaCritique', "personaId" | "overallSummary" | "summary" | "claims" | "risks" | "questions" | "recommendations" | "rivalExplanations" | "negativeCases">;
     
     PersonaCritiqueSummary: ClassViewer<'PersonaCritiqueSummary', "personaId" | "overallSummary" | "summary">;
     
@@ -219,7 +219,7 @@ export default class TypeBuilder {
         ]);
         
         this.Opportunity = this.tb.classViewer("Opportunity", [
-          "id","title","lesson","projectChange","changeSurface","score","evidence","speculative",
+          "id","title","lesson","projectChange","changeSurface","score","evidence","speculative","rivalExplanationsConsidered","negativeSignal","negativeCases",
         ]);
         
         this.OpportunityBundle = this.tb.classViewer("OpportunityBundle", [
@@ -239,7 +239,7 @@ export default class TypeBuilder {
         ]);
         
         this.PersonaCritique = this.tb.classViewer("PersonaCritique", [
-          "personaId","overallSummary","summary","claims","risks","questions","recommendations",
+          "personaId","overallSummary","summary","claims","risks","questions","recommendations","rivalExplanations","negativeCases",
         ]);
         
         this.PersonaCritiqueSummary = this.tb.classViewer("PersonaCritiqueSummary", [
