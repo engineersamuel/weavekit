@@ -19,7 +19,28 @@ const foundationalCouncilOutputLabels = [
 ] as const;
 
 const forbiddenImportedPromptInstructions =
-  /tools:|model:|\/council|Council Round 2|provider_affinity|provider routing|coordinator|engage at least|\bpeer(?:-|\s+)(?:engagement|review|response|critique|argument|position|analysis|member)s?\b|word limit|Output Format \(Standalone\)/i;
+  /^[ \t]*(?:model|tools):|\/council\b|\b(?:Council Round|In Round)\s+\d+\b|\b\d+\s+words?\s+or\s+(?:less|fewer)\b|\bprovider(?:_affinity|\s+routing)\b|\bcoordinator\b|\bword limit\b|\bengage\s+at\s+least\s+\d+\s+other\s+members?\b|\brespond\s+to\s+peers?\b|\bchallenge\s+other\s+members?\b|Output Format \(Standalone\)/im;
+
+const forbiddenImportedPromptExamples = [
+  "model: opus",
+  'tools: ["Read", "Bash"]',
+  "Run this persona through /council.",
+  "Council Round 2",
+  "In Round 3 (Synthesis), state your final position.",
+  "Contribute your analysis in 300 words or less.",
+  'provider_affinity: ["anthropic", "openai"]',
+  "Use provider routing for this persona.",
+  "Engage at least 2 other members' positions.",
+  "Respond to peers before giving your verdict.",
+  "Challenge other members when they disagree.",
+  "Output Format (Standalone)",
+] as const;
+
+const legitimatePromptExamples = [
+  "Use a compact model: inputs, outputs, and constraints.",
+  "This claim needs peer review.",
+  "Model uncertainty explicitly.",
+] as const;
 
 describe("manifest-backed council personas", () => {
   it("loads the shipped manifest personas", () => {
@@ -57,6 +78,14 @@ describe("manifest-backed council personas", () => {
     expect(pragmatic.useWhen).toEqual([
       "Use for defining minimal experiments, incremental delivery plans, and practical next actions.",
     ]);
+  });
+
+  it.each(forbiddenImportedPromptExamples)("rejects imported host instruction: %s", (snippet) => {
+    expect(snippet).toMatch(forbiddenImportedPromptInstructions);
+  });
+
+  it.each(legitimatePromptExamples)("allows legitimate analytical prose: %s", (snippet) => {
+    expect(snippet).not.toMatch(forbiddenImportedPromptInstructions);
   });
 
   it("ships substantive normalized prompts for the foundational council personas", () => {
