@@ -8,15 +8,15 @@ Each loop begins only when invoked by a defined trigger or schedule; it does not
 
 Every round runs the same repeatable check. For weavekit repository changes, that check includes `nub run typecheck` and `nub run test`. A loop may add checks required by its change surface, but it should not silently weaken or substitute the baseline between rounds. Completion is proof-based: command outcomes and other supporting evidence must be visible in the run artifacts rather than inferred from an agent's claim.
 
-The loop persists a run ledger or state file alongside the existing `runs/` artifacts. The ledger records completed work, remaining or queued candidate changes within the current Run, decisions, blockers, and verification evidence; the next round in that Run reads it before selecting another change. This follows [ADR 0001](0001-no-durable-work-queue.md)'s on-disk run-state snapshot model. The ledger's lifecycle closes with its Run: it is not independently consumed or carried into later Runs. It does not create a durable work queue, a second orchestration actor, or a cross-Run backlog; execution remains in-process within an isolated Run.
+The loop persists a run ledger or state file alongside the existing `runs/` artifacts. The ledger records completed work, remaining candidate changes within the current Run, decisions, blockers, and verification evidence; the next round in that Run reads it before selecting another change. This follows [ADR 0001](0001-no-durable-work-queue.md)'s on-disk run-state snapshot model. The ledger's lifecycle closes with its Run: it is not independently consumed or carried into later Runs. It does not create a durable work queue, a second orchestration actor, or a cross-Run backlog; execution remains in-process within an isolated Run.
 
 Each loop defines explicit stop rules: a hard iteration cap plus terminal conditions for done and blocked outcomes. Automation-specific bounds compose with the Template Optimizer caps in [ADR 0005](0005-reusable-dag-planner-optimizer.md) and the admission control in [ADR 0006](0006-pre-run-budget-gate.md); this policy does not duplicate their iteration, candidate, or budget mechanisms.
 
-Actions use a green/yellow/red approval model:
+Actions use a green/yellow/red authorization model:
 
 - **Green:** bounded local reads and writes to run artifacts and repository files, including repeatable checks. These actions may run unattended.
 - **Yellow:** preparation of externally consequential changes for human review. A loop may publish a review-only artifact, such as opening a pull request, but it never merges or self-approves it.
-- **Red:** actions that directly commit money or new spend, mutate production, or communicate directly to customers or the public beyond publishing a review-only change artifact. These actions never run unattended and require explicit human authorization.
+- **Red:** explicit financial transactions, spend beyond pre-authorized or configured budget-gate bounds, production mutations, or direct communication to customers or the public beyond publishing a review-only change artifact. These actions never run unattended and require explicit human authorization. Ordinary model calls admitted within [ADR 0006](0006-pre-run-budget-gate.md)'s configured bounds are not Red solely because they incur usage cost.
 
 Yellow and Red define publication or execution boundaries before or after the Run. Authorization occurs at that boundary; neither tier introduces a blocking in-Run Verification checkpoint. Automated in-Run verification therefore continues to compose with [ADR 0003](0003-elicitation-vs-verification-gates.md).
 
@@ -28,4 +28,4 @@ Yellow and Red define publication or execution boundaries before or after the Ru
 
 ## Consequences
 
-Future in-repository automation should reference this ADR when defining its cadence, round state, checks, stop rules, and authorization boundaries. The approval tiers and other defaults remain advisory; this ADR adds no policy-enforcement code. This documentation-only change dispatches no model or runtime work and adds zero projected runtime cost. It therefore remains within any positive configured ceiling, including the reviewed operator's $500 warn ceiling; [ADR 0006](0006-pre-run-budget-gate.md) and typed configuration remain the source of truth for budget policy and values.
+Future in-repository automation should reference this ADR when defining its cadence, round state, checks, stop rules, and authorization boundaries. The authorization tiers and other defaults remain advisory; this ADR adds no policy-enforcement code. This documentation-only change dispatches no model or runtime work and adds zero projected runtime or cloud cost. [ADR 0006](0006-pre-run-budget-gate.md) and typed configuration remain the source of truth for budget policy and values.
