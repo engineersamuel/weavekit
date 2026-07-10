@@ -5,6 +5,46 @@ import { describe, expect, it } from "vitest";
 import { writeMacroWorkflowArtifacts } from "../../src/macro-workflow/artifacts.js";
 
 describe("macro workflow artifacts", () => {
+  it("refuses sensitive state before writing derived payload artifacts", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    try {
+      await expect(
+        writeMacroWorkflowArtifacts({
+          outputDir,
+          state: {
+            planId: "test-plan",
+            objective: "Protect secrets",
+            templateId: "implementation-review",
+            status: "passed",
+            startedAt: new Date("2026-06-29T00:00:00Z"),
+            currentPlan: {
+              id: "test-plan",
+              objective: "Protect secrets",
+              templateId: "implementation-review",
+              maxReplans: 0,
+              nodes: [],
+            },
+            nodeResults: [
+              {
+                nodeId: "research",
+                status: "passed",
+                output: "complete",
+                payload: { access_token: "do-not-write" },
+              },
+            ],
+            replans: [],
+          },
+        }),
+      ).rejects.toThrow("Refusing to persist sensitive workflow state key");
+
+      await expect(readFile(join(outputDir, "research.payload.json"), "utf8")).rejects.toThrow(
+        "ENOENT",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
   it("writes report and state artifacts", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
     try {
@@ -45,6 +85,11 @@ describe("macro workflow artifacts", () => {
       expect(report).toContain("Macro Workflow Run Report");
       expect(report).toContain("## Token Usage and Cost");
       expect(stateFile).toContain('"status": "passed"');
+      expect(JSON.parse(stateFile)).toMatchObject({
+        schemaVersion: 1,
+        runId: expect.any(String),
+        lastUpdatedAt: expect.any(String),
+      });
       expect(eventLog).toContain('"kind":"planning-started"');
     } finally {
       await rm(outputDir, { recursive: true, force: true });

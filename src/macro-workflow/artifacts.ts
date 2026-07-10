@@ -8,6 +8,7 @@ import type {
   SourceAnalysis,
 } from "../generated/baml_client/index.js";
 import type { MacroWorkflowRunStateLike, WorkflowReplayEvent } from "./types.js";
+import { MacroWorkflowStateStore } from "./stateStore.js";
 import { renderWorkflowUsageMarkdown } from "./usage.js";
 
 export type MacroWorkflowArtifactPaths = {
@@ -30,6 +31,7 @@ export async function writeMacroWorkflowArtifacts(
   const reportPath = join(input.outputDir, "workflow-report.md");
   const statePath = join(input.outputDir, "workflow-state.json");
   const eventLogPath = join(input.outputDir, "workflow-events.jsonl");
+  await writeMacroWorkflowStateArtifact(input.outputDir, input.state);
   await Promise.all(
     input.state.nodeResults
       .filter((result) => result.payload)
@@ -92,7 +94,6 @@ export async function writeMacroWorkflowArtifacts(
   ].join("\n");
 
   await writeFile(reportPath, report, "utf8");
-  await writeMacroWorkflowStateArtifact(input.outputDir, input.state);
   if (input.replayEvents) {
     await writeFile(eventLogPath, formatWorkflowReplayEvents(input.replayEvents), "utf8");
   }
@@ -311,10 +312,7 @@ export async function writeMacroWorkflowStateArtifact(
   outputDir: string,
   state: MacroWorkflowRunStateLike,
 ): Promise<string> {
-  await mkdir(outputDir, { recursive: true });
-  const statePath = join(outputDir, "workflow-state.json");
-  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
-  return statePath;
+  return new MacroWorkflowStateStore(outputDir).write(state);
 }
 
 export async function appendWorkflowReplayEvent(

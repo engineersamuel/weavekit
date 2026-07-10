@@ -13,7 +13,7 @@ A named viewpoint (archetype plus prompt) that contributes one perspective to a 
 _Avoid_: agent, role, expert
 
 **Run**:
-A single isolated, single-machine execution of a workflow from start to completion. Owns ephemeral typed state and completes all of its work in-process.
+A single isolated, single-machine execution of a workflow. It owns typed state, completes all work in-process, and may be explicitly resumed at node boundaries from its own canonical snapshot after interruption.
 _Avoid_: job, session, batch
 
 **Source artifact**:
@@ -210,6 +210,7 @@ _Avoid_: ticket, issue, task (inside a Run)
 
 ## Decisions
 
-- **Beads (durable work queue) — extensively evaluated and deliberately rejected.** Weavekit does not use Beads, or any durable work queue, for workflow orchestration. Workflows are isolated single-machine Runs that complete all work in-process; there is no second actor, no cross-session resumption, and no cross-run backlog to coordinate. Dynamic action graphs are orchestrated in-process, Langfuse captures the execution DAG, and verification is in-process gated checks plus CI. See [ADR 0001](docs/adr/0001-no-durable-work-queue.md).
+- **Beads (durable work queue) — extensively evaluated and deliberately rejected.** Weavekit does not use Beads, or any durable work queue, for workflow orchestration. Workflows are isolated single-machine Runs that complete all work in-process; there is no second actor, independently schedulable work, or cross-run backlog to coordinate. Dynamic action graphs are orchestrated in-process, Langfuse captures the execution DAG, and verification is in-process gated checks plus CI. See [ADR 0001](docs/adr/0001-no-durable-work-queue.md).
+- **Durable Run snapshots — accepted.** A macro-workflow Run writes versioned state atomically to `runs/<run-id>/workflow-state.json` and may be explicitly resumed with `workflow run --resume <run-id>`. Passed/skipped nodes stay completed; interrupted work runs again in the same in-process scheduler. This is node-boundary recovery, not a queue, background worker, or mid-harness continuation. See [ADR 0007](docs/adr/0007-durable-run-state-resume.md).
 - **Rivet (durable actor runtime) — evaluated and deferred.** Rivet has the strongest orchestration control-flow DSL of the options (steps, join/race, rollback, durable HITL, replay), but adopting it would reverse ADR 0001 (it reintroduces a second actor, work outliving the process, and human gates) and is inert for in-process Runs. Keep in-process Runs; bank control-flow wins in-process (fan-out/fan-in, in-process compensation, a thin auto-approve `HumanDecision` seam). Rivet is the named candidate — over Flue — only if the reopen triggers fire. See [ADR 0002](docs/adr/0002-defer-rivet-keep-in-process-runs.md).
 - **Human-in-the-loop split — elicitation is sanctioned, verification/approval gates are not.** Weavekit may _elicit_ input it cannot infer (an agentic Intake interview at the front door, and declarative in-loop Clarifying questions emitted by BAML and surfaced by the orchestrator), but does not reintroduce human _verification/approval_ gates on the council's output (still eliminated per ADR 0001). Elicitation is in-process, per-run toggleable, and never blocks a Run: the human may skip/time out (unanswered recorded), and answers may instead be supplied by an automated resolver reading project context/goals, so a Run can be fully unattended. BAML emits questions as data; the orchestrator asks. See [ADR 0003](docs/adr/0003-elicitation-vs-verification-gates.md).

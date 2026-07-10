@@ -6,6 +6,11 @@ Weavekit workflows run as isolated, single-machine Runs that complete all work w
 
 Instead: dynamic action graphs are orchestrated in-process; Langfuse captures the execution DAG; verification is in-process gated checks plus CI, not queue dependencies or human gates.
 
+ADR 0007 makes the existing on-disk run-state direction concrete: an operator may explicitly
+resume one interrupted Run from its canonical snapshot. The snapshot records orchestration state;
+it does not claim or dispatch work while weavekit is stopped, coordinate multiple actors, or create
+a cross-Run backlog, so this decision remains unchanged.
+
 ## Considered options
 
 1. **In-process scheduler + Langfuse + on-disk run state — chosen.** Passes real payloads, no per-op subprocess, no durability tax, and the execution DAG is already observable in Langfuse.

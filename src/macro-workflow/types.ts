@@ -161,8 +161,10 @@ export type WorkflowReplanEvent = {
 };
 
 export type MacroWorkflowRunState = {
+  schemaVersion?: number;
   runId?: string;
   runName?: string;
+  lastUpdatedAt?: Date;
   planId: string;
   objective: string;
   templateId: string;

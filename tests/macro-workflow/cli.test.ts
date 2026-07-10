@@ -19,6 +19,8 @@ import {
   runWorkflowCli,
 } from "../../src/cli.js";
 import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js";
+import { MacroWorkflowStateStore } from "../../src/macro-workflow/stateStore.js";
+import type { MacroWorkflowRunState } from "../../src/macro-workflow/types.js";
 import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
 
 const entityValidation = vi.hoisted(() => ({
@@ -344,6 +346,22 @@ describe("macro workflow CLI", () => {
       noCache: false,
       template: "implementation-review",
     });
+  });
+
+  it("parses an explicit resume run without requiring a new prompt", () => {
+    expect(
+      parseWorkflowCliArgs(["workflow", "run", "--resume", "run-123", "--output", "saved-runs"]),
+    ).toEqual({
+      command: "run",
+      outputDir: "saved-runs",
+      staticTemplate: false,
+      dryRun: false,
+      noCache: false,
+      resumeRunId: "run-123",
+    });
+    expect(() => parseWorkflowCliArgs(["workflow", "run", "--resume"])).toThrow(
+      "Missing value for --resume <run-id>.",
+    );
   });
 
   it("rejects ambiguous workflow prompt sources", () => {
@@ -803,6 +821,17 @@ autonomous_pr_allowed = false
     expect(descriptor.runName).toBe("Ship Replay Dashboard Follow Mode");
   });
 
+  it("creates a resume descriptor that reuses the requested run directory", () => {
+    expect(createWorkflowRunDescriptor("runs", "Persisted objective", "run-123")).toEqual({
+      runId: "run-123",
+      runName: "Persisted Objective",
+      outputDir: join("runs", "run-123"),
+    });
+    expect(() => createWorkflowRunDescriptor("runs", "Objective", "../escape")).toThrow(
+      "Invalid workflow run id",
+    );
+  });
+
   it("emits progress updates while a long-running workflow action is in flight", () => {
     vi.useFakeTimers();
     const writes: string[] = [];
@@ -982,6 +1011,113 @@ autonomous_pr_allowed = false
       expect(state).toContain('"runName": "Ship Replay Dashboard Follow Mode"');
       expect(events).toContain('"kind":"planning-started"');
       expect(events).toContain('"kind":"run-completed"');
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("resumes from persisted objective and current plan in the same run directory", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-resume-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "run-123";
+    const outputDir = join(outputRoot, runId);
+    const startedAt = new Date("2026-07-10T10:00:00.000Z");
+    const currentPlan = {
+      id: "persisted-plan",
+      objective: "Persisted objective",
+      templateId: "implementation-review",
+      maxReplans: 0,
+      nodes: [
+        {
+          id: "completed-research",
+          kind: "research" as const,
+          harness: WorkflowHarnessKind.RESEARCH,
+          title: "Completed research",
+          prompt: "Research",
+          dependsOn: [],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+        {
+          id: "remaining-report",
+          kind: "report" as const,
+          harness: WorkflowHarnessKind.REPORTER,
+          title: "Remaining report",
+          prompt: "Report",
+          dependsOn: ["completed-research"],
+          gates: ["output-contract" as const],
+          writeMode: "read-only" as const,
+          replanPolicy: "never" as const,
+        },
+      ],
+    };
+    const initialState: MacroWorkflowRunState = {
+      runId,
+      runName: "Persisted Run",
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt,
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [
+        {
+          nodeId: "completed-research",
+          status: "passed",
+          output: "already complete",
+          payload: { evidence: true },
+        },
+        {
+          nodeId: "remaining-report",
+          status: "failed",
+          output: "interrupted",
+          error: "process exited",
+        },
+      ],
+      replans: [],
+    };
+    await new MacroWorkflowStateStore(outputDir).write(initialState);
+
+    try {
+      await runWorkflowCli({
+        command: "run",
+        outputDir: outputRoot,
+        staticTemplate: false,
+        dryRun: false,
+        resumeRunId: runId,
+      });
+
+      expect(workflowPlanner.planWorkflow).not.toHaveBeenCalled();
+      expect(await readdir(outputRoot)).toEqual([runId]);
+      const resumed = await new MacroWorkflowStateStore(outputDir).read();
+      expect(resumed.runId).toBe(runId);
+      expect(resumed.runName).toBe("Persisted Run");
+      expect(resumed.objective).toBe("Persisted objective");
+      expect(resumed.startedAt).toEqual(startedAt);
+      expect(resumed.status).toBe("passed");
+      expect(resumed.nodeResults.map((result) => [result.nodeId, result.status])).toEqual([
+        ["completed-research", "passed"],
+        ["remaining-report", "passed"],
+      ]);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a useful error when the requested resume snapshot is unavailable", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-resume-missing-"));
+    try {
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: join(rootDir, "runs"),
+          staticTemplate: false,
+          dryRun: false,
+          resumeRunId: "missing-run",
+        }),
+      ).rejects.toThrow("Cannot resume workflow missing-run: failed to read workflow-state.json");
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }

@@ -19,6 +19,7 @@ import type { TelemetryHandle } from "./telemetry/bootstrap.js";
 import {
   WorkflowHarnessKind,
   WorkflowNodeStatus,
+  type MacroWorkflowRunState,
   type MacroWorkflowRunStateLike,
   type RuntimeWorkflowNode,
   type WorkflowArtifactRef,
@@ -26,6 +27,7 @@ import {
   type WorkflowReplayEvent,
 } from "./macro-workflow/types.js";
 import { MacroWorkflowEventKind } from "./macro-workflow/logger.js";
+import { MacroWorkflowStateStore } from "./macro-workflow/stateStore.js";
 import {
   extractXPostUrls,
   preprocessWorkflowPrompt,
@@ -73,6 +75,7 @@ export type WorkflowCliArgs = {
   templateCandidateId?: string;
   templateCandidateRunsRoot?: string;
   budgetOverrideReason?: string;
+  resumeRunId?: string;
 };
 
 export type WorkflowRunDescriptor = {
@@ -223,6 +226,7 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   const templateCandidateIndex = argv.indexOf("--template-candidate");
   const templateCandidateRunsRootIndex = argv.indexOf("--template-candidate-runs-root");
   const budgetOverrideIndex = argv.indexOf("--budget-override");
+  const resumeIndex = argv.indexOf("--resume");
 
   if (templateIndex !== -1 && !argv[templateIndex + 1]) {
     throw new Error("Missing value for --template <id>.");
@@ -281,6 +285,12 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (budgetOverrideIndex !== -1 && !argv[budgetOverrideIndex + 1]) {
     throw new Error("Missing value for --budget-override <reason>.");
   }
+  if (resumeIndex !== -1 && !argv[resumeIndex + 1]) {
+    throw new Error("Missing value for --resume <run-id>.");
+  }
+  if (resumeIndex !== -1 && command !== "run") {
+    throw new Error("--resume <run-id> is only supported by workflow run.");
+  }
 
   const template = templateIndex === -1 ? undefined : argv[templateIndex + 1];
   const isSourceToProject = template === "source-to-project";
@@ -290,6 +300,7 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
     command !== "dashboard" &&
     inputIndex === -1 &&
     promptIndex === -1 &&
+    resumeIndex === -1 &&
     !isProjectScopedTemplate
   ) {
     throw new Error("Missing required --input <path> or --prompt <text> argument.");
@@ -300,8 +311,14 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   if (command !== "dashboard" && inputIndex !== -1 && promptIndex !== -1) {
     throw new Error("Use either --input <path> or --prompt <text>, not both.");
   }
+  if (resumeIndex !== -1 && (inputIndex !== -1 || promptIndex !== -1)) {
+    throw new Error(
+      "A resumed workflow reads its objective from state; omit --input and --prompt.",
+    );
+  }
   if (
     command !== "dashboard" &&
+    resumeIndex === -1 &&
     isProjectScopedTemplate &&
     projectIndex === -1 &&
     projectPathIndex === -1
@@ -397,6 +414,9 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   }
   if (budgetOverrideIndex !== -1) {
     parsed.budgetOverrideReason = argv[budgetOverrideIndex + 1];
+  }
+  if (resumeIndex !== -1) {
+    parsed.resumeRunId = argv[resumeIndex + 1];
   }
   return parsed;
 }
@@ -540,14 +560,22 @@ function truncateOneLine(value: string, maxLength: number): string {
 export function createWorkflowRunDescriptor(
   outputRoot: string,
   objective: string,
+  existingRunId?: string,
 ): WorkflowRunDescriptor {
-  const runId = randomUUID();
+  if (existingRunId && !isValidWorkflowRunId(existingRunId)) {
+    throw new Error(`Invalid workflow run id: ${existingRunId}`);
+  }
+  const runId = existingRunId ?? randomUUID();
   const normalizedRoot = basename(outputRoot) === "latest" ? dirname(outputRoot) : outputRoot;
   return {
     runId,
     runName: generateWorkflowRunName(objective),
     outputDir: join(normalizedRoot, runId),
   };
+}
+
+function isValidWorkflowRunId(runId: string): boolean {
+  return runId !== "." && runId !== ".." && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/u.test(runId);
 }
 
 export function inferSourceReferenceFromPrompt(prompt: string): string | undefined {
@@ -788,9 +816,25 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   const { assertValidEntityCatalog } = await import("./entities/index.js");
   assertValidEntityCatalog(process.cwd());
 
+  const resumeDescriptor = args.resumeRunId
+    ? createWorkflowRunDescriptor(args.outputDir, "Macro workflow", args.resumeRunId)
+    : undefined;
+  const resumedState = resumeDescriptor
+    ? await readWorkflowResumeState(resumeDescriptor.outputDir, args.resumeRunId!)
+    : undefined;
+  if (resumedState) {
+    assertResumableWorkflowState(resumedState, args.resumeRunId!);
+    if (args.template && args.template !== resumedState.templateId) {
+      throw new Error(
+        `Cannot resume workflow ${args.resumeRunId} as template ${args.template}; persisted template is ${resumedState.templateId}.`,
+      );
+    }
+  }
+
   if (
     !args.inputPath &&
     !args.prompt &&
+    !resumedState &&
     args.template !== "source-to-project" &&
     args.template !== "verification-optimizer"
   ) {
@@ -802,6 +846,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
 
   const promptWasUserProvided = Boolean(args.prompt || args.inputPath);
   const rawPrompt =
+    resumedState?.objective ??
     args.prompt ??
     (args.inputPath
       ? await readFile(args.inputPath, "utf8")
@@ -814,11 +859,13 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       `[weavekit] Resolving ${xPostUrlsToResolve.length} X post source${xPostUrlsToResolve.length === 1 ? "" : "s"} with grok...\n`,
     );
   }
-  const preprocessedPrompt = await preprocessWorkflowPrompt({
-    prompt: rawPrompt,
-    source: args.source,
-    cache: { ...typedConfig.cache, enabled: typedConfig.cache.enabled && !args.noCache },
-  });
+  const preprocessedPrompt = resumedState
+    ? { prompt: resumedState.objective, fetchedXPosts: [] }
+    : await preprocessWorkflowPrompt({
+        prompt: rawPrompt,
+        source: args.source,
+        cache: { ...typedConfig.cache, enabled: typedConfig.cache.enabled && !args.noCache },
+      });
   if (xPostUrlsToResolve.length > 0) {
     process.stderr.write(
       `[weavekit] X post source${xPostUrlsToResolve.length === 1 ? "" : "s"} resolved.\n`,
@@ -826,10 +873,19 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   }
   const prompt = preprocessedPrompt.prompt;
   const fetchedXPosts = preprocessedPrompt.fetchedXPosts;
-  const objective = prompt.trim() || "Macro workflow";
-  const runDescriptor = createWorkflowRunDescriptor(args.outputDir, objective);
-  const isSourceToProject = args.template === "source-to-project";
-  const isVerificationOptimizer = args.template === "verification-optimizer";
+  const objective = resumedState?.objective ?? (prompt.trim() || "Macro workflow");
+  const generatedDescriptor = createWorkflowRunDescriptor(
+    args.outputDir,
+    objective,
+    args.resumeRunId,
+  );
+  const runDescriptor = {
+    ...generatedDescriptor,
+    runName: resumedState?.runName ?? generatedDescriptor.runName,
+  };
+  const templateId = resolveWorkflowTemplateId(resumedState?.templateId ?? args.template);
+  const isSourceToProject = templateId === "source-to-project";
+  const isVerificationOptimizer = templateId === "verification-optimizer";
   const resolvedSource = isSourceToProject
     ? (args.source ??
       inferSourceReferenceFromPrompt(prompt) ??
@@ -910,7 +966,6 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   ]);
   const usageCollector = new workflowUsageModule.WorkflowUsageCollector();
   const planner = new workflowBamlAdapterModule.GeneratedWorkflowPlannerAdapter({ usageCollector });
-  const templateId = resolveWorkflowTemplateId(args.template);
   const isDeepResearch = templateId === "deep-research";
   const deepResearchConfig: DeepResearchDefaults = {
     ...typedConfig.deepResearch,
@@ -922,49 +977,54 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     | Awaited<ReturnType<typeof workflowTemplateCandidateModule.loadTemplateOptimizerCandidatePlan>>
     | undefined;
 
-  progress.start("Planning workflow DAG with the BAML planner...");
-  try {
-    if (args.templateCandidateRunId) {
-      templateCandidate = await workflowTemplateCandidateModule.loadTemplateOptimizerCandidatePlan({
-        runsRoot: args.templateCandidateRunsRoot ?? join("evals", "template-optimizer", "runs"),
-        runId: args.templateCandidateRunId,
-        candidateId: args.templateCandidateId,
-      });
-    }
-    plan = templateCandidate
-      ? workflowTemplateCandidateModule.materializeTemplateOptimizerCandidatePlan({
-          candidate: templateCandidate,
-          objective,
-          runId: args.templateCandidateRunId!,
-        })
-      : templateId
-        ? workflowTemplatesModule.materializeWorkflowPlan(templateId, {
+  if (resumedState) {
+    plan = resumedState.currentPlan;
+  } else {
+    progress.start("Planning workflow DAG with the BAML planner...");
+    try {
+      if (args.templateCandidateRunId) {
+        templateCandidate =
+          await workflowTemplateCandidateModule.loadTemplateOptimizerCandidatePlan({
+            runsRoot: args.templateCandidateRunsRoot ?? join("evals", "template-optimizer", "runs"),
+            runId: args.templateCandidateRunId,
+            candidateId: args.templateCandidateId,
+          });
+      }
+      plan = templateCandidate
+        ? workflowTemplateCandidateModule.materializeTemplateOptimizerCandidatePlan({
+            candidate: templateCandidate,
             objective,
-            source: resolvedSource,
-            project: args.project,
-            projectPath: args.projectPath,
-            mode: sourceToProjectMode ?? verificationOptimizerMode ?? args.mode,
-            externalResearch: isVerificationOptimizer
-              ? typedConfig.verificationOptimizer.externalResearch
-              : undefined,
-            providers: isDeepResearch ? deepResearchConfig.providers : undefined,
-            maxIterations: isDeepResearch ? deepResearchConfig.maxIterations : undefined,
-            questionsPerIteration: isDeepResearch
-              ? deepResearchConfig.questionsPerIteration
-              : undefined,
-            maxResultsPerQuestion: isDeepResearch
-              ? deepResearchConfig.maxResultsPerQuestion
-              : undefined,
-            providerRetryAttempts: isDeepResearch
-              ? deepResearchConfig.providerRetryAttempts
-              : undefined,
-            visualize: isDeepResearch ? deepResearchConfig.visualize : undefined,
+            runId: args.templateCandidateRunId!,
           })
-        : await planner.planWorkflow({ objective, prompt, templateId: "implementation-review" });
-    progress.stop("Workflow plan generated.");
-  } catch (error) {
-    progress.stop();
-    throw error;
+        : templateId
+          ? workflowTemplatesModule.materializeWorkflowPlan(templateId, {
+              objective,
+              source: resolvedSource,
+              project: args.project,
+              projectPath: args.projectPath,
+              mode: sourceToProjectMode ?? verificationOptimizerMode ?? args.mode,
+              externalResearch: isVerificationOptimizer
+                ? typedConfig.verificationOptimizer.externalResearch
+                : undefined,
+              providers: isDeepResearch ? deepResearchConfig.providers : undefined,
+              maxIterations: isDeepResearch ? deepResearchConfig.maxIterations : undefined,
+              questionsPerIteration: isDeepResearch
+                ? deepResearchConfig.questionsPerIteration
+                : undefined,
+              maxResultsPerQuestion: isDeepResearch
+                ? deepResearchConfig.maxResultsPerQuestion
+                : undefined,
+              providerRetryAttempts: isDeepResearch
+                ? deepResearchConfig.providerRetryAttempts
+                : undefined,
+              visualize: isDeepResearch ? deepResearchConfig.visualize : undefined,
+            })
+          : await planner.planWorkflow({ objective, prompt, templateId: "implementation-review" });
+      progress.stop("Workflow plan generated.");
+    } catch (error) {
+      progress.stop();
+      throw error;
+    }
   }
 
   if (args.command === "plan" || args.dryRun) {
@@ -1002,7 +1062,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   const replayEvents: WorkflowReplayEvent[] = [];
   let replayEventWrite = Promise.resolve();
   let stateSnapshotWrite = Promise.resolve();
-  const initialRunState = {
+  const initialRunState: MacroWorkflowRunState = resumedState ?? {
     runId: runDescriptor.runId,
     runName: runDescriptor.runName,
     planId: plan.id,
@@ -1188,6 +1248,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
             : workflowHarnessModule.createStaticHarnessRegistry();
 
     const state = await workflowRunnerModule.runMacroWorkflow(plan, {
+      initialState: resumedState,
       harnesses,
       outputDir: runDescriptor.outputDir,
       replanner: planner,
@@ -1377,6 +1438,45 @@ export function assertWorkflowRunSucceeded(
     ? `${failedResult.nodeId}: ${failedResult.error ?? failedResult.output}`
     : `status ${state.status}`;
   throw new Error(`Workflow failed at ${failureDetail}`);
+}
+
+function assertResumableWorkflowState(
+  state: MacroWorkflowRunStateLike,
+  requestedRunId: string,
+): asserts state is MacroWorkflowRunState {
+  if (state.runId !== requestedRunId) {
+    throw new Error(
+      `Cannot resume workflow ${requestedRunId}: persisted state belongs to run ${state.runId ?? "unknown"}.`,
+    );
+  }
+  if (!state.plan || !state.currentPlan) {
+    throw new Error(
+      `Cannot resume workflow ${requestedRunId}: workflow-state.json does not contain plan and currentPlan.`,
+    );
+  }
+  if (
+    state.planId !== state.currentPlan.id ||
+    state.objective !== state.currentPlan.objective ||
+    state.templateId !== state.currentPlan.templateId
+  ) {
+    throw new Error(
+      `Cannot resume workflow ${requestedRunId}: persisted plan metadata is incompatible with currentPlan.`,
+    );
+  }
+}
+
+async function readWorkflowResumeState(
+  outputDir: string,
+  runId: string,
+): Promise<MacroWorkflowRunStateLike> {
+  try {
+    return await new MacroWorkflowStateStore(outputDir).read();
+  } catch (error) {
+    throw new Error(
+      `Cannot resume workflow ${runId}: failed to read workflow-state.json: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
 }
 
 function findPrefetchedXPostContent(

@@ -28,3 +28,8 @@ Projection quality improves over time through a local JSON history at `~/.weavek
 For Autonomous PR, the gate runs before Herdr worktree creation or agent dispatch. A block therefore leaves no worktree behind and spends no agent tokens. For the Template Optimizer, the gate runs after fixtures and candidate counts are known but before the optimizer loop generates challengers or judges fixtures. This composes with ADR 0005 iteration and candidate caps; it does not replace those caps and does not introduce a concurrency cap.
 
 This design preserves ADR 0001's no-durable-work-queue constraint. The only persistence is local projection history for operator safety and future estimate quality; orchestration remains an isolated in-process run.
+
+ADR 0007 adds durable snapshots for interrupted macro-workflow Runs, not queued budget-approved
+work. Resume restores orchestration state and remaining nodes; admission checks remain launcher
+policy and a persisted snapshot never authorizes background dispatch or bypasses a configured
+gate.

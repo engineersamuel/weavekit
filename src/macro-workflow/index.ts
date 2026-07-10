@@ -6,6 +6,7 @@ export * from "./harness.js";
 export * from "./runner.js";
 export * from "./logger.js";
 export * from "./artifacts.js";
+export * from "./stateStore.js";
 export * from "./bamlAdapters.js";
 export * from "./replay.js";
 export * from "./deepResearch/harnesses.js";
