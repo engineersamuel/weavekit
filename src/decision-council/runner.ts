@@ -13,6 +13,7 @@ import {
   DecisionCouncilInputSchema,
   createInitialRunState,
   type DecisionCouncilReport,
+  type DecisionCouncilRunState,
 } from "./types.js";
 import type { z } from "zod";
 import {
@@ -31,6 +32,14 @@ export type RunDecisionCouncilOptions = {
   deps?: Partial<DecisionCouncilWorkflowDeps> & {
     writeArtifacts?: boolean;
   };
+  /**
+   * Additive hook invoked with the full final run state once the council loop completes
+   * successfully. Callers that only need the DecisionCouncilReport can ignore this; callers
+   * that need round-level detail not present on the report (e.g. the persona ids actually
+   * selected via rounds[].personaSelection.personaIds) can read it from here without changing
+   * the runDecisionCouncil return type.
+   */
+  onRunState?: (state: DecisionCouncilRunState) => void;
 };
 
 const tracer = trace.getTracer("weavekit.decision-council");
@@ -118,6 +127,8 @@ export async function runDecisionCouncil(
           "Council workflow completed without a final report.",
         );
       }
+
+      options.onRunState?.(finalState);
 
       if (options.deps?.writeArtifacts !== false) {
         const artifacts = await writeDecisionCouncilArtifacts({

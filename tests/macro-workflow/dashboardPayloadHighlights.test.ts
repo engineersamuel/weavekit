@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCouncilPersonaDisplay,
   buildDeepResearchQuestionBatchSummary,
   buildDeepResearchProviderFailureSummary,
   buildVerificationOpportunityAdvancementSummary,
@@ -166,6 +167,70 @@ describe("dashboard payload highlight helpers", () => {
         },
       ],
     });
+  });
+
+  it("shows the real selected personas for a completed council deliberation", () => {
+    const summary = buildCouncilPersonaDisplay({
+      councilReview: { opportunities: [] },
+      councilDeliberation: {
+        status: "completed",
+        personas: [
+          { id: "feynman", name: "Feynman", archetype: "critic" },
+          { id: "musashi", name: "Musashi", archetype: "synthesist" },
+        ],
+        personaSelectionRationale: "Selected personas with strong critique fit.",
+        recommendation: "Proceed with the top-ranked opportunities.",
+        rationale: ["Evidence is strong for opp-1 and opp-3."],
+        strongestObjections: ["opp-2 is speculative and under-evidenced."],
+        confidence: 0.82,
+        convergence: 0.75,
+        nextExperiment: "Validate opp-2 with a small spike before committing.",
+        finalReportMarkdown: "# Council Report\n\nProceed.",
+        model: "claude-sonnet-5",
+      },
+    });
+
+    expect(summary).toEqual({
+      status: "completed",
+      personas: [
+        { id: "feynman", name: "Feynman", archetype: "critic" },
+        { id: "musashi", name: "Musashi", archetype: "synthesist" },
+      ],
+      personaSelectionRationale: "Selected personas with strong critique fit.",
+      recommendation: "Proceed with the top-ranked opportunities.",
+      rationale: ["Evidence is strong for opp-1 and opp-3."],
+      strongestObjections: ["opp-2 is speculative and under-evidenced."],
+      confidence: 0.82,
+      convergence: 0.75,
+      nextExperiment: "Validate opp-2 with a small spike before committing.",
+      model: "claude-sonnet-5",
+    });
+  });
+
+  it("surfaces the error message when persona deliberation failed", () => {
+    const summary = buildCouncilPersonaDisplay({
+      councilDeliberation: { status: "failed", error: "persona session timed out" },
+    });
+
+    expect(summary).toEqual({ status: "failed", error: "persona session timed out" });
+  });
+
+  it("returns null when no council deliberation ran (e.g. disabled or pre-feature runs)", () => {
+    expect(buildCouncilPersonaDisplay({ councilReview: { opportunities: [] } })).toBeNull();
+    expect(buildCouncilPersonaDisplay({})).toBeNull();
+    expect(buildCouncilPersonaDisplay(null)).toBeNull();
+  });
+
+  it("returns null when the completed deliberation has no valid personas", () => {
+    const summary = buildCouncilPersonaDisplay({
+      councilDeliberation: {
+        status: "completed",
+        personas: [{ id: "", name: "" }],
+        recommendation: "Proceed.",
+      },
+    });
+
+    expect(summary).toBeNull();
   });
 });
 

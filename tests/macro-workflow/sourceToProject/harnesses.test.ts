@@ -11,6 +11,7 @@ import { WorkflowHarnessKind, WorkflowNodeKind } from "../../../src/macro-workfl
 import { runMacroWorkflow } from "../../../src/macro-workflow/runner.js";
 import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.js";
 import type { OpportunityCouncilReview } from "../../../src/generated/baml_client/index.js";
+import type { CouncilDeliberationResult } from "../../../src/macro-workflow/sourceToProject/councilDeliberation.js";
 import {
   createCopilotSdkHarnessClient,
   createSourceToProjectUserInputRequestHandler,
@@ -2325,6 +2326,205 @@ describe("source-to-project harness registry", () => {
       status: "accepted",
     });
     expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain("Candidate branch plan");
+  });
+
+  it("attaches a completed persona deliberation result and a second execution call with the real model", async () => {
+    const deliberationCalls: Array<{ maxRounds?: number } | undefined> = [];
+    const completedResult: CouncilDeliberationResult = {
+      status: "completed",
+      personas: [
+        { id: "feynman", name: "Feynman", archetype: "critic" },
+        { id: "musashi", name: "Musashi", archetype: "synthesist" },
+      ],
+      personaSelectionRationale: "Selected personas with strong critique fit.",
+      recommendation: "Proceed with the top-ranked opportunities.",
+      rationale: ["Evidence is strong for opp-1 and opp-3."],
+      strongestObjections: ["opp-2 is speculative and under-evidenced."],
+      confidence: 0.82,
+      convergence: 0.75,
+      nextExperiment: "Validate opp-2 with a small spike before committing.",
+      finalReportMarkdown: "# Council Report\n\nProceed.",
+      model: "claude-sonnet-5",
+    };
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      sourceToProject: {
+        ...defaultSourceToProjectDefaultsFixture(),
+        councilDeliberation: { enabled: true, maxRounds: 1 },
+      },
+      councilDeliberation: async (_input, options) => {
+        deliberationCalls.push(options);
+        return completedResult;
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.DECISION_COUNCIL)!(
+      {
+        id: "council-review",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        payloads: new Map([
+          ["opportunity-mapping", { councilInputReview: latestRunCouncilReviewFixture() }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(result.status).toBe("passed");
+    expect(result.payload?.councilDeliberation).toEqual(completedResult);
+    expect(result.payload?.councilReview).toBeDefined();
+    expect(result.payload?.opportunityAcceptances).toBeDefined();
+    expect(deliberationCalls).toEqual([{ maxRounds: 1 }]);
+    expect(result.execution?.calls).toHaveLength(2);
+    expect(result.execution?.calls?.[1]).toMatchObject({
+      operation: "CouncilDeliberation",
+      model: "claude-sonnet-5",
+    });
+  });
+
+  it("keeps the node passed and appends only one execution call when persona deliberation fails", async () => {
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      sourceToProject: {
+        ...defaultSourceToProjectDefaultsFixture(),
+        councilDeliberation: { enabled: true, maxRounds: 1 },
+      },
+      councilDeliberation: async () => ({
+        status: "failed",
+        error: "persona session timed out",
+      }),
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.DECISION_COUNCIL)!(
+      {
+        id: "council-review",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        payloads: new Map([
+          ["opportunity-mapping", { councilInputReview: latestRunCouncilReviewFixture() }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(result.status).toBe("passed");
+    expect(result.payload?.councilDeliberation).toEqual({
+      status: "failed",
+      error: "persona session timed out",
+    });
+    expect(result.execution?.calls).toHaveLength(1);
+  });
+
+  it("skips persona deliberation entirely when council_deliberation.enabled is false", async () => {
+    let deliberationCalled = false;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      sourceToProject: {
+        ...defaultSourceToProjectDefaultsFixture(),
+        councilDeliberation: { enabled: false, maxRounds: 1 },
+      },
+      councilDeliberation: async () => {
+        deliberationCalled = true;
+        return { status: "failed", error: "should never run" };
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.DECISION_COUNCIL)!(
+      {
+        id: "council-review",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        payloads: new Map([
+          ["opportunity-mapping", { councilInputReview: latestRunCouncilReviewFixture() }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(deliberationCalled).toBe(false);
+    expect(result.payload?.councilDeliberation).toBeUndefined();
+    expect(result.execution?.calls).toHaveLength(1);
+  });
+
+  it("passes a configured maxRounds through to the persona deliberation runner", async () => {
+    const deliberationCalls: Array<{ maxRounds?: number } | undefined> = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      sourceToProject: {
+        ...defaultSourceToProjectDefaultsFixture(),
+        councilDeliberation: { enabled: true, maxRounds: 3 },
+      },
+      councilDeliberation: async (_input, options) => {
+        deliberationCalls.push(options);
+        return {
+          status: "completed",
+          personas: [],
+          personaSelectionRationale: "",
+          recommendation: "",
+          rationale: [],
+          strongestObjections: [],
+          confidence: 0,
+          convergence: 0,
+          nextExperiment: "",
+          finalReportMarkdown: "",
+          model: "claude-sonnet-5",
+        };
+      },
+    });
+
+    await registry.get(WorkflowHarnessKind.DECISION_COUNCIL)!(
+      {
+        id: "council-review",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        payloads: new Map([
+          ["opportunity-mapping", { councilInputReview: latestRunCouncilReviewFixture() }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(deliberationCalls).toEqual([{ maxRounds: 3 }]);
   });
 
   it("reuses the visual-plan preflight install for the final visual design node", async () => {

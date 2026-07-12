@@ -620,6 +620,43 @@ describe("runDecisionCouncil", () => {
     expect(report.failedPersonas).toEqual([]);
   });
 
+  it("invokes onRunState with the full final run state after a successful run", async () => {
+    const onRunState = vi.fn();
+    const report = await runCouncilForTest(
+      { prompt: "Should Weavekit use Flue?" },
+      {
+        onRunState,
+        deps: {
+          personaWorker: fakeWorker(),
+          normalizer,
+          judge: judge(1),
+        },
+      },
+    );
+
+    expect(onRunState).toHaveBeenCalledTimes(1);
+    const state = onRunState.mock.calls[0]?.[0];
+    expect(state.finalReport).toEqual(report);
+    expect(state.rounds[0]?.personaSelection.personaIds).toEqual(defaultPersonaIds);
+  });
+
+  it("does not invoke onRunState when the council run fails", async () => {
+    const onRunState = vi.fn();
+    const choosePersonas = vi.fn().mockRejectedValue(new Error("selector exploded"));
+
+    await expect(
+      runDecisionCouncil(
+        { prompt: "Should Weavekit use Flue?" },
+        {
+          onRunState,
+          deps: { writeArtifacts: false, personaSelector: { choosePersonas } },
+        },
+      ),
+    ).rejects.toThrow();
+
+    expect(onRunState).not.toHaveBeenCalled();
+  });
+
   it("stops at max three rounds even if Judge asks to continue", async () => {
     let assessmentCount = 0;
     const trackingJudge: JudgeReducer = {

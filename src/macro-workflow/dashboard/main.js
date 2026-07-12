@@ -23,6 +23,7 @@ import {
 import { buildNodeArtifactLinks } from "./artifactLinks.ts";
 import { getObjectivePreview, shouldShowObjectiveExpansion } from "./objective.ts";
 import {
+  buildCouncilPersonaDisplay,
   buildDeepResearchQuestionBatchSummary,
   buildDeepResearchProviderFailureSummary,
   buildVerificationOpportunityAdvancementSummary,
@@ -58,17 +59,9 @@ const WorkflowNode = memo(({ data }) => {
   const nodeStatus = data.status ?? DEFAULT_STATUS;
   const prLaunchState = data.prLaunchState;
 
-  // Personas representing the Decision Council
-  const personas = isDecisionCouncil
-    ? [
-        { name: "Socratic", color: "#60a5fa" },
-        { name: "Deep Module DRY", color: "#34d399" },
-        { name: "Pragmatic", color: "#fb7185" },
-        { name: "Skeptic", color: "#a78bfa" },
-        { name: "Sun Tzu", color: "#f59e0b" },
-        { name: "McKinsey", color: "#10b981" },
-      ]
-    : [];
+  // Real, agent-selected personas for this run (null when no deliberation ran, e.g. the
+  // fan-in node, older runs predating this feature, or council_deliberation.enabled = false).
+  const councilPersonaDisplay = isDecisionCouncil ? buildCouncilPersonaDisplay(data.payload) : null;
 
   return (
     <div
@@ -138,26 +131,53 @@ const WorkflowNode = memo(({ data }) => {
         </div>
       ) : null}
 
-      {isDecisionCouncil && (
+      {councilPersonaDisplay?.status === "completed" && (
         <div className="persona-list-container">
           <div className="persona-list-title">Council Personas</div>
           <div className="persona-grid">
-            {personas.map((p) => (
-              <span
-                key={p.name}
-                className="persona-badge"
-                style={{ borderColor: p.color, color: p.color }}
-              >
-                {p.name}
-              </span>
-            ))}
+            {councilPersonaDisplay.personas.map((persona, index) => {
+              const color = personaBadgeColor(index);
+              return (
+                <span
+                  key={persona.id}
+                  className="persona-badge"
+                  style={{ borderColor: color, color }}
+                  title={persona.archetype}
+                >
+                  {persona.name}
+                </span>
+              );
+            })}
           </div>
+        </div>
+      )}
+      {councilPersonaDisplay?.status === "failed" && (
+        <div className="persona-list-container">
+          <div className="persona-list-title">Council Personas</div>
+          <span className="node-action-error">
+            Persona deliberation unavailable: {councilPersonaDisplay.error}
+          </span>
         </div>
       )}
       <Handle type="source" position={Position.Right} style={{ background: "#475569" }} />
     </div>
   );
 });
+
+const PERSONA_BADGE_COLORS = [
+  "#60a5fa",
+  "#34d399",
+  "#fb7185",
+  "#a78bfa",
+  "#f59e0b",
+  "#10b981",
+  "#38bdf8",
+  "#f472b6",
+];
+
+function personaBadgeColor(index) {
+  return PERSONA_BADGE_COLORS[index % PERSONA_BADGE_COLORS.length];
+}
 
 const nodeTypes = {
   workflowNode: WorkflowNode,
@@ -238,6 +258,7 @@ function buildGraph(state) {
           error: result?.error ?? "",
           harness: node.harness,
           model: resolveNodeModel(node, state),
+          payload: result?.payload,
           sourceNode: node,
           transitionKey: `live-${node.id}-${status}`,
           transition: "stable",
@@ -328,6 +349,7 @@ function buildReplayGraph(history, state, replayIndex) {
             error: result?.error ?? "",
             harness: node.harness,
             model: resolveNodeModel(node.sourceNode ?? node, state ?? {}),
+            payload: result?.payload,
             sourceNode: node.sourceNode,
             transitionKey: `${replayIndex}-${node.id}-${node.status}`,
             transition: "entering",
@@ -891,7 +913,11 @@ function PayloadHighlights({ payload }) {
   const councilReview = payload?.councilReview ?? payload?.councilInputReview;
   if (Array.isArray(councilReview?.opportunities) && councilReview.opportunities.length > 0) {
     return (
-      <OpportunityHighlights review={councilReview} acceptances={payload?.opportunityAcceptances} />
+      <OpportunityHighlights
+        review={councilReview}
+        acceptances={payload?.opportunityAcceptances}
+        personaDeliberation={buildCouncilPersonaDisplay(payload)}
+      />
     );
   }
 
@@ -1180,7 +1206,7 @@ function modeBadgeClass(mode) {
   return "neutral";
 }
 
-function OpportunityHighlights({ review, acceptances }) {
+function OpportunityHighlights({ review, acceptances, personaDeliberation }) {
   const opportunities = review.opportunities.slice(0, 6);
   const acceptanceById = new Map(
     (Array.isArray(acceptances) ? acceptances : []).map((acceptance) => [
@@ -1248,7 +1274,64 @@ function OpportunityHighlights({ review, acceptances }) {
           </article>
         ))}
       </div>
+      {personaDeliberation?.status === "completed" ? (
+        <CouncilDeliberationHighlights summary={personaDeliberation} />
+      ) : null}
+      {personaDeliberation?.status === "failed" ? (
+        <span className="node-action-error">
+          Persona deliberation unavailable: {personaDeliberation.error}
+        </span>
+      ) : null}
     </section>
+  );
+}
+
+function CouncilDeliberationHighlights({ summary }) {
+  return (
+    <div className="highlight-field council-deliberation-highlights">
+      <span>Persona Deliberation{summary.model ? ` · ${summary.model}` : ""}</span>
+      <div className="persona-grid">
+        {summary.personas.map((persona, index) => {
+          const color = personaBadgeColor(index);
+          return (
+            <span
+              key={persona.id}
+              className="persona-badge"
+              style={{ borderColor: color, color }}
+              title={persona.archetype}
+            >
+              {persona.name}
+            </span>
+          );
+        })}
+      </div>
+      {summary.personaSelectionRationale ? <p>{summary.personaSelectionRationale}</p> : null}
+      <p>
+        <strong>Recommendation:</strong> {summary.recommendation}
+      </p>
+      {summary.rationale.length > 0 ? (
+        <ul>
+          {summary.rationale.map((item, index) => (
+            <li key={index}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
+      {summary.strongestObjections.length > 0 ? (
+        <>
+          <span>Strongest Objections</span>
+          <ul>
+            {summary.strongestObjections.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {summary.nextExperiment ? (
+        <p>
+          <strong>Next Experiment:</strong> {summary.nextExperiment}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

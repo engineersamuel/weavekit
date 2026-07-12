@@ -136,6 +136,10 @@ ceiling_usd = 40
 margin_factor = 2
 token_ceiling = 250000
 
+[source_to_project.council_deliberation]
+enabled = false
+max_rounds = 2
+
 [deep_research]
 providers = ["exa", "perplexity"]
 max_iterations = 4
@@ -199,6 +203,10 @@ mode = "warn"
       ceilingUsd: 40,
       marginFactor: 2,
       tokenCeiling: 250000,
+    });
+    expect(config.sourceToProject.councilDeliberation).toEqual({
+      enabled: false,
+      maxRounds: 2,
     });
     expect(config.deepResearch).toEqual({
       providers: ["exa", "perplexity"],
@@ -605,6 +613,24 @@ margin_factor = 0.5
     );
   });
 
+  it("rejects invalid council deliberation config instead of silently accepting it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[source_to_project.council_deliberation]
+max_rounds = -1
+`,
+      "utf8",
+    );
+
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      "source_to_project.council_deliberation.max_rounds must be a positive integer.",
+    );
+  });
+
   it("defaults Copilot verbose event logging to false when config is missing", () => {
     const config = loadTypedWeavekitConfig("/tmp/weavekit-missing-config.toml", {});
 
@@ -615,6 +641,10 @@ margin_factor = 0.5
       mode: "warn",
       ceilingUsd: 25,
       marginFactor: 1.5,
+    });
+    expect(config.sourceToProject.councilDeliberation).toEqual({
+      enabled: false,
+      maxRounds: 1,
     });
     expect(config.deepResearch).toEqual({
       providers: ["grok", "exa", "copilot-last30days"],
