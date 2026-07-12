@@ -24,6 +24,13 @@ export type BudgetGateConfig = {
   tokenCeiling?: number;
 };
 
+export type CouncilDeliberationConfig = {
+  /** Whether the council-review node runs a real persona-driven deliberation (real Copilot SDK agent sessions per persona) in addition to the deterministic acceptance gate. */
+  enabled: boolean;
+  /** Cap on debate rounds for the deliberation. Kept small by default since each round runs a real agent session per selected persona. */
+  maxRounds: number;
+};
+
 export type SourceToProjectPrLauncherAgentOption = {
   id: string;
   label: string;
@@ -59,6 +66,7 @@ export type SourceToProjectDefaults = {
    * for a manual "Create PR" click. Still gated per-project by `autonomousPrAllowed`.
    */
   autoImplementOnReport: boolean;
+  councilDeliberation?: CouncilDeliberationConfig;
 };
 
 export const DeepResearchProvider = {
@@ -431,6 +439,13 @@ export function defaultBudgetGateConfig(): BudgetGateConfig {
   };
 }
 
+export function defaultCouncilDeliberationConfig(): CouncilDeliberationConfig {
+  return {
+    enabled: false,
+    maxRounds: 1,
+  };
+}
+
 function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
   return {
     maxOpportunities: 0,
@@ -460,6 +475,7 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
       ],
     },
     autoImplementOnReport: false,
+    councilDeliberation: defaultCouncilDeliberationConfig(),
   };
 }
 
@@ -595,6 +611,30 @@ function readBudgetGateConfig(
   };
 }
 
+function readCouncilDeliberationConfig(
+  value: unknown,
+  defaults: CouncilDeliberationConfig,
+  path: string,
+  env: NodeJS.ProcessEnv,
+): CouncilDeliberationConfig {
+  const record = asRecord(value);
+  const maxRounds =
+    record.max_rounds === undefined
+      ? (readEnvPositiveInteger(
+          env,
+          "WEAVEKIT_SOURCE_TO_PROJECT_COUNCIL_DELIBERATION_MAX_ROUNDS",
+        ) ?? defaults.maxRounds)
+      : readPositiveInteger(record.max_rounds, `${path}.max_rounds`);
+  return {
+    enabled: readBoolean(
+      record.enabled,
+      readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_COUNCIL_DELIBERATION_ENABLED") ??
+        defaults.enabled,
+    ),
+    maxRounds,
+  };
+}
+
 function readBudgetGateOverride(
   value: unknown,
   path: string,
@@ -705,6 +745,12 @@ function readSourceToProjectDefaults(
       record.auto_implement_on_report,
       readEnvBoolean(env, "WEAVEKIT_SOURCE_TO_PROJECT_AUTO_IMPLEMENT_ON_REPORT") ??
         defaults.autoImplementOnReport,
+    ),
+    councilDeliberation: readCouncilDeliberationConfig(
+      record.council_deliberation,
+      defaults.councilDeliberation ?? defaultCouncilDeliberationConfig(),
+      "source_to_project.council_deliberation",
+      env,
     ),
     thresholds: {
       minApplicability: readNumber(record.min_applicability, defaults.thresholds.minApplicability),

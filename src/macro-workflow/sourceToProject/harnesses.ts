@@ -11,6 +11,7 @@ import {
   SupportedPluginId,
   type CopilotDefaults,
   defaultBudgetGateConfig,
+  defaultCouncilDeliberationConfig,
   type PluginConfigs,
   type ProjectCatalogEntry,
   type SourceToProjectDefaults,
@@ -68,6 +69,12 @@ import {
   buildSourceReadingPrompt,
 } from "./prompts.js";
 import { averageOpportunityScoreVector, opportunityScoreToScalar } from "./opportunityGeometry.js";
+import {
+  buildCouncilDeliberationInput,
+  runCouncilDeliberation,
+  type CouncilDeliberationResult,
+  type CouncilDeliberationRunner,
+} from "./councilDeliberation.js";
 import {
   launchSourceToProjectPrAgent,
   type SourceToProjectPrLaunchContext,
@@ -460,6 +467,8 @@ export type SourceToProjectHarnessOptions = {
   visualPlanBridgeCleanupTtlMs?: number;
   /** Overridable for tests; defaults to the real Herdr-based launcher. */
   prLauncher?: SourceToProjectPrLauncher;
+  /** Overridable for tests; defaults to the real persona-driven decision council. */
+  councilDeliberation?: CouncilDeliberationRunner;
 };
 
 export function createOfflineSourceToProjectHarnessClient(): CopilotHarnessClient {
@@ -1536,17 +1545,50 @@ export function createSourceToProjectHarnessRegistry(
       options.project.thresholds,
     );
     const opportunityAcceptances = selectAcceptedOpportunities(councilInputReview, thresholds);
+    const councilDeliberationConfig = {
+      ...defaultCouncilDeliberationConfig(),
+      ...options.sourceToProject?.councilDeliberation,
+    };
+    const calls: WorkflowExecutionCall[] = [
+      {
+        executor: "decision-council",
+        operation: "RankAndBundleOpportunities",
+        prompt: node.prompt,
+      },
+    ];
+    // Additive: the deterministic gate above remains authoritative for accept/reject decisions.
+    // This real, agent-backed deliberation only enriches the payload/dashboard with genuine
+    // persona critique; a disabled config or a failed deliberation never changes node status.
+    let councilDeliberation: CouncilDeliberationResult | undefined;
+    if (councilDeliberationConfig.enabled) {
+      const deliberationInput = buildCouncilDeliberationInput({
+        objective: context.objective,
+        review: councilInputReview,
+        acceptances: opportunityAcceptances,
+        thresholds,
+      });
+      const deliberate = options.councilDeliberation ?? runCouncilDeliberation;
+      councilDeliberation = await deliberate(deliberationInput, {
+        maxRounds: councilDeliberationConfig.maxRounds,
+      });
+      if (councilDeliberation.status === "completed") {
+        calls.push({
+          executor: "decision-council",
+          operation: "CouncilDeliberation",
+          prompt: deliberationInput.prompt,
+          model: councilDeliberation.model,
+        });
+      }
+    }
     return {
       status: "passed",
       output: `Council ranked ${councilInputReview.opportunities.length} opportunities.`,
-      payload: { councilReview: councilInputReview, opportunityAcceptances },
-      execution: buildExecutionMetadata(WorkflowHarnessKind.DECISION_COUNCIL, [
-        {
-          executor: "decision-council",
-          operation: "RankAndBundleOpportunities",
-          prompt: node.prompt,
-        },
-      ]),
+      payload: {
+        councilReview: councilInputReview,
+        opportunityAcceptances,
+        ...(councilDeliberation ? { councilDeliberation } : {}),
+      },
+      execution: buildExecutionMetadata(WorkflowHarnessKind.DECISION_COUNCIL, calls),
     };
   };
 

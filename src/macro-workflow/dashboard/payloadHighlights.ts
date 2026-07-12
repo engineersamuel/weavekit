@@ -61,6 +61,30 @@ export type DeepResearchQuestionSummary = {
   queryCount: number;
 };
 
+export type CouncilPersonaDisplayPersona = {
+  id: string;
+  name: string;
+  archetype?: string;
+};
+
+export type CouncilPersonaDisplaySummary =
+  | {
+      status: "completed";
+      personas: CouncilPersonaDisplayPersona[];
+      personaSelectionRationale?: string;
+      recommendation: string;
+      rationale: string[];
+      strongestObjections: string[];
+      confidence?: number;
+      convergence?: number;
+      nextExperiment?: string;
+      model?: string;
+    }
+  | {
+      status: "failed";
+      error: string;
+    };
+
 export function buildDeepResearchProviderFailureSummary(
   payload: unknown,
 ): DeepResearchProviderFailureSummary | null {
@@ -191,6 +215,57 @@ export function buildDeepResearchQuestionBatchSummary(
         queryCount: readArray(question.searchQueries).length,
       };
     }),
+  };
+}
+
+/**
+ * Shapes the real, agent-backed persona deliberation attached to a `council-review` node payload
+ * (see `src/macro-workflow/sourceToProject/councilDeliberation.ts`) for dashboard display. Returns
+ * `null` when no real deliberation ran (e.g. older runs predating this feature, or
+ * `council_deliberation.enabled = false`) so the dashboard can hide the persona section entirely
+ * rather than showing fabricated placeholder personas.
+ */
+export function buildCouncilPersonaDisplay(payload: unknown): CouncilPersonaDisplaySummary | null {
+  const record = asRecord(payload);
+  const deliberation = asRecord(record.councilDeliberation);
+  const status = readString(deliberation.status);
+
+  if (status === "failed") {
+    const error = readString(deliberation.error);
+    return error ? { status: "failed", error } : null;
+  }
+  if (status !== "completed") {
+    return null;
+  }
+
+  const personas = readArray(deliberation.personas)
+    .map(asRecord)
+    .flatMap((persona) => {
+      const id = readString(persona.id);
+      const name = readString(persona.name);
+      return id && name ? [{ id, name, archetype: readString(persona.archetype) }] : [];
+    });
+  if (personas.length === 0) {
+    return null;
+  }
+
+  return {
+    status: "completed",
+    personas,
+    personaSelectionRationale: readString(deliberation.personaSelectionRationale),
+    recommendation: readString(deliberation.recommendation) ?? "",
+    rationale: readArray(deliberation.rationale).flatMap((value) => {
+      const item = readString(value);
+      return item ? [item] : [];
+    }),
+    strongestObjections: readArray(deliberation.strongestObjections).flatMap((value) => {
+      const item = readString(value);
+      return item ? [item] : [];
+    }),
+    confidence: readNumber(deliberation.confidence),
+    convergence: readNumber(deliberation.convergence),
+    nextExperiment: readString(deliberation.nextExperiment),
+    model: readString(deliberation.model),
   };
 }
 
