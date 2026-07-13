@@ -1,5 +1,5 @@
 import type { ApiProvider, ProviderResponse } from "promptfoo";
-import { runDecisionCouncil } from "../../index.js";
+import { runDecisionCouncil } from "../../decision-council/runner.js";
 
 export interface CouncilProviderDeps {
   run?: typeof runDecisionCouncil;
