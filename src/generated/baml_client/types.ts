@@ -217,6 +217,13 @@ export interface FinalRecommendationReview {
   
 }
 
+export interface ImplementationReviewVerdict {
+  status: "accepted" | "needs_changes"
+  blockingFindings: string[]
+  rationale: string
+  
+}
+
 export interface ModeTemplatePolicy {
   mode: "advisory" | "autonomous-pr"
   enabledForOptimization: boolean
