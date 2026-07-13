@@ -4,7 +4,7 @@ import { type CorpusItem, formatQuestion, formatReference } from "./schema.js";
 export interface JudgeConfig {
   model: string;
   apiBaseUrl: string;
-  apiKey: string;
+  apiKeyEnvar: string;
 }
 
 export interface BuildSuiteOptions {
@@ -16,7 +16,7 @@ function defaultJudge(): JudgeConfig {
   return {
     model: process.env.EVAL_JUDGE_MODEL ?? "gpt-4o",
     apiBaseUrl: process.env.EVAL_JUDGE_BASE_URL ?? "http://127.0.0.1:8080/v1",
-    apiKey: process.env.EVAL_JUDGE_API_KEY ?? "sk-local",
+    apiKeyEnvar: "EVAL_JUDGE_API_KEY",
   };
 }
 
@@ -71,11 +71,14 @@ export function buildSuite(items: CorpusItem[], options: BuildSuiteOptions): Eva
     defaultTest: {
       options: {
         provider: {
-          id: `openai:chat:${judge.model}`,
-          config: {
-            apiBaseUrl: judge.apiBaseUrl,
-            apiKey: judge.apiKey,
-            temperature: 0,
+          text: {
+            id: `openai:chat:${judge.model}`,
+            config: {
+              apiBaseUrl: judge.apiBaseUrl,
+              apiKeyEnvar: judge.apiKeyEnvar,
+              apiKeyRequired: false,
+              temperature: 0,
+            },
           },
         },
       },
