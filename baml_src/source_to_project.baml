@@ -113,6 +113,12 @@ class FinalRecommendationReview {
   telegramSummary string? @description("Short user-facing summary suitable for Telegram when the review rejects the recommendation. May be null for accepted recommendations.")
 }
 
+class ImplementationReviewVerdict {
+  status "accepted" | "needs_changes"
+  blockingFindings string[] @description("Concrete defects that must be fixed before a pull request may open. Empty only when status is accepted.")
+  rationale string
+}
+
 function DistillSourceAnalysis(sourceArtifactJson: string, rawResearch: string) -> SourceAnalysis {
   client CopilotProxyGpt55
   prompt #"
@@ -263,6 +269,34 @@ function ReviewFinalRecommendation(
 
     Final plan recommendation(s):
     {{ plans }}
+
+    {{ ctx.output_format }}
+  "#
+}
+
+function ReviewImplementation(
+  implementationSummary: string,
+  verificationSummary: string,
+  priorVerdict: ImplementationReviewVerdict?
+) -> ImplementationReviewVerdict {
+  client CopilotProxyGpt55
+  prompt #"
+    {{ _.role("system") }}
+    Review the current worktree for correctness, regression risk, and source-to-project fit.
+    Use Copilot review-mode tools to inspect the actual changes and tests; supplied summaries are context, not proof.
+    Return accepted only when there are no blocking findings.
+    Otherwise return needs_changes and list every concrete blocking finding.
+    When priorVerdict is present, verify that every prior blocking finding is resolved and report any remaining or newly introduced blocker.
+
+    {{ _.role("user") }}
+    Implementation summary:
+    {{ implementationSummary }}
+
+    Verification summary:
+    {{ verificationSummary }}
+
+    Prior verdict for the one allowed re-review:
+    {{ priorVerdict }}
 
     {{ ctx.output_format }}
   "#

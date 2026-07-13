@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -171,6 +171,11 @@ export namespace partial_types {
       rationale?: string | null
       rejectionReason?: string | null
       telegramSummary?: string | null
+    }
+    export interface ImplementationReviewVerdict {
+      status?: "accepted" | "needs_changes" | null
+      blockingFindings: string[]
+      rationale?: string | null
     }
     export interface ModeTemplatePolicy {
       mode?: "advisory" | "autonomous-pr" | null

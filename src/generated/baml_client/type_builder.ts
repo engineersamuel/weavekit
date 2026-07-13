@@ -61,6 +61,8 @@ export default class TypeBuilder {
     
     FinalRecommendationReview: ClassViewer<'FinalRecommendationReview', "status" | "actionable" | "improvesProject" | "unnecessaryComplexity" | "benefitOutweighsCost" | "complexityAssessment" | "rationale" | "rejectionReason" | "telegramSummary">;
     
+    ImplementationReviewVerdict: ClassViewer<'ImplementationReviewVerdict', "status" | "blockingFindings" | "rationale">;
+    
     ModeTemplatePolicy: ClassViewer<'ModeTemplatePolicy', "mode" | "enabledForOptimization" | "expansionCases" | "constraints">;
     
     NonApplicableLesson: ClassViewer<'NonApplicableLesson', "lesson" | "reason" | "evidence">;
@@ -134,7 +136,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             
@@ -208,6 +210,10 @@ export default class TypeBuilder {
         
         this.FinalRecommendationReview = this.tb.classViewer("FinalRecommendationReview", [
           "status","actionable","improvesProject","unnecessaryComplexity","benefitOutweighsCost","complexityAssessment","rationale","rejectionReason","telegramSummary",
+        ]);
+        
+        this.ImplementationReviewVerdict = this.tb.classViewer("ImplementationReviewVerdict", [
+          "status","blockingFindings","rationale",
         ]);
         
         this.ModeTemplatePolicy = this.tb.classViewer("ModeTemplatePolicy", [
