@@ -101,20 +101,26 @@ describe("source-to-project autonomous PR mode", () => {
   }
 
   it("opens a PR after the initial structured review accepts", async () => {
-    const { state, operations, prCreateRuns } = await runScenario(["accepted"]);
+    const { state, operations, validationRuns, prCreateRuns } = await runScenario(["accepted"]);
 
     expect(state.status).toBe("passed");
     expect(operations).toContain("review-implementation");
     expect(operations).not.toContain("fix-review-findings");
     expect(operations).not.toContain("re-review-implementation");
+    expect(validationRuns).toBe(1);
     expect(prCreateRuns).toBe(1);
     expect(operations.indexOf("prepare-worktree")).toBeLessThan(
       operations.indexOf("implement-selected-bundles"),
     );
-    expect(
-      state.nodeResults.find((result) => result.nodeId === "fix-review-findings")?.status,
-    ).toBe("skipped");
+    for (const nodeId of [
+      "fix-review-findings",
+      "verify-review-fixes",
+      "re-review-implementation",
+    ]) {
+      expect(state.nodeResults.find((result) => result.nodeId === nodeId)?.status).toBe("skipped");
+    }
     expect(state.nodeResults.find((result) => result.nodeId === "open-pr")?.payload).toMatchObject({
+      prUrl: "https://example.com/pr/1",
       finalImplementationReviewVerdict: { status: "accepted" },
     });
   });
@@ -133,17 +139,19 @@ describe("source-to-project autonomous PR mode", () => {
     expect(validationRuns, operations.join("\n")).toBe(2);
     expect(prCreateRuns).toBe(1);
     expect(state.nodeResults.find((result) => result.nodeId === "open-pr")?.payload).toMatchObject({
+      prUrl: "https://example.com/pr/1",
       finalImplementationReviewVerdict: { status: "accepted" },
     });
   });
 
   it("fails closed when the re-review still needs changes", async () => {
-    const { state, operations, prCreateRuns } = await runScenario([
+    const { state, operations, validationRuns, prCreateRuns } = await runScenario([
       "needs_changes",
       "needs_changes",
     ]);
 
     expect(state.status).toBe("failed");
+    expect(validationRuns).toBe(2);
     expect(prCreateRuns).toBe(0);
     expect(state.nodeResults.find((result) => result.nodeId === "open-pr")).toMatchObject({
       status: "failed",
