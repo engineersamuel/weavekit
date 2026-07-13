@@ -51,7 +51,8 @@ export function parseImplementationReviewVerdict(raw: string): ImplementationRev
   }
   if (
     verdict.status === "needs_changes" &&
-    !verdict.blockingFindings.some((finding) => finding.trim().length > 0)
+    (verdict.blockingFindings.length === 0 ||
+      verdict.blockingFindings.some((finding) => finding.trim().length === 0))
   ) {
     throw new Error("Implementation review needs_changes verdict must contain blocking findings.");
   }

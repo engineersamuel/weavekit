@@ -74,8 +74,8 @@ describe("implementation review", () => {
     ).toThrow("needs_changes verdict must contain blocking findings");
   });
 
-  it("rejects needs_changes verdicts with only blank blocking findings", () => {
-    for (const blockingFindings of [[""], ["   "]]) {
+  it("rejects needs_changes verdicts with blank blocking findings", () => {
+    for (const blockingFindings of [[""], ["   "], ["A real defect.", "   "]]) {
       expect(() =>
         parseImplementationReviewVerdict(
           JSON.stringify({

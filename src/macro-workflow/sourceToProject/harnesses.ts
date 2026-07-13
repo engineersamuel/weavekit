@@ -6,6 +6,7 @@ import { basename, dirname, delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { ClientRegistry, type Collector } from "@boundaryml/baml";
+import type { PermissionRequest, PermissionRequestResult } from "@github/copilot-sdk";
 import {
   resolveWeavekitPluginDirectory,
   SupportedPluginId,
@@ -295,6 +296,36 @@ export type CopilotHarnessClient = {
     onSessionId?: (sessionId: string) => void;
   }): Promise<string>;
 };
+
+function reviewPermissionHandler(request: PermissionRequest): PermissionRequestResult {
+  const reject = {
+    kind: "reject" as const,
+    feedback:
+      "Implementation review sessions are read-only; inspect evidence without changing state.",
+  };
+
+  switch (request.kind) {
+    case "read":
+    case "url":
+      return { kind: "approve-once" };
+    case "shell":
+      return !request.hasWriteFileRedirection &&
+        !request.requestSandboxBypass &&
+        request.commands.every((command) => command.readOnly)
+        ? { kind: "approve-once" }
+        : reject;
+    case "mcp":
+      return request.readOnly ? { kind: "approve-once" } : reject;
+    case "write":
+    case "memory":
+    case "custom-tool":
+    case "hook":
+    case "extension-management":
+    case "extension-permission-access":
+    default:
+      return reject;
+  }
+}
 
 function scopedPromptForCapability(
   prompt: string,
@@ -692,7 +723,7 @@ export function createCopilotSdkHarnessClient(
         );
         session = await client.createSession({
           model,
-          onPermissionRequest: approveAll,
+          onPermissionRequest: runArgs.mode === "review" ? reviewPermissionHandler : approveAll,
           onUserInputRequest: async (request: CopilotUserInputRequest) => {
             await args.onUserInputRequest?.(request);
             throw new Error(formatCopilotUserInputRequiredError(request));
@@ -2279,19 +2310,22 @@ export function createSourceToProjectHarnessRegistry(
 
   const reporterAdapter: HarnessAdapter = async (node, context) => {
     if (node.id === "open-pr") {
-      const initialVerdict = getPayloadValue<ImplementationReviewVerdict>(
+      const initialVerdict = parseImplementationReviewVerdict(
+        JSON.stringify(
+          getPayloadValue<unknown>(context, "review-implementation", "implementationReviewVerdict"),
+        ),
+      );
+      const persistedReReviewVerdict = getOptionalPayloadValue<unknown>(
         context,
-        "review-implementation",
+        "re-review-implementation",
         "implementationReviewVerdict",
       );
+      const reReviewVerdict =
+        persistedReReviewVerdict === undefined
+          ? undefined
+          : parseImplementationReviewVerdict(JSON.stringify(persistedReReviewVerdict));
       const applicableVerdict =
-        initialVerdict.status === "accepted"
-          ? initialVerdict
-          : getOptionalPayloadValue<ImplementationReviewVerdict>(
-              context,
-              "re-review-implementation",
-              "implementationReviewVerdict",
-            );
+        initialVerdict.status === "accepted" ? initialVerdict : reReviewVerdict;
       if (!applicableVerdict || applicableVerdict.status !== "accepted") {
         const rejectedVerdict = applicableVerdict ?? initialVerdict;
         return {

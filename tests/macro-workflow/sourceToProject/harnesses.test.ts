@@ -2,12 +2,19 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { PermissionRequest, PermissionRequestResult } from "@github/copilot-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   BudgetGateBlockedError,
   evaluateBudgetGate,
 } from "../../../src/macro-workflow/budgetGate.js";
-import { WorkflowHarnessKind, WorkflowNodeKind } from "../../../src/macro-workflow/types.js";
+import type { WorkflowExecutionContext } from "../../../src/macro-workflow/harness.js";
+import {
+  type RuntimeWorkflowNode,
+  WorkflowGateKind,
+  WorkflowHarnessKind,
+  WorkflowNodeKind,
+} from "../../../src/macro-workflow/types.js";
 import { runMacroWorkflow } from "../../../src/macro-workflow/runner.js";
 import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.js";
 import type { OpportunityCouncilReview } from "../../../src/generated/baml_client/index.js";
@@ -1301,6 +1308,93 @@ describe("source-to-project harness registry", () => {
     );
   });
 
+  it("restricts Copilot SDK review sessions to read-only permission requests", async () => {
+    type PermissionHandler = (
+      request: PermissionRequest,
+      invocation: { sessionId: string },
+    ) => Promise<PermissionRequestResult> | PermissionRequestResult;
+    let onPermissionRequest: PermissionHandler | undefined;
+    const client = {
+      async start() {},
+      async createSession(config: unknown) {
+        onPermissionRequest = (config as { onPermissionRequest?: PermissionHandler })
+          .onPermissionRequest;
+        return {
+          async sendAndWait() {
+            return { data: { content: "review complete" } };
+          },
+          async disconnect() {},
+        };
+      },
+      async stop() {
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({ clientFactory: () => client });
+
+    await expect(copilot.run({ prompt: "Review implementation", mode: "review" })).resolves.toBe(
+      "review complete",
+    );
+    expect(onPermissionRequest).toBeDefined();
+
+    const decide = (request: PermissionRequest) =>
+      Promise.resolve(onPermissionRequest!(request, { sessionId: "review-session" }));
+    await expect(
+      decide({
+        kind: "write",
+        canOfferSessionApproval: false,
+        diff: "+ unsafe change",
+        fileName: "src/index.ts",
+        intention: "Modify production code",
+      }),
+    ).resolves.toMatchObject({ kind: "reject" });
+    await expect(
+      decide({ kind: "read", path: "src/index.ts", intention: "Inspect production code" }),
+    ).resolves.toEqual({ kind: "approve-once" });
+    await expect(
+      decide({
+        kind: "shell",
+        canOfferSessionApproval: false,
+        commands: [{ identifier: "rg", readOnly: true }],
+        fullCommandText: "rg TODO src",
+        hasWriteFileRedirection: false,
+        intention: "Search production code",
+        possiblePaths: ["src"],
+        possibleUrls: [],
+      }),
+    ).resolves.toEqual({ kind: "approve-once" });
+    await expect(
+      decide({
+        kind: "shell",
+        canOfferSessionApproval: false,
+        commands: [{ identifier: "sed", readOnly: true }],
+        fullCommandText: "sed -n '1,5p' src/index.ts > /tmp/excerpt",
+        hasWriteFileRedirection: true,
+        intention: "Write a command result",
+        possiblePaths: ["src/index.ts", "/tmp/excerpt"],
+        possibleUrls: [],
+      }),
+    ).resolves.toMatchObject({ kind: "reject" });
+    await expect(
+      decide({
+        kind: "mcp",
+        readOnly: true,
+        serverName: "codebase-memory",
+        toolName: "search_graph",
+        toolTitle: "Search graph",
+      }),
+    ).resolves.toEqual({ kind: "approve-once" });
+    await expect(
+      decide({
+        kind: "mcp",
+        readOnly: false,
+        serverName: "github",
+        toolName: "create_pull_request",
+        toolTitle: "Create pull request",
+      }),
+    ).resolves.toMatchObject({ kind: "reject" });
+  });
+
   it("sends Copilot SDK user-input questions through the source-to-project notifier before failing for replanning", async () => {
     const notifications: string[] = [];
     const handler = createSourceToProjectUserInputRequestHandler({
@@ -1629,6 +1723,47 @@ describe("source-to-project harness registry", () => {
       "review-implementation",
       "re-review-implementation",
     ]);
+  });
+
+  it("rejects malformed persisted review verdicts before opening a pull request", async () => {
+    const shellCalls: string[] = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/loops",
+      project: { ...projectFixture(), autonomousPrAllowed: true },
+      mode: "autonomous-pr",
+      shell: {
+        async run(command, args) {
+          shellCalls.push([command, ...args].join(" "));
+          return "https://example.com/pr/unsafe\n";
+        },
+      },
+    });
+    const reporter = registry.get(WorkflowHarnessKind.REPORTER)!;
+    const openPrNode: RuntimeWorkflowNode = {
+      id: "open-pr",
+      kind: WorkflowNodeKind.REPORT,
+      harness: WorkflowHarnessKind.REPORTER,
+      title: "Open source-to-project pull request",
+      prompt: "Open a pull request.",
+      dependsOn: ["review-implementation", "re-review-implementation"],
+      gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    };
+    const context: WorkflowExecutionContext = {
+      payloads: new Map([
+        ["review-implementation", { implementationReviewVerdict: { status: "accepted" } }],
+        ["prepare-worktree", { worktreePreparation: { worktreePath: "/tmp/wt" } }],
+      ]),
+      artifacts: new Map(),
+    };
+
+    const outcome = await reporter(openPrNode, context).then(
+      () => "resolved",
+      () => "rejected",
+    );
+
+    expect({ outcome, shellCalls }).toEqual({ outcome: "rejected", shellCalls: [] });
   });
 
   it("promotes a valid bundle instead of overlapping accepted member opportunities", async () => {
