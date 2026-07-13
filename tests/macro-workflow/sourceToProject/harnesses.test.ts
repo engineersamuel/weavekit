@@ -1367,6 +1367,18 @@ describe("source-to-project harness registry", () => {
       decide({
         kind: "shell",
         canOfferSessionApproval: false,
+        commands: [],
+        fullCommandText: "unclassified-shell-command",
+        hasWriteFileRedirection: false,
+        intention: "Run an unclassified shell command",
+        possiblePaths: [],
+        possibleUrls: [],
+      }),
+    ).resolves.toMatchObject({ kind: "reject" });
+    await expect(
+      decide({
+        kind: "shell",
+        canOfferSessionApproval: false,
         commands: [{ identifier: "sed", readOnly: true }],
         fullCommandText: "sed -n '1,5p' src/index.ts > /tmp/excerpt",
         hasWriteFileRedirection: true,

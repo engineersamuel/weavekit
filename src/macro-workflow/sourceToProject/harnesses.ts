@@ -311,6 +311,7 @@ function reviewPermissionHandler(request: PermissionRequest): PermissionRequestR
     case "shell":
       return !request.hasWriteFileRedirection &&
         !request.requestSandboxBypass &&
+        request.commands.length > 0 &&
         request.commands.every((command) => command.readOnly)
         ? { kind: "approve-once" }
         : reject;
