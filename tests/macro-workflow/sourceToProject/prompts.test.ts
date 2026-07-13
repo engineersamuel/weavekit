@@ -88,17 +88,33 @@ describe("source-to-project plan prompts", () => {
     };
 
     const direct = buildDirectPortfolioPlanPromptWithDiagnostics(compilerContext);
-    const synthesis = buildPortfolioSynthesisPromptWithDiagnostics({
+    const synthesisArgs = {
       ...compilerContext,
       childPlans: [{ title: "Focused child", markdown: "Implement the assigned coverage." }],
       opportunityReviews: [
         { title: "Focused child", status: "accepted", rationale: "Coverage is complete." },
       ],
-    });
+    };
+    const synthesis = buildPortfolioSynthesisPromptWithDiagnostics(synthesisArgs);
 
     expect(direct.diagnostics.route).toBe("direct");
     expect(direct.diagnostics.totalChars).toBe(direct.prompt.length);
     expect(direct.diagnostics.totalChars).toBeLessThan(60_000);
+    expect(buildDirectPortfolioPlanPrompt(compilerContext)).toBe(direct.prompt);
+    expect(Object.keys(direct.diagnostics.sections)).toEqual([
+      "planningInstructions",
+      "routeGuidance",
+      "originalObjective",
+      "targetProject",
+      "practiceLedger",
+      "applicabilityMatrix",
+      "requiredCoverage",
+      "acceptedOpportunityCoverage",
+      "specializedObligations",
+    ]);
+    expect(direct.diagnostics.sections.targetProject).toBe(
+      `Target project:\n${compilerContext.projectJson}`.length,
+    );
     for (const section of [
       "targetProject",
       "practiceLedger",
@@ -111,6 +127,7 @@ describe("source-to-project plan prompts", () => {
     }
     expect(synthesis.diagnostics.route).toBe("synthesis");
     expect(synthesis.diagnostics.totalChars).toBe(synthesis.prompt.length);
+    expect(buildPortfolioSynthesisPrompt(synthesisArgs)).toBe(synthesis.prompt);
     expect(synthesis.diagnostics.sections.opportunityReviewFindings).toBeGreaterThan(0);
     expect(synthesis.diagnostics.sections.childPlans).toBeGreaterThan(0);
   });

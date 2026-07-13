@@ -2051,6 +2051,9 @@ export function createSourceToProjectHarnessRegistry(
           "project-research",
           "applicabilityMatrix",
         );
+        if (!applicabilityMatrix) {
+          throw new Error("Portfolio planning requires a project applicability matrix.");
+        }
         const evidenceRepairAttempted =
           getOptionalPayloadValue<boolean>(
             context,
@@ -2079,7 +2082,7 @@ export function createSourceToProjectHarnessRegistry(
           originalObjective: options.originalPrompt ?? context.objective ?? "",
           projectJson: JSON.stringify({ ...options.project, projectBrief }),
           practiceLedgerJson: JSON.stringify(practiceLedger ?? sourceAnalysis.practiceLedger),
-          applicabilityMatrixJson: JSON.stringify(applicabilityMatrix ?? projectBrief),
+          applicabilityMatrixJson: JSON.stringify(applicabilityMatrix),
           requiredCoverageJson: JSON.stringify(opportunityCoverage ?? {}),
           acceptedOpportunityCoverageJson: JSON.stringify(
             portfolioCandidates.map(({ acceptance, selectedCandidate }) => ({
@@ -2159,7 +2162,7 @@ export function createSourceToProjectHarnessRegistry(
         const portfolioCompilerJson = JSON.stringify({
           schemaVersion: 1,
           practiceLedger: practiceLedger ?? sourceAnalysis.practiceLedger,
-          applicabilityMatrix: applicabilityMatrix ?? projectBrief,
+          applicabilityMatrix,
           requiredCoverage: opportunityCoverage ?? null,
           acceptedOpportunityCoverage: JSON.parse(
             compilerPromptInput.acceptedOpportunityCoverageJson,

@@ -4762,7 +4762,13 @@ describe("source-to-project harness registry", () => {
           payloads: new Map([
             ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
             ["source-corroboration", { corroboration: corroborationFixture() }],
-            ["project-research", { projectBrief: projectBriefFixture() }],
+            [
+              "project-research",
+              {
+                projectBrief: projectBriefFixture(),
+                applicabilityMatrix: applicabilityMatrixFixture(),
+              },
+            ],
             ["council-review", { councilReview, opportunityAcceptances }],
             [
               "plan-opportunity-validation",
@@ -4929,6 +4935,64 @@ describe("source-to-project harness registry", () => {
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
+  });
+
+  it("rejects canonical portfolio planning without a project applicability matrix", async () => {
+    const councilReview = latestRunCouncilReviewFixture();
+    const opportunityAcceptances = selectAcceptedOpportunities(councilReview, {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    });
+    const acceptedOpportunity = opportunityAcceptances.find((candidate) => candidate.accepted)!;
+    const practiceLedger = practiceLedgerFixture();
+    const opportunityCoverage = requiredCoverage(practiceLedger, applicabilityMatrixFixture());
+    let copilotCalled = false;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/safe-todos",
+      originalPrompt: "Apply the safe todo vertical slice",
+      project: projectFixture(),
+      mode: "advisory",
+      copilot: {
+        async run() {
+          copilotCalled = true;
+          return "# Canonical implementation plan";
+        },
+      },
+    });
+
+    await expect(
+      registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "plan-portfolio",
+          kind: WorkflowNodeKind.PLANNING,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Plan portfolio",
+          prompt: "Plan",
+          input: {
+            planningRoute: { kind: "direct", reason: "one accepted opportunity" },
+            portfolioCandidates: [{ acceptance: acceptedOpportunity }],
+          },
+          dependsOn: ["council-review"],
+          gates: ["verification"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          objective: "Apply the safe todo vertical slice",
+          payloads: new Map([
+            ["source-reading", { sourceAnalysis: sourceAnalysisFixture(), practiceLedger }],
+            ["source-corroboration", { corroboration: corroborationFixture() }],
+            ["project-research", { projectBrief: projectBriefFixture() }],
+            ["council-review", { councilReview, opportunityAcceptances, opportunityCoverage }],
+          ]),
+          artifacts: new Map(),
+        },
+      ),
+    ).rejects.toThrow("Portfolio planning requires a project applicability matrix.");
+    expect(copilotCalled).toBe(false);
   });
 
   it("distills and audits the canonical portfolio against exact compiler coverage", async () => {
