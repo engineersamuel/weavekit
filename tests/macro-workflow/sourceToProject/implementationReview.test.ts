@@ -73,4 +73,18 @@ describe("implementation review", () => {
       ),
     ).toThrow("needs_changes verdict must contain blocking findings");
   });
+
+  it("rejects needs_changes verdicts with only blank blocking findings", () => {
+    for (const blockingFindings of [[""], ["   "]]) {
+      expect(() =>
+        parseImplementationReviewVerdict(
+          JSON.stringify({
+            status: "needs_changes",
+            blockingFindings,
+            rationale: "The implementation needs changes.",
+          }),
+        ),
+      ).toThrow("needs_changes verdict must contain blocking findings");
+    }
+  });
 });

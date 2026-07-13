@@ -49,7 +49,10 @@ export function parseImplementationReviewVerdict(raw: string): ImplementationRev
   if (verdict.status === "accepted" && verdict.blockingFindings.length > 0) {
     throw new Error("Implementation review accepted verdict cannot contain blocking findings.");
   }
-  if (verdict.status === "needs_changes" && verdict.blockingFindings.length === 0) {
+  if (
+    verdict.status === "needs_changes" &&
+    !verdict.blockingFindings.some((finding) => finding.trim().length > 0)
+  ) {
     throw new Error("Implementation review needs_changes verdict must contain blocking findings.");
   }
 
