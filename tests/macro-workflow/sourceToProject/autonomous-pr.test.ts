@@ -6,15 +6,31 @@ import {
   createSourceToProjectHarnessRegistry,
 } from "../../../src/macro-workflow/sourceToProject/harnesses.js";
 
+type ReviewStatus = "accepted" | "needs_changes";
+
+function reviewJson(status: ReviewStatus, finding = "A regression test is missing.") {
+  return JSON.stringify({
+    status,
+    blockingFindings: status === "accepted" ? [] : [finding],
+    rationale:
+      status === "accepted"
+        ? "No blocking findings remain."
+        : "The implementation is not safe to publish yet.",
+  });
+}
+
 describe("source-to-project autonomous PR mode", () => {
-  it("runs worktree preparation before implementation nodes", async () => {
+  async function runScenario(reviewStatuses: ReviewStatus[]) {
     const plan = materializeWorkflowPlan("source-to-project", {
       objective: "Apply one opportunity",
       source: "https://example.com/post",
       project: "weavekit",
       mode: "autonomous-pr",
     });
-    const calls: string[] = [];
+    const operations: string[] = [];
+    const reviewQueue = reviewStatuses.map((status) => reviewJson(status));
+    let validationRuns = 0;
+    let prCreateRuns = 0;
     const sourceToProjectOptions: Parameters<typeof createSourceToProjectHarnessRegistry>[0] = {
       source: "https://example.com/post",
       mode: "autonomous-pr" as const,
@@ -32,16 +48,26 @@ describe("source-to-project autonomous PR mode", () => {
       },
       copilot: {
         async run(args) {
-          calls.push(args.mode);
+          operations.push(args.operation ?? args.mode);
+          if (
+            args.operation === "review-implementation" ||
+            args.operation === "re-review-implementation"
+          ) {
+            const verdict = reviewQueue.shift();
+            if (!verdict) {
+              throw new Error(`Missing queued verdict for ${args.operation}.`);
+            }
+            return verdict;
+          }
           if (args.operation?.startsWith("visual-design-")) {
             return "Published visual-plan MDX artifact: https://plan.agent-native.com/builder/autonomous-pr-visual";
           }
-          return "raw output";
+          return args.operation === "fix-review-findings" ? "Fixed review findings." : "raw output";
         },
       },
       worktree: {
         async prepare() {
-          calls.push("prepare-worktree");
+          operations.push("prepare-worktree");
           return {
             worktreePath: "/tmp/wt",
             branchName: "source-to-project/opp-1",
@@ -52,8 +78,15 @@ describe("source-to-project autonomous PR mode", () => {
       },
       shell: {
         async run(command, args) {
-          calls.push([command, ...args].join(" "));
-          return command === "gh" ? "https://example.com/pr/1\n" : "ok\n";
+          operations.push([command, ...args].join(" "));
+          if (command === "gh") {
+            prCreateRuns += 1;
+            return "https://example.com/pr/1\n";
+          }
+          if (command === "sh") {
+            validationRuns += 1;
+          }
+          return "ok\n";
         },
       },
     };
@@ -64,10 +97,61 @@ describe("source-to-project autonomous PR mode", () => {
       expandAfterNode: createSourceToProjectDynamicExpander(sourceToProjectOptions),
     });
 
+    return { state, operations, validationRuns, prCreateRuns };
+  }
+
+  it("opens a PR after the initial structured review accepts", async () => {
+    const { state, operations, prCreateRuns } = await runScenario(["accepted"]);
+
     expect(state.status).toBe("passed");
-    expect(calls.indexOf("prepare-worktree")).toBeLessThan(calls.indexOf("implement"));
-    expect(state.nodeResults.find((result) => result.nodeId === "open-pr")?.payload).toEqual({
-      prUrl: "https://example.com/pr/1",
+    expect(operations).toContain("review-implementation");
+    expect(operations).not.toContain("fix-review-findings");
+    expect(operations).not.toContain("re-review-implementation");
+    expect(prCreateRuns).toBe(1);
+    expect(operations.indexOf("prepare-worktree")).toBeLessThan(
+      operations.indexOf("implement-selected-bundles"),
+    );
+    expect(
+      state.nodeResults.find((result) => result.nodeId === "fix-review-findings")?.status,
+    ).toBe("skipped");
+    expect(state.nodeResults.find((result) => result.nodeId === "open-pr")?.payload).toMatchObject({
+      finalImplementationReviewVerdict: { status: "accepted" },
     });
+  });
+
+  it("fixes, verifies, and re-reviews needs_changes exactly once", async () => {
+    const { state, operations, validationRuns, prCreateRuns } = await runScenario([
+      "needs_changes",
+      "accepted",
+    ]);
+
+    expect(state.status).toBe("passed");
+    expect(operations.filter((operation) => operation === "fix-review-findings")).toHaveLength(1);
+    expect(operations.filter((operation) => operation === "re-review-implementation")).toHaveLength(
+      1,
+    );
+    expect(validationRuns, operations.join("\n")).toBe(2);
+    expect(prCreateRuns).toBe(1);
+    expect(state.nodeResults.find((result) => result.nodeId === "open-pr")?.payload).toMatchObject({
+      finalImplementationReviewVerdict: { status: "accepted" },
+    });
+  });
+
+  it("fails closed when the re-review still needs changes", async () => {
+    const { state, operations, prCreateRuns } = await runScenario([
+      "needs_changes",
+      "needs_changes",
+    ]);
+
+    expect(state.status).toBe("failed");
+    expect(prCreateRuns).toBe(0);
+    expect(state.nodeResults.find((result) => result.nodeId === "open-pr")).toMatchObject({
+      status: "failed",
+      payload: { finalImplementationReviewVerdict: { status: "needs_changes" } },
+    });
+    expect(operations.filter((operation) => operation === "fix-review-findings")).toHaveLength(1);
+    expect(operations.filter((operation) => operation === "re-review-implementation")).toHaveLength(
+      1,
+    );
   });
 });
