@@ -1562,6 +1562,75 @@ describe("source-to-project harness registry", () => {
     expect(nodes?.filter((node) => node.kind === WorkflowNodeKind.REPORT)).toHaveLength(3);
   });
 
+  it("creates one conditional implementation review cycle", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "autonomous-pr",
+    });
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: latestRunCouncilReviewFixture() },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    expect(nodes?.slice(-8).map((node) => node.id)).toEqual([
+      "prepare-worktree",
+      "implement-selected-bundles",
+      "verify-implementation",
+      "review-implementation",
+      "fix-review-findings",
+      "verify-review-fixes",
+      "re-review-implementation",
+      "open-pr",
+    ]);
+    const expectedCondition = {
+      nodeId: "review-implementation",
+      key: "implementationReviewVerdict.status",
+      equals: "needs_changes",
+    };
+    expect(nodes?.find((node) => node.id === "fix-review-findings")).toMatchObject({
+      dependsOn: ["review-implementation"],
+      runWhen: expectedCondition,
+    });
+    expect(nodes?.find((node) => node.id === "verify-review-fixes")).toMatchObject({
+      dependsOn: ["fix-review-findings"],
+      runWhen: expectedCondition,
+    });
+    expect(nodes?.find((node) => node.id === "re-review-implementation")).toMatchObject({
+      dependsOn: ["verify-review-fixes"],
+      runWhen: expectedCondition,
+    });
+    expect(nodes?.find((node) => node.id === "open-pr")?.dependsOn).toEqual([
+      "review-implementation",
+      "re-review-implementation",
+    ]);
+  });
+
   it("promotes a valid bundle instead of overlapping accepted member opportunities", async () => {
     const expander = createSourceToProjectDynamicExpander({
       source: "https://example.com/loops",

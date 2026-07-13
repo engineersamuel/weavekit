@@ -24,6 +24,7 @@ import { b } from "../../generated/baml_client/index.js";
 import type {
   CorroborationReport,
   FinalRecommendationReview,
+  ImplementationReviewVerdict,
   Opportunity,
   OpportunityBundle,
   OpportunityCouncilReview,
@@ -75,6 +76,10 @@ import {
   type CouncilDeliberationResult,
   type CouncilDeliberationRunner,
 } from "./councilDeliberation.js";
+import {
+  buildImplementationReviewPrompt,
+  parseImplementationReviewVerdict,
+} from "./implementationReview.js";
 import {
   launchSourceToProjectPrAgent,
   type SourceToProjectPrLaunchContext,
@@ -2109,9 +2114,22 @@ export function createSourceToProjectHarnessRegistry(
             ? SourceToProjectModelOperation.IMPLEMENTATION_FIX
             : SourceToProjectModelOperation.IMPLEMENTATION;
         const copilotModel = copilotModelFor(operation);
+        const prompt =
+          node.id === "fix-review-findings"
+            ? [
+                node.prompt,
+                "",
+                "Blocking findings to fix:",
+                ...getPayloadValue<ImplementationReviewVerdict>(
+                  context,
+                  "review-implementation",
+                  "implementationReviewVerdict",
+                ).blockingFindings.map((finding) => `- ${finding}`),
+              ].join("\n")
+            : node.prompt;
         const raw = await copilot.run({
           cwd: worktreePath,
-          prompt: node.prompt,
+          prompt,
           mode: "implement",
           model: copilotModel,
           operation: node.id,
@@ -2129,38 +2147,65 @@ export function createSourceToProjectHarnessRegistry(
             copilotCall({
               mode: "implement",
               cwd: worktreePath,
-              prompt: node.prompt,
+              prompt,
               model: copilotModel,
             }),
           ]),
         };
       }
 
-      if (node.id === "review-implementation") {
+      if (node.id === "review-implementation" || node.id === "re-review-implementation") {
+        const isReReview = node.id === "re-review-implementation";
         const worktreePath = getPayloadValue<WorktreePreparationResult>(
           context,
           "prepare-worktree",
           "worktreePreparation",
         ).worktreePath;
+        const implementationSummary = getPayloadValue<string>(
+          context,
+          isReReview ? "fix-review-findings" : "implement-selected-bundles",
+          "implementationSummary",
+        );
+        const verificationSummary = getPayloadValue<string>(
+          context,
+          isReReview ? "verify-review-fixes" : "verify-implementation",
+          "verificationSummary",
+        );
+        const priorVerdict = isReReview
+          ? getPayloadValue<ImplementationReviewVerdict>(
+              context,
+              "review-implementation",
+              "implementationReviewVerdict",
+            )
+          : undefined;
+        const prompt = await buildImplementationReviewPrompt({
+          implementationSummary,
+          verificationSummary,
+          priorVerdict,
+        });
         const copilotModel = copilotModelFor(SourceToProjectModelOperation.IMPLEMENTATION_REVIEW);
         const raw = await copilot.run({
           cwd: worktreePath,
-          prompt: node.prompt,
+          prompt,
           mode: "review",
           model: copilotModel,
           operation: node.id,
           nodeId: node.id,
-          label: "Copilot implementation review",
+          label: isReReview ? "Copilot implementation re-review" : "Copilot implementation review",
         });
+        const implementationReviewVerdict = parseImplementationReviewVerdict(raw);
         return {
           status: "passed",
-          output: "Review complete.",
-          payload: { reviewSummary: raw },
+          output:
+            implementationReviewVerdict.status === "accepted"
+              ? "Implementation review accepted."
+              : "Implementation review requires changes.",
+          payload: { implementationReviewVerdict, rawReviewSummary: raw },
           execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
             copilotCall({
               mode: "review",
               cwd: worktreePath,
-              prompt: node.prompt,
+              prompt,
               model: copilotModel,
             }),
           ]),
@@ -2203,7 +2248,7 @@ export function createSourceToProjectHarnessRegistry(
       };
     }
 
-    if (node.id === "verify-implementation") {
+    if (node.id === "verify-implementation" || node.id === "verify-review-fixes") {
       const worktreePath = getPayloadValue<WorktreePreparationResult>(
         context,
         "prepare-worktree",
@@ -2234,6 +2279,29 @@ export function createSourceToProjectHarnessRegistry(
 
   const reporterAdapter: HarnessAdapter = async (node, context) => {
     if (node.id === "open-pr") {
+      const initialVerdict = getPayloadValue<ImplementationReviewVerdict>(
+        context,
+        "review-implementation",
+        "implementationReviewVerdict",
+      );
+      const applicableVerdict =
+        initialVerdict.status === "accepted"
+          ? initialVerdict
+          : getOptionalPayloadValue<ImplementationReviewVerdict>(
+              context,
+              "re-review-implementation",
+              "implementationReviewVerdict",
+            );
+      if (!applicableVerdict || applicableVerdict.status !== "accepted") {
+        const rejectedVerdict = applicableVerdict ?? initialVerdict;
+        return {
+          status: "failed",
+          output: "Implementation review did not accept the autonomous pull request.",
+          error: rejectedVerdict.blockingFindings.join("\n"),
+          payload: { finalImplementationReviewVerdict: rejectedVerdict },
+          execution: reporterExecution(node),
+        };
+      }
       const worktreePath = getPayloadValue<WorktreePreparationResult>(
         context,
         "prepare-worktree",
@@ -2243,7 +2311,7 @@ export function createSourceToProjectHarnessRegistry(
       return {
         status: "passed",
         output: "Pull request prepared.",
-        payload: { prUrl },
+        payload: { prUrl, finalImplementationReviewVerdict: applicableVerdict },
         execution: reporterExecution(node),
       };
     }
@@ -2853,6 +2921,11 @@ function buildAutonomousPrNodes(accepted: OpportunityAcceptance[]): RuntimeWorkf
   const reviewNodeIds = accepted.map(
     (acceptance) => `review-opportunity-${toNodeIdPart(acceptance.id)}`,
   );
+  const needsChanges = {
+    nodeId: "review-implementation",
+    key: "implementationReviewVerdict.status",
+    equals: "needs_changes",
+  };
   return [
     {
       id: "prepare-worktree",
@@ -2909,6 +2982,48 @@ function buildAutonomousPrNodes(accepted: OpportunityAcceptance[]): RuntimeWorkf
       replanPolicy: "never",
     },
     {
+      id: "fix-review-findings",
+      kind: WorkflowNodeKind.IMPLEMENTATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Fix blocking implementation review findings",
+      description: "Apply the blocking findings from the initial structured review once.",
+      ...nodeModelMetadata(SourceToProjectModelOperation.IMPLEMENTATION_FIX),
+      prompt: "Fix every blocking finding from the initial implementation review.",
+      dependsOn: ["review-implementation"],
+      runWhen: needsChanges,
+      gates: [WorkflowGateKind.VERIFICATION],
+      writeMode: "single-writer",
+      replanPolicy: "never",
+    },
+    {
+      id: "verify-review-fixes",
+      kind: WorkflowNodeKind.VERIFICATION,
+      harness: WorkflowHarnessKind.VERIFIER,
+      title: "Verify implementation review fixes",
+      description: "Run configured validation after the one allowed fix pass.",
+      ...nodeModelMetadata(SourceToProjectModelOperation.DETERMINISTIC),
+      prompt: "Run configured validation commands after fixing review findings.",
+      dependsOn: ["fix-review-findings"],
+      runWhen: needsChanges,
+      gates: [WorkflowGateKind.VERIFICATION],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    },
+    {
+      id: "re-review-implementation",
+      kind: WorkflowNodeKind.DELIBERATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Re-review source-to-project implementation",
+      description: "Re-review the fixed implementation against the initial blocking findings once.",
+      ...nodeModelMetadata(SourceToProjectModelOperation.IMPLEMENTATION_REVIEW),
+      prompt: "Re-review the fixes against every initial blocking finding.",
+      dependsOn: ["verify-review-fixes"],
+      runWhen: needsChanges,
+      gates: [WorkflowGateKind.REVIEW_ACCEPTED],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    },
+    {
       id: "open-pr",
       kind: WorkflowNodeKind.REPORT,
       harness: WorkflowHarnessKind.REPORTER,
@@ -2916,7 +3031,7 @@ function buildAutonomousPrNodes(accepted: OpportunityAcceptance[]): RuntimeWorkf
       description: "Open a pull request for the verified autonomous implementation.",
       ...nodeModelMetadata(SourceToProjectModelOperation.DETERMINISTIC),
       prompt: "Open a pull request for the verified source-to-project implementation.",
-      dependsOn: ["review-implementation"],
+      dependsOn: ["review-implementation", "re-review-implementation"],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
       writeMode: "read-only",
       replanPolicy: "never",
