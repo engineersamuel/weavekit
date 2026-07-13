@@ -64,6 +64,25 @@ export function buildProjectResearchPrompt(args: {
     .join("\n\n");
 }
 
+export function buildApplicabilityEvidenceRepairPrompt(args: {
+  objective: string;
+  projectJson: string;
+  unresolvedPracticeIds: string[];
+  initialMatrixJson: string;
+  maxToolCalls: number;
+}): string {
+  return [
+    "Investigate only these unresolved source practices in the target project.",
+    "Find direct project evidence that establishes fit or contradiction. Do not broaden into a repository overview.",
+    "Absence of evidence is not contradictory evidence.",
+    `Hard budget: use at most ${args.maxToolCalls} tool calls.`,
+    `Objective:\n${args.objective}`,
+    `Project JSON:\n${args.projectJson}`,
+    `Unresolved practice IDs:\n${args.unresolvedPracticeIds.join("\n")}`,
+    `Initial applicability matrix:\n${args.initialMatrixJson}`,
+  ].join("\n\n");
+}
+
 // Max chars of each raw transcript to include in the plan prompt.
 // Large enough to capture the key source README content and project file reads,
 // small enough to avoid blowing up the plan session context window.
@@ -94,6 +113,16 @@ export function buildPlanPrompt(
     rawTranscripts?.rawProjectResearch,
     RAW_TRANSCRIPT_MAX_CHARS,
   );
+  const changeKind = readCandidateChangeKind(opportunityJson);
+  const toolIntegrationGuidance =
+    changeKind === "tool-integration"
+      ? [
+          "EXTERNAL TOOL INTEGRATION: Integrate the named external tool directly rather than recreating its behavior in custom project code.",
+          "Use the tool's documented installation path, native configuration and ignore/scope mechanism, and real CLI commands. Do not invent config keys or an ignore-file format.",
+          "Make the adoption complete: update the existing validation or CI workflow, identify whether existing content or code needs migration, preserve relevant behavior from the replaced tool, and include proof plus a rollback path.",
+          "Keep the plan project-specific. Add only configuration, migration, documentation, and enforcement work justified by the source and target-project evidence.",
+        ]
+      : [];
   return [
     "/plan",
     "Create an implementation plan for this single selected source-to-project candidate.",
@@ -102,31 +131,14 @@ export function buildPlanPrompt(
     "IMPORTANT: Plan changes only to the target project described in the project JSON below. The target project's working tree is specified in the 'workingTree' field of the Project JSON — all planned changes must be to files at or below that path.",
     "Do not plan changes to the workflow runner, the weakekit codebase, or any other repository. Do not reference or propose changes to weakekit src/, plans/, CONTEXT.md, docs/adr, entities/, or CI configuration for the workflow runner.",
     "The target project may be a completely different type of system (e.g., a documentation vault, a Python service, a shell script collection) — respect its actual architecture and toolchain.",
-    "When the opportunity involves adopting a tool or library from the source (e.g., by adding a config file or invoking its CLI), integrate that exact tool directly. Do not substitute a custom reimplementation. 'Infeasible' means the tool cannot be installed or invoked on the target system (e.g., unsupported OS, no available package, requires unavailable system rights) — it does NOT mean the tool is written in a different language than the target project, or that installing it adds a dependency, or that it is an external binary. CLI tools can be used by any project regardless of that project's implementation language. A Python project can call a Rust binary. A shell script can call a Go binary. Language mismatch is never grounds for rejection.",
-    "SOURCE TOOL IDENTITY: When the original objective references a specific tool, library, or repo URL by name, that tool IS the plan. The plan must integrate the named tool directly using its own config format, CLI, and workflow. Do not propose a custom alternative that 'provides similar functionality.' Custom reimplementation is not a valid interpretation of an integration request.",
-
-    // Tool integration completeness
-    "TOOL INTEGRATION COMPLETENESS: When integrating an external tool that scans or validates files, the plan must be atomic and complete — do not defer automated enforcement to a future phase. A complete tool integration includes ALL of the following in the same plan: (1) the tool's config file at the project root unless the tool explicitly documents non-root placement; (2) the tool's own scope/exclusion mechanism (this may be a dedicated ignore file the tool reads, a glob/scope setting inside its own config, or its documented support for reusing .gitignore — use whichever mechanism the tool actually documents, do not invent an ignore file format the tool doesn't support) plus a .gitignore entry for the tool's own generated output directory; (3) wiring the tool's check/validate command into any existing health-check, validation, or CI script that already runs checks for the project; (4) updating relevant documentation to record the new tool's role.",
-    "Do NOT produce a plan that creates only a config file and defers health-check or script integration. 'Scripts are out of scope' or 'health-check will be added later' is NOT an acceptable plan boundary. The automated enforcement wiring is the most important part of the plan — without it, the config file has no effect on the project's validation workflow.",
-
-    // Config file placement
-    "CONFIG FILE PLACEMENT: Tool config files (e.g., a tool's own .toml/.yaml/.json config, .eslintrc, pyproject.toml sections, etc.) belong at the project root by default. Only place a config file in a subdirectory if the tool's own documentation explicitly supports subdirectory config AND root placement would cause problems. When unsure, default to project root.",
-
-    // Phase 1 scope conservatism with enumerated exclusion categories
-    "PHASE 1 SCOPE CONSERVATISM: For Phase 1 / initial integration, be conservative about what the tool scans. The ignore file or exclusion config must enumerate exclusions by these five categories — mapped to the target project's actual paths: (1) TOOL OUTPUT: the tool's own generated output directory (e.g., .eslintcache, __pycache__, a .toolname/ cache dir); (2) EDITOR/IDE: editor and IDE config directories (e.g., .idea/, .vscode/, .cache/); (3) PRIVATE/RESTRICTED: directories containing private, sensitive, or access-controlled content; (4) RAW/UNPROCESSED SOURCES: directories of raw input material not yet normalized to the project's format (e.g., imported documents, raw downloads, staging areas); (5) AUTO-GENERATED: files and indexes generated by other tools that are not hand-authored (generated docs, build artifacts, lock files, log files). Do not leave the ignore file blank or minimal — enumerate explicit exclusion entries for each category above. Expanding scope to riskier content categories is a Phase 2 concern.",
-    "RAW/UNPROCESSED SOURCE INCLUSION JUSTIFICATION: The default for the RAW/UNPROCESSED SOURCES category is EXCLUDE from Phase 1 scope. If the plan chooses to include a raw/unprocessed source directory in Phase 1 scope anyway, it must: (1) explicitly state this is an override of the conservative default; (2) show a compliance baseline check (how many files currently fail, out of how many) proving the migration burden is small; (3) flag the inclusion as an elevated-risk decision in the Risks section, since raw source content is more likely to produce false-positive validation failures than hand-authored content. Do not silently include a raw-source category as if it were the safe default.",
-
-    // Bare-file frontmatter sweep — independent of validation scan scope
-    "BARE FILE FRONTMATTER SWEEP: Regardless of which directories are in or out of the tool's validation scan scope, the plan must separately state whether any commonly-referenced operational files (system notes, dashboards, README, top-level docs) currently have no frontmatter/metadata at all. If such bare files exist, include a minimal, low-risk normalization step for them as its own small task — distinct from, and not blocked by, the main schema-enforcement scope decision. A file being excluded from automated validation does not excuse the plan from checking whether it needs baseline metadata.",
-
-    // Schema contract completeness
-    "SCHEMA CONTRACT: When integrating a tool that enforces a schema, config, or structural contract on project files (e.g., a linter, validator, type-checker, or frontmatter validator), define the initial schema rules inside that tool's own config file — do not build custom validation infrastructure to implement the schema separately. The schema section of the plan must include: (1) the universal required fields/rules that apply to ALL included files; (2) any path-scoped or pattern-scoped rules that apply only to specific directories or file types; (3) at least one concrete example of a compliant input and one example of a non-compliant input that the tool would reject. A schema section that says 'define rules later' or 'TBD' is not actionable.",
-
-    // Advisory-to-enforcement promotion path
-    "ADVISORY-TO-ENFORCEMENT PATH: Starting with advisory/non-blocking mode is good practice for initial rollout — but the plan must also define a concrete promotion path. Include: (1) the criteria or observable threshold for when the tool's exit code should be promoted to a blocking check in CI, health-checks, or pre-commit hooks (e.g., 'after first clean advisory run with fewer than N violations'); (2) what the promoted blocking invocation looks like. A plan that says 'always run in advisory mode' or 'never propagate exit codes' without a promotion path leaves the tool's enforcement value permanently deferred.",
-
-    // Existing content migration
-    "EXISTING CONTENT MIGRATION: When the plan introduces new required constraints, annotations, or fields to an existing content base (e.g., schema validation over existing files, strict type-checking over existing code, required frontmatter over existing notes), the plan must include a migration step. Identify: (1) which file patterns or directories in scope currently do not meet the new requirements; (2) what minimal change brings them into compliance; (3) whether a script or one-time manual pass is appropriate. A plan that enforces rules on future content but silently ignores existing non-compliant content provides limited value and will generate false-failure noise from day one.",
+    "When validation or parsing is part of the candidate, derive each input and identifier contract from current project behavior and evidence; do not leave identifier format or normalization implicit.",
+    "Absence of validation is evidence of a boundary gap, not a compatibility contract to preserve, when the Source requires boundary validation. If the project generates identifiers in a canonical format, infer the canonical accepted identifier format from that producer, validate route or adapter inputs against it, and flag the stricter behavior as an intentional compatibility change.",
+    "Distinguish malformed input from a well-formed but missing resource, and specify the different status/error behavior when the target project supports that distinction.",
+    "For every invalid, edge, migration, or non-regression case named by the source or project evidence, include both its focused unit check and its real adapter or integration check when those layers exist.",
+    "Do not collapse evidence-named invalid cases into a generic 'invalid input' test. Enumerate each named wrong type, empty or whitespace-only value, boundary length, unsupported field, unsafe coercion, malformed identifier, and missing-resource case in every applicable real adapter/integration check.",
+    "When the Source or project requires repeatable test, typecheck, lint, or build commands and the project lacks them, add stable project scripts for those checks and use the scripts in the final validation commands instead of relying only on one-off package-executor commands.",
+    "Perform a final coverage audit before returning the plan: every accepted source lesson and every concrete target-project defect must map to a responsible layer, an ordered implementation action, and an explicit verification case. Resolve omissions in the plan itself; do not include the audit as filler.",
+    ...toolIntegrationGuidance,
 
     rawPlanArtifactPath ? `Raw plan artifact path:\n${rawPlanArtifactPath}` : undefined,
     "The candidate has already passed selection. Do not switch to a different opportunity or bundle.",
@@ -144,4 +156,233 @@ export function buildPlanPrompt(
   ]
     .filter((part): part is string => Boolean(part))
     .join("\n\n");
+}
+
+export type PortfolioPromptInput = {
+  originalObjective: string;
+  projectJson: string;
+  practiceLedgerJson: string;
+  applicabilityMatrixJson: string;
+  requiredCoverageJson: string;
+  acceptedOpportunityCoverageJson: string;
+  specializedObligationsJson?: string;
+};
+
+export type PortfolioPromptDiagnostics = {
+  route: "direct" | "synthesis";
+  totalChars: number;
+  sections: Record<string, number>;
+};
+
+export type PortfolioPromptBuildResult = {
+  prompt: string;
+  diagnostics: PortfolioPromptDiagnostics;
+};
+
+export type ChildPlanPromptInput = PortfolioPromptInput & {
+  candidateJson: string;
+  assignedBehaviorIds: string[];
+  assignedProofIds: string[];
+  rawPlanArtifactPath?: string;
+  rawTranscripts?: { rawSourceReading?: string; rawProjectResearch?: string };
+};
+
+export function buildDirectPortfolioPlanPrompt(args: PortfolioPromptInput): string {
+  return buildDirectPortfolioPlanPromptWithDiagnostics(args).prompt;
+}
+
+export function buildDirectPortfolioPlanPromptWithDiagnostics(
+  args: PortfolioPromptInput,
+): PortfolioPromptBuildResult {
+  return buildMeasuredPortfolioPrompt("direct", {
+    planningInstructions: portfolioPlanningInstructions(
+      "Create one cohesive implementation plan directly from the accepted compiler coverage below.",
+    ).join("\n\n"),
+    routeGuidance:
+      "This is the direct planning route. There are no child plans to reconstruct or summarize.",
+    ...renderPortfolioCompilerContext(args, "Required behavior IDs"),
+  });
+}
+
+export function buildChildPlanPrompt(args: ChildPlanPromptInput): string {
+  const basePrompt = buildPlanPrompt(
+    args.candidateJson,
+    args.projectJson,
+    args.rawPlanArtifactPath,
+    args.rawTranscripts,
+  );
+  return [
+    basePrompt,
+    "This is one focused child plan within a coverage-preserving portfolio. Do not absorb behavior or proof IDs assigned to another child.",
+    `Assigned behavior IDs:\n${args.assignedBehaviorIds.join("\n")}`,
+    `Assigned proof IDs:\n${args.assignedProofIds.join("\n")}`,
+    ...Object.values(renderPortfolioCompilerContext(args, "Full required coverage set")),
+  ].join("\n\n");
+}
+
+export function buildPortfolioSynthesisPrompt(
+  args: PortfolioPromptInput & {
+    childPlans: Array<{ title: string; markdown: string }>;
+    opportunityReviews?: Array<{
+      title: string;
+      status: string;
+      rationale: string;
+      rejectionReason?: string | null;
+    }>;
+  },
+): string {
+  return buildPortfolioSynthesisPromptWithDiagnostics(args).prompt;
+}
+
+export function buildPortfolioSynthesisPromptWithDiagnostics(
+  args: PortfolioPromptInput & {
+    childPlans: Array<{ title: string; markdown: string }>;
+    opportunityReviews?: Array<{
+      title: string;
+      status: string;
+      rationale: string;
+      rejectionReason?: string | null;
+    }>;
+  },
+): PortfolioPromptBuildResult {
+  const childPlans = args.childPlans
+    .map(
+      (plan, index) =>
+        `## Child plan ${index + 1}: ${plan.title}\n\n${truncateTranscript(plan.markdown, RAW_TRANSCRIPT_MAX_CHARS) ?? ""}`,
+    )
+    .join("\n\n---\n\n");
+  return buildMeasuredPortfolioPrompt("synthesis", {
+    planningInstructions: portfolioPlanningInstructions(
+      "Synthesize the independent child plans into one cohesive implementation plan.",
+    ).join("\n\n"),
+    synthesisGuidance: [
+      "Treat child plans as evidence for focused change surfaces, not as immutable deliverable boundaries. Reconcile overlap, ordering, shared contracts, and end-to-end verification; remove duplicate or conflicting work.",
+      "Restore a non-selected opportunity only when direct target-project evidence and the original objective show it is required for complete compiler coverage. Do not restore weak, speculative, unrelated, or unjustifiably costly work.",
+    ].join("\n\n"),
+    ...renderPortfolioCompilerContext(args, "Full required coverage set"),
+    ...(args.opportunityReviews?.length
+      ? {
+          opportunityReviewFindings: `Scoped child review findings:\n${JSON.stringify(args.opportunityReviews)}`,
+        }
+      : {}),
+    childPlans: `Independent child plans:\n\n${childPlans}`,
+  });
+}
+
+function portfolioPlanningInstructions(objective: string): string[] {
+  return [
+    "/plan",
+    objective,
+    "Do not modify files. Return only the canonical implementation plan as markdown.",
+    "The current working directory is the target project's working tree. Inspect it directly when evidence leaves a file, identifier, command, or current behavior ambiguous.",
+    "Plan changes only to the target project. Do not plan changes to the workflow runner or another repository.",
+    "Map every required behavior and proof obligation to its responsible architectural layer, an ordered implementation action, and an explicit verification case.",
+    "Preserve source-required boundary placement, output safety, migration behavior, compatibility decisions, and real adapter or integration proof.",
+    "Lead with the problem and expected project value, then provide a concrete ordered implementation sequence, migration and rollback considerations, validation commands, and focused non-regression checks.",
+  ];
+}
+
+function renderPortfolioCompilerContext(
+  args: PortfolioPromptInput,
+  coverageHeading: string,
+): Record<string, string> {
+  return {
+    originalObjective: `Original objective:\n${args.originalObjective}`,
+    targetProject: `Target project:\n${args.projectJson}`,
+    practiceLedger: `Canonical source practice ledger:\n${args.practiceLedgerJson}`,
+    applicabilityMatrix: `Project applicability matrix:\n${args.applicabilityMatrixJson}`,
+    requiredCoverage: `${coverageHeading}:\n${args.requiredCoverageJson}`,
+    acceptedOpportunityCoverage: `Accepted opportunity coverage:\n${args.acceptedOpportunityCoverageJson}`,
+    ...(args.specializedObligationsJson
+      ? {
+          specializedObligations: `Specialized obligations:\n${args.specializedObligationsJson}`,
+        }
+      : {}),
+  };
+}
+
+function buildMeasuredPortfolioPrompt(
+  route: PortfolioPromptDiagnostics["route"],
+  renderedSections: Record<string, string>,
+): PortfolioPromptBuildResult {
+  const prompt = Object.values(renderedSections).join("\n\n");
+  return {
+    prompt,
+    diagnostics: {
+      route,
+      totalChars: prompt.length,
+      sections: Object.fromEntries(
+        Object.entries(renderedSections).map(([name, rendered]) => [name, rendered.length]),
+      ),
+    },
+  };
+}
+
+export function buildPortfolioPlanPrompt(args: {
+  originalObjective: string;
+  projectJson: string;
+  sourceAnalysisJson?: string;
+  corroborationJson?: string;
+  opportunityPlans: Array<{ title: string; markdown: string }>;
+  opportunityReviews?: Array<{
+    title: string;
+    status: string;
+    rationale: string;
+    rejectionReason?: string | null;
+  }>;
+  discoveredOpportunities?: unknown[];
+  opportunityDecisions?: unknown[];
+}): string {
+  const renderedPlans = args.opportunityPlans
+    .map(
+      (plan, index) =>
+        `## Candidate plan ${index + 1}: ${plan.title}\n\n${truncateTranscript(plan.markdown, RAW_TRANSCRIPT_MAX_CHARS) ?? ""}`,
+    )
+    .join("\n\n---\n\n");
+  return [
+    "/plan",
+    "Create one cohesive implementation plan from the accepted source-to-project opportunity plans below.",
+    "Do not modify files. Return only the canonical implementation plan as markdown.",
+    "The Current working directory is the target project's working tree. Inspect it directly when a candidate plan leaves a file, identifier, command, or current behavior ambiguous. The Source artifact is represented by the structured source analysis below; do not claim the target project is unavailable merely because the original objective used a relative ./project path.",
+    "Treat the candidate plans as evidence and proposed slices, not as independent deliverables that must retain their original boundaries.",
+    "Reconcile their file changes, contracts, sequencing, and validation into one executable vertical slice. Merge overlapping work, remove duplicate or conflicting work, and make dependencies explicit.",
+    "Preserve every well-grounded source lesson that materially improves the target project. Do not omit a required behavior merely because one candidate called it out-of-scope.",
+    "Build a requirement ledger before drafting: for every source requirement, record the exact target-project evidence, its responsible architectural layer, the concrete plan action, and the proof that will verify it. Use the ledger to check coverage, then present a cohesive plan rather than a verbose audit dump.",
+    "For every retained requirement, preserve its responsible architectural layer. Do not move an ingress-boundary rule into domain logic, an output-safety rule into input validation, or an adapter/integration proof into a unit-only check. Domain invariants may be defended in depth, but that must not replace the source-required boundary behavior.",
+    "When source or project evidence names invalid, edge, migration, and non-regression behavior, enumerate every invalid, edge, migration, and non-regression case in the relevant unit and real adapter/integration tests. Preserve exact demonstrated defects such as unsafe coercions or malformed-versus-missing identifier behavior instead of generalizing them away.",
+    "Use opportunity review findings as corrective evidence. Resolve each grounded criticism in the canonical plan; do not blindly inherit a child's rejection when it only complains that a deliberately scoped child omitted another portfolio slice.",
+    "Review the complete discovered-opportunity set as a coverage check. Restore a non-selected opportunity only when direct target-project evidence and the original objective show it is required for a coherent end-to-end improvement. Do not restore weak, speculative, unrelated, or unjustifiably costly work.",
+    "Stay within the target project and its existing architecture. Reject unrelated infrastructure or process work that is not required to deliver or prove the improvement.",
+    "Lead with the problem and expected project value. Then give an ordered implementation sequence with concrete files or modules, behavioral and data/error contracts, migration or compatibility considerations, validation commands, and focused non-regression checks.",
+    "Keep the result concise enough for an implementation agent to follow. Do not repeat background, generic best practices, tool boilerplate, or one risk/validation section per candidate.",
+    `Original objective:\n${args.originalObjective}`,
+    args.sourceAnalysisJson
+      ? `Source analysis and requirement evidence:\n${args.sourceAnalysisJson}`
+      : undefined,
+    args.corroborationJson
+      ? `Corroboration and competing views:\n${args.corroborationJson}`
+      : undefined,
+    `Target project:\n${args.projectJson}`,
+    args.discoveredOpportunities
+      ? `All discovered opportunities:\n${JSON.stringify(args.discoveredOpportunities)}`
+      : undefined,
+    args.opportunityDecisions
+      ? `Opportunity acceptance decisions:\n${JSON.stringify(args.opportunityDecisions)}`
+      : undefined,
+    args.opportunityReviews?.length
+      ? `Scoped opportunity review findings:\n${JSON.stringify(args.opportunityReviews)}`
+      : undefined,
+    `Accepted opportunity plans:\n\n${renderedPlans}`,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n");
+}
+
+function readCandidateChangeKind(opportunityJson: string): string | undefined {
+  try {
+    const candidate = JSON.parse(opportunityJson) as { changeKind?: unknown };
+    return typeof candidate.changeKind === "string" ? candidate.changeKind : undefined;
+  } catch {
+    return undefined;
+  }
 }

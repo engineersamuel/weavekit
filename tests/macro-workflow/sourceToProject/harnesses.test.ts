@@ -4721,7 +4721,6 @@ describe("source-to-project harness registry", () => {
         minAcceptanceAverage: 0.85,
         maxRisk: 0.8,
       });
-      const rejectedOpportunity = opportunityAcceptances.find((candidate) => !candidate.accepted)!;
       const registry = createSourceToProjectHarnessRegistry({
         source: "https://example.com/safe-todos",
         originalPrompt: "Apply the safe todo vertical slice",
@@ -4772,6 +4771,11 @@ describe("source-to-project harness registry", () => {
                   ...planSummaryFixture("Validation plan"),
                   rawPlanArtifactPath: "raw-plans/plan-opportunity-validation.md",
                 },
+                finalRecommendationReview: {
+                  status: "rejected",
+                  rationale: "RETAINED_HARNESS_REVIEW_FINDINGS_SENTINEL",
+                  rejectionReason: "The boundary parser is incomplete.",
+                },
               },
             ],
             [
@@ -4799,16 +4803,25 @@ describe("source-to-project harness registry", () => {
       expect(copilotCalls[0]?.prompt).toContain("Add strict boundary parsing");
       expect(copilotCalls[0]?.prompt).toContain("Replace innerHTML with textContent");
       expect(copilotCalls[0]?.prompt).toContain("remove duplicate or conflicting work");
-      expect(copilotCalls[0]?.prompt).toContain(rejectedOpportunity.title);
-      expect(copilotCalls[0]?.prompt).toContain(rejectedOpportunity.reason);
+      expect(copilotCalls[0]?.prompt).toContain("RETAINED_HARNESS_REVIEW_FINDINGS_SENTINEL");
       expect(copilotCalls[0]?.prompt).toContain(
         "Restore a non-selected opportunity only when direct target-project evidence",
       );
-      expect(copilotCalls[0]?.prompt).toContain("Source analysis and requirement evidence");
-      expect(copilotCalls[0]?.prompt).toContain("Corroboration and competing views");
+      expect(copilotCalls[0]?.prompt).not.toContain("Source analysis and requirement evidence");
+      expect(copilotCalls[0]?.prompt).not.toContain("Corroboration and competing views");
       expect(result.payload).toMatchObject({
         portfolioPlan: true,
         plan: { rawPlanArtifactPath: "raw-plans/plan-portfolio.md" },
+        portfolioPromptDiagnostics: {
+          route: "synthesis",
+          totalChars: copilotCalls[0]!.prompt.length,
+        },
+      });
+      expect(result.execution?.metadata).toMatchObject({
+        portfolioPromptDiagnostics: {
+          route: "synthesis",
+          totalChars: copilotCalls[0]!.prompt.length,
+        },
       });
       await expect(readFile(join(rawPlansDir, "plan-portfolio.md"), "utf8")).resolves.toContain(
         "Canonical implementation plan",
@@ -4897,6 +4910,16 @@ describe("source-to-project harness registry", () => {
         portfolioPlan: true,
         plan: { rawPlanArtifactPath: "raw-plans/plan-portfolio.md" },
         sourcePlans: [],
+        portfolioPromptDiagnostics: {
+          route: "direct",
+          totalChars: prompts[0]!.length,
+        },
+      });
+      expect(result.execution?.metadata).toMatchObject({
+        portfolioPromptDiagnostics: {
+          route: "direct",
+          totalChars: prompts[0]!.length,
+        },
       });
       expect(toolPolicies).toEqual(["read-only"]);
       expect(maxToolCalls).toEqual([12]);

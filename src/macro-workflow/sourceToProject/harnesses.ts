@@ -71,9 +71,9 @@ import {
 import {
   buildApplicabilityEvidenceRepairPrompt,
   buildChildPlanPrompt,
-  buildDirectPortfolioPlanPrompt,
+  buildDirectPortfolioPlanPromptWithDiagnostics,
   buildCorroborationPrompt,
-  buildPortfolioSynthesisPrompt,
+  buildPortfolioSynthesisPromptWithDiagnostics,
   buildPlanPrompt,
   buildProjectResearchPrompt,
   buildSourceReadingPrompt,
@@ -2040,22 +2040,7 @@ export function createSourceToProjectHarnessRegistry(
           "source-reading",
           "sourceAnalysis",
         );
-        const corroboration = getPayloadValue<CorroborationReport>(
-          context,
-          "source-corroboration",
-          "corroboration",
-        );
         const opportunityReviews = collectOpportunityReviewsFromDependencies(context, node);
-        const councilReview = getOptionalPayloadValue<OpportunityCouncilReview>(
-          context,
-          "council-review",
-          "councilReview",
-        );
-        const opportunityAcceptances = getOptionalPayloadValue<OpportunityAcceptance[]>(
-          context,
-          "council-review",
-          "opportunityAcceptances",
-        );
         const practiceLedger = getOptionalPayloadValue<SourcePracticeLedger>(
           context,
           "source-reading",
@@ -2106,20 +2091,17 @@ export function createSourceToProjectHarnessRegistry(
               targetLayers: acceptance.opportunity.targetLayers,
             })),
           ),
-          sourceAnalysisJson: JSON.stringify(sourceAnalysis),
-          corroborationJson: JSON.stringify(corroboration),
           specializedObligationsJson: JSON.stringify(specializedObligations),
-          ...(councilReview ? { discoveredOpportunities: councilReview.opportunities } : {}),
-          ...(opportunityAcceptances ? { opportunityDecisions: opportunityAcceptances } : {}),
         };
-        const prompt =
+        const promptBuild =
           planningRoute.kind === "direct"
-            ? buildDirectPortfolioPlanPrompt(compilerPromptInput)
-            : buildPortfolioSynthesisPrompt({
+            ? buildDirectPortfolioPlanPromptWithDiagnostics(compilerPromptInput)
+            : buildPortfolioSynthesisPromptWithDiagnostics({
                 ...compilerPromptInput,
                 childPlans: opportunityPlans,
                 opportunityReviews,
               });
+        const prompt = promptBuild.prompt;
         const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
         const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
         const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
@@ -2199,6 +2181,7 @@ export function createSourceToProjectHarnessRegistry(
           output: `Canonical portfolio plan complete: ${planSummary.title}`,
           payload: {
             portfolioPlan: true,
+            portfolioPromptDiagnostics: promptBuild.diagnostics,
             plan: planSummary,
             plans: [planSummary],
             sourcePlans,
@@ -2212,16 +2195,20 @@ export function createSourceToProjectHarnessRegistry(
               : {}),
           },
           artifacts: persistedPlan.artifacts,
-          execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
-            copilotCall({
-              mode: "plan",
-              cwd: options.project.workingTree,
-              prompt,
-              model: copilotModel,
-            }),
-            bamlCall("DistillPlanArtifact", bamlModel),
-            ...(portfolioDraft ? [bamlCall("DistillPortfolioPlanDraft", bamlModel)] : []),
-          ]),
+          execution: buildExecutionMetadata(
+            WorkflowHarnessKind.COPILOT_SDK,
+            [
+              copilotCall({
+                mode: "plan",
+                cwd: options.project.workingTree,
+                prompt,
+                model: copilotModel,
+              }),
+              bamlCall("DistillPlanArtifact", bamlModel),
+              ...(portfolioDraft ? [bamlCall("DistillPortfolioPlanDraft", bamlModel)] : []),
+            ],
+            { portfolioPromptDiagnostics: promptBuild.diagnostics },
+          ),
         };
       }
 
@@ -4147,7 +4134,6 @@ function resolveOpportunityPlanExecution(
         targetLayers: candidate.targetLayers,
       })),
     ),
-    sourceAnalysisJson: sourceAnalysis ? JSON.stringify(sourceAnalysis) : undefined,
     specializedObligationsJson: JSON.stringify(
       specializedObligationsFor(opportunity.changeKind ?? "code-change"),
     ),
