@@ -30,8 +30,12 @@ import type {
   OpportunityBundle,
   OpportunityCouncilReview,
   PlanArtifactSummary,
+  PortfolioCoverageAudit,
+  PortfolioPlanDraft,
+  ProjectApplicabilityMatrix,
   ProjectBrief,
   SourceAnalysis,
+  SourcePracticeLedger,
 } from "../../generated/baml_client/index.js";
 import { TelegramClient } from "../../telegram/client.js";
 import type {
@@ -65,7 +69,11 @@ import {
   type SourceToProjectBamlFunctionName,
 } from "./modelPolicy.js";
 import {
+  buildApplicabilityEvidenceRepairPrompt,
+  buildChildPlanPrompt,
+  buildDirectPortfolioPlanPrompt,
   buildCorroborationPrompt,
+  buildPortfolioSynthesisPrompt,
   buildPlanPrompt,
   buildProjectResearchPrompt,
   buildSourceReadingPrompt,
@@ -81,6 +89,21 @@ import {
   buildImplementationReviewPrompt,
   parseImplementationReviewVerdict,
 } from "./implementationReview.js";
+import {
+  compilePracticeLedger,
+  requiredCoverage,
+  selectCoverageCompleteCandidates,
+  selectPortfolioPlanningRoute,
+  specializedObligationsFor,
+  type SpecializedObligation,
+  type PortfolioPlanningRoute,
+  type RequiredCoverage,
+  validateApplicabilityMatrix,
+  validateOpportunityCoverage,
+  validatePortfolioAudit,
+  validatePortfolioDraft,
+} from "./portfolioCompiler.js";
+import { persistPortfolioCompilerArtifacts } from "./portfolioArtifacts.js";
 import {
   launchSourceToProjectPrAgent,
   type SourceToProjectPrLaunchContext,
@@ -102,9 +125,12 @@ const DEFAULT_SOURCE_TO_PROJECT_THRESHOLDS: SourceToProjectThresholds = {
 const DEFAULT_AGENT_NATIVE_SKILLS_PACKAGE = "@agent-native/skills@latest";
 const DEFAULT_VISUAL_PLAN_BRIDGE_TTL_MS = 4 * 60 * 60 * 1000;
 const MIN_PLAN_QUALITY_SCORE = 0.45;
+const BUNDLE_MEMBER_RECOVERY_MARGIN = 0.15;
+const BUNDLE_AVERAGE_RECOVERY_MARGIN = 0.05;
 
 type PlanCandidate = {
   kind: "opportunity" | "bundle";
+  changeKind: "tool-integration" | "code-change" | "workflow-process" | "documentation";
   id: string;
   title: string;
   opportunityIds: string[];
@@ -124,6 +150,7 @@ type PlanCandidate = {
   metaInfrastructurePenalty: number;
   qualityScore: number;
   raw: Opportunity | OpportunityBundle;
+  memberOpportunities?: Opportunity[];
 };
 
 type PlanSelection = {
@@ -211,6 +238,8 @@ type CopilotRuntimeSession = {
 
 const DEFAULT_SOURCE_READING_MAX_TOOL_CALLS = 40;
 const DEFAULT_PROJECT_RESEARCH_MAX_TOOL_CALLS = 60;
+const DEFAULT_PLAN_GENERATION_MAX_TOOL_CALLS = 12;
+const MAX_SEMANTIC_VALIDATION_FEEDBACK_CHARS = 2_048;
 const RAW_PLAN_ARTIFACT_DIR = "raw-plans";
 
 export type CopilotUserInputRequest = {
@@ -233,6 +262,7 @@ export type CopilotHarnessLogEvent = {
     | "session-idle"
     | "session-error"
     | "timeout-partial"
+    | "timeout-rejected-partial"
     | "timeout"
     | "tool-budget"
     | "disconnect"
@@ -293,6 +323,8 @@ export type CopilotHarnessClient = {
     nodeId?: string;
     label?: string;
     capabilityScope?: CopilotCapabilityScope;
+    toolPolicy?: "read-only";
+    acceptPartialOnTimeout?: boolean;
     onSessionId?: (sessionId: string) => void;
   }): Promise<string>;
 };
@@ -399,16 +431,40 @@ export type SourceToProjectBamlClient = {
     rawResearch: string,
   ): Promise<CorroborationReport>;
   DistillProjectBrief(projectJson: string, rawResearch: string): Promise<ProjectBrief>;
+  DistillProjectApplicability(
+    projectJson: string,
+    practiceLedger: SourcePracticeLedger,
+    rawResearch: string,
+  ): Promise<ProjectApplicabilityMatrix>;
+  RepairProjectApplicability(
+    practiceLedger: SourcePracticeLedger,
+    initialMatrix: ProjectApplicabilityMatrix,
+    rawRepairResearch: string,
+  ): Promise<ProjectApplicabilityMatrix>;
   MapSourceToProject(
-    sourceAnalysis: SourceAnalysis,
+    practiceLedger: SourcePracticeLedger,
     corroboration: CorroborationReport,
-    projectBrief: ProjectBrief,
+    applicabilityMatrix: ProjectApplicabilityMatrix,
+    validationFeedback: string,
   ): Promise<OpportunityCouncilReview>;
   DistillPlanArtifact(
     opportunityJson: string,
     rawPlan: string,
     rawPlanArtifactPath: string,
   ): Promise<PlanArtifactSummary>;
+  DistillPortfolioPlanDraft(
+    compilerJson: string,
+    planMarkdown: string,
+  ): Promise<PortfolioPlanDraft>;
+  AuditPortfolioCoverage(
+    compilerJson: string,
+    draft: PortfolioPlanDraft,
+  ): Promise<PortfolioCoverageAudit>;
+  RepairPortfolioPlan(
+    compilerJson: string,
+    draft: PortfolioPlanDraft,
+    auditFeedback: string,
+  ): Promise<PortfolioPlanDraft>;
   ReviewFinalRecommendation(
     originalPrompt: string,
     source: string,
@@ -485,6 +541,8 @@ export type SourceToProjectHarnessOptions = {
   prefetchedSourceContent?: string;
   project: ProjectCatalogEntry;
   mode: SourceToProjectMode;
+  includeVisualDesign?: boolean;
+  portfolioPlanningMode?: "auto" | "direct";
   /** Cap on accepted opportunities promoted per run. 0 or undefined means unlimited: every opportunity that clears the acceptance thresholds is promoted. */
   maxOpportunities?: number;
   thresholds?: SourceToProjectThresholds;
@@ -546,12 +604,44 @@ export function createLiveSourceToProjectBamlClient(
         (callOptions) => b.DistillProjectBrief(projectJson, rawResearch, callOptions),
       );
     },
-    async MapSourceToProject(sourceAnalysis, corroboration, projectBrief) {
+    async DistillProjectApplicability(projectJson, practiceLedger, rawResearch) {
+      return runSourceToProjectBamlCall(
+        options.usageCollector,
+        "DistillProjectApplicability",
+        (callOptions) =>
+          b.DistillProjectApplicability(projectJson, practiceLedger, rawResearch, callOptions),
+      );
+    },
+    async RepairProjectApplicability(practiceLedger, initialMatrix, rawRepairResearch) {
+      return runSourceToProjectBamlCall(
+        options.usageCollector,
+        "RepairProjectApplicability",
+        (callOptions) =>
+          b.RepairProjectApplicability(
+            practiceLedger,
+            initialMatrix,
+            rawRepairResearch,
+            callOptions,
+          ),
+      );
+    },
+    async MapSourceToProject(
+      practiceLedger,
+      corroboration,
+      applicabilityMatrix,
+      validationFeedback,
+    ) {
       return runSourceToProjectBamlCall(
         options.usageCollector,
         "MapSourceToProject",
         (callOptions) =>
-          b.MapSourceToProject(sourceAnalysis, corroboration, projectBrief, callOptions),
+          b.MapSourceToProject(
+            practiceLedger,
+            corroboration,
+            applicabilityMatrix,
+            validationFeedback,
+            callOptions,
+          ),
       );
     },
     async DistillPlanArtifact(opportunityJson, rawPlan, rawPlanArtifactPath) {
@@ -560,6 +650,27 @@ export function createLiveSourceToProjectBamlClient(
         "DistillPlanArtifact",
         (callOptions) =>
           b.DistillPlanArtifact(opportunityJson, rawPlan, rawPlanArtifactPath, callOptions),
+      );
+    },
+    async DistillPortfolioPlanDraft(compilerJson, planMarkdown) {
+      return runSourceToProjectBamlCall(
+        options.usageCollector,
+        "DistillPortfolioPlanDraft",
+        (callOptions) => b.DistillPortfolioPlanDraft(compilerJson, planMarkdown, callOptions),
+      );
+    },
+    async AuditPortfolioCoverage(compilerJson, draft) {
+      return runSourceToProjectBamlCall(
+        options.usageCollector,
+        "AuditPortfolioCoverage",
+        (callOptions) => b.AuditPortfolioCoverage(compilerJson, draft, callOptions),
+      );
+    },
+    async RepairPortfolioPlan(compilerJson, draft, auditFeedback) {
+      return runSourceToProjectBamlCall(
+        options.usageCollector,
+        "RepairPortfolioPlan",
+        (callOptions) => b.RepairPortfolioPlan(compilerJson, draft, auditFeedback, callOptions),
       );
     },
     async ReviewFinalRecommendation(
@@ -730,16 +841,23 @@ export function createCopilotSdkHarnessClient(
             throw new Error(formatCopilotUserInputRequiredError(request));
           },
           ...sessionConfigForCapability(runArgs.capabilityScope),
-          ...(maxToolCalls
+          ...(maxToolCalls || runArgs.toolPolicy || runArgs.capabilityScope?.kind === "skill"
             ? {
                 hooks: {
                   onPreToolUse: (input: { toolName?: string; toolArgs?: unknown }) => {
+                    const readOnlyDecision = denyNonReadOnlyTool(input, runArgs.toolPolicy);
+                    if (readOnlyDecision) {
+                      return readOnlyDecision;
+                    }
                     const visualPlanServeDecision = denyForegroundVisualPlanServe(
                       input,
                       runArgs.capabilityScope,
                     );
                     if (visualPlanServeDecision) {
                       return visualPlanServeDecision;
+                    }
+                    if (!maxToolCalls) {
+                      return;
                     }
                     attemptedToolCallCount += 1;
                     if (attemptedToolCallCount <= maxToolCalls) {
@@ -768,14 +886,7 @@ export function createCopilotSdkHarnessClient(
                   },
                 },
               }
-            : runArgs.capabilityScope?.kind === "skill"
-              ? {
-                  hooks: {
-                    onPreToolUse: (input: { toolName?: string; toolArgs?: unknown }) =>
-                      denyForegroundVisualPlanServe(input, runArgs.capabilityScope),
-                  },
-                }
-              : {}),
+            : {}),
           ...(runArgs.cwd ? { cwd: runArgs.cwd } : {}),
         });
         logCopilotHarnessEvent(
@@ -1000,6 +1111,26 @@ function denyForegroundVisualPlanServe(
   };
 }
 
+const READ_ONLY_COPILOT_TOOLS = new Set(["glob", "rg", "view"]);
+
+function denyNonReadOnlyTool(
+  input: { toolName?: string },
+  toolPolicy?: "read-only",
+): { permissionDecision: "deny"; permissionDecisionReason: string } | undefined {
+  if (toolPolicy !== "read-only") {
+    return undefined;
+  }
+  const toolName = input.toolName?.trim().toLowerCase();
+  if (toolName && READ_ONLY_COPILOT_TOOLS.has(toolName)) {
+    return undefined;
+  }
+  return {
+    permissionDecision: "deny",
+    permissionDecisionReason:
+      "This workflow stage is read-only. Use only view, rg, or glob to inspect the target project; do not run commands, install dependencies, or modify files.",
+  };
+}
+
 function stringifyToolArgs(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -1202,6 +1333,7 @@ async function sendCopilotPromptAndWait(
     operation?: string;
     nodeId?: string;
     label?: string;
+    acceptPartialOnTimeout?: boolean;
   },
   timeoutMs: number,
   diagnostics: {
@@ -1265,6 +1397,7 @@ async function sendWithPartialAssistantFallback(
     operation?: string;
     nodeId?: string;
     label?: string;
+    acceptPartialOnTimeout?: boolean;
   },
   timeoutMs: number,
   diagnostics: {
@@ -1384,10 +1517,11 @@ async function sendWithPartialAssistantFallback(
     });
     const outcome = await Promise.race([idlePromise.then(() => "idle" as const), timeoutPromise]);
     if (outcome === "timeout" && lastAssistantContent.trim()) {
+      const acceptPartialOnTimeout = runArgs.acceptPartialOnTimeout !== false;
       logCopilotHarnessEvent(
         diagnostics.onLog,
         {
-          phase: "timeout-partial",
+          phase: acceptPartialOnTimeout ? "timeout-partial" : "timeout-rejected-partial",
           mode: runArgs.mode,
           model: diagnostics.model,
           cwd: diagnostics.cwd,
@@ -1397,7 +1531,10 @@ async function sendWithPartialAssistantFallback(
         },
         diagnostics.verboseEvents,
       );
-      return lastAssistantContent;
+      if (acceptPartialOnTimeout) {
+        return lastAssistantContent;
+      }
+      throw new Error(`Timeout after ${timeoutMs}ms waiting for session.idle`);
     }
     if (outcome === "timeout") {
       logCopilotHarnessEvent(
@@ -1475,34 +1612,52 @@ export function createSourceToProjectHarnessRegistry(
     }
 
     if (node.id === "opportunity-mapping") {
-      const sourceAnalysis = getPayloadValue<SourceAnalysis>(
+      const practiceLedger = getPayloadValue<SourcePracticeLedger>(
         context,
         "source-reading",
-        "sourceAnalysis",
+        "practiceLedger",
       );
       const corroboration = getPayloadValue<CorroborationReport>(
         context,
         "source-corroboration",
         "corroboration",
       );
-      const projectBrief = getPayloadValue<ProjectBrief>(
+      const applicabilityMatrix = getPayloadValue<ProjectApplicabilityMatrix>(
         context,
         "project-research",
-        "projectBrief",
+        "applicabilityMatrix",
       );
       const bamlModel = resolveBamlModel(SourceToProjectModelOperation.OPPORTUNITY_MAPPING);
-      const councilInputReview = await bamlClient.MapSourceToProject(
-        sourceAnalysis,
+      let councilInputReview = await bamlClient.MapSourceToProject(
+        practiceLedger,
         corroboration,
-        projectBrief,
+        applicabilityMatrix,
+        "",
       );
+      const opportunityCoverage = requiredCoverage(practiceLedger, applicabilityMatrix);
+      let mappingRepairAttempted = false;
+      try {
+        validateOpportunityCoverage(opportunityCoverage, councilInputReview.opportunities);
+      } catch (initialValidationError) {
+        mappingRepairAttempted = true;
+        councilInputReview = await bamlClient.MapSourceToProject(
+          practiceLedger,
+          corroboration,
+          applicabilityMatrix,
+          errorMessage(initialValidationError).slice(0, MAX_SEMANTIC_VALIDATION_FEEDBACK_CHARS),
+        );
+        validateOpportunityCoverage(opportunityCoverage, councilInputReview.opportunities);
+      }
       return {
         status: "passed",
         output: `Mapped ${councilInputReview.opportunities.length} opportunities.`,
-        payload: { councilInputReview },
-        execution: buildExecutionMetadata(WorkflowHarnessKind.RESEARCH, [
-          bamlCall("MapSourceToProject", bamlModel),
-        ]),
+        payload: { councilInputReview, opportunityCoverage, mappingRepairAttempted },
+        execution: buildExecutionMetadata(
+          WorkflowHarnessKind.RESEARCH,
+          Array.from({ length: mappingRepairAttempted ? 2 : 1 }, () =>
+            bamlCall("MapSourceToProject", bamlModel),
+          ),
+        ),
       };
     }
 
@@ -1582,6 +1737,18 @@ export function createSourceToProjectHarnessRegistry(
       options.project.thresholds,
     );
     const opportunityAcceptances = selectAcceptedOpportunities(councilInputReview, thresholds);
+    const opportunityCoverage = getOptionalPayloadValue<RequiredCoverage>(
+      context,
+      "opportunity-mapping",
+      "opportunityCoverage",
+    );
+    const coverageCompleteAcceptances = opportunityCoverage
+      ? selectCoverageCompleteAcceptances(
+          councilInputReview,
+          opportunityAcceptances,
+          opportunityCoverage,
+        )
+      : opportunityAcceptances;
     const councilDeliberationConfig = {
       ...defaultCouncilDeliberationConfig(),
       ...options.sourceToProject?.councilDeliberation,
@@ -1601,7 +1768,7 @@ export function createSourceToProjectHarnessRegistry(
       const deliberationInput = buildCouncilDeliberationInput({
         objective: context.objective,
         review: councilInputReview,
-        acceptances: opportunityAcceptances,
+        acceptances: coverageCompleteAcceptances,
         thresholds,
       });
       const deliberate = options.councilDeliberation ?? runCouncilDeliberation;
@@ -1622,7 +1789,8 @@ export function createSourceToProjectHarnessRegistry(
       output: `Council ranked ${councilInputReview.opportunities.length} opportunities.`,
       payload: {
         councilReview: councilInputReview,
-        opportunityAcceptances,
+        opportunityAcceptances: coverageCompleteAcceptances,
+        ...(opportunityCoverage ? { opportunityCoverage } : {}),
         ...(councilDeliberation ? { councilDeliberation } : {}),
       },
       execution: buildExecutionMetadata(WorkflowHarnessKind.DECISION_COUNCIL, calls),
@@ -1684,10 +1852,13 @@ export function createSourceToProjectHarnessRegistry(
           JSON.stringify({ source: options.source }),
           raw,
         );
+        const practiceLedger: SourcePracticeLedger = compilePracticeLedger(
+          sourceAnalysis.practiceLedger,
+        );
         return {
           status: "passed",
           output: `Source analysis complete: ${sourceAnalysis.title}`,
-          payload: { sourceAnalysis, rawSourceReading: raw },
+          payload: { sourceAnalysis, practiceLedger, rawSourceReading: raw },
           execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
             copilotCall({ mode: "research", prompt, model: copilotModel }),
             bamlCall("DistillSourceAnalysis", bamlModel),
@@ -1701,6 +1872,11 @@ export function createSourceToProjectHarnessRegistry(
           context,
           "source-reading",
           "sourceAnalysis",
+        );
+        const practiceLedger = getPayloadValue<SourcePracticeLedger>(
+          context,
+          "source-reading",
+          "practiceLedger",
         );
         const corroboration = getOptionalPayloadValue<CorroborationReport>(
           context,
@@ -1729,21 +1905,322 @@ export function createSourceToProjectHarnessRegistry(
           nodeId: node.id,
           label: "Copilot project research",
           capabilityScope,
+          ...(capabilityScope ? {} : { toolPolicy: "read-only" as const }),
         });
-        const projectBrief = await bamlClient.DistillProjectBrief(projectJson, raw);
-        return {
-          status: "passed",
-          output: `Project brief complete: ${projectBrief.displayName}`,
-          payload: { projectBrief, rawProjectResearch: raw },
-          execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
+        let applicabilityMatrix = await bamlClient.DistillProjectApplicability(
+          projectJson,
+          practiceLedger,
+          raw,
+        );
+        validateApplicabilityMatrix(practiceLedger, applicabilityMatrix);
+        const executionCalls: WorkflowExecutionCall[] = [
+          copilotCall({
+            mode: "research",
+            cwd: options.project.workingTree,
+            prompt,
+            model: copilotModel,
+            capabilityScope,
+          }),
+          bamlCall("DistillProjectApplicability", bamlModel),
+        ];
+        const unresolvedPracticeIds = applicabilityMatrix.assessments
+          .filter((assessment) => assessment.status === "unknown")
+          .map((assessment) => assessment.practiceId);
+        let evidenceRepairAttempted = false;
+        if (unresolvedPracticeIds.length > 0) {
+          evidenceRepairAttempted = true;
+          const repairMaxToolCalls = 20;
+          const repairBamlModel = resolveBamlModel(
+            SourceToProjectModelOperation.PROJECT_APPLICABILITY_REPAIR,
+          );
+          const repairPrompt = buildApplicabilityEvidenceRepairPrompt({
+            objective:
+              context.objective ?? `Apply ${options.source} to ${options.project.displayName}`,
+            projectJson,
+            unresolvedPracticeIds,
+            initialMatrixJson: JSON.stringify(applicabilityMatrix),
+            maxToolCalls: repairMaxToolCalls,
+          });
+          const repairResearch = await copilot.run({
+            cwd: options.project.workingTree,
+            prompt: repairPrompt,
+            mode: "research",
+            model: copilotModel,
+            maxToolCalls: repairMaxToolCalls,
+            operation: `${node.id}-applicability-repair`,
+            nodeId: node.id,
+            label: "Copilot project applicability evidence repair",
+            capabilityScope,
+            ...(capabilityScope ? {} : { toolPolicy: "read-only" as const }),
+          });
+          applicabilityMatrix = await bamlClient.RepairProjectApplicability(
+            practiceLedger,
+            applicabilityMatrix,
+            repairResearch,
+          );
+          validateApplicabilityMatrix(practiceLedger, applicabilityMatrix);
+          executionCalls.push(
             copilotCall({
               mode: "research",
               cwd: options.project.workingTree,
-              prompt,
+              prompt: repairPrompt,
               model: copilotModel,
               capabilityScope,
             }),
-            bamlCall("DistillProjectBrief", bamlModel),
+            bamlCall("RepairProjectApplicability", repairBamlModel),
+          );
+          const unresolvedAfterRepair = applicabilityMatrix.assessments
+            .filter((assessment) => assessment.status === "unknown")
+            .map((assessment) => assessment.practiceId);
+          if (unresolvedAfterRepair.length > 0) {
+            throw new Error(
+              `Unresolved applicability after one evidence repair: ${unresolvedAfterRepair.join(", ")}`,
+            );
+          }
+        }
+        const projectBrief: ProjectBrief = {
+          projectId: options.project.id,
+          displayName: options.project.displayName,
+          architecture: applicabilityMatrix.architecture,
+          constraints: applicabilityMatrix.constraints,
+          goals: [context.objective ?? `Apply ${options.source} to ${options.project.displayName}`],
+          changeSurfaces: [
+            ...new Set(
+              applicabilityMatrix.assessments.flatMap((assessment) => assessment.targetLayers),
+            ),
+          ],
+          validationCommands: applicabilityMatrix.validationCommands,
+          risks: applicabilityMatrix.assessments
+            .filter((assessment) => assessment.status === "unknown")
+            .map((assessment) => `Unknown applicability: ${assessment.practiceId}`),
+          evidence: applicabilityMatrix.evidence,
+        };
+        return {
+          status: "passed",
+          output: `Project brief complete: ${projectBrief.displayName}`,
+          payload: {
+            projectBrief,
+            applicabilityMatrix,
+            rawProjectResearch: raw,
+            evidenceRepairAttempted,
+          },
+          execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, executionCalls),
+        };
+      }
+
+      if (node.id === "plan-portfolio") {
+        const planningRoute =
+          (node.input?.planningRoute as PortfolioPlanningRoute | undefined) ??
+          ({
+            kind: "child-synthesis",
+            reason: "existing opportunity plan dependencies require synthesis",
+          } as const);
+        const sourcePlans = collectPlansFromDependencies(context, node);
+        if (planningRoute.kind === "child-synthesis" && sourcePlans.length === 0) {
+          throw new Error("Portfolio planning requires at least one opportunity plan.");
+        }
+        const opportunityPlans = await Promise.all(
+          sourcePlans.map(async (plan) => ({
+            title: plan.title,
+            markdown:
+              (await readRawPlanMarkdownForReport(
+                context.outputDir,
+                plan.rawPlanArtifactPath,
+                plan.planFilePath,
+              )) ?? renderPlanSummaryForPortfolio(plan),
+          })),
+        );
+        const projectBrief = getPayloadValue<ProjectBrief>(
+          context,
+          "project-research",
+          "projectBrief",
+        );
+        const sourceAnalysis = getPayloadValue<SourceAnalysis>(
+          context,
+          "source-reading",
+          "sourceAnalysis",
+        );
+        const corroboration = getPayloadValue<CorroborationReport>(
+          context,
+          "source-corroboration",
+          "corroboration",
+        );
+        const opportunityReviews = collectOpportunityReviewsFromDependencies(context, node);
+        const councilReview = getOptionalPayloadValue<OpportunityCouncilReview>(
+          context,
+          "council-review",
+          "councilReview",
+        );
+        const opportunityAcceptances = getOptionalPayloadValue<OpportunityAcceptance[]>(
+          context,
+          "council-review",
+          "opportunityAcceptances",
+        );
+        const practiceLedger = getOptionalPayloadValue<SourcePracticeLedger>(
+          context,
+          "source-reading",
+          "practiceLedger",
+        );
+        const applicabilityMatrix = getOptionalPayloadValue<ProjectApplicabilityMatrix>(
+          context,
+          "project-research",
+          "applicabilityMatrix",
+        );
+        const evidenceRepairAttempted =
+          getOptionalPayloadValue<boolean>(
+            context,
+            "project-research",
+            "evidenceRepairAttempted",
+          ) ?? false;
+        const opportunityCoverage = getOptionalPayloadValue<RequiredCoverage>(
+          context,
+          "council-review",
+          "opportunityCoverage",
+        );
+        const portfolioCandidates =
+          (node.input?.portfolioCandidates as
+            | Array<{
+                acceptance: OpportunityAcceptance;
+                selectedCandidate?: PlanCandidate;
+              }>
+            | undefined) ?? [];
+        const specializedObligations = specializedObligationsFor(
+          portfolioCandidates.map(
+            ({ acceptance, selectedCandidate }) =>
+              selectedCandidate?.changeKind ?? acceptance.opportunity.changeKind ?? "code-change",
+          ),
+        );
+        const compilerPromptInput = {
+          originalObjective: options.originalPrompt ?? context.objective ?? "",
+          projectJson: JSON.stringify({ ...options.project, projectBrief }),
+          practiceLedgerJson: JSON.stringify(practiceLedger ?? sourceAnalysis.practiceLedger),
+          applicabilityMatrixJson: JSON.stringify(applicabilityMatrix ?? projectBrief),
+          requiredCoverageJson: JSON.stringify(opportunityCoverage ?? {}),
+          acceptedOpportunityCoverageJson: JSON.stringify(
+            portfolioCandidates.map(({ acceptance, selectedCandidate }) => ({
+              id: acceptance.id,
+              kind: selectedCandidate?.kind ?? "opportunity",
+              practiceIds: acceptance.opportunity.practiceIds,
+              behaviorIds: acceptance.opportunity.behaviorIds,
+              proofIds: acceptance.opportunity.proofIds,
+              targetLayers: acceptance.opportunity.targetLayers,
+            })),
+          ),
+          sourceAnalysisJson: JSON.stringify(sourceAnalysis),
+          corroborationJson: JSON.stringify(corroboration),
+          specializedObligationsJson: JSON.stringify(specializedObligations),
+          ...(councilReview ? { discoveredOpportunities: councilReview.opportunities } : {}),
+          ...(opportunityAcceptances ? { opportunityDecisions: opportunityAcceptances } : {}),
+        };
+        const prompt =
+          planningRoute.kind === "direct"
+            ? buildDirectPortfolioPlanPrompt(compilerPromptInput)
+            : buildPortfolioSynthesisPrompt({
+                ...compilerPromptInput,
+                childPlans: opportunityPlans,
+                opportunityReviews,
+              });
+        const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
+        const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
+        const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
+        let capturedSessionId: string | undefined;
+        const rawPlan = await copilot.run({
+          cwd: options.project.workingTree,
+          prompt,
+          mode: "plan",
+          model: copilotModel,
+          maxToolCalls: DEFAULT_PLAN_GENERATION_MAX_TOOL_CALLS,
+          operation: node.id,
+          nodeId: node.id,
+          label: "Copilot canonical portfolio plan",
+          toolPolicy: "read-only",
+          acceptPartialOnTimeout: false,
+          onSessionId: (id) => {
+            capturedSessionId = id;
+          },
+        });
+        const fullPlanContent = capturedSessionId
+          ? await readCopilotSessionPlan(capturedSessionId)
+          : undefined;
+        const persistedPlan = await persistRawPlanMarkdown({
+          outputDir: context.outputDir,
+          nodeId: node.id,
+          rawPlan,
+          rawPlanArtifactPath,
+          fullPlanContent,
+        });
+        const portfolioJson = JSON.stringify({
+          kind: "portfolio",
+          opportunityIds:
+            planningRoute.kind === "direct"
+              ? portfolioCandidates.flatMap(({ acceptance, selectedCandidate }) =>
+                  selectedCandidate?.opportunityIds?.length
+                    ? selectedCandidate.opportunityIds
+                    : [acceptance.id],
+                )
+              : sourcePlans.flatMap((plan) => plan.opportunityIds),
+          planningRoute,
+          sourcePlans: sourcePlans.map((plan) => ({
+            title: plan.title,
+            opportunityIds: plan.opportunityIds,
+          })),
+        });
+        const planSummary = withRawPlanArtifactPath(
+          await bamlClient.DistillPlanArtifact(
+            portfolioJson,
+            fullPlanContent ?? rawPlan,
+            rawPlanArtifactPath,
+          ),
+          rawPlanArtifactPath,
+          persistedPlan.planFilePath,
+        );
+        const portfolioCompilerJson = JSON.stringify({
+          schemaVersion: 1,
+          practiceLedger: practiceLedger ?? sourceAnalysis.practiceLedger,
+          applicabilityMatrix: applicabilityMatrix ?? projectBrief,
+          requiredCoverage: opportunityCoverage ?? null,
+          acceptedOpportunityCoverage: JSON.parse(
+            compilerPromptInput.acceptedOpportunityCoverageJson,
+          ) as unknown,
+          planningRoute,
+          specializedObligations,
+          evidenceRepairAttempted,
+        });
+        let portfolioDraft: PortfolioPlanDraft | undefined;
+        if (opportunityCoverage) {
+          portfolioDraft = await bamlClient.DistillPortfolioPlanDraft(
+            portfolioCompilerJson,
+            fullPlanContent ?? rawPlan,
+          );
+          validatePortfolioDraft(opportunityCoverage, portfolioDraft);
+        }
+        return {
+          status: "passed",
+          output: `Canonical portfolio plan complete: ${planSummary.title}`,
+          payload: {
+            portfolioPlan: true,
+            plan: planSummary,
+            plans: [planSummary],
+            sourcePlans,
+            ...(portfolioDraft
+              ? {
+                  portfolioDraft,
+                  portfolioCompilerJson,
+                  portfolioCoverage: opportunityCoverage,
+                  specializedObligations,
+                }
+              : {}),
+          },
+          artifacts: persistedPlan.artifacts,
+          execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
+            copilotCall({
+              mode: "plan",
+              cwd: options.project.workingTree,
+              prompt,
+              model: copilotModel,
+            }),
+            bamlCall("DistillPlanArtifact", bamlModel),
+            ...(portfolioDraft ? [bamlCall("DistillPortfolioPlanDraft", bamlModel)] : []),
           ]),
         };
       }
@@ -1785,9 +2262,11 @@ export function createSourceToProjectHarnessRegistry(
           prompt,
           mode: "plan",
           model: copilotModel,
+          maxToolCalls: DEFAULT_PLAN_GENERATION_MAX_TOOL_CALLS,
           operation: node.id,
           nodeId: node.id,
           label: `Copilot plan ${opportunity.id}`,
+          toolPolicy: "read-only",
           onSessionId: (id) => {
             capturedSessionId = id;
           },
@@ -1881,9 +2360,11 @@ export function createSourceToProjectHarnessRegistry(
           prompt,
           mode: "plan",
           model: copilotModel,
+          maxToolCalls: DEFAULT_PLAN_GENERATION_MAX_TOOL_CALLS,
           operation: node.id,
           nodeId: node.id,
           label: "Copilot selected-opportunity plan",
+          toolPolicy: "read-only",
           onSessionId: (id) => {
             capturedSessionIdSel = id;
           },
@@ -1924,6 +2405,150 @@ export function createSourceToProjectHarnessRegistry(
         };
       }
 
+      if (node.id === "audit-portfolio") {
+        const planNodeId = node.dependsOn[0];
+        if (!planNodeId) {
+          throw new Error("Portfolio audit is missing its plan dependency.");
+        }
+        const plan = getPayloadValue<PlanArtifactSummary>(context, planNodeId, "plan");
+        const draft = getPayloadValue<PortfolioPlanDraft>(context, planNodeId, "portfolioDraft");
+        const compilerJson = getPayloadValue<string>(context, planNodeId, "portfolioCompilerJson");
+        const coverage = getPayloadValue<RequiredCoverage>(
+          context,
+          planNodeId,
+          "portfolioCoverage",
+        );
+        const obligations = getPayloadValue<SpecializedObligation[]>(
+          context,
+          planNodeId,
+          "specializedObligations",
+        );
+        const initialAudit = await bamlClient.AuditPortfolioCoverage(compilerJson, draft);
+        let finalDraft = draft;
+        let finalAudit = initialAudit;
+        let repairAttempted = false;
+        const executionCalls: WorkflowExecutionCall[] = [];
+        const auditModel = resolveBamlModel(SourceToProjectModelOperation.PORTFOLIO_AUDIT);
+        executionCalls.push(bamlCall("AuditPortfolioCoverage", auditModel));
+        try {
+          validatePortfolioAudit(coverage, obligations, draft, initialAudit);
+        } catch (initialAuditError) {
+          repairAttempted = true;
+          const repairModel = resolveBamlModel(SourceToProjectModelOperation.PORTFOLIO_REPAIR);
+          finalDraft = await bamlClient.RepairPortfolioPlan(
+            compilerJson,
+            draft,
+            JSON.stringify({
+              deterministicValidationError: errorMessage(initialAuditError),
+              semanticAudit: initialAudit,
+            }),
+          );
+          executionCalls.push(bamlCall("RepairPortfolioPlan", repairModel));
+          try {
+            validatePortfolioDraft(coverage, finalDraft);
+          } catch (repairError) {
+            throw new Error(
+              `Portfolio repair produced an invalid draft: ${errorMessage(repairError)}`,
+            );
+          }
+          finalAudit = await bamlClient.AuditPortfolioCoverage(compilerJson, finalDraft);
+          executionCalls.push(bamlCall("AuditPortfolioCoverage", auditModel));
+          try {
+            validatePortfolioAudit(coverage, obligations, finalDraft, finalAudit);
+          } catch (finalAuditError) {
+            throw new Error(
+              `Portfolio coverage remains incomplete after one repair: ${errorMessage(finalAuditError)}`,
+            );
+          }
+        }
+        return {
+          status: "passed",
+          output: "Canonical portfolio coverage audit passed.",
+          payload: {
+            portfolioPlan: true,
+            plan,
+            plans: [plan],
+            portfolioDraft: finalDraft,
+            portfolioCompilerJson: compilerJson,
+            portfolioCoverage: coverage,
+            specializedObligations: obligations,
+            portfolioAudit: {
+              passed: true,
+              repairAttempted,
+              attempts: repairAttempted ? 1 : 0,
+              initialDraft: draft,
+              initialAudit,
+              audit: finalAudit,
+            },
+          },
+          execution: buildExecutionMetadata(
+            WorkflowHarnessKind.COPILOT_SDK,
+            executionCalls,
+            buildPortfolioCompilerMetadata({
+              compilerJson,
+              coverage,
+              initialAudit,
+              finalAudit,
+              repairAttempted,
+            }),
+          ),
+        };
+      }
+
+      if (node.id === "review-portfolio") {
+        const planNodeId = node.dependsOn[0];
+        if (!planNodeId) {
+          throw new Error("Portfolio review is missing its plan dependency.");
+        }
+        const plan = getPayloadValue<PlanArtifactSummary>(context, planNodeId, "plan");
+        const sourceAnalysis = getPayloadValue<SourceAnalysis>(
+          context,
+          "source-reading",
+          "sourceAnalysis",
+        );
+        const corroboration = getPayloadValue<CorroborationReport>(
+          context,
+          "source-corroboration",
+          "corroboration",
+        );
+        const projectBrief = getPayloadValue<ProjectBrief>(
+          context,
+          "project-research",
+          "projectBrief",
+        );
+        const bamlModel = resolveBamlModel(
+          SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW,
+        );
+        const rawReview = await bamlClient.ReviewFinalRecommendation(
+          options.originalPrompt ?? context.objective ?? "",
+          options.source,
+          sourceAnalysis,
+          corroboration,
+          projectBrief,
+          [plan],
+        );
+        const finalRecommendationReview =
+          rawReview.status === "rejected"
+            ? withTelegramSummary(rawReview, `${options.source}#portfolio`)
+            : rawReview;
+        return {
+          status: "passed",
+          output:
+            finalRecommendationReview.status === "accepted"
+              ? "Canonical portfolio review accepted the plan."
+              : `Canonical portfolio review rejected the plan: ${finalRecommendationReview.rejectionReason ?? finalRecommendationReview.rationale}`,
+          payload: {
+            portfolioPlan: true,
+            plan,
+            plans: [plan],
+            finalRecommendationReview,
+          },
+          execution: buildExecutionMetadata(WorkflowHarnessKind.COPILOT_SDK, [
+            bamlCall("ReviewFinalRecommendation", bamlModel),
+          ]),
+        };
+      }
+
       if (isOpportunityReviewNode(node)) {
         const opportunity = readNodeInput<Opportunity>(node, "opportunity");
         const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
@@ -1947,7 +2572,11 @@ export function createSourceToProjectHarnessRegistry(
           "project-research",
           "projectBrief",
         );
-        const originalPrompt = options.originalPrompt ?? context.objective ?? "";
+        const originalPrompt = buildScopedOpportunityReviewObjective({
+          portfolioObjective: options.originalPrompt ?? context.objective ?? "",
+          opportunity,
+          acceptance,
+        });
         const bamlModel = resolveBamlModel(
           SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW,
         );
@@ -2158,7 +2787,12 @@ export function createSourceToProjectHarnessRegistry(
                   "implementationReviewVerdict",
                 ).blockingFindings.map((finding) => `- ${finding}`),
               ].join("\n")
-            : node.prompt;
+            : node.id === "implement-selected-bundles"
+              ? [
+                  node.prompt,
+                  `Audited canonical portfolio plan:\n${getPayloadValue<string>(context, "report-portfolio", "rawPlanMarkdown")}`,
+                ].join("\n\n")
+              : node.prompt;
         const raw = await copilot.run({
           cwd: worktreePath,
           prompt,
@@ -2420,6 +3054,130 @@ export function createSourceToProjectHarnessRegistry(
         execution: reporterExecution(node),
       };
     }
+    if (node.id === "report-portfolio") {
+      const reviewNodeId = node.dependsOn[0];
+      if (!reviewNodeId) {
+        throw new Error("Portfolio report is missing its review dependency.");
+      }
+      const plan = getPayloadValue<PlanArtifactSummary>(context, reviewNodeId, "plan");
+      const portfolioAudit = getOptionalPayloadValue<{
+        passed: boolean;
+        repairAttempted: boolean;
+        initialDraft: PortfolioPlanDraft;
+        initialAudit: PortfolioCoverageAudit;
+        audit: PortfolioCoverageAudit;
+      }>(context, reviewNodeId, "portfolioAudit");
+      if (portfolioAudit) {
+        if (!portfolioAudit.passed) {
+          throw new Error("Portfolio report cannot publish a plan whose final audit did not pass.");
+        }
+        if (!context.outputDir) {
+          throw new Error("Portfolio report requires an output directory for canonical artifacts.");
+        }
+        const finalDraft = getPayloadValue<PortfolioPlanDraft>(
+          context,
+          reviewNodeId,
+          "portfolioDraft",
+        );
+        const compilerJson = getPayloadValue<string>(
+          context,
+          reviewNodeId,
+          "portfolioCompilerJson",
+        );
+        const compiler = JSON.parse(compilerJson) as {
+          practiceLedger?: SourcePracticeLedger;
+          applicabilityMatrix?: ProjectApplicabilityMatrix;
+          requiredCoverage?: RequiredCoverage;
+          acceptedOpportunityCoverage?: unknown;
+        };
+        if (!compiler.practiceLedger || !compiler.applicabilityMatrix) {
+          throw new Error(
+            "Portfolio compiler context is missing its ledger or applicability matrix.",
+          );
+        }
+        const planTranscript = await readRawPlanMarkdownForReport(
+          context.outputDir,
+          plan.rawPlanArtifactPath,
+          plan.planFilePath,
+        );
+        const published = await persistPortfolioCompilerArtifacts({
+          outputDir: context.outputDir,
+          ledger: compiler.practiceLedger,
+          matrix: compiler.applicabilityMatrix,
+          opportunityCoverage: {
+            required: compiler.requiredCoverage,
+            accepted: compiler.acceptedOpportunityCoverage,
+          },
+          initialDraft: portfolioAudit.initialDraft,
+          initialAudit: portfolioAudit.initialAudit,
+          finalDraft,
+          finalAudit: portfolioAudit.audit,
+          repairAttempted: portfolioAudit.repairAttempted,
+          planTranscript: planTranscript ?? "",
+        });
+        const canonicalPlan = {
+          ...plan,
+          rawPlanArtifactPath: published.canonicalPlanPath,
+          planFilePath: join(context.outputDir, published.canonicalPlanPath),
+        };
+        const sourceToProjectReportMarkdown = [
+          "# Canonical Source-to-Project Plan",
+          "",
+          `- Mode: ${options.mode}`,
+          "- Portfolio audit: passed",
+          `- Repair attempted: ${portfolioAudit.repairAttempted ? "yes" : "no"}`,
+          "",
+          finalDraft.markdown,
+        ].join("\n");
+        return {
+          status: "passed",
+          output: sourceToProjectReportMarkdown,
+          payload: {
+            portfolioPlan: true,
+            plan: canonicalPlan,
+            plans: [canonicalPlan],
+            portfolioAudit,
+            canonicalPlanPath: published.canonicalPlanPath,
+            sourceToProjectReportMarkdown,
+            rawPlanMarkdown: finalDraft.markdown,
+          },
+          artifacts: published.artifacts,
+          execution: reporterExecution(node),
+        };
+      }
+      const finalRecommendationReview = getPayloadValue<FinalRecommendationReview>(
+        context,
+        reviewNodeId,
+        "finalRecommendationReview",
+      );
+      const rawPlanMarkdown = await readRawPlanMarkdownForReport(
+        context.outputDir,
+        plan.rawPlanArtifactPath,
+        plan.planFilePath,
+      );
+      const sourceToProjectReportMarkdown = [
+        "# Canonical Source-to-Project Plan",
+        "",
+        `- Mode: ${options.mode}`,
+        `- Review: ${finalRecommendationReview.status}`,
+        `- Rationale: ${finalRecommendationReview.rationale}`,
+        "",
+        rawPlanMarkdown ?? renderPlanSummaryForPortfolio(plan),
+      ].join("\n");
+      return {
+        status: "passed",
+        output: sourceToProjectReportMarkdown,
+        payload: {
+          portfolioPlan: true,
+          plan,
+          plans: [plan],
+          finalRecommendationReview,
+          sourceToProjectReportMarkdown,
+          ...(rawPlanMarkdown ? { rawPlanMarkdown } : {}),
+        },
+        execution: reporterExecution(node),
+      };
+    }
     if (isOpportunityReportNode(node)) {
       const opportunity = readNodeInput<Opportunity>(node, "opportunity");
       const acceptance = readNodeInput<OpportunityAcceptance>(node, "opportunityAcceptance");
@@ -2594,7 +3352,18 @@ export function createSourceToProjectDynamicExpander(
       options.thresholds,
       options.project.thresholds,
     );
-    const opportunityAcceptances = selectAcceptedOpportunities(councilReview, thresholds);
+    const opportunityAcceptances =
+      (result.payload?.opportunityAcceptances as OpportunityAcceptance[] | undefined) ??
+      selectAcceptedOpportunities(councilReview, thresholds);
+    const opportunityCoverage = result.payload?.opportunityCoverage as RequiredCoverage | undefined;
+    if (opportunityCoverage) {
+      validateOpportunityCoverage(
+        opportunityCoverage,
+        opportunityAcceptances
+          .filter((acceptance) => acceptance.accepted)
+          .map((acceptance) => acceptance.opportunity),
+      );
+    }
     const allAccepted = opportunityAcceptances.filter((acceptance) => acceptance.accepted);
     if (allAccepted.length === 0) {
       return [
@@ -2625,19 +3394,42 @@ export function createSourceToProjectDynamicExpander(
     const maxOpportunities = options.maxOpportunities ?? options.project.maxOpportunities ?? 0;
     const promotedCandidates = selectPromotedAcceptedCandidates(
       councilReview,
-      allAccepted,
+      opportunityAcceptances,
       maxOpportunities,
+      thresholds,
     );
 
-    const opportunityNodes = promotedCandidates.flatMap((candidate) =>
-      buildOpportunityFanOutNodes(candidate.acceptance, candidate.selectedCandidate),
-    );
+    const planningRoute: PortfolioPlanningRoute =
+      options.portfolioPlanningMode === "direct"
+        ? {
+            kind: "direct",
+            reason: "canonical-only planning requested by the caller",
+          }
+        : selectPortfolioPlanningRoute(
+            promotedCandidates.map(({ acceptance, selectedCandidate }) => ({
+              id: acceptance.id,
+              kind: selectedCandidate?.kind ?? "opportunity",
+              behaviorIds: acceptance.opportunity.behaviorIds,
+              targetLayers: acceptance.opportunity.targetLayers,
+            })),
+          );
+    const opportunityNodes =
+      planningRoute.kind === "child-synthesis"
+        ? promotedCandidates.flatMap((candidate) =>
+            buildOpportunityFanOutNodes(
+              candidate.acceptance,
+              candidate.selectedCandidate,
+              options.includeVisualDesign ?? true,
+            ),
+          )
+        : [];
+    const portfolioNodes =
+      promotedCandidates.length > 0
+        ? buildPortfolioPlanNodes(promotedCandidates, planningRoute)
+        : [];
     return options.mode === "autonomous-pr"
-      ? [
-          ...opportunityNodes,
-          ...buildAutonomousPrNodes(promotedCandidates.map((candidate) => candidate.acceptance)),
-        ]
-      : opportunityNodes;
+      ? [...opportunityNodes, ...portfolioNodes, ...buildAutonomousPrNodes()]
+      : [...opportunityNodes, ...portfolioNodes];
   };
 }
 
@@ -2713,16 +3505,52 @@ export function selectAcceptedOpportunities(
   });
 }
 
+function selectCoverageCompleteAcceptances(
+  review: OpportunityCouncilReview,
+  acceptances: OpportunityAcceptance[],
+  required: RequiredCoverage,
+): OpportunityAcceptance[] {
+  const eligible = acceptances.filter(
+    (acceptance) =>
+      acceptance.opportunity.evidence.length > 0 && !acceptance.opportunity.speculative,
+  );
+  const selected = selectCoverageCompleteCandidates(
+    required.behaviorIds,
+    eligible.map((acceptance) => ({
+      ...acceptance.opportunity,
+      acceptanceScore: acceptance.acceptanceAverage,
+    })),
+  );
+  const selectedIds = new Set(selected.map((candidate) => candidate.id));
+  const coverageComplete = acceptances.map((acceptance) => ({
+    ...acceptance,
+    accepted: selectedIds.has(acceptance.id),
+    reason: selectedIds.has(acceptance.id)
+      ? `Accepted to preserve required source-practice coverage (${acceptance.acceptanceAverage.toFixed(2)} quality average).`
+      : "Rejected because a smaller accepted set preserves the complete required source-practice coverage.",
+  }));
+  validateOpportunityCoverage(
+    required,
+    coverageComplete
+      .filter((acceptance) => acceptance.accepted)
+      .map((acceptance) => acceptance.opportunity),
+  );
+  if (coverageComplete.length !== review.opportunities.length) {
+    throw new Error("Coverage selection did not preserve the council opportunity set.");
+  }
+  return coverageComplete;
+}
+
 function selectPromotedAcceptedCandidates(
   review: OpportunityCouncilReview,
-  accepted: OpportunityAcceptance[],
+  allAcceptances: OpportunityAcceptance[],
   maxOpportunities: number,
+  thresholds: SourceToProjectThresholds,
 ): Array<{ acceptance: OpportunityAcceptance; selectedCandidate?: PlanCandidate }> {
-  const sortedAccepted = [...accepted].sort((a, b) => b.acceptanceAverage - a.acceptanceAverage);
-  const acceptedById = new Map(sortedAccepted.map((acceptance) => [acceptance.id, acceptance]));
-  const opportunityById = new Map(
-    review.opportunities.map((opportunity) => [opportunity.id, opportunity]),
-  );
+  const sortedAccepted = allAcceptances
+    .filter((acceptance) => acceptance.accepted)
+    .sort((a, b) => b.acceptanceAverage - a.acceptanceAverage);
+  const acceptanceById = new Map(allAcceptances.map((acceptance) => [acceptance.id, acceptance]));
   const selected: Array<{ acceptance: OpportunityAcceptance; selectedCandidate?: PlanCandidate }> =
     [];
   const coveredOpportunityIds = new Set<string>();
@@ -2730,86 +3558,100 @@ function selectPromotedAcceptedCandidates(
   const bundleCandidates = review.bundles
     .map((bundle, index) => {
       const uniqueOpportunityIds = [...new Set(bundle.opportunityIds)];
-      const acceptedMembers = uniqueOpportunityIds
-        .map((id) => acceptedById.get(id))
+      const members = uniqueOpportunityIds
+        .map((id) => acceptanceById.get(id))
         .filter((acceptance): acceptance is OpportunityAcceptance => Boolean(acceptance));
+      const acceptedCount = members.filter((member) => member.accepted).length;
+      const recoversRejectedMembers = acceptedCount < members.length;
+      const acceptanceAverage =
+        members.reduce((sum, acceptance) => sum + acceptance.acceptanceAverage, 0) /
+        Math.max(members.length, 1);
       if (
         !isValidPromotionBundle(bundle) ||
         uniqueOpportunityIds.length !== bundle.opportunityIds.length ||
-        acceptedMembers.length !== uniqueOpportunityIds.length ||
-        acceptedMembers.length < 2
+        members.length !== uniqueOpportunityIds.length ||
+        acceptedCount < 2 ||
+        (recoversRejectedMembers &&
+          acceptanceAverage < thresholds.minAcceptanceAverage - BUNDLE_AVERAGE_RECOVERY_MARGIN) ||
+        members.some((member) => !member.accepted && !isRecoverableBundleMember(member, thresholds))
       ) {
         return undefined;
       }
-      const acceptanceAverage =
-        acceptedMembers.reduce((sum, acceptance) => sum + acceptance.acceptanceAverage, 0) /
-        acceptedMembers.length;
-      return { bundle, acceptedMembers, acceptanceAverage, index };
+      return { bundle, members, acceptanceAverage, index };
     })
     .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
     .sort(
       (left, right) =>
-        right.acceptedMembers.length - left.acceptedMembers.length ||
+        right.members.length - left.members.length ||
         right.acceptanceAverage - left.acceptanceAverage ||
         left.index - right.index,
     );
 
   for (const candidate of bundleCandidates) {
-    const uncoveredAcceptedMembers = candidate.acceptedMembers.filter(
+    const uncoveredMembers = candidate.members.filter(
       (acceptance) => !coveredOpportunityIds.has(acceptance.id),
     );
-    if (uncoveredAcceptedMembers.length < 2) {
+    if (uncoveredMembers.length < 2) {
       continue;
     }
-    const memberOpportunities = candidate.bundle.opportunityIds
-      .map((id) => opportunityById.get(id))
-      .filter((opportunity): opportunity is Opportunity => Boolean(opportunity));
-    const acceptedMemberOpportunities = uncoveredAcceptedMembers.map(
-      (acceptance) => acceptance.opportunity,
-    );
-    const score = averageOpportunityScore(acceptedMemberOpportunities);
-    const evidence = acceptedMemberOpportunities.flatMap((opportunity) => opportunity.evidence);
+    const memberOpportunities = uncoveredMembers.map((acceptance) => acceptance.opportunity);
+    const score = averageOpportunityScore(memberOpportunities);
+    const evidence = memberOpportunities.flatMap((opportunity) => opportunity.evidence);
     const syntheticOpportunity: Opportunity = {
       id: candidate.bundle.id,
       title: candidate.bundle.id,
-      lesson: acceptedMemberOpportunities.map((opportunity) => opportunity.lesson).join("\n"),
+      changeKind:
+        candidate.bundle.changeKind ??
+        (memberOpportunities.every((opportunity) => opportunity.changeKind === "tool-integration")
+          ? "tool-integration"
+          : "code-change"),
+      lesson: memberOpportunities.map((opportunity) => opportunity.lesson).join("\n"),
       projectChange: candidate.bundle.maxPrScope,
       changeSurface: candidate.bundle.sharedChangeSurface,
+      practiceIds: candidate.bundle.practiceIds,
+      behaviorIds: candidate.bundle.behaviorIds,
+      targetLayers: candidate.bundle.targetLayers,
+      proofIds: candidate.bundle.proofIds,
       score: {
         ...score,
         applicabilityReasoning: summarizeBundleMemberReasoning(
-          acceptedMemberOpportunities,
+          memberOpportunities,
           (opportunity) => opportunity.score.applicabilityReasoning,
         ),
         impactReasoning: summarizeBundleMemberReasoning(
-          acceptedMemberOpportunities,
+          memberOpportunities,
           (opportunity) => opportunity.score.impactReasoning,
         ),
         confidenceReasoning: summarizeBundleMemberReasoning(
-          acceptedMemberOpportunities,
+          memberOpportunities,
           (opportunity) => opportunity.score.confidenceReasoning,
         ),
         implementationCostReasoning: summarizeBundleMemberReasoning(
-          acceptedMemberOpportunities,
+          memberOpportunities,
           (opportunity) => opportunity.score.implementationCostReasoning,
         ),
         riskReasoning: summarizeBundleMemberReasoning(
-          acceptedMemberOpportunities,
+          memberOpportunities,
           (opportunity) => opportunity.score.riskReasoning,
         ),
       },
       evidence,
-      speculative: acceptedMemberOpportunities.every((opportunity) => opportunity.speculative),
+      speculative: memberOpportunities.every((opportunity) => opportunity.speculative),
     };
     const acceptance = bundleOpportunityAcceptance(
       candidate.bundle,
       syntheticOpportunity,
-      uncoveredAcceptedMembers,
+      uncoveredMembers,
     );
     selected.push({
       acceptance,
       selectedCandidate: {
         kind: "bundle",
+        changeKind:
+          candidate.bundle.changeKind ??
+          (memberOpportunities.every((opportunity) => opportunity.changeKind === "tool-integration")
+            ? "tool-integration"
+            : "code-change"),
         id: candidate.bundle.id,
         title: candidate.bundle.id,
         opportunityIds: candidate.bundle.opportunityIds,
@@ -2826,9 +3668,10 @@ function selectPromotedAcceptedCandidates(
         metaInfrastructurePenalty: 0,
         qualityScore: acceptance.acceptanceAverage,
         raw: candidate.bundle,
+        memberOpportunities,
       },
     });
-    for (const member of uncoveredAcceptedMembers) {
+    for (const member of uncoveredMembers) {
       coveredOpportunityIds.add(member.id);
     }
   }
@@ -2841,6 +3684,18 @@ function selectPromotedAcceptedCandidates(
   }
 
   return maxOpportunities > 0 ? selected.slice(0, maxOpportunities) : selected;
+}
+
+function isRecoverableBundleMember(
+  acceptance: OpportunityAcceptance,
+  thresholds: SourceToProjectThresholds,
+): boolean {
+  return (
+    acceptance.opportunity.evidence.length > 0 &&
+    !acceptance.opportunity.speculative &&
+    acceptance.opportunity.score.risk <= thresholds.maxRisk &&
+    acceptance.acceptanceAverage >= thresholds.minAcceptanceAverage - BUNDLE_MEMBER_RECOVERY_MARGIN
+  );
 }
 
 function isValidPromotionBundle(bundle: OpportunityBundle): boolean {
@@ -2857,16 +3712,16 @@ function isValidPromotionBundle(bundle: OpportunityBundle): boolean {
 function bundleOpportunityAcceptance(
   bundle: OpportunityBundle,
   opportunity: Opportunity,
-  acceptedMembers: OpportunityAcceptance[],
+  members: OpportunityAcceptance[],
 ): OpportunityAcceptance {
   const acceptanceAverage =
-    acceptedMembers.reduce((sum, acceptance) => sum + acceptance.acceptanceAverage, 0) /
-    acceptedMembers.length;
+    members.reduce((sum, acceptance) => sum + acceptance.acceptanceAverage, 0) / members.length;
+  const recoveredCount = members.filter((member) => !member.accepted).length;
   return {
     id: bundle.id,
     title: bundle.id,
     accepted: true,
-    reason: `Accepted bundle ${bundle.id} because it covers ${acceptedMembers.length} accepted opportunities with one shared change surface.`,
+    reason: `Accepted bundle ${bundle.id} because it covers ${members.length} evidence-grounded opportunities with one shared change surface${recoveredCount > 0 ? `, including ${recoveredCount} complementary member${recoveredCount === 1 ? "" : "s"} within the bounded bundle-recovery margin` : ""}.`,
     acceptanceAverage,
     scores: {
       applicability: opportunity.score.applicability,
@@ -2885,6 +3740,7 @@ function bundleOpportunityAcceptance(
 function buildOpportunityFanOutNodes(
   acceptance: OpportunityAcceptance,
   selectedCandidate?: PlanCandidate,
+  includeVisualDesign = true,
 ): RuntimeWorkflowNode[] {
   const idPart = toNodeIdPart(acceptance.id);
   const sharedInput = {
@@ -2892,7 +3748,7 @@ function buildOpportunityFanOutNodes(
     opportunityAcceptance: acceptance,
     ...(selectedCandidate ? { selectedCandidate } : {}),
   };
-  return [
+  const nodes: RuntimeWorkflowNode[] = [
     {
       id: `plan-opportunity-${idPart}`,
       kind: WorkflowNodeKind.PLANNING,
@@ -2935,7 +3791,9 @@ function buildOpportunityFanOutNodes(
       writeMode: "read-only",
       replanPolicy: "never",
     },
-    {
+  ];
+  if (includeVisualDesign) {
+    nodes.push({
       id: `visual-design-opportunity-${idPart}`,
       kind: WorkflowNodeKind.VISUALIZATION,
       harness: WorkflowHarnessKind.COPILOT_SDK,
@@ -2945,6 +3803,71 @@ function buildOpportunityFanOutNodes(
       prompt: `Create a visual design plan from the ${acceptance.id} source-to-project report.`,
       input: sharedInput,
       dependsOn: [`report-opportunity-${idPart}`],
+      gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    });
+  }
+  return nodes;
+}
+
+function buildPortfolioPlanNodes(
+  candidates: Array<{ acceptance: OpportunityAcceptance; selectedCandidate?: PlanCandidate }>,
+  planningRoute: PortfolioPlanningRoute,
+): RuntimeWorkflowNode[] {
+  const planningDependencies =
+    planningRoute.kind === "direct"
+      ? ["council-review"]
+      : candidates.map(({ acceptance }) => `review-opportunity-${toNodeIdPart(acceptance.id)}`);
+  const input = {
+    planningRoute,
+    portfolioCandidates: candidates.map(({ acceptance, selectedCandidate }) => ({
+      acceptance,
+      ...(selectedCandidate ? { selectedCandidate } : {}),
+    })),
+  };
+  return [
+    {
+      id: "plan-portfolio",
+      kind: WorkflowNodeKind.PLANNING,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Synthesize accepted opportunities into one implementation plan",
+      description:
+        "Create the canonical source-to-project plan by reconciling all accepted opportunity plans into one cohesive implementation sequence.",
+      ...nodeModelMetadata(SourceToProjectModelOperation.PLAN_GENERATION),
+      prompt: "Synthesize the accepted opportunity plans into one canonical portfolio plan.",
+      input,
+      dependsOn: planningDependencies,
+      gates: [WorkflowGateKind.VERIFICATION],
+      writeMode: "read-only",
+      replanPolicy: "on-verification-failure",
+    },
+    {
+      id: "audit-portfolio",
+      kind: WorkflowNodeKind.DELIBERATION,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Audit canonical portfolio coverage",
+      description:
+        "Audit the canonical plan against exact source-practice, behavior, proof, and specialized-obligation coverage.",
+      ...nodeModelMetadata(SourceToProjectModelOperation.PORTFOLIO_AUDIT),
+      prompt: "Audit the canonical source-to-project portfolio plan coverage.",
+      input,
+      dependsOn: ["plan-portfolio"],
+      gates: [WorkflowGateKind.REVIEW_ACCEPTED],
+      writeMode: "read-only",
+      replanPolicy: "never",
+    },
+    {
+      id: "report-portfolio",
+      kind: WorkflowNodeKind.REPORT,
+      harness: WorkflowHarnessKind.REPORTER,
+      title: "Report the canonical source-to-project plan",
+      description:
+        "Publish the synthesized portfolio plan as the canonical advisory result while preserving opportunity-level reports.",
+      ...nodeModelMetadata(SourceToProjectModelOperation.DETERMINISTIC),
+      prompt: "Publish the canonical source-to-project portfolio plan as markdown.",
+      input,
+      dependsOn: ["audit-portfolio"],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
       writeMode: "read-only",
       replanPolicy: "never",
@@ -2984,7 +3907,7 @@ function buildAutonomousPrNodes(accepted: OpportunityAcceptance[]): RuntimeWorkf
       ...nodeModelMetadata(SourceToProjectModelOperation.IMPLEMENTATION),
       prompt:
         "Implement the accepted source-to-project opportunity or bundle in the prepared worktree.",
-      dependsOn: ["prepare-worktree", ...reviewNodeIds],
+      dependsOn: ["prepare-worktree", "report-portfolio"],
       gates: [WorkflowGateKind.VERIFICATION],
       writeMode: "single-writer",
       replanPolicy: "on-verification-failure",
@@ -3077,6 +4000,7 @@ function buildAutonomousPrNodes(accepted: OpportunityAcceptance[]): RuntimeWorkf
 function buildExecutionMetadata(
   executor: string,
   calls: WorkflowExecutionCall[],
+  metadata?: Record<string, unknown>,
 ): WorkflowExecutionMetadata {
   const firstCall = calls[0];
   return {
@@ -3087,6 +4011,53 @@ function buildExecutionMetadata(
     cwd: firstCall?.cwd,
     model: firstCall?.model,
     calls,
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
+function buildPortfolioCompilerMetadata(args: {
+  compilerJson: string;
+  coverage: RequiredCoverage;
+  initialAudit: PortfolioCoverageAudit;
+  finalAudit: PortfolioCoverageAudit;
+  repairAttempted: boolean;
+}): Record<string, unknown> {
+  const compiler = JSON.parse(args.compilerJson) as {
+    applicabilityMatrix?: ProjectApplicabilityMatrix;
+    acceptedOpportunityCoverage?: Array<{ kind?: string }>;
+    planningRoute?: PortfolioPlanningRoute;
+    evidenceRepairAttempted?: boolean;
+  };
+  const assessments = compiler.applicabilityMatrix?.assessments ?? [];
+  const practiceCounts = {
+    applicable: assessments.filter((item) => item.status === "applicable").length,
+    partial: assessments.filter((item) => item.status === "partial").length,
+    notApplicable: assessments.filter((item) => item.status === "not-applicable").length,
+    unknown: assessments.filter((item) => item.status === "unknown").length,
+  };
+  const initialStatuses = [
+    ...args.initialAudit.behaviorAssessments.map((item) => item.status),
+    ...args.initialAudit.specializedAssessments.map((item) => item.status),
+  ];
+  const acceptedCoverage = compiler.acceptedOpportunityCoverage ?? [];
+  return {
+    practiceCounts,
+    requiredBehaviorCount: args.coverage.behaviorIds.length,
+    coveredBehaviorCount: args.finalAudit.behaviorAssessments.filter(
+      (item) => item.status === "complete",
+    ).length,
+    opportunityCount: acceptedCoverage.length,
+    promotedBundleCount: acceptedCoverage.filter((item) => item.kind === "bundle").length,
+    planningRoute: compiler.planningRoute?.kind,
+    planningRouteReason: compiler.planningRoute?.reason,
+    evidenceRepairAttempted: compiler.evidenceRepairAttempted ?? false,
+    portfolioRepairAttempted: args.repairAttempted,
+    initialAuditGapCounts: {
+      partial: initialStatuses.filter((status) => status === "partial").length,
+      missing: initialStatuses.filter((status) => status === "missing").length,
+      contradicted: initialStatuses.filter((status) => status === "contradicted").length,
+    },
+    finalAuditStatus: "passed",
   };
 }
 
@@ -3126,6 +4097,7 @@ function resolveOpportunityPlanExecution(
   const selectedCandidateJson = JSON.stringify(
     selectedCandidate ?? {
       kind: "opportunity",
+      changeKind: opportunity.changeKind ?? "code-change",
       id: opportunity.id,
       title: opportunity.title,
       opportunityIds: [opportunity.id],
@@ -3140,12 +4112,51 @@ function resolveOpportunityPlanExecution(
   );
   const rawPlanArtifactPath = rawPlanArtifactPathForNode(node.id);
   const projectJson = projectBrief ? JSON.stringify(projectBrief) : JSON.stringify(project);
-  const prompt = buildPlanPrompt(
-    selectedCandidateJson,
+  const practiceLedger = getOptionalPayloadValue<SourcePracticeLedger>(
+    context,
+    "source-reading",
+    "practiceLedger",
+  );
+  const sourceAnalysis = getOptionalPayloadValue<SourceAnalysis>(
+    context,
+    "source-reading",
+    "sourceAnalysis",
+  );
+  const applicabilityMatrix = getOptionalPayloadValue<ProjectApplicabilityMatrix>(
+    context,
+    "project-research",
+    "applicabilityMatrix",
+  );
+  const opportunityCoverage = getOptionalPayloadValue<RequiredCoverage>(
+    context,
+    "council-review",
+    "opportunityCoverage",
+  );
+  const prompt = buildChildPlanPrompt({
+    originalObjective: context.objective ?? "",
     projectJson,
+    practiceLedgerJson: JSON.stringify(practiceLedger ?? sourceAnalysis?.practiceLedger ?? {}),
+    applicabilityMatrixJson: JSON.stringify(applicabilityMatrix ?? projectBrief ?? {}),
+    requiredCoverageJson: JSON.stringify(opportunityCoverage ?? {}),
+    acceptedOpportunityCoverageJson: JSON.stringify(
+      councilReview.opportunities.map((candidate) => ({
+        id: candidate.id,
+        practiceIds: candidate.practiceIds,
+        behaviorIds: candidate.behaviorIds,
+        proofIds: candidate.proofIds,
+        targetLayers: candidate.targetLayers,
+      })),
+    ),
+    sourceAnalysisJson: sourceAnalysis ? JSON.stringify(sourceAnalysis) : undefined,
+    specializedObligationsJson: JSON.stringify(
+      specializedObligationsFor(opportunity.changeKind ?? "code-change"),
+    ),
+    candidateJson: selectedCandidateJson,
+    assignedBehaviorIds: opportunity.behaviorIds,
+    assignedProofIds: opportunity.proofIds,
     rawPlanArtifactPath,
     rawTranscripts,
-  );
+  });
   const copilotModel = resolveCopilotModel(
     SourceToProjectModelOperation.PLAN_GENERATION,
     sourceToProject,
@@ -4058,10 +5069,23 @@ function resolveBamlClient(options: SourceToProjectHarnessOptions): SourceToProj
       injected?.DistillCorroboration?.bind(injected) ?? deterministic.DistillCorroboration,
     DistillProjectBrief:
       injected?.DistillProjectBrief?.bind(injected) ?? deterministic.DistillProjectBrief,
+    DistillProjectApplicability:
+      injected?.DistillProjectApplicability?.bind(injected) ??
+      deterministic.DistillProjectApplicability,
+    RepairProjectApplicability:
+      injected?.RepairProjectApplicability?.bind(injected) ??
+      deterministic.RepairProjectApplicability,
     MapSourceToProject:
       injected?.MapSourceToProject?.bind(injected) ?? deterministic.MapSourceToProject,
     DistillPlanArtifact:
       injected?.DistillPlanArtifact?.bind(injected) ?? deterministic.DistillPlanArtifact,
+    DistillPortfolioPlanDraft:
+      injected?.DistillPortfolioPlanDraft?.bind(injected) ??
+      deterministic.DistillPortfolioPlanDraft,
+    AuditPortfolioCoverage:
+      injected?.AuditPortfolioCoverage?.bind(injected) ?? deterministic.AuditPortfolioCoverage,
+    RepairPortfolioPlan:
+      injected?.RepairPortfolioPlan?.bind(injected) ?? deterministic.RepairPortfolioPlan,
     ReviewFinalRecommendation:
       injected?.ReviewFinalRecommendation?.bind(injected) ??
       deterministic.ReviewFinalRecommendation,
@@ -4100,6 +5124,80 @@ function collectPlansFromDependencies(
     const plan = payload.plan;
     return plan ? [plan as PlanArtifactSummary] : [];
   });
+}
+
+function collectOpportunityReviewsFromDependencies(
+  context: WorkflowExecutionContext,
+  node: RuntimeWorkflowNode,
+): Array<{
+  title: string;
+  status: string;
+  rationale: string;
+  rejectionReason?: string | null;
+}> {
+  return node.dependsOn.flatMap((dependency) => {
+    const payload = context.payloads.get(dependency);
+    const plan = payload?.plan as PlanArtifactSummary | undefined;
+    const review = payload?.finalRecommendationReview as FinalRecommendationReview | undefined;
+    if (!plan || !review) {
+      return [];
+    }
+    return [
+      {
+        title: plan.title,
+        status: review.status,
+        rationale: review.rationale,
+        rejectionReason: review.rejectionReason,
+      },
+    ];
+  });
+}
+
+function buildScopedOpportunityReviewObjective(args: {
+  portfolioObjective: string;
+  opportunity: Opportunity;
+  acceptance: OpportunityAcceptance;
+}): string {
+  return [
+    "Review this plan as one component of a larger source-to-project portfolio.",
+    "Judge whether it completely and coherently satisfies the accepted opportunity contract below, including its source lesson, target-project evidence, change surface, implementation boundaries, and verification.",
+    "Do not reject this component merely because it omits other accepted opportunities that will be reconciled by the canonical portfolio plan.",
+    "Reject it when it misses or relocates a responsibility within its own accepted scope, contradicts project evidence, adds unjustified complexity, or cannot be implemented and verified as written.",
+    `Portfolio objective for context:\n${args.portfolioObjective}`,
+    `Accepted opportunity contract:\n${JSON.stringify({
+      id: args.opportunity.id,
+      title: args.opportunity.title,
+      lesson: args.opportunity.lesson,
+      projectChange: args.opportunity.projectChange,
+      changeSurface: args.opportunity.changeSurface,
+      evidence: args.opportunity.evidence,
+      acceptanceReason: args.acceptance.reason,
+    })}`,
+  ].join("\n\n");
+}
+
+function renderPlanSummaryForPortfolio(plan: PlanArtifactSummary): string {
+  return [
+    `# ${plan.title}`,
+    "",
+    plan.recommendation,
+    "",
+    "## Problem",
+    "",
+    plan.problemSolved,
+    "",
+    "## Target change",
+    "",
+    plan.targetChange,
+    "",
+    "## Implementation outline",
+    "",
+    ...plan.implementationOutline.map((step, index) => `${index + 1}. ${step}`),
+    "",
+    "## Validation",
+    "",
+    ...plan.validationCommands.map((command) => `- ${command}`),
+  ].join("\n");
 }
 
 function readNodeInput<T>(node: RuntimeWorkflowNode, key: string): T {
@@ -4352,6 +5450,7 @@ function buildOpportunityCandidate(
   );
   return {
     kind: "opportunity",
+    changeKind: opportunity.changeKind ?? "code-change",
     id: opportunity.id,
     title: opportunity.title,
     opportunityIds: [opportunity.id],
@@ -4398,6 +5497,11 @@ function buildBundleCandidate(
   const qualityScore = candidateQualityScore(score, sourceCoreFit, metaInfrastructurePenalty);
   return {
     kind: "bundle",
+    changeKind:
+      bundle.changeKind ??
+      (included.every((opportunity) => opportunity.changeKind === "tool-integration")
+        ? "tool-integration"
+        : "code-change"),
     id: bundle.id,
     title: bundle.id,
     opportunityIds: bundle.opportunityIds,
@@ -4521,6 +5625,36 @@ function createDeterministicBamlClient(
         evidence: [
           { id: "source-e1", source: String(source), quote: "transferable implementation lesson" },
         ],
+        practiceLedger: {
+          sourceId: "source-1",
+          summary: `Source analysis for ${String(source)}`,
+          claims: ["The source contains a transferable implementation lesson."],
+          practices: [
+            {
+              id: "matching-project-surface",
+              title: "Improve a matching project surface",
+              behavior: "Use the source lesson to improve a matching project change surface.",
+              rationale: "The offline harness needs one deterministic transferable practice.",
+              adoptionPreconditions: ["The target project has a matching change surface."],
+              requiredBehaviors: ["Apply the lesson at the matching project layer."],
+              proofObligations: ["Run the target project's configured validation commands."],
+              evidence: [
+                {
+                  id: "source-e1",
+                  source: String(source),
+                  quote: "transferable implementation lesson",
+                },
+              ],
+            },
+          ],
+          evidence: [
+            {
+              id: "source-e1",
+              source: String(source),
+              quote: "transferable implementation lesson",
+            },
+          ],
+        },
       };
     },
     async DistillCorroboration(sourceAnalysis) {
@@ -4547,15 +5681,62 @@ function createDeterministicBamlClient(
         evidence: [{ id: "project-e1", source: options.project.workingTree, quote: displayName }],
       };
     },
-    async MapSourceToProject(sourceAnalysis, _corroboration, projectBrief) {
+    async DistillProjectApplicability(projectJson, practiceLedger) {
+      const project = readJsonRecord(projectJson);
+      const projectId = String(project.id ?? options.project.id);
+      const projectEvidence = [
+        {
+          id: "project-e1",
+          source: options.project.workingTree,
+          quote: String(project.displayName ?? options.project.displayName),
+        },
+      ];
+      return {
+        projectId,
+        architecture: "Repository architecture summarized by the harness.",
+        constraints: options.project.contextDocs,
+        validationCommands: options.project.validationCommands,
+        evidence: projectEvidence,
+        assessments: practiceLedger.practices.map((practice) => ({
+          practiceId: practice.id,
+          status: "applicable" as const,
+          applicableBehaviorIds: practice.behaviorIds,
+          excludedBehaviorIds: [],
+          targetLayers: ["src"],
+          projectEvidence,
+          contradictionEvidence: [],
+          rationale: "The deterministic offline harness exposes a matching project surface.",
+        })),
+      };
+    },
+    async RepairProjectApplicability(_practiceLedger, initialMatrix) {
+      return initialMatrix;
+    },
+    async MapSourceToProject(practiceLedger, _corroboration, applicabilityMatrix) {
+      const applicableAssessments = applicabilityMatrix.assessments.filter(
+        (assessment) => assessment.status === "applicable" || assessment.status === "partial",
+      );
+      const practiceIds = applicableAssessments.map((assessment) => assessment.practiceId);
+      const behaviorIds = applicableAssessments.flatMap(
+        (assessment) => assessment.applicableBehaviorIds,
+      );
+      const practices = practiceLedger.practices.filter((practice) =>
+        practiceIds.includes(practice.id),
+      );
       return {
         opportunities: [
           {
             id: "opp-1",
-            title: `Apply ${sourceAnalysis.title} to ${projectBrief.displayName}`,
-            lesson: sourceAnalysis.transferableLessons[0] ?? sourceAnalysis.summary,
+            title: `Apply ${practiceLedger.summary} to ${applicabilityMatrix.projectId}`,
+            lesson: practices[0]?.behavior ?? practiceLedger.summary,
             projectChange: "Create a bounded plan for the matching project surface.",
-            changeSurface: projectBrief.changeSurfaces[0] ?? "src",
+            changeSurface: applicableAssessments[0]?.targetLayers[0] ?? "src",
+            practiceIds,
+            behaviorIds,
+            targetLayers: [
+              ...new Set(applicableAssessments.flatMap((assessment) => assessment.targetLayers)),
+            ],
+            proofIds: practices.flatMap((practice) => practice.proofIds),
             score: {
               applicability: 0.9,
               applicabilityReasoning:
@@ -4572,7 +5753,7 @@ function createDeterministicBamlClient(
               risk: 0.3,
               riskReasoning: "Low regression risk since the change surface is narrow and reviewed.",
             },
-            evidence: [...sourceAnalysis.evidence, ...projectBrief.evidence],
+            evidence: [...practiceLedger.evidence, ...applicabilityMatrix.evidence],
             speculative: false,
           },
         ],
@@ -4606,6 +5787,54 @@ function createDeterministicBamlClient(
         rawPlanArtifactPath,
       };
     },
+    async DistillPortfolioPlanDraft(compilerJson, planMarkdown) {
+      const compiler = readJsonRecord(compilerJson);
+      const coverage = compiler.requiredCoverage as RequiredCoverage | undefined;
+      const evidenceQuote = firstNonBlankMarkdownLine(planMarkdown);
+      return {
+        title: "Apply source-to-project opportunity",
+        summary: "Implement the required source-to-project coverage.",
+        markdown: planMarkdown,
+        coverageClaims: (coverage?.practiceIds ?? []).map((practiceId) => ({
+          practiceId,
+          behaviorIds: (coverage?.behaviorIds ?? []).filter((id) =>
+            id.startsWith(`${practiceId}/`),
+          ),
+          proofIds: (coverage?.proofIds ?? []).filter((id) => id.startsWith(`${practiceId}/`)),
+          targetLayers: ["src"],
+          evidenceQuotes: [evidenceQuote],
+        })),
+      };
+    },
+    async AuditPortfolioCoverage(compilerJson, draft) {
+      const compiler = readJsonRecord(compilerJson);
+      const coverage = compiler.requiredCoverage as RequiredCoverage | undefined;
+      const obligations =
+        (compiler.specializedObligations as SpecializedObligation[] | undefined) ?? [];
+      const evidenceQuote = firstNonBlankMarkdownLine(draft.markdown);
+      return {
+        behaviorAssessments: (coverage?.behaviorIds ?? []).map((behaviorId) => ({
+          behaviorId,
+          status: "complete" as const,
+          responsibleLayer: "src",
+          evidenceQuotes: [evidenceQuote],
+          gaps: [],
+          rationale: "The deterministic offline draft maps the required behavior to its plan.",
+        })),
+        specializedAssessments: obligations.map((obligation) => ({
+          obligationId: obligation.id,
+          status: "complete" as const,
+          evidenceQuotes: [evidenceQuote],
+          rationale: "The deterministic offline draft includes the selected obligation.",
+        })),
+        unsupportedClaims: [],
+        contradictions: [],
+        summary: "The deterministic offline portfolio covers the compiler requirements.",
+      };
+    },
+    async RepairPortfolioPlan(_compilerJson, draft) {
+      return draft;
+    },
     async ReviewFinalRecommendation(
       _originalPrompt,
       _source,
@@ -4632,6 +5861,10 @@ function createDeterministicBamlClient(
       };
     },
   };
+}
+
+function firstNonBlankMarkdownLine(markdown: string): string {
+  return markdown.split("\n").find((line) => line.trim()) ?? markdown;
 }
 
 function readJsonRecord(input: string): Record<string, unknown> {

@@ -28,6 +28,10 @@ import {
   selectAcceptedOpportunities,
   stripPlanningAgentPreamble,
 } from "../../../src/macro-workflow/sourceToProject/harnesses.js";
+import {
+  compilePracticeLedger,
+  requiredCoverage,
+} from "../../../src/macro-workflow/sourceToProject/portfolioCompiler.js";
 
 const HOSTED_VISUAL_PLAN_ARTIFACT =
   "Published visual-plan MDX artifact: https://plan.agent-native.com/builder/o5-visual-plan";
@@ -101,6 +105,24 @@ describe("source-to-project harness registry", () => {
             claims: ["Claim"],
             transferableLessons: ["Lesson"],
             evidence: [{ id: "e1", source: "https://example.com/post", quote: "Claim" }],
+            practiceLedger: {
+              sourceId: "source-1",
+              summary: "Summary",
+              claims: ["Claim"],
+              evidence: [{ id: "e1", source: "https://example.com/post", quote: "Claim" }],
+              practices: [
+                {
+                  id: "boundary-validation",
+                  title: "Boundary validation",
+                  behavior: "Validate input at ingress.",
+                  rationale: "Reject malformed input early.",
+                  adoptionPreconditions: ["The project has an ingress boundary."],
+                  requiredBehaviors: ["Validate route input"],
+                  proofObligations: ["Exercise the real adapter"],
+                  evidence: [{ id: "e1", source: "https://example.com/post", quote: "Claim" }],
+                },
+              ],
+            },
           };
         },
       },
@@ -123,6 +145,16 @@ describe("source-to-project harness registry", () => {
 
     expect(result.status).toBe("passed");
     expect(result.payload?.sourceAnalysis).toMatchObject({ sourceId: "source-1", title: "Post" });
+    expect(result.payload?.practiceLedger).toMatchObject({
+      sourceId: "source-1",
+      practices: [
+        {
+          id: "practice-boundary-validation",
+          behaviorIds: ["practice-boundary-validation/behavior-1"],
+          proofIds: ["practice-boundary-validation/proof-1"],
+        },
+      ],
+    });
     expect(copilotCalls[0]?.prompt).toContain("Read the Source artifact");
     expect(copilotCalls[0]?.prompt).toContain("Hard budget: use at most 40 tool calls");
     expect(copilotCalls[0]?.prompt).toContain("Source: https://example.com/post");
@@ -790,8 +822,8 @@ describe("source-to-project harness registry", () => {
         },
       },
       baml: {
-        async DistillProjectBrief() {
-          return projectBriefFixture();
+        async DistillProjectApplicability() {
+          return applicabilityMatrixFixture();
         },
       },
     });
@@ -808,7 +840,16 @@ describe("source-to-project harness registry", () => {
         writeMode: "read-only",
         replanPolicy: "never",
       },
-      { payloads: new Map(), artifacts: new Map(), objective: "Apply source" },
+      {
+        payloads: new Map([
+          [
+            "source-reading",
+            { sourceAnalysis: sourceAnalysisFixture(), practiceLedger: practiceLedgerFixture() },
+          ],
+        ]),
+        artifacts: new Map(),
+        objective: "Apply source",
+      },
     );
 
     expect(maxToolCalls).toEqual([24]);
@@ -832,8 +873,8 @@ describe("source-to-project harness registry", () => {
         },
       },
       baml: {
-        async DistillProjectBrief() {
-          return projectBriefFixture();
+        async DistillProjectApplicability() {
+          return applicabilityMatrixFixture();
         },
       },
     });
@@ -851,7 +892,7 @@ describe("source-to-project harness registry", () => {
               plugin: "hve-core",
               command: "hve-core:task-research",
               promptInputName: "topic",
-              args: { subagents: "auto" },
+              args: { chat: "false", subagents: "false" },
             },
           ],
         },
@@ -860,7 +901,16 @@ describe("source-to-project harness registry", () => {
         writeMode: "read-only",
         replanPolicy: "never",
       },
-      { payloads: new Map(), artifacts: new Map(), objective: "Apply source" },
+      {
+        payloads: new Map([
+          [
+            "source-reading",
+            { sourceAnalysis: sourceAnalysisFixture(), practiceLedger: practiceLedgerFixture() },
+          ],
+        ]),
+        artifacts: new Map(),
+        objective: "Apply source",
+      },
     );
 
     expect(copilotCalls[0]?.capabilityScope).toEqual({
@@ -868,7 +918,7 @@ describe("source-to-project harness registry", () => {
       pluginDirectory: "/plugins/hve-core",
       command: "hve-core:task-research",
       promptInputName: "topic",
-      commandArgs: { subagents: "auto" },
+      commandArgs: { chat: "false", subagents: "false" },
     });
     expect(result.execution?.calls?.[0]).toMatchObject({
       executor: "copilot-sdk",
@@ -878,21 +928,24 @@ describe("source-to-project harness registry", () => {
     expect(result.execution?.calls?.[0]?.prompt).toContain("/hve-core:task-research topic=");
   });
 
-  it("does not scope project-research without node capability metadata", async () => {
-    const copilotCalls: Array<{ capabilityScope?: unknown }> = [];
+  it("uses read-only tools for direct project-research without capability metadata", async () => {
+    const copilotCalls: Array<{ capabilityScope?: unknown; toolPolicy?: unknown }> = [];
     const registry = createSourceToProjectHarnessRegistry({
       source: "https://example.com/post",
       project: projectFixture(),
       mode: "advisory",
       copilot: {
         async run(args) {
-          copilotCalls.push({ capabilityScope: args.capabilityScope });
+          copilotCalls.push({
+            capabilityScope: args.capabilityScope,
+            toolPolicy: args.toolPolicy,
+          });
           return "raw project research";
         },
       },
       baml: {
-        async DistillProjectBrief() {
-          return projectBriefFixture();
+        async DistillProjectApplicability() {
+          return applicabilityMatrixFixture();
         },
       },
     });
@@ -909,10 +962,64 @@ describe("source-to-project harness registry", () => {
         writeMode: "read-only",
         replanPolicy: "never",
       },
-      { payloads: new Map(), artifacts: new Map(), objective: "Apply source" },
+      {
+        payloads: new Map([
+          [
+            "source-reading",
+            { sourceAnalysis: sourceAnalysisFixture(), practiceLedger: practiceLedgerFixture() },
+          ],
+        ]),
+        artifacts: new Map(),
+        objective: "Apply source",
+      },
     );
 
     expect(copilotCalls[0]?.capabilityScope).toBeUndefined();
+    expect(copilotCalls[0]?.toolPolicy).toBe("read-only");
+  });
+
+  it("denies mutating Copilot SDK tools under the read-only policy", async () => {
+    const decisions: unknown[] = [];
+    const client = {
+      async start() {},
+      async createSession(config: unknown) {
+        const hook = (
+          config as {
+            hooks?: { onPreToolUse?: (input: { toolName?: string }) => unknown };
+          }
+        ).hooks?.onPreToolUse;
+        decisions.push(hook?.({ toolName: "view" }));
+        decisions.push(hook?.({ toolName: "rg" }));
+        decisions.push(hook?.({ toolName: "shell" }));
+        decisions.push(hook?.({ toolName: "edit" }));
+        return {
+          async sendAndWait() {
+            return { data: { content: "read-only response" } };
+          },
+          async disconnect() {},
+        };
+      },
+      async stop() {
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({ clientFactory: () => client });
+
+    await expect(
+      copilot.run({ prompt: "Inspect project", mode: "research", toolPolicy: "read-only" }),
+    ).resolves.toBe("read-only response");
+
+    expect(decisions.slice(0, 2)).toEqual([undefined, undefined]);
+    expect(decisions.slice(2)).toEqual([
+      expect.objectContaining({
+        permissionDecision: "deny",
+        permissionDecisionReason: expect.stringContaining("read-only"),
+      }),
+      expect.objectContaining({
+        permissionDecision: "deny",
+        permissionDecisionReason: expect.stringContaining("read-only"),
+      }),
+    ]);
   });
 
   it("denies Copilot SDK tool calls after the configured tool-call budget", async () => {
@@ -1046,6 +1153,79 @@ describe("source-to-project harness registry", () => {
       ]),
     );
     expect(logs.some((log) => log.phase === "assistant-message")).toBe(false);
+  });
+
+  it("rejects the last assistant message on timeout when partial fallback is disabled", async () => {
+    const logs: Array<{
+      phase: string;
+      contentLength?: number;
+      elapsedMs?: number;
+      timeoutMs?: number;
+    }> = [];
+    const session = {
+      handlers: [] as Array<(event: { type: string; data?: { content?: string } }) => void>,
+      async send(message: { prompt: string }) {
+        queueMicrotask(() => {
+          for (const handler of this.handlers) {
+            handler({
+              type: "assistant.message",
+              data: { content: `partial for ${message.prompt}` },
+            });
+          }
+        });
+        return "message-1";
+      },
+      on(_eventHandler: unknown, maybeHandler?: unknown) {
+        const handler = typeof maybeHandler === "function" ? maybeHandler : _eventHandler;
+        this.handlers.push(
+          handler as (event: { type: string; data?: { content?: string } }) => void,
+        );
+        return () => {
+          this.handlers = this.handlers.filter((candidate) => candidate !== handler);
+        };
+      },
+      async disconnect() {},
+    };
+    const client = {
+      async start() {},
+      async createSession() {
+        return session;
+      },
+      async stop() {
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({
+      timeoutMs: 10,
+      clientFactory: () => client,
+      onLog(event) {
+        logs.push({
+          phase: event.phase,
+          contentLength: event.contentLength,
+          elapsedMs: event.elapsedMs,
+          timeoutMs: event.timeoutMs,
+        });
+      },
+    });
+    const prompt = "Plan portfolio";
+
+    await expect(
+      copilot.run({
+        prompt,
+        mode: "plan",
+        acceptPartialOnTimeout: false,
+      }),
+    ).rejects.toThrow("Timeout after 10ms waiting for session.idle");
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: "timeout-rejected-partial",
+          timeoutMs: 10,
+          contentLength: `partial for ${prompt}`.length,
+          elapsedMs: expect.any(Number),
+        }),
+      ]),
+    );
   });
 
   it("suppresses raw Copilot SDK session-event logs by default", async () => {
@@ -1445,6 +1625,102 @@ describe("source-to-project harness registry", () => {
     );
   });
 
+  it("promotes the minimum opportunity set that preserves required behavior coverage", async () => {
+    const fixture = latestRunCouncilReviewFixture();
+    const requiredOpportunities = fixture.opportunities.slice(0, 2).map((opportunity, index) => ({
+      ...opportunity,
+      speculative: false,
+      behaviorIds: [`practice-required/behavior-${index + 1}`],
+      practiceIds: ["practice-required"],
+      proofIds: ["practice-required/proof-1"],
+      score:
+        index === 0 ? opportunity.score : { ...opportunity.score, impact: 0.4, confidence: 0.6 },
+    }));
+    const councilReview: OpportunityCouncilReview = {
+      opportunities: requiredOpportunities,
+      nonApplicableLessons: [],
+      bundles: [],
+      rankingRationale: "Both behaviors are required.",
+    };
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/required-practices",
+      project: projectFixture(),
+      mode: "advisory",
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.DECISION_COUNCIL)!(
+      {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        payloads: new Map([
+          [
+            "opportunity-mapping",
+            {
+              councilInputReview: councilReview,
+              opportunityCoverage: {
+                practiceIds: ["practice-required"],
+                behaviorIds: ["practice-required/behavior-1", "practice-required/behavior-2"],
+                proofIds: ["practice-required/proof-1"],
+              },
+            },
+          ],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(result.payload?.opportunityAcceptances).toMatchObject([
+      { id: requiredOpportunities[0]!.id, accepted: true },
+      { id: requiredOpportunities[1]!.id, accepted: true },
+    ]);
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/required-practices",
+      project: projectFixture(),
+      mode: "advisory",
+      includeVisualDesign: false,
+    });
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: result.output,
+        payload: result.payload,
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply required practices",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+    expect(nodes?.map((node) => node.id)).toContain(
+      `plan-opportunity-${requiredOpportunities[1]!.id}`,
+    );
+  });
+
   it("verifies the visual-plan installer as a source-to-project preflight", async () => {
     const shellCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
     const registry = createSourceToProjectHarnessRegistry({
@@ -1650,6 +1926,9 @@ describe("source-to-project harness registry", () => {
       "review-opportunity-opp-1",
       "report-opportunity-opp-1",
       "visual-design-opportunity-opp-1",
+      "plan-portfolio",
+      "audit-portfolio",
+      "report-portfolio",
     ]);
     expect(nodes?.find((node) => node.id === "report-opportunity-opp-1")).toMatchObject({
       kind: WorkflowNodeKind.REPORT,
@@ -1665,7 +1944,227 @@ describe("source-to-project harness registry", () => {
     expect(nodes?.find((node) => node.id === "report-opportunity-opp-1")).toMatchObject({
       model: "deterministic",
     });
-    expect(nodes?.filter((node) => node.kind === WorkflowNodeKind.REPORT)).toHaveLength(3);
+    expect(nodes?.filter((node) => node.kind === WorkflowNodeKind.REPORT)).toHaveLength(4);
+  });
+
+  it("omits visual design nodes when the caller requests plan-only fan-out", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      includeVisualDesign: false,
+    });
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: latestRunCouncilReviewFixture() },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    expect(nodes?.some((node) => node.kind === WorkflowNodeKind.VISUALIZATION)).toBe(false);
+    expect(nodes?.filter((node) => node.kind === WorkflowNodeKind.REPORT)).toHaveLength(4);
+  });
+
+  it("adds a canonical portfolio plan after multiple opportunity plans", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      includeVisualDesign: false,
+    });
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: latestRunCouncilReviewFixture() },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    const opportunityReviewIds = [
+      "review-opportunity-opp-3",
+      "review-opportunity-opp-4",
+      "review-opportunity-opp-1",
+    ];
+    expect(nodes?.find((node) => node.id === "plan-portfolio")).toMatchObject({
+      kind: WorkflowNodeKind.PLANNING,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      dependsOn: opportunityReviewIds,
+    });
+    expect(nodes?.find((node) => node.id === "audit-portfolio")).toMatchObject({
+      kind: WorkflowNodeKind.DELIBERATION,
+      dependsOn: ["plan-portfolio"],
+    });
+    expect(nodes?.find((node) => node.id === "report-portfolio")).toMatchObject({
+      kind: WorkflowNodeKind.REPORT,
+      dependsOn: ["audit-portfolio"],
+    });
+    expect(nodes?.filter((node) => node.id.startsWith("report-opportunity-"))).toHaveLength(3);
+  });
+
+  it("plans multiple accepted opportunities directly when canonical-only planning is requested", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      includeVisualDesign: false,
+      portfolioPlanningMode: "direct",
+    });
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: latestRunCouncilReviewFixture() },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    expect(nodes?.map((node) => node.id)).toEqual([
+      "plan-portfolio",
+      "audit-portfolio",
+      "report-portfolio",
+    ]);
+    expect(nodes?.[0]?.input).toMatchObject({
+      planningRoute: {
+        kind: "direct",
+        reason: "canonical-only planning requested by the caller",
+      },
+      portfolioCandidates: [
+        { acceptance: { id: "opp-3" } },
+        { acceptance: { id: "opp-4" } },
+        { acceptance: { id: "opp-1" } },
+      ],
+    });
+  });
+
+  it("adds a canonical portfolio plan after a single promoted opportunity", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      includeVisualDesign: false,
+      maxOpportunities: 1,
+    });
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: latestRunCouncilReviewFixture() },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    expect(nodes?.map((node) => node.id)).toEqual([
+      "plan-portfolio",
+      "audit-portfolio",
+      "report-portfolio",
+    ]);
+    expect(nodes?.find((node) => node.id === "plan-portfolio")).toMatchObject({
+      dependsOn: ["council-review"],
+      input: {
+        planningRoute: {
+          kind: "direct",
+          reason: "one accepted opportunity covers the required behavior set",
+        },
+        portfolioCandidates: [
+          {
+            acceptance: { id: "opp-3" },
+          },
+        ],
+      },
+    });
+    expect(nodes?.find((node) => node.id === "audit-portfolio")).toMatchObject({
+      dependsOn: ["plan-portfolio"],
+    });
+    expect(nodes?.find((node) => node.id === "report-portfolio")).toMatchObject({
+      dependsOn: ["audit-portfolio"],
+    });
   });
 
   it("creates one conditional implementation review cycle", async () => {
@@ -1790,6 +2289,7 @@ describe("source-to-project harness registry", () => {
         {
           id: "bundle-loop-budgeting",
           opportunityIds: ["opp-1", "opp-3", "opp-4"],
+          ...coverageFieldsFor("bundle-loop-budgeting"),
           rationale:
             "These accepted opportunities share one loop-budgeting change surface and should be planned together.",
           sharedChangeSurface: "workflow templates, runner, verifier",
@@ -1801,7 +2301,6 @@ describe("source-to-project harness registry", () => {
         },
       ],
     };
-
     const nodes = await expander({
       node: {
         id: "council-review",
@@ -1832,18 +2331,22 @@ describe("source-to-project harness registry", () => {
     });
 
     expect(nodes?.map((node) => node.id)).toEqual([
-      "plan-opportunity-bundle-loop-budgeting",
-      "review-opportunity-bundle-loop-budgeting",
-      "report-opportunity-bundle-loop-budgeting",
-      "visual-design-opportunity-bundle-loop-budgeting",
+      "plan-portfolio",
+      "audit-portfolio",
+      "report-portfolio",
     ]);
-    const planNode = nodes?.find((node) => node.id === "plan-opportunity-bundle-loop-budgeting");
+    const planNode = nodes?.find((node) => node.id === "plan-portfolio");
     expect(planNode?.input).toMatchObject({
-      selectedCandidate: {
-        kind: "bundle",
-        id: "bundle-loop-budgeting",
-        opportunityIds: ["opp-1", "opp-3", "opp-4"],
-      },
+      planningRoute: { kind: "direct" },
+      portfolioCandidates: [
+        {
+          selectedCandidate: {
+            kind: "bundle",
+            id: "bundle-loop-budgeting",
+            opportunityIds: ["opp-1", "opp-3", "opp-4"],
+          },
+        },
+      ],
     });
   });
 
@@ -1859,6 +2362,7 @@ describe("source-to-project harness registry", () => {
         {
           id: "bundle-with-rejected-member",
           opportunityIds: ["opp-1", "opp-2", "opp-3"],
+          ...coverageFieldsFor("bundle-with-rejected-member"),
           rationale: "This bundle incorrectly includes a speculative opportunity.",
           sharedChangeSurface: "workflow templates and harnesses",
           combinedUserValue: "One joined change.",
@@ -1867,7 +2371,6 @@ describe("source-to-project harness registry", () => {
         },
       ],
     };
-
     const nodes = await expander({
       node: {
         id: "council-review",
@@ -1901,6 +2404,257 @@ describe("source-to-project harness registry", () => {
     expect(nodeIds).not.toContain("plan-opportunity-bundle-with-rejected-member");
     expect(nodeIds).toContain("plan-opportunity-opp-1");
     expect(nodeIds).toContain("plan-opportunity-opp-3");
+  });
+
+  it("promotes a cohesive bundle with a directly evidenced near-threshold member", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+    });
+    const fixture = latestRunCouncilReviewFixture();
+    const recoveredMember = fixture.opportunities.find(
+      (opportunity) => opportunity.id === "opp-2",
+    )!;
+    const review: OpportunityCouncilReview = {
+      ...fixture,
+      opportunities: fixture.opportunities.map((opportunity) =>
+        opportunity.id === recoveredMember.id
+          ? {
+              ...opportunity,
+              speculative: false,
+              score: {
+                ...opportunity.score,
+                applicability: 0.84,
+                impact: 0.83,
+                confidence: 0.83,
+                risk: 0.25,
+              },
+            }
+          : opportunity,
+      ),
+      bundles: [
+        {
+          id: "bundle-cohesive-slice",
+          opportunityIds: ["opp-1", "opp-2", "opp-3"],
+          ...coverageFieldsFor("bundle-cohesive-slice"),
+          rationale: "All three changes are required for one end-to-end improvement.",
+          sharedChangeSurface: "workflow template, runner, and verification",
+          combinedUserValue: "A complete source-derived workflow improvement.",
+          separationRisk: "Splitting the work would leave an incomplete behavior path.",
+          maxPrScope: "Implement and verify the three connected changes in one bounded PR.",
+        },
+      ],
+    };
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: "deliberation",
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: review },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    expect(nodes?.map((node) => node.id)).toContain("plan-opportunity-bundle-cohesive-slice");
+    expect(nodes?.map((node) => node.id)).not.toContain("plan-opportunity-opp-2");
+  });
+
+  it("promotes an evidence-grounded cohesive bundle when decomposition lowers standalone averages", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+      thresholds: {
+        minApplicability: 0.9,
+        minConfidence: 0.9,
+        minImpact: 0.9,
+        minAcceptanceAverage: 0.85,
+        maxRisk: 0.8,
+      },
+    });
+    const fixture = latestRunCouncilReviewFixture();
+    const opportunityIds = ["opp-1", "opp-3", "opp-4", "opp-5", "opp-6"];
+    const review: OpportunityCouncilReview = {
+      ...fixture,
+      opportunities: fixture.opportunities.filter((opportunity) =>
+        opportunityIds.includes(opportunity.id),
+      ),
+      bundles: [
+        {
+          id: "bundle-complete-vertical-slice",
+          opportunityIds,
+          ...coverageFieldsFor("bundle-complete-vertical-slice"),
+          rationale:
+            "The mapper decomposed one end-to-end source practice into independently scored implementation slices.",
+          sharedChangeSurface: "workflow template, runner, verifier, replay, and documentation",
+          combinedUserValue: "One complete and verifiable source-derived workflow improvement.",
+          separationRisk:
+            "Promoting only the highest-scoring slices would omit required behavior and verification coverage.",
+          maxPrScope: "Implement the five connected slices in one bounded PR.",
+        },
+      ],
+    };
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: { councilReview: review },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    const planNode = nodes?.find((node) => node.id === "plan-portfolio");
+    expect(planNode?.input).toMatchObject({
+      planningRoute: { kind: "direct" },
+      portfolioCandidates: [
+        {
+          selectedCandidate: {
+            kind: "bundle",
+            opportunityIds,
+            memberOpportunities: opportunityIds.map((id) => ({ id })),
+          },
+        },
+      ],
+    });
+  });
+
+  it("promotes a cohesive bundle when coverage requires lower-scoring accepted members", async () => {
+    const expander = createSourceToProjectDynamicExpander({
+      source: "https://example.com/loops",
+      project: projectFixture(),
+      mode: "advisory",
+    });
+    const fixture = latestRunCouncilReviewFixture();
+    const opportunityIds = ["opp-1", "opp-3", "opp-4"];
+    const opportunities = fixture.opportunities
+      .filter((opportunity) => opportunityIds.includes(opportunity.id))
+      .map((opportunity) => ({
+        ...opportunity,
+        score: {
+          ...opportunity.score,
+          applicability: 0.72,
+          impact: 0.7,
+          confidence: 0.71,
+        },
+      }));
+    const requiredCoverage = {
+      practiceIds: opportunities.flatMap((opportunity) => opportunity.practiceIds),
+      behaviorIds: opportunities.flatMap((opportunity) => opportunity.behaviorIds),
+      proofIds: opportunities.flatMap((opportunity) => opportunity.proofIds),
+    };
+    const review: OpportunityCouncilReview = {
+      ...fixture,
+      opportunities,
+      bundles: [
+        {
+          id: "bundle-required-coverage",
+          opportunityIds,
+          ...requiredCoverage,
+          targetLayers: ["workflow"],
+          rationale: "All required behaviors implement one end-to-end workflow slice.",
+          sharedChangeSurface: "workflow template, runner, and verifier",
+          combinedUserValue: "One complete source-derived workflow improvement.",
+          separationRisk: "Separate plans duplicate one implementation and proof path.",
+          maxPrScope: "Implement the connected required coverage in one bounded PR.",
+        },
+      ],
+    };
+    const opportunityAcceptances = selectAcceptedOpportunities(review, {
+      minApplicability: 0.9,
+      minConfidence: 0.9,
+      minImpact: 0.9,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).map((acceptance) => ({
+      ...acceptance,
+      accepted: true,
+      reason: "Accepted to preserve required source-practice coverage.",
+    }));
+
+    const nodes = await expander({
+      node: {
+        id: "council-review",
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.DECISION_COUNCIL,
+        title: "Rank and bundle opportunities",
+        prompt: "Rank",
+        dependsOn: ["opportunity-mapping"],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      result: {
+        nodeId: "council-review",
+        status: "passed",
+        output: "Council ranked opportunities.",
+        payload: {
+          councilReview: review,
+          opportunityAcceptances,
+          opportunityCoverage: requiredCoverage,
+        },
+      },
+      currentPlan: {
+        id: "source-plan",
+        objective: "Apply loops",
+        templateId: "source-to-project",
+        maxReplans: 0,
+        nodes: [],
+      },
+      payloads: new Map(),
+      completedNodeIds: new Set(),
+    });
+
+    expect(nodes?.map((node) => node.id)).toEqual([
+      "plan-portfolio",
+      "audit-portfolio",
+      "report-portfolio",
+    ]);
+    expect(nodes?.find((node) => node.id === "plan-portfolio")?.input).toMatchObject({
+      planningRoute: { kind: "direct" },
+      portfolioCandidates: [{ selectedCandidate: { id: "bundle-required-coverage" } }],
+    });
   });
 
   it("prepares the full execution prompt for dynamic opportunity plan nodes", async () => {
@@ -1950,7 +2704,32 @@ describe("source-to-project harness registry", () => {
     const execution = await registry
       .get(WorkflowHarnessKind.COPILOT_SDK)
       ?.prepareExecution?.(planNode!, {
-        payloads: new Map([["council-review", { councilReview }]]),
+        payloads: new Map([
+          [
+            "source-reading",
+            {
+              sourceAnalysis: sourceAnalysisFixture(),
+              practiceLedger: practiceLedgerFixture(),
+            },
+          ],
+          [
+            "project-research",
+            {
+              projectBrief: projectBriefFixture(),
+              applicabilityMatrix: applicabilityMatrixFixture(),
+            },
+          ],
+          [
+            "council-review",
+            {
+              councilReview,
+              opportunityCoverage: requiredCoverage(
+                practiceLedgerFixture(),
+                applicabilityMatrixFixture(),
+              ),
+            },
+          ],
+        ]),
         artifacts: new Map(),
       });
 
@@ -1962,6 +2741,8 @@ describe("source-to-project harness registry", () => {
       "Add a conservative loop-engineering-starter advisory template",
     );
     expect(execution?.prompt).toContain("Project JSON:");
+    expect(execution?.prompt).toContain("Assigned behavior IDs");
+    expect(execution?.prompt).toContain("Canonical source practice ledger");
     expect(execution?.calls?.[0]?.prompt).toBe(execution?.prompt);
   });
 
@@ -3407,6 +4188,8 @@ describe("source-to-project harness registry", () => {
 
   it("researches the target project in relation to the objective and source findings", async () => {
     const copilotCalls: Array<{ prompt: string; model?: string; maxToolCalls?: number }> = [];
+    const applicabilityCalls: unknown[][] = [];
+    const practiceLedger = practiceLedgerFixture();
     const registry = createSourceToProjectHarnessRegistry({
       source: "https://example.com/kg",
       project: projectFixture(),
@@ -3422,8 +4205,28 @@ describe("source-to-project harness registry", () => {
         },
       },
       baml: {
-        async DistillProjectBrief() {
-          return projectBriefFixture();
+        async DistillProjectApplicability(...args: unknown[]) {
+          applicabilityCalls.push(args);
+          const practice = practiceLedger.practices[0]!;
+          return {
+            projectId: "secondbrain",
+            architecture: "Filesystem knowledge base",
+            constraints: ["Sensitive content stays local"],
+            validationCommands: ["scripts/vault-health-check.sh"],
+            evidence: projectBriefFixture().evidence,
+            assessments: [
+              {
+                practiceId: practice.id,
+                status: "applicable",
+                applicableBehaviorIds: practice.behaviorIds,
+                excludedBehaviorIds: [],
+                targetLayers: ["07-wiki"],
+                projectEvidence: projectBriefFixture().evidence,
+                contradictionEvidence: [],
+                rationale: "The wiki layer synthesizes source relationships.",
+              },
+            ],
+          };
         },
       },
     });
@@ -3443,7 +4246,7 @@ describe("source-to-project harness registry", () => {
       {
         objective: "Read KG source for how it applies to Second Brain",
         payloads: new Map([
-          ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
+          ["source-reading", { sourceAnalysis: sourceAnalysisFixture(), practiceLedger }],
           ["source-corroboration", { corroboration: corroborationFixture() }],
         ]),
         artifacts: new Map(),
@@ -3463,6 +4266,310 @@ describe("source-to-project harness registry", () => {
     expect(copilotCalls[0]?.prompt).toContain("chunk, extract triples, standardize entities");
     expect(copilotCalls[0]?.prompt).toContain("Corroboration so far:");
     expect(copilotCalls[0]?.prompt).toContain("disqualifying evidence");
+    expect(applicabilityCalls).toHaveLength(1);
+    expect(applicabilityCalls[0]?.[1]).toEqual(practiceLedger);
+    expect(result.payload?.applicabilityMatrix).toMatchObject({
+      assessments: [{ practiceId: "practice-knowledge-graph-pipeline", status: "applicable" }],
+    });
+  });
+
+  it("repairs unknown applicability with one targeted project research call", async () => {
+    const prompts: string[] = [];
+    const practiceLedger = practiceLedgerFixture();
+    const practice = practiceLedger.practices[0]!;
+    const projectEvidence = projectBriefFixture().evidence;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/kg",
+      project: projectFixture(),
+      mode: "advisory",
+      copilot: {
+        async run(args) {
+          prompts.push(args.prompt);
+          return prompts.length === 1 ? "initial project research" : "targeted project evidence";
+        },
+      },
+      baml: {
+        async DistillProjectApplicability() {
+          return {
+            projectId: "secondbrain",
+            architecture: "Filesystem knowledge base",
+            constraints: [],
+            validationCommands: ["scripts/vault-health-check.sh"],
+            evidence: [],
+            assessments: [
+              {
+                practiceId: practice.id,
+                status: "unknown",
+                applicableBehaviorIds: [],
+                excludedBehaviorIds: practice.behaviorIds,
+                targetLayers: [],
+                projectEvidence: [],
+                contradictionEvidence: [],
+                rationale: "The first pass did not inspect the wiki writer.",
+              },
+            ],
+          };
+        },
+        async RepairProjectApplicability() {
+          return {
+            projectId: "secondbrain",
+            architecture: "Filesystem knowledge base",
+            constraints: [],
+            validationCommands: ["scripts/vault-health-check.sh"],
+            evidence: projectEvidence,
+            assessments: [
+              {
+                practiceId: practice.id,
+                status: "applicable",
+                applicableBehaviorIds: practice.behaviorIds,
+                excludedBehaviorIds: [],
+                targetLayers: ["07-wiki"],
+                projectEvidence,
+                contradictionEvidence: [],
+                rationale: "The targeted pass found the wiki synthesis boundary.",
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: "project-research",
+        kind: "research",
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Research target project",
+        prompt: "Research",
+        dependsOn: ["source-corroboration"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        objective: "Apply the source practices",
+        payloads: new Map([
+          ["source-reading", { sourceAnalysis: sourceAnalysisFixture(), practiceLedger }],
+          ["source-corroboration", { corroboration: corroborationFixture() }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("Investigate only these unresolved source practices");
+    expect(prompts[1]).toContain(practice.id);
+    expect(result.payload?.applicabilityMatrix).toMatchObject({
+      assessments: [{ practiceId: practice.id, status: "applicable" }],
+    });
+    expect(result.execution?.calls?.map((call) => [call.executor, call.operation])).toEqual([
+      ["copilot-sdk", undefined],
+      ["baml", "DistillProjectApplicability"],
+      ["copilot-sdk", undefined],
+      ["baml", "RepairProjectApplicability"],
+    ]);
+    expect(result.execution?.calls?.[3]?.model).toBe("gpt-5.5");
+  });
+
+  it("fails closed when applicability remains unknown after repair", async () => {
+    const practiceLedger = practiceLedgerFixture();
+    const practice = practiceLedger.practices[0]!;
+    const unknownMatrix = {
+      projectId: "secondbrain",
+      architecture: "Filesystem knowledge base",
+      constraints: [],
+      validationCommands: ["scripts/vault-health-check.sh"],
+      evidence: [],
+      assessments: [
+        {
+          practiceId: practice.id,
+          status: "unknown" as const,
+          applicableBehaviorIds: [],
+          excludedBehaviorIds: practice.behaviorIds,
+          targetLayers: [],
+          projectEvidence: [],
+          contradictionEvidence: [],
+          rationale: "The evidence remains insufficient.",
+        },
+      ],
+    };
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/kg",
+      project: projectFixture(),
+      mode: "advisory",
+      copilot: {
+        async run() {
+          return "insufficient research";
+        },
+      },
+      baml: {
+        async DistillProjectApplicability() {
+          return unknownMatrix;
+        },
+        async RepairProjectApplicability() {
+          return unknownMatrix;
+        },
+      },
+    });
+
+    await expect(
+      registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "project-research",
+          kind: "research",
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Research target project",
+          prompt: "Research",
+          dependsOn: ["source-corroboration"],
+          gates: ["output-contract"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          objective: "Apply the source practices",
+          payloads: new Map([
+            ["source-reading", { sourceAnalysis: sourceAnalysisFixture(), practiceLedger }],
+            ["source-corroboration", { corroboration: corroborationFixture() }],
+          ]),
+          artifacts: new Map(),
+        },
+      ),
+    ).rejects.toThrow(/Unresolved applicability.*practice-knowledge-graph-pipeline/);
+  });
+
+  it("maps opportunities from the canonical ledger and exact applicability coverage", async () => {
+    const practiceLedger = practiceLedgerFixture();
+    const applicabilityMatrix = applicabilityMatrixFixture();
+    const practice = practiceLedger.practices[0]!;
+    const mappingCalls: unknown[][] = [];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/kg",
+      project: projectFixture(),
+      mode: "advisory",
+      baml: {
+        async MapSourceToProject(...args: unknown[]) {
+          mappingCalls.push(args);
+          return {
+            opportunities: [
+              {
+                id: "knowledge-graph-writer",
+                title: "Add relationship synthesis",
+                changeKind: "code-change",
+                lesson: practice.behavior,
+                projectChange: "Synthesize source relationships in the wiki writer.",
+                changeSurface: "07-wiki",
+                practiceIds: [practice.id],
+                behaviorIds: practice.behaviorIds,
+                targetLayers: ["07-wiki"],
+                proofIds: practice.proofIds,
+                score: opportunityScoreFixture(),
+                evidence: applicabilityMatrix.evidence,
+                speculative: false,
+              },
+            ],
+            nonApplicableLessons: [],
+            bundles: [],
+            rankingRationale: "One applicable practice maps to one change surface.",
+          };
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.RESEARCH)!(
+      {
+        id: "opportunity-mapping",
+        kind: "planning",
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Map opportunities",
+        prompt: "Map",
+        dependsOn: ["source-corroboration", "project-research"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        payloads: new Map([
+          ["source-reading", { sourceAnalysis: sourceAnalysisFixture(), practiceLedger }],
+          ["source-corroboration", { corroboration: corroborationFixture() }],
+          ["project-research", { projectBrief: projectBriefFixture(), applicabilityMatrix }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(mappingCalls[0]?.[0]).toEqual(practiceLedger);
+    expect(mappingCalls[0]?.[2]).toEqual(applicabilityMatrix);
+    expect(result.payload?.opportunityCoverage).toEqual({
+      practiceIds: [practice.id],
+      behaviorIds: practice.behaviorIds,
+      proofIds: practice.proofIds,
+    });
+  });
+
+  it("repairs an invalid opportunity mapping exactly once with deterministic coverage feedback", async () => {
+    const practiceLedger = practiceLedgerFixture();
+    const applicabilityMatrix = applicabilityMatrixFixture();
+    const practice = practiceLedger.practices[0]!;
+    const mappingCalls: unknown[][] = [];
+    const completeOpportunity = {
+      id: "knowledge-graph-writer",
+      title: "Add relationship synthesis",
+      changeKind: "code-change" as const,
+      lesson: practice.behavior,
+      projectChange: "Synthesize source relationships in the wiki writer.",
+      changeSurface: "07-wiki",
+      practiceIds: [practice.id],
+      behaviorIds: practice.behaviorIds,
+      targetLayers: ["07-wiki"],
+      proofIds: practice.proofIds,
+      score: opportunityScoreFixture(),
+      evidence: applicabilityMatrix.evidence,
+      speculative: false,
+    };
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/kg",
+      project: projectFixture(),
+      mode: "advisory",
+      baml: {
+        async MapSourceToProject(...args: unknown[]) {
+          mappingCalls.push(args);
+          return {
+            opportunities: mappingCalls.length === 1 ? [] : [completeOpportunity],
+            nonApplicableLessons: [],
+            bundles: [],
+            rankingRationale: "Repair preserves complete applicability coverage.",
+          };
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.RESEARCH)!(
+      {
+        id: "opportunity-mapping",
+        kind: "planning",
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Map opportunities",
+        prompt: "Map",
+        dependsOn: ["source-corroboration", "project-research"],
+        gates: ["output-contract"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        payloads: new Map([
+          ["source-reading", { sourceAnalysis: sourceAnalysisFixture(), practiceLedger }],
+          ["source-corroboration", { corroboration: corroborationFixture() }],
+          ["project-research", { projectBrief: projectBriefFixture(), applicabilityMatrix }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(mappingCalls).toHaveLength(2);
+    expect(mappingCalls[0]?.[3]).toBe("");
+    expect(mappingCalls[1]?.[3]).toMatch(/opportunity behavior coverage mismatch/);
+    expect(result.payload?.mappingRepairAttempted).toBe(true);
+    expect(result.execution?.calls).toHaveLength(2);
   });
 
   it("plans the source-core KG candidate instead of meta LLM adapter plumbing", async () => {
@@ -3582,6 +4689,645 @@ describe("source-to-project harness registry", () => {
           description: "Raw Copilot plan markdown for plan-opportunity-opp-1.",
         },
       ]);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("synthesizes and persists one canonical portfolio plan from opportunity plans", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-plan-"));
+    const rawPlansDir = join(outputDir, "raw-plans");
+    await mkdir(rawPlansDir, { recursive: true });
+    try {
+      await writeFile(
+        join(rawPlansDir, "plan-opportunity-validation.md"),
+        "# Validation plan\n\nAdd strict boundary parsing.",
+      );
+      await writeFile(
+        join(rawPlansDir, "plan-opportunity-rendering.md"),
+        "# Rendering plan\n\nReplace innerHTML with textContent.",
+      );
+      const copilotCalls: Array<{
+        prompt: string;
+        mode: string;
+        operation?: string;
+        acceptPartialOnTimeout?: boolean;
+      }> = [];
+      const councilReview = latestRunCouncilReviewFixture();
+      const opportunityAcceptances = selectAcceptedOpportunities(councilReview, {
+        minApplicability: 0.7,
+        minConfidence: 0.65,
+        minImpact: 0.5,
+        minAcceptanceAverage: 0.85,
+        maxRisk: 0.8,
+      });
+      const rejectedOpportunity = opportunityAcceptances.find((candidate) => !candidate.accepted)!;
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/safe-todos",
+        originalPrompt: "Apply the safe todo vertical slice",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run(args) {
+            copilotCalls.push({
+              prompt: args.prompt,
+              mode: args.mode,
+              operation: args.operation,
+              acceptPartialOnTimeout: args.acceptPartialOnTimeout,
+            });
+            return "# Canonical implementation plan\n\nImplement the complete safe vertical slice.";
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical implementation plan");
+          },
+        },
+      });
+
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "plan-portfolio",
+          kind: WorkflowNodeKind.PLANNING,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Synthesize portfolio",
+          prompt: "Synthesize",
+          input: { portfolioCandidates: [] },
+          dependsOn: ["plan-opportunity-validation", "plan-opportunity-rendering"],
+          gates: ["verification"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          objective: "Apply the safe todo vertical slice",
+          payloads: new Map([
+            ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
+            ["source-corroboration", { corroboration: corroborationFixture() }],
+            ["project-research", { projectBrief: projectBriefFixture() }],
+            ["council-review", { councilReview, opportunityAcceptances }],
+            [
+              "plan-opportunity-validation",
+              {
+                plan: {
+                  ...planSummaryFixture("Validation plan"),
+                  rawPlanArtifactPath: "raw-plans/plan-opportunity-validation.md",
+                },
+              },
+            ],
+            [
+              "plan-opportunity-rendering",
+              {
+                plan: {
+                  ...planSummaryFixture("Rendering plan"),
+                  rawPlanArtifactPath: "raw-plans/plan-opportunity-rendering.md",
+                },
+              },
+            ],
+          ]),
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
+
+      expect(copilotCalls).toHaveLength(1);
+      expect(copilotCalls[0]).toMatchObject({
+        mode: "plan",
+        operation: "plan-portfolio",
+        acceptPartialOnTimeout: false,
+      });
+      expect(copilotCalls[0]?.prompt).toContain("one cohesive implementation plan");
+      expect(copilotCalls[0]?.prompt).toContain("Add strict boundary parsing");
+      expect(copilotCalls[0]?.prompt).toContain("Replace innerHTML with textContent");
+      expect(copilotCalls[0]?.prompt).toContain("remove duplicate or conflicting work");
+      expect(copilotCalls[0]?.prompt).toContain(rejectedOpportunity.title);
+      expect(copilotCalls[0]?.prompt).toContain(rejectedOpportunity.reason);
+      expect(copilotCalls[0]?.prompt).toContain(
+        "Restore a non-selected opportunity only when direct target-project evidence",
+      );
+      expect(copilotCalls[0]?.prompt).toContain("Source analysis and requirement evidence");
+      expect(copilotCalls[0]?.prompt).toContain("Corroboration and competing views");
+      expect(result.payload).toMatchObject({
+        portfolioPlan: true,
+        plan: { rawPlanArtifactPath: "raw-plans/plan-portfolio.md" },
+      });
+      await expect(readFile(join(rawPlansDir, "plan-portfolio.md"), "utf8")).resolves.toContain(
+        "Canonical implementation plan",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("plans the canonical portfolio directly from one promoted opportunity", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-single-portfolio-plan-"));
+    const rawPlansDir = join(outputDir, "raw-plans");
+    await mkdir(rawPlansDir, { recursive: true });
+    try {
+      const councilReview = latestRunCouncilReviewFixture();
+      const opportunityAcceptances = selectAcceptedOpportunities(councilReview, {
+        minApplicability: 0.7,
+        minConfidence: 0.65,
+        minImpact: 0.5,
+        minAcceptanceAverage: 0.85,
+        maxRisk: 0.8,
+      });
+      const acceptedOpportunity = opportunityAcceptances.find((candidate) => candidate.accepted)!;
+      const practiceLedger = practiceLedgerFixture();
+      const applicabilityMatrix = applicabilityMatrixFixture();
+      const opportunityCoverage = requiredCoverage(practiceLedger, applicabilityMatrix);
+      const prompts: string[] = [];
+      const toolPolicies: unknown[] = [];
+      const maxToolCalls: unknown[] = [];
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/safe-todos",
+        originalPrompt: "Apply the safe todo vertical slice",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run(args) {
+            prompts.push(args.prompt);
+            toolPolicies.push(args.toolPolicy);
+            maxToolCalls.push(args.maxToolCalls);
+            return "# Canonical implementation plan\n\nImplement the validation slice.";
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical implementation plan");
+          },
+        },
+      });
+
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "plan-portfolio",
+          kind: WorkflowNodeKind.PLANNING,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Synthesize portfolio",
+          prompt: "Synthesize",
+          input: {
+            planningRoute: {
+              kind: "direct",
+              reason: "one accepted opportunity covers the required behavior set",
+            },
+            portfolioCandidates: [{ acceptance: acceptedOpportunity }],
+          },
+          dependsOn: ["council-review"],
+          gates: ["verification"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          objective: "Apply the safe todo vertical slice",
+          payloads: new Map([
+            ["source-reading", { sourceAnalysis: sourceAnalysisFixture(), practiceLedger }],
+            ["source-corroboration", { corroboration: corroborationFixture() }],
+            ["project-research", { projectBrief: projectBriefFixture(), applicabilityMatrix }],
+            ["council-review", { councilReview, opportunityAcceptances, opportunityCoverage }],
+          ]),
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
+
+      expect(prompts[0]).toContain("This is the direct planning route");
+      expect(prompts[0]).toContain("Canonical source practice ledger");
+      expect(prompts[0]).not.toContain("Independent child plans");
+      expect(result.payload).toMatchObject({
+        portfolioPlan: true,
+        plan: { rawPlanArtifactPath: "raw-plans/plan-portfolio.md" },
+        sourcePlans: [],
+      });
+      expect(toolPolicies).toEqual(["read-only"]);
+      expect(maxToolCalls).toEqual([12]);
+      await expect(readFile(join(rawPlansDir, "plan-portfolio.md"), "utf8")).resolves.toContain(
+        "Canonical implementation plan",
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("distills and audits the canonical portfolio against exact compiler coverage", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-audited-portfolio-"));
+    try {
+      const councilReview = latestRunCouncilReviewFixture();
+      const opportunityAcceptances = selectAcceptedOpportunities(councilReview, {
+        minApplicability: 0.7,
+        minConfidence: 0.65,
+        minImpact: 0.5,
+        minAcceptanceAverage: 0.85,
+        maxRisk: 0.8,
+      });
+      const acceptance = opportunityAcceptances.find((candidate) => candidate.accepted)!;
+      const opportunityCoverage = {
+        practiceIds: acceptance.opportunity.practiceIds,
+        behaviorIds: acceptance.opportunity.behaviorIds,
+        proofIds: acceptance.opportunity.proofIds,
+      };
+      const markdown =
+        "# Canonical plan\n\nImplement the accepted behavior in the fixture layer and run its proof.";
+      const draft = {
+        title: "Canonical plan",
+        summary: "Implement the accepted behavior.",
+        markdown,
+        coverageClaims: [
+          {
+            practiceId: opportunityCoverage.practiceIds[0]!,
+            behaviorIds: opportunityCoverage.behaviorIds,
+            proofIds: opportunityCoverage.proofIds,
+            targetLayers: acceptance.opportunity.targetLayers,
+            evidenceQuotes: ["Implement the accepted behavior in the fixture layer"],
+          },
+        ],
+      };
+      const audit = {
+        behaviorAssessments: opportunityCoverage.behaviorIds.map((behaviorId) => ({
+          behaviorId,
+          status: "complete" as const,
+          responsibleLayer: "fixture layer",
+          evidenceQuotes: ["Implement the accepted behavior in the fixture layer"],
+          gaps: [],
+          rationale: "The plan assigns an action and proof.",
+        })),
+        specializedAssessments: ["layer-assignment", "behavior-contracts", "edge-case-proof"].map(
+          (obligationId) => ({
+            obligationId,
+            status: "complete" as const,
+            evidenceQuotes: ["Implement the accepted behavior in the fixture layer"],
+            rationale: "The plan covers this code-change obligation.",
+          }),
+        ),
+        unsupportedClaims: [],
+        contradictions: [],
+        summary: "Coverage complete.",
+      };
+      const bamlCalls: string[] = [];
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/safe-todos",
+        originalPrompt: "Apply the safe behavior",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return markdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical plan");
+          },
+          async DistillPortfolioPlanDraft() {
+            bamlCalls.push("DistillPortfolioPlanDraft");
+            return draft;
+          },
+          async AuditPortfolioCoverage() {
+            bamlCalls.push("AuditPortfolioCoverage");
+            return audit;
+          },
+        },
+      });
+      const sharedPayloads = new Map([
+        [
+          "source-reading",
+          { sourceAnalysis: sourceAnalysisFixture(), practiceLedger: practiceLedgerFixture() },
+        ],
+        ["source-corroboration", { corroboration: corroborationFixture() }],
+        [
+          "project-research",
+          {
+            projectBrief: projectBriefFixture(),
+            applicabilityMatrix: applicabilityMatrixFixture(),
+          },
+        ],
+        ["council-review", { councilReview, opportunityAcceptances, opportunityCoverage }],
+      ]);
+      const planResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "plan-portfolio",
+          kind: WorkflowNodeKind.PLANNING,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Plan portfolio",
+          prompt: "Plan",
+          input: {
+            planningRoute: { kind: "direct", reason: "one accepted opportunity" },
+            portfolioCandidates: [{ acceptance }],
+          },
+          dependsOn: ["council-review"],
+          gates: ["verification"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          objective: "Apply the safe behavior",
+          payloads: sharedPayloads,
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
+      const auditResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "audit-portfolio",
+          kind: WorkflowNodeKind.DELIBERATION,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Audit portfolio",
+          prompt: "Audit",
+          dependsOn: ["plan-portfolio"],
+          gates: ["review-accepted"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          objective: "Apply the safe behavior",
+          payloads: new Map([...sharedPayloads, ["plan-portfolio", planResult.payload!]]),
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
+
+      expect(bamlCalls).toEqual(["DistillPortfolioPlanDraft", "AuditPortfolioCoverage"]);
+      expect(auditResult.payload?.portfolioAudit).toMatchObject({
+        passed: true,
+        repairAttempted: false,
+      });
+      expect(auditResult.execution?.metadata).toMatchObject({
+        practiceCounts: { applicable: 1, partial: 0, notApplicable: 0, unknown: 0 },
+        requiredBehaviorCount: 1,
+        planningRoute: "direct",
+        portfolioRepairAttempted: false,
+        finalAuditStatus: "passed",
+      });
+      const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(
+        {
+          id: "report-portfolio",
+          kind: WorkflowNodeKind.REPORT,
+          harness: WorkflowHarnessKind.REPORTER,
+          title: "Report portfolio",
+          prompt: "Report",
+          dependsOn: ["audit-portfolio"],
+          gates: ["output-contract"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          payloads: new Map([["audit-portfolio", auditResult.payload!]]),
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
+      expect(reportResult.payload?.rawPlanMarkdown).toBe(markdown);
+      expect(reportResult.payload?.canonicalPlanPath).toBe("raw-plans/plan-portfolio-full.md");
+      await expect(
+        readFile(join(outputDir, "raw-plans/plan-portfolio-full.md"), "utf8"),
+      ).resolves.toBe(markdown);
+      await expect(
+        readFile(join(outputDir, "portfolio-coverage-audit.final.json"), "utf8"),
+      ).resolves.toContain("Coverage complete");
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs an incomplete portfolio once and accepts only the fresh passing audit", async () => {
+    const coverage = {
+      practiceIds: ["practice-boundaries"],
+      behaviorIds: ["practice-boundaries/behavior-1"],
+      proofIds: ["practice-boundaries/proof-1"],
+    };
+    const initialDraft = portfolioDraftFixture("Validate requests in the adapter.", coverage);
+    const repairedDraft = portfolioDraftFixture(
+      "Validate requests in the adapter and run the malformed-input integration proof.",
+      coverage,
+    );
+    const calls: string[] = [];
+    let auditAttempt = 0;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/boundaries",
+      project: projectFixture(),
+      mode: "advisory",
+      baml: {
+        async AuditPortfolioCoverage() {
+          calls.push("AuditPortfolioCoverage");
+          auditAttempt += 1;
+          return portfolioAuditFixture(
+            coverage.behaviorIds[0]!,
+            auditAttempt === 1 ? "partial" : "complete",
+            auditAttempt === 1 ? initialDraft : repairedDraft,
+          );
+        },
+        async RepairPortfolioPlan() {
+          calls.push("RepairPortfolioPlan");
+          return repairedDraft;
+        },
+      },
+    });
+
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      portfolioAuditNodeFixture(),
+      portfolioAuditContextFixture(coverage, initialDraft),
+    );
+
+    expect(calls).toEqual([
+      "AuditPortfolioCoverage",
+      "RepairPortfolioPlan",
+      "AuditPortfolioCoverage",
+    ]);
+    expect(result.payload?.portfolioAudit).toMatchObject({
+      passed: true,
+      repairAttempted: true,
+      attempts: 1,
+    });
+    expect(result.payload?.portfolioDraft).toEqual(repairedDraft);
+  });
+
+  it("fails closed when portfolio coverage remains incomplete after one repair", async () => {
+    const coverage = {
+      practiceIds: ["practice-boundaries"],
+      behaviorIds: ["practice-boundaries/behavior-1"],
+      proofIds: ["practice-boundaries/proof-1"],
+    };
+    const draft = portfolioDraftFixture("Validate requests in the adapter.", coverage);
+    let repairCalls = 0;
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/boundaries",
+      project: projectFixture(),
+      mode: "advisory",
+      baml: {
+        async AuditPortfolioCoverage() {
+          return portfolioAuditFixture(coverage.behaviorIds[0]!, "partial", draft);
+        },
+        async RepairPortfolioPlan() {
+          repairCalls += 1;
+          return draft;
+        },
+      },
+    });
+
+    await expect(
+      registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        portfolioAuditNodeFixture(),
+        portfolioAuditContextFixture(coverage, draft),
+      ),
+    ).rejects.toThrow(/Portfolio coverage remains incomplete after one repair/);
+    expect(repairCalls).toBe(1);
+  });
+
+  it("reviews an opportunity plan against its scoped contract instead of the whole portfolio", async () => {
+    const acceptance = selectAcceptedOpportunities(latestRunCouncilReviewFixture(), {
+      minApplicability: 0.7,
+      minConfidence: 0.65,
+      minImpact: 0.5,
+      minAcceptanceAverage: 0.85,
+      maxRisk: 0.8,
+    }).find((candidate) => candidate.accepted)!;
+    const plan = planSummaryFixture("Scoped backend plan");
+    let reviewObjective = "";
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/safe-todos",
+      originalPrompt: "Implement the complete backend and frontend vertical slice.",
+      project: projectFixture(),
+      mode: "advisory",
+      baml: {
+        async ReviewFinalRecommendation(originalPrompt) {
+          reviewObjective = originalPrompt;
+          return acceptedFinalRecommendationReviewFixture();
+        },
+      },
+    });
+
+    await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      {
+        id: `review-opportunity-${acceptance.id}`,
+        kind: WorkflowNodeKind.DELIBERATION,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Review scoped opportunity",
+        prompt: "Review",
+        input: {
+          opportunity: acceptance.opportunity,
+          opportunityAcceptance: acceptance,
+        },
+        dependsOn: [`plan-opportunity-${acceptance.id}`],
+        gates: ["review-accepted"],
+        writeMode: "read-only",
+        replanPolicy: "never",
+      },
+      {
+        objective: "Fallback objective",
+        payloads: new Map([
+          ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
+          ["source-corroboration", { corroboration: corroborationFixture() }],
+          ["project-research", { projectBrief: projectBriefFixture() }],
+          [`plan-opportunity-${acceptance.id}`, { plan }],
+        ]),
+        artifacts: new Map(),
+      },
+    );
+
+    expect(reviewObjective).toContain("component of a larger source-to-project portfolio");
+    expect(reviewObjective).toContain(acceptance.id);
+    expect(reviewObjective).toContain(acceptance.opportunity.projectChange);
+    expect(reviewObjective).toContain(
+      "Do not reject this component merely because it omits other accepted opportunities",
+    );
+  });
+
+  it("reviews and reports the canonical portfolio plan", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-report-"));
+    const rawPlansDir = join(outputDir, "raw-plans");
+    await mkdir(rawPlansDir, { recursive: true });
+    try {
+      const canonicalMarkdown =
+        "# Canonical implementation plan\n\nImplement validation and safe rendering as one slice.";
+      await writeFile(join(rawPlansDir, "plan-portfolio.md"), canonicalMarkdown);
+      const plan = {
+        ...planSummaryFixture("Canonical implementation plan"),
+        rawPlanArtifactPath: "raw-plans/plan-portfolio.md",
+      };
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/safe-todos",
+        originalPrompt: "Apply the safe todo vertical slice",
+        project: projectFixture(),
+        mode: "advisory",
+        baml: {
+          async ReviewFinalRecommendation(
+            _originalPrompt,
+            _source,
+            _sourceAnalysis,
+            _corroboration,
+            _projectBrief,
+            plans,
+          ) {
+            expect(plans).toEqual([plan]);
+            return {
+              status: "accepted",
+              actionable: true,
+              improvesProject: true,
+              unnecessaryComplexity: false,
+              benefitOutweighsCost: true,
+              complexityAssessment: "One coherent vertical slice.",
+              rationale: "The portfolio reconciles the accepted opportunities.",
+              rejectionReason: null,
+              telegramSummary: null,
+            };
+          },
+        },
+      });
+      const sharedPayloads = new Map([
+        ["source-reading", { sourceAnalysis: sourceAnalysisFixture() }],
+        ["source-corroboration", { corroboration: corroborationFixture() }],
+        ["project-research", { projectBrief: projectBriefFixture() }],
+        ["plan-portfolio", { portfolioPlan: true, plan, plans: [plan] }],
+      ]);
+      const reviewResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        {
+          id: "review-portfolio",
+          kind: WorkflowNodeKind.DELIBERATION,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Review portfolio",
+          prompt: "Review",
+          dependsOn: ["plan-portfolio"],
+          gates: ["review-accepted"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          objective: "Apply the safe todo vertical slice",
+          payloads: sharedPayloads,
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
+
+      expect(reviewResult.payload).toMatchObject({
+        portfolioPlan: true,
+        plan,
+        finalRecommendationReview: { status: "accepted" },
+      });
+      const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(
+        {
+          id: "report-portfolio",
+          kind: WorkflowNodeKind.REPORT,
+          harness: WorkflowHarnessKind.REPORTER,
+          title: "Report portfolio",
+          prompt: "Report",
+          dependsOn: ["review-portfolio"],
+          gates: ["output-contract"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          payloads: new Map([...sharedPayloads, ["review-portfolio", reviewResult.payload!]]),
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
+
+      expect(reportResult.payload).toMatchObject({
+        portfolioPlan: true,
+        plan,
+        finalRecommendationReview: { status: "accepted" },
+      });
+      expect(reportResult.payload?.sourceToProjectReportMarkdown).toContain(canonicalMarkdown);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
@@ -3948,6 +5694,68 @@ function sourceAnalysisFixture() {
     claims: ["The source extracts SPO triples."],
     transferableLessons: ["Use a chunk, extract triples, standardize entities pipeline."],
     evidence: [{ id: "s1", source: "README.md", quote: "knowledge graph" }],
+    practiceLedger: {
+      sourceId: "https://example.com/kg",
+      summary: "Transfer the source knowledge-graph pipeline.",
+      claims: ["The source extracts SPO triples."],
+      practices: [
+        {
+          id: "knowledge-graph-pipeline",
+          title: "Knowledge graph pipeline",
+          behavior: "Chunk sources, extract triples, and standardize entities.",
+          rationale: "Preserve the source's core processing loop.",
+          adoptionPreconditions: ["The project synthesizes source material."],
+          requiredBehaviors: ["Extract standardized source relationships"],
+          proofObligations: ["Verify the synthesized relationships"],
+          evidence: [{ id: "s1", source: "README.md", quote: "knowledge graph" }],
+        },
+      ],
+      evidence: [{ id: "s1", source: "README.md", quote: "knowledge graph" }],
+    },
+  };
+}
+
+function practiceLedgerFixture() {
+  return compilePracticeLedger(sourceAnalysisFixture().practiceLedger);
+}
+
+function applicabilityMatrixFixture() {
+  const practiceLedger = practiceLedgerFixture();
+  const practice = practiceLedger.practices[0]!;
+  const projectEvidence = projectBriefFixture().evidence;
+  return {
+    projectId: "secondbrain",
+    architecture: "Filesystem knowledge base",
+    constraints: ["Sensitive content stays local."],
+    validationCommands: ["scripts/vault-health-check.sh"],
+    evidence: projectEvidence,
+    assessments: [
+      {
+        practiceId: practice.id,
+        status: "applicable" as const,
+        applicableBehaviorIds: practice.behaviorIds,
+        excludedBehaviorIds: [],
+        targetLayers: ["07-wiki"],
+        projectEvidence,
+        contradictionEvidence: [],
+        rationale: "The wiki layer synthesizes source relationships.",
+      },
+    ],
+  };
+}
+
+function opportunityScoreFixture() {
+  return {
+    applicability: 0.95,
+    applicabilityReasoning: "The project evidence identifies the exact target layer.",
+    impact: 0.9,
+    impactReasoning: "The practice improves the source synthesis path.",
+    confidence: 0.9,
+    confidenceReasoning: "Source and project evidence agree.",
+    implementationCost: 0.4,
+    implementationCostReasoning: "The change is bounded to one writer.",
+    risk: 0.2,
+    riskReasoning: "Focused tests constrain regressions.",
   };
 }
 
@@ -4022,6 +5830,100 @@ function acceptedFinalRecommendationReviewFixture() {
   };
 }
 
+function portfolioDraftFixture(
+  planLine: string,
+  coverage: { practiceIds: string[]; behaviorIds: string[]; proofIds: string[] },
+) {
+  return {
+    title: "Boundary plan",
+    summary: "Validate requests at ingress.",
+    markdown: `# Boundary plan\n\n${planLine}`,
+    coverageClaims: [
+      {
+        practiceId: coverage.practiceIds[0]!,
+        behaviorIds: coverage.behaviorIds,
+        proofIds: coverage.proofIds,
+        targetLayers: ["HTTP adapter"],
+        evidenceQuotes: [planLine],
+      },
+    ],
+  };
+}
+
+function portfolioAuditFixture(
+  behaviorId: string,
+  status: "complete" | "partial",
+  draft: ReturnType<typeof portfolioDraftFixture>,
+) {
+  return {
+    behaviorAssessments: [
+      {
+        behaviorId,
+        status,
+        responsibleLayer: "HTTP adapter",
+        evidenceQuotes: [draft.coverageClaims[0]!.evidenceQuotes[0]!],
+        gaps: status === "complete" ? [] : ["Missing integration proof."],
+        rationale:
+          status === "complete"
+            ? "The action and proof are explicit."
+            : "The behavior is present but proof is incomplete.",
+      },
+    ],
+    specializedAssessments: [],
+    unsupportedClaims: [],
+    contradictions: [],
+    summary: status === "complete" ? "Coverage complete." : "Coverage incomplete.",
+  };
+}
+
+function portfolioAuditNodeFixture() {
+  return {
+    id: "audit-portfolio",
+    kind: WorkflowNodeKind.DELIBERATION,
+    harness: WorkflowHarnessKind.COPILOT_SDK,
+    title: "Audit portfolio",
+    prompt: "Audit",
+    dependsOn: ["plan-portfolio"],
+    gates: ["review-accepted" as const],
+    writeMode: "read-only" as const,
+    replanPolicy: "never" as const,
+  };
+}
+
+function portfolioAuditContextFixture(
+  coverage: { practiceIds: string[]; behaviorIds: string[]; proofIds: string[] },
+  draft: ReturnType<typeof portfolioDraftFixture>,
+) {
+  return {
+    payloads: new Map([
+      [
+        "plan-portfolio",
+        {
+          plan: planSummaryFixture("Boundary plan"),
+          portfolioDraft: draft,
+          portfolioCompilerJson: JSON.stringify({
+            requiredCoverage: coverage,
+            specializedObligations: [],
+          }),
+          portfolioCoverage: coverage,
+          specializedObligations: [],
+        },
+      ],
+    ]),
+    artifacts: new Map(),
+  };
+}
+
+function coverageFieldsFor(id: string) {
+  const practiceId = `practice-${id.toLowerCase()}`;
+  return {
+    practiceIds: [practiceId],
+    behaviorIds: [`${practiceId}/behavior-1`],
+    targetLayers: ["fixture-layer"],
+    proofIds: [`${practiceId}/proof-1`],
+  };
+}
+
 function mixedCouncilReviewFixture() {
   return {
     opportunities: [
@@ -4033,6 +5935,7 @@ function mixedCouncilReviewFixture() {
         projectChange:
           "Create a knowledge graph artifact from readable vault notes and link reviewable summaries into 07-wiki.",
         changeSurface: "07-wiki, 08-actions, 09-outputs",
+        ...coverageFieldsFor("opp-1"),
         score: {
           applicability: 0.9,
           applicabilityReasoning: "Test fixture reasoning for applicability score 0.9.",
@@ -4054,6 +5957,7 @@ function mixedCouncilReviewFixture() {
         lesson: "Combine rule-based entity standardization with optional LLM inference.",
         projectChange: "Write candidate entity merges to review notes before mutating wiki pages.",
         changeSurface: "08-actions, 09-outputs",
+        ...coverageFieldsFor("opp-4"),
         score: {
           applicability: 0.9,
           applicabilityReasoning: "Test fixture reasoning for applicability score 0.9.",
@@ -4076,6 +5980,7 @@ function mixedCouncilReviewFixture() {
       {
         id: "bundle-A",
         opportunityIds: ["opp-1", "opp-4"],
+        ...coverageFieldsFor("bundle-A"),
         rationale: "Build the knowledge graph pipeline and entity review together.",
         sharedChangeSurface: "source ingest, 07-wiki, 08-actions, 09-outputs",
         combinedUserValue: "A navigable knowledge graph with human-reviewed entity cleanup.",
@@ -4085,6 +5990,7 @@ function mixedCouncilReviewFixture() {
       {
         id: "bundle-B",
         opportunityIds: ["opp-3"],
+        ...coverageFieldsFor("bundle-B"),
         rationale: "LLM adapter safety plumbing.",
         sharedChangeSurface: "LLM client module",
         combinedUserValue: "OpenAI-compatible endpoint flexibility.",
@@ -4113,6 +6019,7 @@ function adapterOpportunityFixture() {
     projectChange:
       "Implement an LLM adapter layer, response-shape parsing, local-only flags, and raw LLM logging.",
     changeSurface: "00-system LLM client plumbing",
+    ...coverageFieldsFor("opp-3"),
     score: {
       applicability: 0.95,
       applicabilityReasoning: "Test fixture reasoning for applicability score 0.95.",
@@ -4140,6 +6047,7 @@ function latestRunCouncilReviewFixture() {
         lesson: "Start with advisory loop templates.",
         projectChange: "Add a bounded advisory workflow template.",
         changeSurface: "workflow templates",
+        ...coverageFieldsFor("opp-1"),
         score: {
           applicability: 0.95,
           applicabilityReasoning: "Test fixture reasoning for applicability score 0.95.",
@@ -4161,6 +6069,7 @@ function latestRunCouncilReviewFixture() {
         lesson: "Estimate loop costs.",
         projectChange: "Add cost estimation harness adapters.",
         changeSurface: "harnesses",
+        ...coverageFieldsFor("opp-2"),
         score: {
           applicability: 0.9,
           applicabilityReasoning: "Test fixture reasoning for applicability score 0.9.",
@@ -4182,6 +6091,7 @@ function latestRunCouncilReviewFixture() {
         lesson: "Record budgets for loops.",
         projectChange: "Record cost telemetry and safe throttling budgets.",
         changeSurface: "runner",
+        ...coverageFieldsFor("opp-3"),
         score: {
           applicability: 0.95,
           applicabilityReasoning: "Test fixture reasoning for applicability score 0.95.",
@@ -4203,6 +6113,7 @@ function latestRunCouncilReviewFixture() {
         lesson: "Verify budget boundaries.",
         projectChange: "Add verifier rules for cost, iteration, and verification budgets.",
         changeSurface: "verifier",
+        ...coverageFieldsFor("opp-4"),
         score: {
           applicability: 0.9,
           applicabilityReasoning: "Test fixture reasoning for applicability score 0.9.",
@@ -4224,6 +6135,7 @@ function latestRunCouncilReviewFixture() {
         lesson: "Document loop scenarios.",
         projectChange: "Add starter checklists and audit readiness docs.",
         changeSurface: "docs",
+        ...coverageFieldsFor("opp-5"),
         score: {
           applicability: 0.85,
           applicabilityReasoning: "Test fixture reasoning for applicability score 0.85.",
@@ -4245,6 +6157,7 @@ function latestRunCouncilReviewFixture() {
         lesson: "Snapshot loops for replay.",
         projectChange: "Add snapshot-friendly replan boundaries and audit trails.",
         changeSurface: "replay",
+        ...coverageFieldsFor("opp-6"),
         score: {
           applicability: 0.88,
           applicabilityReasoning: "Test fixture reasoning for applicability score 0.88.",
