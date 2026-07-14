@@ -77,6 +77,30 @@ describe("buildSuite", () => {
     expect(test.vars!.caseId).toBe("t-001");
     expect(test.vars!.contextItems).toEqual(["small team"]);
     expect(String(test.vars!.reference)).toContain("Recommendation: Use A.");
+    expect(test.assert?.filter((assertion) => assertion.type === "g-eval")).toEqual([
+      expect.objectContaining({
+        provider: {
+          id: "openai:chat:judge-x",
+          config: {
+            apiBaseUrl: "http://localhost:9/v1",
+            apiKeyEnvar: "TEST_EVAL_JUDGE_API_KEY",
+            apiKeyRequired: false,
+            temperature: 0,
+          },
+        },
+      }),
+      expect.objectContaining({
+        provider: {
+          id: "openai:chat:judge-x",
+          config: {
+            apiBaseUrl: "http://localhost:9/v1",
+            apiKeyEnvar: "TEST_EVAL_JUDGE_API_KEY",
+            apiKeyRequired: false,
+            temperature: 0,
+          },
+        },
+      }),
+    ]);
     const defaultTest = typeof suite.defaultTest === "string" ? undefined : suite.defaultTest;
     expect(defaultTest?.options?.provider).toEqual({
       text: {
