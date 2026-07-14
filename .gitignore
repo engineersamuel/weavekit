@@ -6,6 +6,7 @@ dist/
 runs/
 .superpowers/
 evals/results/
+evals/source-to-project/results/
 sdd/*.md
 artifacts/
 plans/

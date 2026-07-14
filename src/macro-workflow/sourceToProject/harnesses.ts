@@ -1,8 +1,8 @@
 import { execFile, spawn } from "node:child_process";
 import { accessSync, constants, existsSync, readdirSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, delimiter, join } from "node:path";
+import { basename, dirname, delimiter, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { ClientRegistry, type Collector } from "@boundaryml/baml";
@@ -91,6 +91,8 @@ import {
 } from "./implementationReview.js";
 import {
   compilePracticeLedger,
+  groundPortfolioDraft,
+  projectApplicabilityMatrixForPlanning,
   requiredCoverage,
   selectCoverageCompleteCandidates,
   selectPortfolioPlanningRoute,
@@ -102,8 +104,12 @@ import {
   validateOpportunityCoverage,
   validatePortfolioAudit,
   validatePortfolioDraft,
+  validatePortfolioDraftExtraction,
 } from "./portfolioCompiler.js";
-import { persistPortfolioCompilerArtifacts } from "./portfolioArtifacts.js";
+import {
+  persistPortfolioCompilerArtifacts,
+  type PersistedOpportunityCoverage,
+} from "./portfolioArtifacts.js";
 import {
   launchSourceToProjectPrAgent,
   type SourceToProjectPrLaunchContext,
@@ -216,6 +222,7 @@ type CopilotRuntimeSkillLoadDiagnostics = {
 
 type CopilotRuntimeSession = {
   sessionId?: string;
+  workspacePath?: string;
   sendAndWait?(
     message: { prompt: string },
     timeout?: number,
@@ -240,6 +247,7 @@ const DEFAULT_SOURCE_READING_MAX_TOOL_CALLS = 40;
 const DEFAULT_PROJECT_RESEARCH_MAX_TOOL_CALLS = 60;
 const DEFAULT_PLAN_GENERATION_MAX_TOOL_CALLS = 12;
 const MAX_SEMANTIC_VALIDATION_FEEDBACK_CHARS = 2_048;
+const MAX_EXTRACTION_VALIDATION_FEEDBACK_CHARS = 512;
 const RAW_PLAN_ARTIFACT_DIR = "raw-plans";
 
 export type CopilotUserInputRequest = {
@@ -325,7 +333,7 @@ export type CopilotHarnessClient = {
     capabilityScope?: CopilotCapabilityScope;
     toolPolicy?: "read-only";
     acceptPartialOnTimeout?: boolean;
-    onSessionId?: (sessionId: string) => void;
+    onSessionId?: (sessionId: string, workspacePath?: string) => void;
   }): Promise<string>;
 };
 
@@ -455,6 +463,7 @@ export type SourceToProjectBamlClient = {
   DistillPortfolioPlanDraft(
     compilerJson: string,
     planMarkdown: string,
+    validationFeedback: string,
   ): Promise<PortfolioPlanDraft>;
   AuditPortfolioCoverage(
     compilerJson: string,
@@ -652,11 +661,12 @@ export function createLiveSourceToProjectBamlClient(
           b.DistillPlanArtifact(opportunityJson, rawPlan, rawPlanArtifactPath, callOptions),
       );
     },
-    async DistillPortfolioPlanDraft(compilerJson, planMarkdown) {
+    async DistillPortfolioPlanDraft(compilerJson, planMarkdown, validationFeedback) {
       return runSourceToProjectBamlCall(
         options.usageCollector,
         "DistillPortfolioPlanDraft",
-        (callOptions) => b.DistillPortfolioPlanDraft(compilerJson, planMarkdown, callOptions),
+        (callOptions) =>
+          b.DistillPortfolioPlanDraft(compilerJson, planMarkdown, validationFeedback, callOptions),
       );
     },
     async AuditPortfolioCoverage(compilerJson, draft) {
@@ -844,7 +854,19 @@ export function createCopilotSdkHarnessClient(
           ...(maxToolCalls || runArgs.toolPolicy || runArgs.capabilityScope?.kind === "skill"
             ? {
                 hooks: {
-                  onPreToolUse: (input: { toolName?: string; toolArgs?: unknown }) => {
+                  onPreToolUse: async (input: { toolName?: string; toolArgs?: unknown }) => {
+                    if (
+                      await isCopilotSessionPlanCreate(
+                        input,
+                        runArgs.mode,
+                        runArgs.toolPolicy,
+                        session?.sessionId,
+                        session?.workspacePath,
+                        runArgs.cwd,
+                      )
+                    ) {
+                      return;
+                    }
                     const readOnlyDecision = denyNonReadOnlyTool(input, runArgs.toolPolicy);
                     if (readOnlyDecision) {
                       return readOnlyDecision;
@@ -901,7 +923,7 @@ export function createCopilotSdkHarnessClient(
           verboseEvents,
         );
         if (runArgs.onSessionId && session.sessionId) {
-          runArgs.onSessionId(session.sessionId);
+          runArgs.onSessionId(session.sessionId, session.workspacePath);
         }
         await loadCopilotCapabilityScope(session, runArgs.capabilityScope, {
           timeoutMs,
@@ -1087,6 +1109,32 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function buildPortfolioDraftExtractionRepairFeedback(
+  canonicalMarkdown: string,
+  draft: PortfolioPlanDraft,
+): string {
+  let feedback = [
+    "The previous extraction failed deterministic validation.",
+    "Return a fresh complete draft from unchanged inputs.",
+    "Preserve canonical planMarkdown byte-for-byte in markdown; use exact required ids and supplied target layers; delete invalid evidence quotes and recopy complete contiguous canonical lines or sentences with all Markdown markers.",
+  ].join(" ");
+  const invalidQuoteLocators = draft.coverageClaims.flatMap((claim, claimIndex) =>
+    claim.evidenceQuotes.flatMap((quote, quoteIndex) =>
+      quote.trim() && canonicalMarkdown.includes(quote)
+        ? []
+        : [`claim[${claimIndex}].evidenceQuotes[${quoteIndex}]`],
+    ),
+  );
+  for (const locator of invalidQuoteLocators) {
+    const defect = `${feedback.includes(" Defects:") ? ";" : " Defects:"} EVIDENCE_QUOTE_NOT_EXACT ${locator}`;
+    if (feedback.length + defect.length > MAX_EXTRACTION_VALIDATION_FEEDBACK_CHARS) {
+      break;
+    }
+    feedback += defect;
+  }
+  return feedback;
+}
+
 function denyForegroundVisualPlanServe(
   input: { toolName?: string; toolArgs?: unknown },
   capabilityScope?: CopilotCapabilityScope,
@@ -1112,6 +1160,82 @@ function denyForegroundVisualPlanServe(
 }
 
 const READ_ONLY_COPILOT_TOOLS = new Set(["glob", "rg", "view"]);
+
+function resolveCopilotHome(): string {
+  return process.env.COPILOT_HOME ?? join(homedir(), ".copilot");
+}
+
+function copilotSessionPlanPath(sessionId: string): string {
+  return join(resolveCopilotHome(), "session-state", sessionId, "plan.md");
+}
+
+async function isCopilotSessionPlanCreate(
+  input: { toolName?: string; toolArgs?: unknown },
+  mode: "research" | "plan" | "implement" | "review",
+  toolPolicy?: "read-only",
+  sessionId?: string,
+  workspacePath?: string,
+  cwd?: string,
+): Promise<boolean> {
+  const toolName = input.toolName?.trim().toLowerCase();
+  if (
+    mode !== "plan" ||
+    toolPolicy !== "read-only" ||
+    toolName !== "create" ||
+    !sessionId ||
+    !workspacePath ||
+    basename(sessionId) !== sessionId ||
+    sessionId === "." ||
+    sessionId === ".."
+  ) {
+    return false;
+  }
+  if (
+    typeof input.toolArgs !== "object" ||
+    input.toolArgs === null ||
+    Array.isArray(input.toolArgs)
+  ) {
+    return false;
+  }
+  const planPath = (input.toolArgs as Record<string, unknown>).path;
+  if (typeof planPath !== "string") {
+    return false;
+  }
+  if (planPath !== join(workspacePath, "plan.md")) {
+    return false;
+  }
+  return isCopilotWorkspaceOutsideCwd(workspacePath, cwd);
+}
+
+async function isCopilotWorkspaceOutsideCwd(workspacePath: string, cwd?: string): Promise<boolean> {
+  if (!cwd) {
+    return true;
+  }
+  if (isPathWithin(cwd, workspacePath)) {
+    return false;
+  }
+  const [canonicalCwd, canonicalWorkspace] = await Promise.all([
+    canonicalizeExistingPath(cwd),
+    canonicalizeExistingPath(workspacePath),
+  ]);
+  return !isPathWithin(canonicalCwd, canonicalWorkspace);
+}
+
+async function canonicalizeExistingPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+function isPathWithin(directory: string, candidate: string): boolean {
+  const relativePath = relative(directory, candidate);
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
+  );
+}
 
 function denyNonReadOnlyTool(
   input: { toolName?: string },
@@ -2082,7 +2206,9 @@ export function createSourceToProjectHarnessRegistry(
           originalObjective: options.originalPrompt ?? context.objective ?? "",
           projectJson: JSON.stringify({ ...options.project, projectBrief }),
           practiceLedgerJson: JSON.stringify(practiceLedger ?? sourceAnalysis.practiceLedger),
-          applicabilityMatrixJson: JSON.stringify(applicabilityMatrix),
+          applicabilityMatrixJson: JSON.stringify(
+            projectApplicabilityMatrixForPlanning(applicabilityMatrix),
+          ),
           requiredCoverageJson: JSON.stringify(opportunityCoverage ?? {}),
           acceptedOpportunityCoverageJson: JSON.stringify(
             portfolioCandidates.map(({ acceptance, selectedCandidate }) => ({
@@ -2109,6 +2235,7 @@ export function createSourceToProjectHarnessRegistry(
         const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
         const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
         let capturedSessionId: string | undefined;
+        let capturedWorkspacePath: string | undefined;
         const rawPlan = await copilot.run({
           cwd: options.project.workingTree,
           prompt,
@@ -2120,12 +2247,13 @@ export function createSourceToProjectHarnessRegistry(
           label: "Copilot canonical portfolio plan",
           toolPolicy: "read-only",
           acceptPartialOnTimeout: false,
-          onSessionId: (id) => {
+          onSessionId: (id, workspacePath) => {
             capturedSessionId = id;
+            capturedWorkspacePath = workspacePath;
           },
         });
         const fullPlanContent = capturedSessionId
-          ? await readCopilotSessionPlan(capturedSessionId)
+          ? await readCopilotSessionPlan(capturedSessionId, capturedWorkspacePath)
           : undefined;
         const persistedPlan = await persistRawPlanMarkdown({
           outputDir: context.outputDir,
@@ -2160,7 +2288,8 @@ export function createSourceToProjectHarnessRegistry(
           persistedPlan.planFilePath,
         );
         const portfolioCompilerJson = JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: 2,
+          projectBrief,
           practiceLedger: practiceLedger ?? sourceAnalysis.practiceLedger,
           applicabilityMatrix,
           requiredCoverage: opportunityCoverage ?? null,
@@ -2172,12 +2301,47 @@ export function createSourceToProjectHarnessRegistry(
           evidenceRepairAttempted,
         });
         let portfolioDraft: PortfolioPlanDraft | undefined;
+        let portfolioExtractionRepairAttempted = false;
+        let portfolioExtractionCallCount = 0;
         if (opportunityCoverage) {
-          portfolioDraft = await bamlClient.DistillPortfolioPlanDraft(
+          const canonicalPlanMarkdown = fullPlanContent ?? rawPlan;
+          const extractedDraft = await bamlClient.DistillPortfolioPlanDraft(
             portfolioCompilerJson,
-            fullPlanContent ?? rawPlan,
+            canonicalPlanMarkdown,
+            "",
           );
-          validatePortfolioDraft(opportunityCoverage, portfolioDraft);
+          portfolioExtractionCallCount += 1;
+          portfolioDraft = extractedDraft;
+          try {
+            const initialGrounding = groundPortfolioDraft(canonicalPlanMarkdown, extractedDraft);
+            portfolioDraft = initialGrounding.draft;
+            portfolioExtractionRepairAttempted = initialGrounding.changed;
+            validatePortfolioDraftExtraction(
+              opportunityCoverage,
+              canonicalPlanMarkdown,
+              portfolioDraft,
+            );
+          } catch {
+            portfolioExtractionRepairAttempted = true;
+            const retryDraft = await bamlClient.DistillPortfolioPlanDraft(
+              portfolioCompilerJson,
+              canonicalPlanMarkdown,
+              buildPortfolioDraftExtractionRepairFeedback(canonicalPlanMarkdown, portfolioDraft),
+            );
+            portfolioExtractionCallCount += 1;
+            try {
+              portfolioDraft = groundPortfolioDraft(canonicalPlanMarkdown, retryDraft).draft;
+              validatePortfolioDraftExtraction(
+                opportunityCoverage,
+                canonicalPlanMarkdown,
+                portfolioDraft,
+              );
+            } catch (extractionRepairError) {
+              throw new Error(
+                `Portfolio draft invalid after one extraction repair: ${errorMessage(extractionRepairError)}`,
+              );
+            }
+          }
         }
         return {
           status: "passed",
@@ -2194,6 +2358,7 @@ export function createSourceToProjectHarnessRegistry(
                   portfolioCompilerJson,
                   portfolioCoverage: opportunityCoverage,
                   specializedObligations,
+                  portfolioExtractionRepairAttempted,
                 }
               : {}),
           },
@@ -2208,7 +2373,11 @@ export function createSourceToProjectHarnessRegistry(
                 model: copilotModel,
               }),
               bamlCall("DistillPlanArtifact", bamlModel),
-              ...(portfolioDraft ? [bamlCall("DistillPortfolioPlanDraft", bamlModel)] : []),
+              ...(portfolioDraft
+                ? Array.from({ length: portfolioExtractionCallCount }, () =>
+                    bamlCall("DistillPortfolioPlanDraft", bamlModel),
+                  )
+                : []),
             ],
             { portfolioPromptDiagnostics: promptBuild.diagnostics },
           ),
@@ -2247,6 +2416,7 @@ export function createSourceToProjectHarnessRegistry(
         const { prompt, selectedCandidateJson, copilotModel, rawPlanArtifactPath } = resolvedPlan;
         const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
         let capturedSessionId: string | undefined;
+        let capturedWorkspacePath: string | undefined;
         const rawPlan = await copilot.run({
           cwd: options.project.workingTree,
           prompt,
@@ -2257,12 +2427,13 @@ export function createSourceToProjectHarnessRegistry(
           nodeId: node.id,
           label: `Copilot plan ${opportunity.id}`,
           toolPolicy: "read-only",
-          onSessionId: (id) => {
+          onSessionId: (id, workspacePath) => {
             capturedSessionId = id;
+            capturedWorkspacePath = workspacePath;
           },
         });
         const fullPlanContent = capturedSessionId
-          ? await readCopilotSessionPlan(capturedSessionId)
+          ? await readCopilotSessionPlan(capturedSessionId, capturedWorkspacePath)
           : undefined;
         const persistedPlan = await persistRawPlanMarkdown({
           outputDir: context.outputDir,
@@ -2345,6 +2516,7 @@ export function createSourceToProjectHarnessRegistry(
         const copilotModel = copilotModelFor(SourceToProjectModelOperation.PLAN_GENERATION);
         const bamlModel = resolveBamlModel(SourceToProjectModelOperation.PLAN_DISTILLATION);
         let capturedSessionIdSel: string | undefined;
+        let capturedWorkspacePathSel: string | undefined;
         const rawPlan = await copilot.run({
           cwd: options.project.workingTree,
           prompt,
@@ -2355,12 +2527,13 @@ export function createSourceToProjectHarnessRegistry(
           nodeId: node.id,
           label: "Copilot selected-opportunity plan",
           toolPolicy: "read-only",
-          onSessionId: (id) => {
+          onSessionId: (id, workspacePath) => {
             capturedSessionIdSel = id;
+            capturedWorkspacePathSel = workspacePath;
           },
         });
         const fullPlanContent = capturedSessionIdSel
-          ? await readCopilotSessionPlan(capturedSessionIdSel)
+          ? await readCopilotSessionPlan(capturedSessionIdSel, capturedWorkspacePathSel)
           : undefined;
         const persistedPlan = await persistRawPlanMarkdown({
           outputDir: context.outputDir,
@@ -2413,6 +2586,12 @@ export function createSourceToProjectHarnessRegistry(
           planNodeId,
           "specializedObligations",
         );
+        const portfolioExtractionRepairAttempted =
+          getOptionalPayloadValue<boolean>(
+            context,
+            planNodeId,
+            "portfolioExtractionRepairAttempted",
+          ) ?? false;
         const initialAudit = await bamlClient.AuditPortfolioCoverage(compilerJson, draft);
         let finalDraft = draft;
         let finalAudit = initialAudit;
@@ -2425,7 +2604,7 @@ export function createSourceToProjectHarnessRegistry(
         } catch (initialAuditError) {
           repairAttempted = true;
           const repairModel = resolveBamlModel(SourceToProjectModelOperation.PORTFOLIO_REPAIR);
-          finalDraft = await bamlClient.RepairPortfolioPlan(
+          const repairedDraft = await bamlClient.RepairPortfolioPlan(
             compilerJson,
             draft,
             JSON.stringify({
@@ -2435,6 +2614,7 @@ export function createSourceToProjectHarnessRegistry(
           );
           executionCalls.push(bamlCall("RepairPortfolioPlan", repairModel));
           try {
+            finalDraft = groundPortfolioDraft(repairedDraft.markdown, repairedDraft).draft;
             validatePortfolioDraft(coverage, finalDraft);
           } catch (repairError) {
             throw new Error(
@@ -2462,6 +2642,7 @@ export function createSourceToProjectHarnessRegistry(
             portfolioCompilerJson: compilerJson,
             portfolioCoverage: coverage,
             specializedObligations: obligations,
+            portfolioExtractionRepairAttempted,
             portfolioAudit: {
               passed: true,
               repairAttempted,
@@ -2479,6 +2660,7 @@ export function createSourceToProjectHarnessRegistry(
               coverage,
               initialAudit,
               finalAudit,
+              portfolioExtractionRepairAttempted,
               repairAttempted,
             }),
           ),
@@ -3078,13 +3260,24 @@ export function createSourceToProjectHarnessRegistry(
           practiceLedger?: SourcePracticeLedger;
           applicabilityMatrix?: ProjectApplicabilityMatrix;
           requiredCoverage?: RequiredCoverage;
-          acceptedOpportunityCoverage?: unknown;
+          acceptedOpportunityCoverage?: PersistedOpportunityCoverage["accepted"];
         };
-        if (!compiler.practiceLedger || !compiler.applicabilityMatrix) {
+        if (
+          !compiler.practiceLedger ||
+          !compiler.applicabilityMatrix ||
+          !compiler.requiredCoverage ||
+          !compiler.acceptedOpportunityCoverage
+        ) {
           throw new Error(
-            "Portfolio compiler context is missing its ledger or applicability matrix.",
+            "Portfolio compiler context is missing its ledger, applicability matrix, or coverage map.",
           );
         }
+        const portfolioExtractionRepairAttempted =
+          getOptionalPayloadValue<boolean>(
+            context,
+            reviewNodeId,
+            "portfolioExtractionRepairAttempted",
+          ) ?? false;
         const planTranscript = await readRawPlanMarkdownForReport(
           context.outputDir,
           plan.rawPlanArtifactPath,
@@ -3115,7 +3308,8 @@ export function createSourceToProjectHarnessRegistry(
           "",
           `- Mode: ${options.mode}`,
           "- Portfolio audit: passed",
-          `- Repair attempted: ${portfolioAudit.repairAttempted ? "yes" : "no"}`,
+          `- Extraction repair attempted: ${portfolioExtractionRepairAttempted ? "yes" : "no"}`,
+          `- Semantic repair attempted: ${portfolioAudit.repairAttempted ? "yes" : "no"}`,
           "",
           finalDraft.markdown,
         ].join("\n");
@@ -3127,6 +3321,7 @@ export function createSourceToProjectHarnessRegistry(
             plan: canonicalPlan,
             plans: [canonicalPlan],
             portfolioAudit,
+            portfolioExtractionRepairAttempted,
             canonicalPlanPath: published.canonicalPlanPath,
             sourceToProjectReportMarkdown,
             rawPlanMarkdown: finalDraft.markdown,
@@ -3418,7 +3613,11 @@ export function createSourceToProjectDynamicExpander(
         ? buildPortfolioPlanNodes(promotedCandidates, planningRoute)
         : [];
     return options.mode === "autonomous-pr"
-      ? [...opportunityNodes, ...portfolioNodes, ...buildAutonomousPrNodes()]
+      ? [
+          ...opportunityNodes,
+          ...portfolioNodes,
+          ...buildAutonomousPrNodes(promotedCandidates.map(({ acceptance }) => acceptance)),
+        ]
       : [...opportunityNodes, ...portfolioNodes];
   };
 }
@@ -4010,6 +4209,7 @@ function buildPortfolioCompilerMetadata(args: {
   coverage: RequiredCoverage;
   initialAudit: PortfolioCoverageAudit;
   finalAudit: PortfolioCoverageAudit;
+  portfolioExtractionRepairAttempted: boolean;
   repairAttempted: boolean;
 }): Record<string, unknown> {
   const compiler = JSON.parse(args.compilerJson) as {
@@ -4041,6 +4241,7 @@ function buildPortfolioCompilerMetadata(args: {
     planningRoute: compiler.planningRoute?.kind,
     planningRouteReason: compiler.planningRoute?.reason,
     evidenceRepairAttempted: compiler.evidenceRepairAttempted ?? false,
+    portfolioExtractionRepairAttempted: args.portfolioExtractionRepairAttempted,
     portfolioRepairAttempted: args.repairAttempted,
     initialAuditGapCounts: {
       partial: initialStatuses.filter((status) => status === "partial").length,
@@ -4357,10 +4558,14 @@ async function maybeAutoImplementOpportunity(args: {
   }
 }
 
-async function readCopilotSessionPlan(sessionId: string): Promise<string | undefined> {
-  const copilotHome = process.env.COPILOT_HOME ?? join(homedir(), ".copilot");
-  const planPath = join(copilotHome, "session-state", sessionId, "plan.md");
+async function readCopilotSessionPlan(
+  sessionId: string,
+  workspacePath?: string,
+): Promise<string | undefined> {
   try {
+    const planPath = workspacePath
+      ? join(workspacePath, "plan.md")
+      : copilotSessionPlanPath(sessionId);
     return await readFile(planPath, "utf8");
   } catch {
     return undefined;
@@ -5776,7 +5981,7 @@ function createDeterministicBamlClient(
         rawPlanArtifactPath,
       };
     },
-    async DistillPortfolioPlanDraft(compilerJson, planMarkdown) {
+    async DistillPortfolioPlanDraft(compilerJson, planMarkdown, _validationFeedback) {
       const compiler = readJsonRecord(compilerJson);
       const coverage = compiler.requiredCoverage as RequiredCoverage | undefined;
       const evidenceQuote = firstNonBlankMarkdownLine(planMarkdown);
@@ -5790,7 +5995,7 @@ function createDeterministicBamlClient(
             id.startsWith(`${practiceId}/`),
           ),
           proofIds: (coverage?.proofIds ?? []).filter((id) => id.startsWith(`${practiceId}/`)),
-          targetLayers: ["src"],
+          targetLayers: [...(coverage?.targetLayersByPracticeId[practiceId] ?? [])],
           evidenceQuotes: [evidenceQuote],
         })),
       };

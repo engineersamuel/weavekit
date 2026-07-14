@@ -24,6 +24,8 @@ export type WorkflowTemplateInput = {
   project?: string;
   projectPath?: string;
   mode?: "advisory" | "autonomous-pr";
+  includeVisualDesign?: boolean;
+  projectResearchMode?: "direct" | "hve";
   providers?: DeepResearchProvider[];
   maxIterations?: number;
   questionsPerIteration?: number;
@@ -371,21 +373,27 @@ function makeSourceToProjectPlan(
   objective: string,
   input: WorkflowTemplateInput = { objective },
 ): RuntimeWorkflowPlan {
+  const includeVisualDesign = input.includeVisualDesign ?? true;
+  const visualPlanNodes: RuntimeWorkflowPlan["nodes"] = includeVisualDesign
+    ? [
+        {
+          id: "visual-plan-preflight",
+          kind: WorkflowNodeKind.VERIFICATION,
+          harness: WorkflowHarnessKind.COPILOT_SDK,
+          title: "Verify visual-plan capability",
+          description:
+            "Fail fast if the visual-plan skill installer cannot resolve before source-to-project research begins.",
+          ...sourceNodeMetadata(SourceToProjectModelOperation.DETERMINISTIC),
+          prompt: "Verify visual-plan skill installation before source-to-project execution.",
+          dependsOn: [],
+          gates: [WorkflowGateKind.VERIFICATION],
+          writeMode: "read-only" as WorkflowNodeWriteMode,
+          replanPolicy: "never" as WorkflowReplanPolicy,
+        },
+      ]
+    : [];
   const advisoryNodes: RuntimeWorkflowPlan["nodes"] = [
-    {
-      id: "visual-plan-preflight",
-      kind: WorkflowNodeKind.VERIFICATION,
-      harness: WorkflowHarnessKind.COPILOT_SDK,
-      title: "Verify visual-plan capability",
-      description:
-        "Fail fast if the visual-plan skill installer cannot resolve before source-to-project research begins.",
-      ...sourceNodeMetadata(SourceToProjectModelOperation.DETERMINISTIC),
-      prompt: "Verify visual-plan skill installation before source-to-project execution.",
-      dependsOn: [],
-      gates: [WorkflowGateKind.VERIFICATION],
-      writeMode: "read-only" as WorkflowNodeWriteMode,
-      replanPolicy: "never" as WorkflowReplanPolicy,
-    },
+    ...visualPlanNodes,
     {
       id: "source-reading",
       kind: WorkflowNodeKind.RESEARCH,
@@ -395,7 +403,7 @@ function makeSourceToProjectPlan(
         "Read the source artifact and extract grounded claims, assumptions, evidence, and transferable lessons.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.SOURCE_READING),
       prompt: `Read and analyze source: ${input.source ?? ""}`,
-      dependsOn: ["visual-plan-preflight"],
+      dependsOn: includeVisualDesign ? ["visual-plan-preflight"] : [],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
       writeMode: "read-only" as WorkflowNodeWriteMode,
       replanPolicy: "on-contract-failure" as WorkflowReplanPolicy,
@@ -422,16 +430,20 @@ function makeSourceToProjectPlan(
         "Research the target project through the source lens and capture source-relevant change surfaces.",
       ...sourceNodeMetadata(SourceToProjectModelOperation.PROJECT_RESEARCH),
       prompt: `Research target project in relation to source findings: ${input.project ?? input.projectPath ?? ""}`,
-      capabilities: {
-        pluginCommands: [
-          {
-            plugin: "hve-core",
-            command: "hve-core:task-research",
-            promptInputName: "topic",
-            args: { subagents: "auto" },
-          },
-        ],
-      },
+      ...(input.projectResearchMode === "direct"
+        ? {}
+        : {
+            capabilities: {
+              pluginCommands: [
+                {
+                  plugin: "hve-core",
+                  command: "hve-core:task-research",
+                  promptInputName: "topic",
+                  args: { chat: "false", subagents: "false" },
+                },
+              ],
+            },
+          }),
       dependsOn: ["source-corroboration"],
       gates: [WorkflowGateKind.OUTPUT_CONTRACT],
       writeMode: "read-only" as WorkflowNodeWriteMode,

@@ -1,5 +1,16 @@
 import { pathToFileURL } from "node:url";
-import { runRouterEval } from "./eval/routerRunner.js";
+import { runRouterEval, type RunRouterEvalResult } from "./eval/routerRunner.js";
+
+export function formatRouterEvalCliOutput(
+  result: Pick<RunRouterEvalResult, "outputDir" | "evaluationId">,
+): string {
+  return [
+    `Router eval complete. Results written to ${result.outputDir}`,
+    `Evaluation ID: ${result.evaluationId}`,
+    "View persisted evaluations: nubx promptfoo view",
+    "",
+  ].join("\n");
+}
 
 function parseCliArgs(argv: string[]): {
   corpusDir?: string;
@@ -25,8 +36,8 @@ function parseCliArgs(argv: string[]): {
 
 function runCli(): void {
   runRouterEval(parseCliArgs(process.argv.slice(2)))
-    .then((dir) => {
-      console.log(`Router eval complete. Results written to ${dir}`);
+    .then((result) => {
+      process.stdout.write(formatRouterEvalCliOutput(result));
     })
     .catch((error: unknown) => {
       console.error(error);

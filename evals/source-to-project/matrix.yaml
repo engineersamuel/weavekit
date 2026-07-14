@@ -1,0 +1,12 @@
+version: 1
+trials: 3
+resultsDir: results
+cases:
+  - id: todo-safe-write-path
+    path: cases/todo-safe-write-path.yaml
+  - id: eslint-to-oxlint
+    path: cases/eslint-to-oxlint.yaml
+  - id: github-pattern-transfer
+    path: cases/github-pattern-transfer.yaml
+  - id: evidence-backed-partial-adoption
+    path: cases/evidence-backed-partial-adoption.yaml

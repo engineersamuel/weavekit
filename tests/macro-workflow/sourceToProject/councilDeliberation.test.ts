@@ -58,6 +58,10 @@ function makeAcceptance(overrides: Partial<OpportunityAcceptance> = {}): Opportu
       lesson: "Retries reduce transient failures.",
       projectChange: "Add retry wrapper.",
       changeSurface: "src/http",
+      practiceIds: [],
+      behaviorIds: [],
+      targetLayers: [],
+      proofIds: [],
       score: {
         applicability: 0.9,
         applicabilityReasoning: "Directly applicable.",

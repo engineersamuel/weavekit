@@ -257,9 +257,14 @@ export interface NonApplicableLesson {
 export interface Opportunity {
   id: string
   title: string
+  changeKind?: "tool-integration" | "code-change" | "workflow-process" | "documentation" | null
   lesson: string
   projectChange: string
   changeSurface: string
+  practiceIds: string[]
+  behaviorIds: string[]
+  targetLayers: string[]
+  proofIds: string[]
   score: OpportunityScore
   evidence: EvidenceReference[]
   speculative: boolean
@@ -271,7 +276,12 @@ export interface Opportunity {
 
 export interface OpportunityBundle {
   id: string
+  changeKind?: "tool-integration" | "code-change" | "workflow-process" | "documentation" | null
   opportunityIds: string[]
+  practiceIds: string[]
+  behaviorIds: string[]
+  targetLayers: string[]
+  proofIds: string[]
   rationale: string
   sharedChangeSurface: string
   combinedUserValue: string
@@ -377,6 +387,82 @@ export interface PlanArtifactSummary {
   risks: string[]
   rawPlanArtifactPath?: string | null
   planFilePath?: string | null
+  
+}
+
+export interface PlanCriterionAssessment {
+  criterion: string
+  score: number
+  evidenceQuotes: string[]
+  gaps: string[]
+  rationale: string
+  
+}
+
+export interface PlanRequirementAssessment {
+  requirementId: string
+  status: "complete" | "partial" | "missing" | "contradicted"
+  evidenceQuotes: string[]
+  gaps: string[]
+  rationale: string
+  
+}
+
+export interface PortfolioCoverageAssessment {
+  behaviorId: string
+  status: "complete" | "partial" | "missing" | "contradicted"
+  responsibleLayer: string
+  evidenceQuotes: string[]
+  gaps: string[]
+  rationale: string
+  
+}
+
+export interface PortfolioCoverageAudit {
+  behaviorAssessments: PortfolioCoverageAssessment[]
+  specializedAssessments: SpecializedObligationAssessment[]
+  unsupportedClaims: string[]
+  contradictions: string[]
+  summary: string
+  
+}
+
+export interface PortfolioCoverageClaim {
+  practiceId: string
+  behaviorIds: string[]
+  proofIds: string[]
+  targetLayers: string[]
+  evidenceQuotes: string[]
+  
+}
+
+export interface PortfolioPlanDraft {
+  title: string
+  summary: string
+  markdown: string
+  coverageClaims: PortfolioCoverageClaim[]
+  
+}
+
+export interface PracticeApplicabilityAssessment {
+  practiceId: string
+  status: "applicable" | "partial" | "not-applicable" | "unknown"
+  applicableBehaviorIds: string[]
+  excludedBehaviorIds: string[]
+  targetLayers: string[]
+  projectEvidence: EvidenceReference[]
+  contradictionEvidence: EvidenceReference[]
+  rationale: string
+  
+}
+
+export interface ProjectApplicabilityMatrix {
+  projectId: string
+  assessments: PracticeApplicabilityAssessment[]
+  architecture: string
+  constraints: string[]
+  validationCommands: string[]
+  evidence: EvidenceReference[]
   
 }
 
@@ -494,6 +580,80 @@ export interface SourceAnalysis {
   claims: string[]
   transferableLessons: string[]
   evidence: EvidenceReference[]
+  practiceLedger: SourcePracticeLedgerDraft
+  
+}
+
+export interface SourcePractice {
+  id: string
+  title: string
+  behavior: string
+  rationale: string
+  adoptionPreconditions: string[]
+  requiredBehaviors: string[]
+  proofObligations: string[]
+  behaviorIds: string[]
+  proofIds: string[]
+  evidence: EvidenceReference[]
+  
+}
+
+export interface SourcePracticeDraft {
+  id: string
+  title: string
+  behavior: string
+  rationale: string
+  adoptionPreconditions: string[]
+  requiredBehaviors: string[]
+  proofObligations: string[]
+  evidence: EvidenceReference[]
+  
+}
+
+export interface SourcePracticeLedger {
+  sourceId: string
+  summary: string
+  practices: SourcePractice[]
+  claims: string[]
+  evidence: EvidenceReference[]
+  
+}
+
+export interface SourcePracticeLedgerDraft {
+  sourceId: string
+  summary: string
+  practices: SourcePracticeDraft[]
+  claims: string[]
+  evidence: EvidenceReference[]
+  
+}
+
+export interface SourceToProjectPairwiseJudgment {
+  winner: "plan-a" | "plan-b" | "tie"
+  confidence: number
+  decidingFactors: string[]
+  planAStrengths: string[]
+  planAGaps: string[]
+  planBStrengths: string[]
+  planBGaps: string[]
+  rationale: string
+  
+}
+
+export interface SourceToProjectPlanJudgment {
+  requirementAssessments: PlanRequirementAssessment[]
+  criterionAssessments: PlanCriterionAssessment[]
+  contradictions: string[]
+  unsupportedRecommendations: string[]
+  summary: string
+  
+}
+
+export interface SpecializedObligationAssessment {
+  obligationId: string
+  status: "complete" | "partial" | "missing" | "not-required"
+  evidenceQuotes: string[]
+  rationale: string
   
 }
 

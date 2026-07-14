@@ -7,9 +7,24 @@ import {
   buildPortfolioPlanPrompt,
   buildPortfolioSynthesisPrompt,
   buildPortfolioSynthesisPromptWithDiagnostics,
+  buildProjectResearchPrompt,
 } from "../../../src/macro-workflow/sourceToProject/prompts.js";
 
 describe("source-to-project plan prompts", () => {
+  it("requires project research to ground existing documentation locations and conventions", () => {
+    const prompt = buildProjectResearchPrompt({
+      objective: "Adopt a documented migration workflow.",
+      projectJson: '{"workingTree":"/tmp/project"}',
+    });
+
+    expect(prompt).toContain(
+      "inspect and report the exact existing contributor and operator documentation paths",
+    );
+    expect(prompt).toContain("documentation conventions");
+    expect(prompt).toContain("stale or conflicting commands");
+    expect(prompt).toContain("documentation, cleanup, or retrieval proof");
+  });
+
   it("keeps canonical compiler prompts focused on coverage without legacy duplicated context", () => {
     const canonicalCompilerContext = {
       originalObjective: "Apply every supported source practice.",
@@ -76,12 +91,12 @@ describe("source-to-project plan prompts", () => {
     expect(synthesisPrompt).toContain("RETAINED_REVIEW_FINDINGS_SENTINEL");
   });
 
-  it("measures captured-scale canonical prompts below the direct-route reliability ceiling", () => {
+  it("keeps the live-scale compacted canonical prompt below the reliability ceiling", () => {
     const compilerContext = {
       originalObjective: "Apply the full source portfolio safely.",
-      projectJson: "P".repeat(4_744),
-      practiceLedgerJson: "L".repeat(14_944),
-      applicabilityMatrixJson: "A".repeat(14_751),
+      projectJson: "P".repeat(12_500),
+      practiceLedgerJson: "L".repeat(13_878),
+      applicabilityMatrixJson: "A".repeat(17_322),
       requiredCoverageJson: "R".repeat(2_814),
       acceptedOpportunityCoverageJson: "C".repeat(4_461),
       specializedObligationsJson: "O".repeat(1_500),

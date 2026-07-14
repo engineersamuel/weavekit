@@ -24,7 +24,7 @@ import { toBamlError, BamlStream, BamlAbortError, Collector, ClientRegistry } fr
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type { partial_types } from "./partial_types.js"
 import type * as types from "./types.js"
-import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
+import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { AsyncHttpRequest, AsyncHttpStreamRequest } from "./async_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -265,6 +265,62 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
             }
             
+        async AuditPortfolioCoverage(
+        compilerJson: string,draft: types.PortfolioPlanDraft,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.PortfolioCoverageAudit> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.AuditPortfolioCoverage(
+          compilerJson,draft,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "AuditPortfolioCoverage",
+            {
+            "compilerJson": compilerJson,"draft": draft
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.PortfolioCoverageAudit
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
         async ChoosePersonasForTask(
         request: types.PersonaSelectionRequest,
         __baml_options__?: BamlCallOptions<never>
@@ -316,6 +372,62 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             __options__.watchers,
             )
             return __raw__.parsed(false) as types.PersonaSelection
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
+        async CompareSourceToProjectPlans(
+        caseJson: string,planA: string,planB: string,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.SourceToProjectPairwiseJudgment> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.CompareSourceToProjectPlans(
+          caseJson,planA,planB,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "CompareSourceToProjectPlans",
+            {
+            "caseJson": caseJson,"planA": planA,"planB": planB
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.SourceToProjectPairwiseJudgment
             } catch (error) {
             throw toBamlError(error);
             }
@@ -540,6 +652,118 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             __options__.watchers,
             )
             return __raw__.parsed(false) as types.PlanArtifactSummary
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
+        async DistillPortfolioPlanDraft(
+        compilerJson: string,planMarkdown: string,validationFeedback: string,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.PortfolioPlanDraft> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.DistillPortfolioPlanDraft(
+          compilerJson,planMarkdown,validationFeedback,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "DistillPortfolioPlanDraft",
+            {
+            "compilerJson": compilerJson,"planMarkdown": planMarkdown,"validationFeedback": validationFeedback
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.PortfolioPlanDraft
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
+        async DistillProjectApplicability(
+        projectJson: string,practiceLedger: types.SourcePracticeLedger,rawResearch: string,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.ProjectApplicabilityMatrix> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.DistillProjectApplicability(
+          projectJson,practiceLedger,rawResearch,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "DistillProjectApplicability",
+            {
+            "projectJson": projectJson,"practiceLedger": practiceLedger,"rawResearch": rawResearch
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.ProjectApplicabilityMatrix
             } catch (error) {
             throw toBamlError(error);
             }
@@ -881,6 +1105,62 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
             }
             
+        async JudgeSourceToProjectPlan(
+        caseJson: string,planMarkdown: string,validationFeedback: string,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.SourceToProjectPlanJudgment> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.JudgeSourceToProjectPlan(
+          caseJson,planMarkdown,validationFeedback,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "JudgeSourceToProjectPlan",
+            {
+            "caseJson": caseJson,"planMarkdown": planMarkdown,"validationFeedback": validationFeedback
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.SourceToProjectPlanJudgment
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
         async JudgeTemplateFixture(
         objective: string,constraintsSummary: string,fixture: types.TemplateOptimizationFixture,incumbent: types.TemplateCandidate,challenger: types.TemplateCandidate,
         __baml_options__?: BamlCallOptions<never>
@@ -938,7 +1218,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
             
         async MapSourceToProject(
-        sourceAnalysis: types.SourceAnalysis,corroboration: types.CorroborationReport,projectBrief: types.ProjectBrief,
+        practiceLedger: types.SourcePracticeLedger,corroboration: types.CorroborationReport,applicabilityMatrix: types.ProjectApplicabilityMatrix,validationFeedback: string,
         __baml_options__?: BamlCallOptions<never>
         ): Promise<types.OpportunityCouncilReview> {
           try {
@@ -952,7 +1232,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
           // Check if onTick is provided - route through streaming if so
           if (__options__.onTick) {
           const __stream__ = this.stream.MapSourceToProject(
-          sourceAnalysis,corroboration,projectBrief,
+          practiceLedger,corroboration,applicabilityMatrix,validationFeedback,
           __baml_options__
           );
 
@@ -976,7 +1256,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             const __raw__ = await this.runtime.callFunction(
             "MapSourceToProject",
             {
-            "sourceAnalysis": sourceAnalysis,"corroboration": corroboration,"projectBrief": projectBrief
+            "practiceLedger": practiceLedger,"corroboration": corroboration,"applicabilityMatrix": applicabilityMatrix,"validationFeedback": validationFeedback
             },
             this.ctxManager.cloneContext(),
             __options__.tb?.__tb(),
@@ -1212,6 +1492,118 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             __options__.watchers,
             )
             return __raw__.parsed(false) as types.VerificationOpportunityReview
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
+        async RepairPortfolioPlan(
+        compilerJson: string,draft: types.PortfolioPlanDraft,auditFeedback: string,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.PortfolioPlanDraft> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.RepairPortfolioPlan(
+          compilerJson,draft,auditFeedback,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "RepairPortfolioPlan",
+            {
+            "compilerJson": compilerJson,"draft": draft,"auditFeedback": auditFeedback
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.PortfolioPlanDraft
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
+        async RepairProjectApplicability(
+        practiceLedger: types.SourcePracticeLedger,initialMatrix: types.ProjectApplicabilityMatrix,rawRepairResearch: string,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.ProjectApplicabilityMatrix> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.RepairProjectApplicability(
+          practiceLedger,initialMatrix,rawRepairResearch,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "RepairProjectApplicability",
+            {
+            "practiceLedger": practiceLedger,"initialMatrix": initialMatrix,"rawRepairResearch": rawRepairResearch
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.ProjectApplicabilityMatrix
             } catch (error) {
             throw toBamlError(error);
             }
@@ -1733,6 +2125,80 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   }
                   }
                   
+            AuditPortfolioCoverage(
+            compilerJson: string,draft: types.PortfolioPlanDraft,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.PortfolioCoverageAudit, types.PortfolioCoverageAudit>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for AuditPortfolioCoverage", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "AuditPortfolioCoverage",
+                {
+                "compilerJson": compilerJson,"draft": draft
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.PortfolioCoverageAudit, types.PortfolioCoverageAudit>(
+                  __raw__,
+                  (a): partial_types.PortfolioCoverageAudit => a,
+                  (a): types.PortfolioCoverageAudit => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
             ChoosePersonasForTask(
             request: types.PersonaSelectionRequest,
             __baml_options__?: BamlCallOptions<never>
@@ -1799,6 +2265,80 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   __raw__,
                   (a): partial_types.PersonaSelection => a,
                   (a): types.PersonaSelection => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            CompareSourceToProjectPlans(
+            caseJson: string,planA: string,planB: string,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.SourceToProjectPairwiseJudgment, types.SourceToProjectPairwiseJudgment>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for CompareSourceToProjectPlans", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "CompareSourceToProjectPlans",
+                {
+                "caseJson": caseJson,"planA": planA,"planB": planB
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.SourceToProjectPairwiseJudgment, types.SourceToProjectPairwiseJudgment>(
+                  __raw__,
+                  (a): partial_types.SourceToProjectPairwiseJudgment => a,
+                  (a): types.SourceToProjectPairwiseJudgment => a,
                   this.ctxManager.cloneContext(),
                   __options__.signal,
                   )
@@ -2095,6 +2635,154 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   __raw__,
                   (a): partial_types.PlanArtifactSummary => a,
                   (a): types.PlanArtifactSummary => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            DistillPortfolioPlanDraft(
+            compilerJson: string,planMarkdown: string,validationFeedback: string,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.PortfolioPlanDraft, types.PortfolioPlanDraft>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for DistillPortfolioPlanDraft", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "DistillPortfolioPlanDraft",
+                {
+                "compilerJson": compilerJson,"planMarkdown": planMarkdown,"validationFeedback": validationFeedback
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.PortfolioPlanDraft, types.PortfolioPlanDraft>(
+                  __raw__,
+                  (a): partial_types.PortfolioPlanDraft => a,
+                  (a): types.PortfolioPlanDraft => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            DistillProjectApplicability(
+            projectJson: string,practiceLedger: types.SourcePracticeLedger,rawResearch: string,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.ProjectApplicabilityMatrix, types.ProjectApplicabilityMatrix>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for DistillProjectApplicability", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "DistillProjectApplicability",
+                {
+                "projectJson": projectJson,"practiceLedger": practiceLedger,"rawResearch": rawResearch
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.ProjectApplicabilityMatrix, types.ProjectApplicabilityMatrix>(
+                  __raw__,
+                  (a): partial_types.ProjectApplicabilityMatrix => a,
+                  (a): types.ProjectApplicabilityMatrix => a,
                   this.ctxManager.cloneContext(),
                   __options__.signal,
                   )
@@ -2547,6 +3235,80 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   }
                   }
                   
+            JudgeSourceToProjectPlan(
+            caseJson: string,planMarkdown: string,validationFeedback: string,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.SourceToProjectPlanJudgment, types.SourceToProjectPlanJudgment>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for JudgeSourceToProjectPlan", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "JudgeSourceToProjectPlan",
+                {
+                "caseJson": caseJson,"planMarkdown": planMarkdown,"validationFeedback": validationFeedback
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.SourceToProjectPlanJudgment, types.SourceToProjectPlanJudgment>(
+                  __raw__,
+                  (a): partial_types.SourceToProjectPlanJudgment => a,
+                  (a): types.SourceToProjectPlanJudgment => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
             JudgeTemplateFixture(
             objective: string,constraintsSummary: string,fixture: types.TemplateOptimizationFixture,incumbent: types.TemplateCandidate,challenger: types.TemplateCandidate,
             __baml_options__?: BamlCallOptions<never>
@@ -2622,7 +3384,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   }
                   
             MapSourceToProject(
-            sourceAnalysis: types.SourceAnalysis,corroboration: types.CorroborationReport,projectBrief: types.ProjectBrief,
+            practiceLedger: types.SourcePracticeLedger,corroboration: types.CorroborationReport,applicabilityMatrix: types.ProjectApplicabilityMatrix,validationFeedback: string,
             __baml_options__?: BamlCallOptions<never>
             ): BamlStream<partial_types.OpportunityCouncilReview, types.OpportunityCouncilReview>
               {
@@ -2671,7 +3433,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                 const __raw__ = this.runtime.streamFunction(
                 "MapSourceToProject",
                 {
-                "sourceAnalysis": sourceAnalysis,"corroboration": corroboration,"projectBrief": projectBrief
+                "practiceLedger": practiceLedger,"corroboration": corroboration,"applicabilityMatrix": applicabilityMatrix,"validationFeedback": validationFeedback
                 },
                 undefined,
                 this.ctxManager.cloneContext(),
@@ -2983,6 +3745,154 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   __raw__,
                   (a): partial_types.VerificationOpportunityReview => a,
                   (a): types.VerificationOpportunityReview => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            RepairPortfolioPlan(
+            compilerJson: string,draft: types.PortfolioPlanDraft,auditFeedback: string,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.PortfolioPlanDraft, types.PortfolioPlanDraft>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for RepairPortfolioPlan", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "RepairPortfolioPlan",
+                {
+                "compilerJson": compilerJson,"draft": draft,"auditFeedback": auditFeedback
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.PortfolioPlanDraft, types.PortfolioPlanDraft>(
+                  __raw__,
+                  (a): partial_types.PortfolioPlanDraft => a,
+                  (a): types.PortfolioPlanDraft => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            RepairProjectApplicability(
+            practiceLedger: types.SourcePracticeLedger,initialMatrix: types.ProjectApplicabilityMatrix,rawRepairResearch: string,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.ProjectApplicabilityMatrix, types.ProjectApplicabilityMatrix>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for RepairProjectApplicability", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "RepairProjectApplicability",
+                {
+                "practiceLedger": practiceLedger,"initialMatrix": initialMatrix,"rawRepairResearch": rawRepairResearch
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.ProjectApplicabilityMatrix, types.ProjectApplicabilityMatrix>(
+                  __raw__,
+                  (a): partial_types.ProjectApplicabilityMatrix => a,
+                  (a): types.ProjectApplicabilityMatrix => a,
                   this.ctxManager.cloneContext(),
                   __options__.signal,
                   )

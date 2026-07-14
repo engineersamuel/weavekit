@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -17,7 +17,10 @@ import {
 } from "../../../src/macro-workflow/types.js";
 import { runMacroWorkflow } from "../../../src/macro-workflow/runner.js";
 import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.js";
-import type { OpportunityCouncilReview } from "../../../src/generated/baml_client/index.js";
+import type {
+  OpportunityCouncilReview,
+  ProjectApplicabilityMatrix,
+} from "../../../src/generated/baml_client/index.js";
 import type { CouncilDeliberationResult } from "../../../src/macro-workflow/sourceToProject/councilDeliberation.js";
 import {
   createCopilotSdkHarnessClient,
@@ -478,7 +481,7 @@ describe("source-to-project harness registry", () => {
           }
         ).hooks?.onPreToolUse;
         decisions.push(
-          hook?.({
+          await hook?.({
             toolName: "shell",
             toolArgs: {
               command:
@@ -487,7 +490,7 @@ describe("source-to-project harness registry", () => {
           }),
         );
         decisions.push(
-          hook?.({
+          await hook?.({
             toolName: "shell",
             toolArgs: {
               command:
@@ -988,10 +991,10 @@ describe("source-to-project harness registry", () => {
             hooks?: { onPreToolUse?: (input: { toolName?: string }) => unknown };
           }
         ).hooks?.onPreToolUse;
-        decisions.push(hook?.({ toolName: "view" }));
-        decisions.push(hook?.({ toolName: "rg" }));
-        decisions.push(hook?.({ toolName: "shell" }));
-        decisions.push(hook?.({ toolName: "edit" }));
+        decisions.push(await hook?.({ toolName: "view" }));
+        decisions.push(await hook?.({ toolName: "rg" }));
+        decisions.push(await hook?.({ toolName: "shell" }));
+        decisions.push(await hook?.({ toolName: "edit" }));
         return {
           async sendAndWait() {
             return { data: { content: "read-only response" } };
@@ -1022,6 +1025,210 @@ describe("source-to-project harness registry", () => {
     ]);
   });
 
+  it("allows only the active runtime workspace plan create without spending the research tool budget", async () => {
+    const originalCopilotHome = process.env.COPILOT_HOME;
+    const copilotHome = join(tmpdir(), "weavekit-unrelated-copilot-home");
+    const workspacePath = await mkdtemp(join(tmpdir(), "weavekit-runtime-workspace-"));
+    const sessionPlanPath = join(workspacePath, "plan.md");
+    const siblingPlanPath = join(dirname(workspacePath), "sibling-session", "plan.md");
+    const planDecisions = new Map<string, unknown>();
+    let sessionCount = 0;
+    const client = {
+      async start() {},
+      async createSession(config: unknown) {
+        const hook = (
+          config as {
+            hooks?: {
+              onPreToolUse?: (input: { toolName?: string; toolArgs?: unknown }) => unknown;
+            };
+          }
+        ).hooks?.onPreToolUse;
+        const currentSession = sessionCount;
+        const currentWorkspace =
+          currentSession === 0 ? workspacePath : join(dirname(workspacePath), "research-workspace");
+        sessionCount += 1;
+        return {
+          sessionId: currentSession === 0 ? "session-1" : "session-2",
+          workspacePath: currentWorkspace,
+          async sendAndWait() {
+            if (currentSession === 0) {
+              planDecisions.set("research", await hook?.({ toolName: "view" }));
+              planDecisions.set(
+                "session-plan",
+                await hook?.({ toolName: "create", toolArgs: { path: sessionPlanPath } }),
+              );
+              planDecisions.set(
+                "sibling-session",
+                await hook?.({ toolName: "create", toolArgs: { path: siblingPlanPath } }),
+              );
+              planDecisions.set("budget-exceeded", await hook?.({ toolName: "view" }));
+              planDecisions.set(
+                "target-project",
+                await hook?.({ toolName: "create", toolArgs: { path: "/tmp/project/plan.md" } }),
+              );
+              planDecisions.set(
+                "traversal",
+                await hook?.({
+                  toolName: "create",
+                  toolArgs: {
+                    path: `${workspacePath}/../sibling-session/plan.md`,
+                  },
+                }),
+              );
+              planDecisions.set(
+                "nested",
+                await hook?.({
+                  toolName: "create",
+                  toolArgs: {
+                    path: join(workspacePath, "nested", "plan.md"),
+                  },
+                }),
+              );
+              planDecisions.set(
+                "other-filename",
+                await hook?.({
+                  toolName: "create",
+                  toolArgs: { path: join(workspacePath, "notes.md") },
+                }),
+              );
+              planDecisions.set(
+                "other-mutating-tool",
+                await hook?.({ toolName: "edit", toolArgs: { path: sessionPlanPath } }),
+              );
+            } else {
+              planDecisions.set(
+                "non-plan-mode",
+                await hook?.({
+                  toolName: "create",
+                  toolArgs: { path: join(currentWorkspace, "plan.md") },
+                }),
+              );
+            }
+            return { data: { content: "response" } };
+          },
+          async disconnect() {},
+        };
+      },
+      async stop() {
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({
+      maxToolCalls: 1,
+      clientFactory: () => client,
+    });
+
+    process.env.COPILOT_HOME = copilotHome;
+    try {
+      await copilot.run({
+        cwd: "/tmp/project",
+        prompt: "Plan project",
+        mode: "plan",
+        toolPolicy: "read-only",
+      });
+      await copilot.run({
+        cwd: "/tmp/project",
+        prompt: "Research project",
+        mode: "research",
+        toolPolicy: "read-only",
+      });
+    } finally {
+      if (originalCopilotHome === undefined) {
+        delete process.env.COPILOT_HOME;
+      } else {
+        process.env.COPILOT_HOME = originalCopilotHome;
+      }
+      await rm(workspacePath, { recursive: true, force: true });
+    }
+
+    expect(planDecisions.get("research")).toBeUndefined();
+    expect(planDecisions.get("session-plan")).toBeUndefined();
+    expect(planDecisions.get("budget-exceeded")).toMatchObject({
+      permissionDecision: "deny",
+      permissionDecisionReason: expect.stringContaining("1-tool research budget"),
+    });
+    for (const deniedCase of [
+      "sibling-session",
+      "target-project",
+      "traversal",
+      "nested",
+      "other-filename",
+      "other-mutating-tool",
+      "non-plan-mode",
+    ]) {
+      expect(planDecisions.get(deniedCase)).toMatchObject({
+        permissionDecision: "deny",
+        permissionDecisionReason: expect.stringContaining("read-only"),
+      });
+    }
+  });
+
+  it("denies a symlinked runtime workspace plan that resolves inside the target cwd", async () => {
+    const originalCopilotHome = process.env.COPILOT_HOME;
+    const cwd = await mkdtemp(join(tmpdir(), "weavekit-target-project-"));
+    const workspaceTarget = join(cwd, "session-workspace");
+    await mkdir(workspaceTarget);
+    const copilotHome = await mkdtemp(join(tmpdir(), "weavekit-copilot-home-"));
+    const sessionId = "session-symlinked";
+    const sessionState = join(copilotHome, "session-state");
+    await mkdir(sessionState);
+    const workspacePath = join(sessionState, sessionId);
+    await symlink(workspaceTarget, workspacePath, "dir");
+    const sessionPlanPath = join(workspacePath, "plan.md");
+    let decision: unknown;
+    const client = {
+      async start() {},
+      async createSession(config: unknown) {
+        const hook = (
+          config as {
+            hooks?: {
+              onPreToolUse?: (input: { toolName?: string; toolArgs?: unknown }) => unknown;
+            };
+          }
+        ).hooks?.onPreToolUse;
+        return {
+          sessionId,
+          workspacePath,
+          async sendAndWait() {
+            decision = await hook?.({
+              toolName: "create",
+              toolArgs: { path: sessionPlanPath },
+            });
+            return { data: { content: "response" } };
+          },
+          async disconnect() {},
+        };
+      },
+      async stop() {
+        return undefined;
+      },
+    };
+    const copilot = createCopilotSdkHarnessClient({ clientFactory: () => client });
+
+    process.env.COPILOT_HOME = copilotHome;
+    try {
+      await copilot.run({
+        cwd,
+        prompt: "Plan project",
+        mode: "plan",
+        toolPolicy: "read-only",
+      });
+    } finally {
+      if (originalCopilotHome === undefined) {
+        delete process.env.COPILOT_HOME;
+      } else {
+        process.env.COPILOT_HOME = originalCopilotHome;
+      }
+      await rm(copilotHome, { recursive: true, force: true });
+      await rm(cwd, { recursive: true, force: true });
+    }
+
+    expect(decision).toMatchObject({
+      permissionDecision: "deny",
+      permissionDecisionReason: expect.stringContaining("read-only"),
+    });
+  });
+
   it("denies Copilot SDK tool calls after the configured tool-call budget", async () => {
     const logs: Array<{
       phase: string;
@@ -1038,9 +1245,9 @@ describe("source-to-project harness registry", () => {
             hooks?: { onPreToolUse?: (input: { toolName?: string }) => unknown };
           }
         ).hooks?.onPreToolUse;
-        decisions.push(hook?.({ toolName: "glob" }));
-        decisions.push(hook?.({ toolName: "view" }));
-        decisions.push(hook?.({ toolName: "glob" }));
+        decisions.push(await hook?.({ toolName: "glob" }));
+        decisions.push(await hook?.({ toolName: "view" }));
+        decisions.push(await hook?.({ toolName: "glob" }));
         return {
           async sendAndWait() {
             return { data: { content: "live response" } };
@@ -4503,6 +4710,9 @@ describe("source-to-project harness registry", () => {
       practiceIds: [practice.id],
       behaviorIds: practice.behaviorIds,
       proofIds: practice.proofIds,
+      targetLayersByPracticeId: {
+        [practice.id]: ["07-wiki"],
+      },
     });
   });
 
@@ -4614,9 +4824,13 @@ describe("source-to-project harness registry", () => {
     expect(prompts[0]).not.toContain("LLM adapter layer");
   });
 
-  it("persists per-opportunity plan markdown and supplies its path to BAML", async () => {
+  it("persists the authoritative runtime workspace plan and supplies its path to BAML", async () => {
+    const originalCopilotHome = process.env.COPILOT_HOME;
     const outputDir = await mkdtemp(join(tmpdir(), "weavekit-plan-artifact-"));
+    const runtimeWorkspace = await mkdtemp(join(tmpdir(), "weavekit-runtime-plan-workspace-"));
+    const copilotHome = await mkdtemp(join(tmpdir(), "weavekit-unrelated-copilot-home-"));
     try {
+      process.env.COPILOT_HOME = copilotHome;
       const councilReview = mixedCouncilReviewFixture();
       const acceptance = selectAcceptedOpportunities(councilReview, {
         minApplicability: 0.7,
@@ -4625,14 +4839,18 @@ describe("source-to-project harness registry", () => {
         minAcceptanceAverage: 0.85,
         maxRisk: 0.8,
       }).find((candidate) => candidate.id === "opp-1")!;
-      const rawMarkdown = "# Plan\n\nImplement the KG pipeline.";
+      const rawMarkdown =
+        "# Partial plan response\n\nThe complete plan is in the session workspace.";
+      const fullPlanMarkdown = "# Plan\n\nImplement the complete KG pipeline.";
       const distillCalls: string[][] = [];
       const registry = createSourceToProjectHarnessRegistry({
         source: "https://example.com/kg",
         project: projectFixture(),
         mode: "advisory",
         copilot: {
-          async run() {
+          async run(args) {
+            await writeFile(join(runtimeWorkspace, "plan.md"), fullPlanMarkdown);
+            args.onSessionId?.("runtime-session", runtimeWorkspace);
             return rawMarkdown;
           },
         },
@@ -4674,13 +4892,17 @@ describe("source-to-project harness registry", () => {
 
       expect(result.status).toBe("passed");
       expect(distillCalls).toHaveLength(1);
-      expect(distillCalls[0]?.[1]).toBe(rawMarkdown);
+      expect(distillCalls[0]?.[1]).toBe(fullPlanMarkdown);
       expect(distillCalls[0]?.[2]).toBe("raw-plans/plan-opportunity-opp-1.md");
       await expect(
         readFile(join(outputDir, "raw-plans", "plan-opportunity-opp-1.md"), "utf8"),
       ).resolves.toBe(rawMarkdown);
+      await expect(
+        readFile(join(outputDir, "raw-plans", "plan-opportunity-opp-1-full.md"), "utf8"),
+      ).resolves.toBe(fullPlanMarkdown);
       expect(result.payload?.plan).toMatchObject({
         rawPlanArtifactPath: "raw-plans/plan-opportunity-opp-1.md",
+        planFilePath: join(outputDir, "raw-plans", "plan-opportunity-opp-1-full.md"),
       });
       expect(result.artifacts).toEqual([
         {
@@ -4688,9 +4910,21 @@ describe("source-to-project harness registry", () => {
           path: "raw-plans/plan-opportunity-opp-1.md",
           description: "Raw Copilot plan markdown for plan-opportunity-opp-1.",
         },
+        {
+          kind: "markdown",
+          path: "raw-plans/plan-opportunity-opp-1-full.md",
+          description: "Full Copilot session plan.md for plan-opportunity-opp-1.",
+        },
       ]);
     } finally {
+      if (originalCopilotHome === undefined) {
+        delete process.env.COPILOT_HOME;
+      } else {
+        process.env.COPILOT_HOME = originalCopilotHome;
+      }
       await rm(outputDir, { recursive: true, force: true });
+      await rm(runtimeWorkspace, { recursive: true, force: true });
+      await rm(copilotHome, { recursive: true, force: true });
     }
   });
 
@@ -5011,6 +5245,12 @@ describe("source-to-project harness registry", () => {
         practiceIds: acceptance.opportunity.practiceIds,
         behaviorIds: acceptance.opportunity.behaviorIds,
         proofIds: acceptance.opportunity.proofIds,
+        targetLayersByPracticeId: Object.fromEntries(
+          acceptance.opportunity.practiceIds.map((practiceId) => [
+            practiceId,
+            acceptance.opportunity.targetLayers,
+          ]),
+        ),
       };
       const markdown =
         "# Canonical plan\n\nImplement the accepted behavior in the fixture layer and run its proof.";
@@ -5050,13 +5290,31 @@ describe("source-to-project harness registry", () => {
         summary: "Coverage complete.",
       };
       const bamlCalls: string[] = [];
+      let planningPrompt = "";
+      let immutableCompilerJson = "";
+      const applicabilityMatrix = applicabilityMatrixFixture();
+      applicabilityMatrix.assessments[0]!.projectEvidence = [
+        {
+          id: "project-evidence",
+          source: "src/project.ts",
+          quote: "PLANNING_PROJECT_EVIDENCE_SENTINEL",
+        },
+      ];
+      applicabilityMatrix.assessments[0]!.contradictionEvidence = [
+        {
+          id: "contradiction-evidence",
+          source: "src/legacy.ts",
+          quote: "PLANNING_CONTRADICTION_EVIDENCE_SENTINEL",
+        },
+      ];
       const registry = createSourceToProjectHarnessRegistry({
         source: "https://example.com/safe-todos",
         originalPrompt: "Apply the safe behavior",
         project: projectFixture(),
         mode: "advisory",
         copilot: {
-          async run() {
+          async run(args) {
+            planningPrompt = args.prompt;
             return markdown;
           },
         },
@@ -5064,8 +5322,9 @@ describe("source-to-project harness registry", () => {
           async DistillPlanArtifact() {
             return planSummaryFixture("Canonical plan");
           },
-          async DistillPortfolioPlanDraft() {
+          async DistillPortfolioPlanDraft(compilerJson) {
             bamlCalls.push("DistillPortfolioPlanDraft");
+            immutableCompilerJson = compilerJson;
             return draft;
           },
           async AuditPortfolioCoverage() {
@@ -5084,7 +5343,7 @@ describe("source-to-project harness registry", () => {
           "project-research",
           {
             projectBrief: projectBriefFixture(),
-            applicabilityMatrix: applicabilityMatrixFixture(),
+            applicabilityMatrix,
           },
         ],
         ["council-review", { councilReview, opportunityAcceptances, opportunityCoverage }],
@@ -5133,9 +5392,38 @@ describe("source-to-project harness registry", () => {
       );
 
       expect(bamlCalls).toEqual(["DistillPortfolioPlanDraft", "AuditPortfolioCoverage"]);
+      expect(planningPrompt).not.toContain("PLANNING_PROJECT_EVIDENCE_SENTINEL");
+      expect(planningPrompt).toContain("PLANNING_CONTRADICTION_EVIDENCE_SENTINEL");
+      const immutableCompilerContext = JSON.parse(immutableCompilerJson) as {
+        schemaVersion: number;
+        projectBrief?: unknown;
+        applicabilityMatrix: ProjectApplicabilityMatrix;
+      };
+      expect(immutableCompilerContext.schemaVersion).toBe(2);
+      expect(immutableCompilerContext.projectBrief).toEqual(projectBriefFixture());
+      expect(immutableCompilerContext.applicabilityMatrix.assessments[0]).toMatchObject({
+        projectEvidence: [
+          {
+            id: "project-evidence",
+            source: "src/project.ts",
+            quote: "PLANNING_PROJECT_EVIDENCE_SENTINEL",
+          },
+        ],
+        contradictionEvidence: [
+          {
+            id: "contradiction-evidence",
+            source: "src/legacy.ts",
+            quote: "PLANNING_CONTRADICTION_EVIDENCE_SENTINEL",
+          },
+        ],
+      });
       expect(auditResult.payload?.portfolioAudit).toMatchObject({
         passed: true,
         repairAttempted: false,
+      });
+      expect(auditResult.execution?.metadata).toMatchObject({
+        portfolioExtractionRepairAttempted: false,
+        portfolioRepairAttempted: false,
       });
       expect(auditResult.execution?.metadata).toMatchObject({
         practiceCounts: { applicable: 1, partial: 0, notApplicable: 0, unknown: 0 },
@@ -5175,17 +5463,445 @@ describe("source-to-project harness registry", () => {
     }
   });
 
-  it("repairs an incomplete portfolio once and accepts only the fresh passing audit", async () => {
+  it("grounds unique marker-only quote loss without a second extraction call", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-extraction-repair-"));
+    try {
+      const fixture = portfolioPlanExecutionFixture(outputDir);
+      const canonicalDraft = portfolioDraftFixture(
+        "**Phase B — Install Oxlint for real (tool-installation).** Add the package and verify the command.",
+        fixture.coverage,
+        fixture.acceptance.opportunity.targetLayers[0]!,
+      );
+      const invalidDraft = {
+        ...canonicalDraft,
+        coverageClaims: [
+          {
+            ...canonicalDraft.coverageClaims[0]!,
+            evidenceQuotes: [
+              "Phase B — Install Oxlint for real (tool-installation). Add the package and verify the command.",
+            ],
+          },
+        ],
+      };
+      const validationFeedback: string[] = [];
+      let auditCalls = 0;
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/oxlint",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return canonicalDraft.markdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical plan");
+          },
+          async DistillPortfolioPlanDraft(...args: unknown[]) {
+            validationFeedback.push(String(args[2] ?? ""));
+            return invalidDraft;
+          },
+          async AuditPortfolioCoverage(compilerJson, draft) {
+            auditCalls += 1;
+            return completePortfolioAuditFromCompiler(compilerJson, draft);
+          },
+        },
+      });
+
+      const planResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        fixture.node,
+        fixture.context,
+      );
+      const auditResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        portfolioAuditNodeFixture(),
+        {
+          ...fixture.context,
+          payloads: new Map([...fixture.context.payloads, ["plan-portfolio", planResult.payload!]]),
+        },
+      );
+
+      expect(validationFeedback).toHaveLength(1);
+      expect(validationFeedback[0]).toBe("");
+      expect(auditCalls).toBe(1);
+      expect(planResult.payload).toMatchObject({
+        portfolioDraft: canonicalDraft,
+        portfolioExtractionRepairAttempted: true,
+      });
+      expect(auditResult.payload?.portfolioAudit).toMatchObject({
+        passed: true,
+        repairAttempted: false,
+      });
+      expect(auditResult.execution?.metadata).toMatchObject({
+        portfolioExtractionRepairAttempted: true,
+        portfolioRepairAttempted: false,
+      });
+      const reportResult = await registry.get(WorkflowHarnessKind.REPORTER)!(
+        {
+          id: "report-portfolio",
+          kind: WorkflowNodeKind.REPORT,
+          harness: WorkflowHarnessKind.REPORTER,
+          title: "Report portfolio",
+          prompt: "Report",
+          dependsOn: ["audit-portfolio"],
+          gates: ["output-contract"],
+          writeMode: "read-only",
+          replanPolicy: "never",
+        },
+        {
+          payloads: new Map([["audit-portfolio", auditResult.payload!]]),
+          artifacts: new Map(),
+          outputDir,
+        },
+      );
+      const reportMarkdown = String(reportResult.payload?.sourceToProjectReportMarkdown);
+      expect(reportMarkdown).toContain("- Extraction repair attempted: yes");
+      expect(reportMarkdown).toContain("- Semantic repair attempted: no");
+      expect(reportMarkdown).not.toContain("- Repair attempted:");
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed after one extraction repair when both portfolio drafts are invalid", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-extraction-failure-"));
+    try {
+      const fixture = portfolioPlanExecutionFixture(outputDir);
+      const canonicalDraft = portfolioDraftFixture(
+        "**Phase 2 — Install Oxlint.** Add the package and verify the command.",
+        fixture.coverage,
+        fixture.acceptance.opportunity.targetLayers[0]!,
+      );
+      const invalidDraft = {
+        ...canonicalDraft,
+        coverageClaims: [
+          {
+            ...canonicalDraft.coverageClaims[0]!,
+            evidenceQuotes: ["fabricated extraction quote"],
+          },
+        ],
+      };
+      const validationFeedback: string[] = [];
+      let auditCalls = 0;
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/oxlint",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return canonicalDraft.markdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical plan");
+          },
+          async DistillPortfolioPlanDraft(...args: unknown[]) {
+            validationFeedback.push(String(args[2] ?? ""));
+            return invalidDraft;
+          },
+          async AuditPortfolioCoverage() {
+            auditCalls += 1;
+            return completePortfolioAuditFromCompiler("{}", canonicalDraft);
+          },
+        },
+      });
+
+      await expect(
+        registry.get(WorkflowHarnessKind.COPILOT_SDK)!(fixture.node, fixture.context),
+      ).rejects.toThrow(/invalid after one extraction repair/i);
+
+      expect(validationFeedback).toHaveLength(2);
+      expect(validationFeedback[0]).toBe("");
+      expect(validationFeedback[1]).not.toBe("");
+      expect(validationFeedback[1]!.length).toBeLessThanOrEqual(512);
+      expect(validationFeedback[1]).toContain(
+        "EVIDENCE_QUOTE_NOT_EXACT claim[0].evidenceQuotes[0]",
+      );
+      expect(validationFeedback[1]).not.toContain("fabricated extraction quote");
+      expect(validationFeedback[1]).not.toContain(canonicalDraft.markdown);
+      expect(auditCalls).toBe(0);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not retry a transport-failing portfolio draft extraction", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-extraction-transport-"));
+    try {
+      const fixture = portfolioPlanExecutionFixture(outputDir);
+      const canonicalDraft = portfolioDraftFixture(
+        "Install Oxlint through the grounded project workflow.",
+        fixture.coverage,
+        fixture.acceptance.opportunity.targetLayers[0]!,
+      );
+      const transportFailure = new Error("portfolio extraction transport failed");
+      let distillCalls = 0;
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/oxlint",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return canonicalDraft.markdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical plan");
+          },
+          async DistillPortfolioPlanDraft() {
+            distillCalls += 1;
+            throw transportFailure;
+          },
+        },
+      });
+
+      await expect(
+        registry.get(WorkflowHarnessKind.COPILOT_SDK)!(fixture.node, fixture.context),
+      ).rejects.toBe(transportFailure);
+      expect(distillCalls).toBe(1);
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("anchors a changed markdown echo without a second extraction call", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-markdown-anchor-"));
+    try {
+      const fixture = portfolioPlanExecutionFixture(outputDir);
+      const canonicalDraft = portfolioDraftFixture(
+        "**Phase 2 — Install Oxlint.** Add the package and verify the command.",
+        fixture.coverage,
+        fixture.acceptance.opportunity.targetLayers[0]!,
+      );
+      const changedMarkdownDraft = {
+        ...canonicalDraft,
+        markdown: `${canonicalDraft.markdown}\n`,
+      };
+      const validationFeedback: string[] = [];
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/oxlint",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return canonicalDraft.markdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical plan");
+          },
+          async DistillPortfolioPlanDraft(...args: unknown[]) {
+            validationFeedback.push(String(args[2] ?? ""));
+            return changedMarkdownDraft;
+          },
+        },
+      });
+
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        fixture.node,
+        fixture.context,
+      );
+
+      expect(validationFeedback).toHaveLength(1);
+      expect(validationFeedback[0]).toBe("");
+      expect(result.payload).toMatchObject({
+        portfolioDraft: canonicalDraft,
+        portfolioExtractionRepairAttempted: true,
+      });
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("retries once when a portfolio draft uses a nonempty ungrounded target layer", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-layer-repair-"));
+    try {
+      const fixture = portfolioPlanExecutionFixture(outputDir);
+      const allowedLayer = fixture.acceptance.opportunity.targetLayers[0]!;
+      const canonicalDraft = portfolioDraftFixture(
+        "Install Oxlint through the grounded project workflow.",
+        fixture.coverage,
+        allowedLayer,
+      );
+      const invalidDraft = {
+        ...canonicalDraft,
+        coverageClaims: [
+          {
+            ...canonicalDraft.coverageClaims[0]!,
+            targetLayers: ["made-up orchestration layer"],
+          },
+        ],
+      };
+      const validationFeedback: string[] = [];
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/oxlint",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return canonicalDraft.markdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical plan");
+          },
+          async DistillPortfolioPlanDraft(...args: unknown[]) {
+            validationFeedback.push(String(args[2] ?? ""));
+            return validationFeedback.length === 1 ? invalidDraft : canonicalDraft;
+          },
+        },
+      });
+
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        fixture.node,
+        fixture.context,
+      );
+
+      expect(validationFeedback).toHaveLength(2);
+      expect(validationFeedback[0]).toBe("");
+      expect(validationFeedback[1]).not.toBe("");
+      expect(result.payload).toMatchObject({
+        portfolioDraft: canonicalDraft,
+        portfolioExtractionRepairAttempted: true,
+      });
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps extraction repair separate from the one semantic portfolio repair", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-two-stage-repair-"));
+    try {
+      const fixture = portfolioPlanExecutionFixture(outputDir);
+      const allowedLayer = fixture.acceptance.opportunity.targetLayers[0]!;
+      const canonicalDraft = portfolioDraftFixture(
+        "Install Oxlint through the grounded project workflow.",
+        fixture.coverage,
+        allowedLayer,
+      );
+      const invalidDraft = {
+        ...canonicalDraft,
+        coverageClaims: [
+          {
+            ...canonicalDraft.coverageClaims[0]!,
+            targetLayers: ["made-up orchestration layer"],
+          },
+        ],
+      };
+      const repairedDraft = portfolioDraftFixture(
+        "Install Oxlint through the grounded project workflow and run the compatibility proof.",
+        fixture.coverage,
+        allowedLayer,
+      );
+      let distillCalls = 0;
+      let auditCalls = 0;
+      let semanticRepairCalls = 0;
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/oxlint",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return canonicalDraft.markdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical plan");
+          },
+          async DistillPortfolioPlanDraft() {
+            distillCalls += 1;
+            return distillCalls === 1 ? invalidDraft : canonicalDraft;
+          },
+          async AuditPortfolioCoverage(compilerJson, draft) {
+            auditCalls += 1;
+            const completeAudit = completePortfolioAuditFromCompiler(compilerJson, draft);
+            if (auditCalls === 1) {
+              return {
+                ...completeAudit,
+                behaviorAssessments: completeAudit.behaviorAssessments.map((assessment, index) =>
+                  index === 0
+                    ? {
+                        ...assessment,
+                        status: "partial" as const,
+                        gaps: ["Compatibility proof is not explicit."],
+                        rationale: "The action is present but its proof is incomplete.",
+                      }
+                    : assessment,
+                ),
+                summary: "Coverage incomplete.",
+              };
+            }
+            return completeAudit;
+          },
+          async RepairPortfolioPlan() {
+            semanticRepairCalls += 1;
+            return repairedDraft;
+          },
+        },
+      });
+
+      const planResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        fixture.node,
+        fixture.context,
+      );
+      const auditResult = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        portfolioAuditNodeFixture(),
+        {
+          ...fixture.context,
+          payloads: new Map([...fixture.context.payloads, ["plan-portfolio", planResult.payload!]]),
+        },
+      );
+
+      expect(distillCalls).toBe(2);
+      expect(auditCalls).toBe(2);
+      expect(semanticRepairCalls).toBe(1);
+      expect(auditResult.payload).toMatchObject({
+        portfolioExtractionRepairAttempted: true,
+        portfolioAudit: {
+          passed: true,
+          repairAttempted: true,
+          attempts: 1,
+        },
+        portfolioDraft: repairedDraft,
+      });
+      expect(auditResult.execution?.metadata).toMatchObject({
+        portfolioExtractionRepairAttempted: true,
+        portfolioRepairAttempted: true,
+      });
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("grounds one task-list prefix in semantic repair before strict validation and re-audit", async () => {
     const coverage = {
       practiceIds: ["practice-boundaries"],
       behaviorIds: ["practice-boundaries/behavior-1"],
       proofIds: ["practice-boundaries/proof-1"],
+      targetLayersByPracticeId: {
+        "practice-boundaries": ["HTTP adapter"],
+      },
     };
-    const initialDraft = portfolioDraftFixture("Validate requests in the adapter.", coverage);
-    const repairedDraft = portfolioDraftFixture(
-      "Validate requests in the adapter and run the malformed-input integration proof.",
+    const initialDraft = portfolioDraftFixture(
+      "Add request validation to the HTTP adapter.",
       coverage,
     );
+    const repairedLine =
+      "- [ ] Add service unit tests, HTTP integration tests, DOM rendering regression tests, type checking, and focused scripts using the README.md `nub run <script>` convention.";
+    const repairedDraft = {
+      ...portfolioDraftFixture(repairedLine, coverage),
+      coverageClaims: [
+        {
+          ...portfolioDraftFixture(repairedLine, coverage).coverageClaims[0]!,
+          evidenceQuotes: [repairedLine.slice("- [ ] ".length)],
+        },
+      ],
+    };
     const calls: string[] = [];
     let auditAttempt = 0;
     const registry = createSourceToProjectHarnessRegistry({
@@ -5193,14 +5909,21 @@ describe("source-to-project harness registry", () => {
       project: projectFixture(),
       mode: "advisory",
       baml: {
-        async AuditPortfolioCoverage() {
+        async AuditPortfolioCoverage(compilerJson, draft) {
           calls.push("AuditPortfolioCoverage");
           auditAttempt += 1;
-          return portfolioAuditFixture(
-            coverage.behaviorIds[0]!,
-            auditAttempt === 1 ? "partial" : "complete",
-            auditAttempt === 1 ? initialDraft : repairedDraft,
-          );
+          const audit = completePortfolioAuditFromCompiler(compilerJson, draft);
+          return auditAttempt === 1
+            ? {
+                ...audit,
+                behaviorAssessments: audit.behaviorAssessments.map((assessment) => ({
+                  ...assessment,
+                  status: "partial" as const,
+                  gaps: ["Test coverage is incomplete."],
+                })),
+                summary: "Coverage incomplete.",
+              }
+            : audit;
         },
         async RepairPortfolioPlan() {
           calls.push("RepairPortfolioPlan");
@@ -5211,7 +5934,192 @@ describe("source-to-project harness registry", () => {
 
     const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
       portfolioAuditNodeFixture(),
-      portfolioAuditContextFixture(coverage, initialDraft),
+      portfolioAuditContextFixture(coverage, initialDraft, true),
+    );
+
+    expect(calls).toEqual([
+      "AuditPortfolioCoverage",
+      "RepairPortfolioPlan",
+      "AuditPortfolioCoverage",
+    ]);
+    expect(result.payload?.portfolioDraft).toMatchObject({
+      markdown: repairedDraft.markdown,
+      coverageClaims: [{ evidenceQuotes: [repairedLine] }],
+    });
+    expect(result.payload).toMatchObject({
+      portfolioExtractionRepairAttempted: true,
+      portfolioAudit: { passed: true, repairAttempted: true, attempts: 1 },
+    });
+    expect(result.execution?.metadata).toMatchObject({
+      portfolioExtractionRepairAttempted: true,
+      portfolioRepairAttempted: true,
+    });
+  });
+
+  it.each([
+    [
+      "ambiguous task-list omission",
+      "- [ ] Add service unit tests.\n- [ ] Add service unit tests.",
+      "Add service unit tests.",
+      "ambiguously matches 2 canonical markdown lines",
+    ],
+    [
+      "non-marker paraphrase",
+      "Add service unit tests.",
+      "Add the service tests.",
+      "exact markdown substring",
+    ],
+  ])(
+    "fails %s semantic repair before re-audit",
+    async (_kind, repairedMarkdown, quote, expectedError) => {
+      const coverage = {
+        practiceIds: ["practice-boundaries"],
+        behaviorIds: ["practice-boundaries/behavior-1"],
+        proofIds: ["practice-boundaries/proof-1"],
+        targetLayersByPracticeId: {
+          "practice-boundaries": ["HTTP adapter"],
+        },
+      };
+      const initialDraft = portfolioDraftFixture(
+        "Add request validation to the HTTP adapter.",
+        coverage,
+      );
+      const invalidRepair = {
+        ...initialDraft,
+        markdown: repairedMarkdown,
+        coverageClaims: [
+          {
+            ...initialDraft.coverageClaims[0]!,
+            evidenceQuotes: [quote],
+          },
+        ],
+      };
+      const calls: string[] = [];
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/boundaries",
+        project: projectFixture(),
+        mode: "advisory",
+        baml: {
+          async AuditPortfolioCoverage() {
+            calls.push("AuditPortfolioCoverage");
+            return portfolioAuditFixture(coverage.behaviorIds[0]!, "partial", initialDraft);
+          },
+          async RepairPortfolioPlan() {
+            calls.push("RepairPortfolioPlan");
+            return invalidRepair;
+          },
+        },
+      });
+
+      await expect(
+        registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+          portfolioAuditNodeFixture(),
+          portfolioAuditContextFixture(coverage, initialDraft),
+        ),
+      ).rejects.toThrow(new RegExp(`Portfolio repair produced an invalid draft.*${expectedError}`));
+      expect(calls).toEqual(["AuditPortfolioCoverage", "RepairPortfolioPlan"]);
+    },
+  );
+
+  it("uses immutable compiler target layers in deterministic portfolio extraction", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-portfolio-layer-fallback-"));
+    try {
+      const fixture = portfolioPlanExecutionFixture(outputDir);
+      const allowedLayers =
+        fixture.coverage.targetLayersByPracticeId[fixture.coverage.practiceIds[0]!]!;
+      const canonicalDraft = portfolioDraftFixture(
+        "Install Oxlint through the grounded project workflow.",
+        fixture.coverage,
+        allowedLayers[0]!,
+      );
+      const registry = createSourceToProjectHarnessRegistry({
+        source: "https://example.com/oxlint",
+        project: projectFixture(),
+        mode: "advisory",
+        copilot: {
+          async run() {
+            return canonicalDraft.markdown;
+          },
+        },
+        baml: {
+          async DistillPlanArtifact() {
+            return planSummaryFixture("Canonical plan");
+          },
+        },
+      });
+
+      const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+        fixture.node,
+        fixture.context,
+      );
+
+      expect(result.payload?.portfolioDraft).toMatchObject({
+        coverageClaims: [{ targetLayers: allowedLayers }],
+      });
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs every unsupported current-fact occurrence while preserving a bounded proposed file", async () => {
+    const coverage = {
+      practiceIds: ["practice-boundaries"],
+      behaviorIds: ["practice-boundaries/behavior-1"],
+      proofIds: ["practice-boundaries/proof-1"],
+      targetLayersByPracticeId: {
+        "practice-boundaries": ["public browser layer"],
+      },
+    };
+    const initialDraft = portfolioDraftFixture(
+      "The current DELETE route returns 204; preserve the existing 204 response while adding public/render.js.",
+      coverage,
+      "public browser layer",
+    );
+    const repairedDraft = portfolioDraftFixture(
+      "At implementation time, inspect the current DELETE response and preserve or adapt to the observed behavior. Add the proposed, bounded public/render.js module within the evidenced public browser layer, then run the integration proof.",
+      coverage,
+      "public browser layer",
+    );
+    const calls: string[] = [];
+    let auditAttempt = 0;
+    let repairFeedback: unknown;
+    const initialUnsupportedClaims = [
+      "The current DELETE route returns 204.",
+      "Preserve the existing 204 response.",
+    ];
+    const registry = createSourceToProjectHarnessRegistry({
+      source: "https://example.com/boundaries",
+      project: projectFixture(),
+      mode: "advisory",
+      baml: {
+        async AuditPortfolioCoverage() {
+          calls.push("AuditPortfolioCoverage");
+          auditAttempt += 1;
+          const audit = portfolioAuditFixture(
+            coverage.behaviorIds[0]!,
+            "complete",
+            auditAttempt === 1 ? initialDraft : repairedDraft,
+          );
+          return auditAttempt === 1
+            ? {
+                ...audit,
+                unsupportedClaims: initialUnsupportedClaims,
+                summary: "Current response claims are ungrounded; the new file is proposed.",
+              }
+            : audit;
+        },
+        async RepairPortfolioPlan(_compilerJson, _draft, auditFeedback) {
+          calls.push("RepairPortfolioPlan");
+          repairFeedback = JSON.parse(auditFeedback);
+          return repairedDraft;
+        },
+      },
+    });
+
+    const context = portfolioAuditContextFixture(coverage, initialDraft, true);
+    const result = await registry.get(WorkflowHarnessKind.COPILOT_SDK)!(
+      portfolioAuditNodeFixture(),
+      context,
     );
 
     expect(calls).toEqual([
@@ -5224,14 +6132,33 @@ describe("source-to-project harness registry", () => {
       repairAttempted: true,
       attempts: 1,
     });
+    expect(repairFeedback).toMatchObject({
+      semanticAudit: {
+        unsupportedClaims: initialUnsupportedClaims,
+      },
+    });
+    expect(initialUnsupportedClaims).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("public/render.js")]),
+    );
+    expect(repairedDraft.markdown).toContain(
+      "the proposed, bounded public/render.js module within the evidenced public browser layer",
+    );
     expect(result.payload?.portfolioDraft).toEqual(repairedDraft);
+    expect(result.payload?.portfolioExtractionRepairAttempted).toBe(true);
+    expect(result.execution?.metadata).toMatchObject({
+      portfolioExtractionRepairAttempted: true,
+      portfolioRepairAttempted: true,
+    });
   });
 
-  it("fails closed when portfolio coverage remains incomplete after one repair", async () => {
+  it("fails closed when an unsupported claim remains after one repair", async () => {
     const coverage = {
       practiceIds: ["practice-boundaries"],
       behaviorIds: ["practice-boundaries/behavior-1"],
       proofIds: ["practice-boundaries/proof-1"],
+      targetLayersByPracticeId: {
+        "practice-boundaries": ["HTTP adapter"],
+      },
     };
     const draft = portfolioDraftFixture("Validate requests in the adapter.", coverage);
     let repairCalls = 0;
@@ -5241,7 +6168,11 @@ describe("source-to-project harness registry", () => {
       mode: "advisory",
       baml: {
         async AuditPortfolioCoverage() {
-          return portfolioAuditFixture(coverage.behaviorIds[0]!, "partial", draft);
+          return {
+            ...portfolioAuditFixture(coverage.behaviorIds[0]!, "complete", draft),
+            unsupportedClaims: ["The current DELETE route returns 204."],
+            summary: "An unsupported current-state claim remains.",
+          };
         },
         async RepairPortfolioPlan() {
           repairCalls += 1;
@@ -5806,7 +6737,7 @@ function practiceLedgerFixture() {
   return compilePracticeLedger(sourceAnalysisFixture().practiceLedger);
 }
 
-function applicabilityMatrixFixture() {
+function applicabilityMatrixFixture(): ProjectApplicabilityMatrix {
   const practiceLedger = practiceLedgerFixture();
   const practice = practiceLedger.practices[0]!;
   const projectEvidence = projectBriefFixture().evidence;
@@ -5919,7 +6850,13 @@ function acceptedFinalRecommendationReviewFixture() {
 
 function portfolioDraftFixture(
   planLine: string,
-  coverage: { practiceIds: string[]; behaviorIds: string[]; proofIds: string[] },
+  coverage: {
+    practiceIds: string[];
+    behaviorIds: string[];
+    proofIds: string[];
+    targetLayersByPracticeId: Record<string, string[]>;
+  },
+  targetLayer = "HTTP adapter",
 ) {
   return {
     title: "Boundary plan",
@@ -5930,7 +6867,7 @@ function portfolioDraftFixture(
         practiceId: coverage.practiceIds[0]!,
         behaviorIds: coverage.behaviorIds,
         proofIds: coverage.proofIds,
-        targetLayers: ["HTTP adapter"],
+        targetLayers: [targetLayer],
         evidenceQuotes: [planLine],
       },
     ],
@@ -5978,8 +6915,14 @@ function portfolioAuditNodeFixture() {
 }
 
 function portfolioAuditContextFixture(
-  coverage: { practiceIds: string[]; behaviorIds: string[]; proofIds: string[] },
+  coverage: {
+    practiceIds: string[];
+    behaviorIds: string[];
+    proofIds: string[];
+    targetLayersByPracticeId: Record<string, string[]>;
+  },
   draft: ReturnType<typeof portfolioDraftFixture>,
+  portfolioExtractionRepairAttempted = false,
 ) {
   return {
     payloads: new Map([
@@ -5994,10 +6937,106 @@ function portfolioAuditContextFixture(
           }),
           portfolioCoverage: coverage,
           specializedObligations: [],
+          portfolioExtractionRepairAttempted,
         },
       ],
     ]),
     artifacts: new Map(),
+  };
+}
+
+function portfolioPlanExecutionFixture(outputDir: string) {
+  const councilReview = latestRunCouncilReviewFixture();
+  const opportunityAcceptances = selectAcceptedOpportunities(councilReview, {
+    minApplicability: 0.7,
+    minConfidence: 0.65,
+    minImpact: 0.5,
+    minAcceptanceAverage: 0.85,
+    maxRisk: 0.8,
+  });
+  const acceptance = opportunityAcceptances.find((candidate) => candidate.accepted)!;
+  const coverage = {
+    practiceIds: acceptance.opportunity.practiceIds,
+    behaviorIds: acceptance.opportunity.behaviorIds,
+    proofIds: acceptance.opportunity.proofIds,
+    targetLayersByPracticeId: Object.fromEntries(
+      acceptance.opportunity.practiceIds.map((practiceId) => [
+        practiceId,
+        acceptance.opportunity.targetLayers,
+      ]),
+    ),
+  };
+  return {
+    acceptance,
+    coverage,
+    node: {
+      id: "plan-portfolio",
+      kind: WorkflowNodeKind.PLANNING,
+      harness: WorkflowHarnessKind.COPILOT_SDK,
+      title: "Plan portfolio",
+      prompt: "Plan",
+      input: {
+        planningRoute: { kind: "direct", reason: "one accepted opportunity" },
+        portfolioCandidates: [{ acceptance }],
+      },
+      dependsOn: ["council-review"],
+      gates: ["verification" as const],
+      writeMode: "read-only" as const,
+      replanPolicy: "never" as const,
+    },
+    context: {
+      objective: "Apply the Oxlint migration practice",
+      payloads: new Map([
+        [
+          "source-reading",
+          { sourceAnalysis: sourceAnalysisFixture(), practiceLedger: practiceLedgerFixture() },
+        ],
+        ["source-corroboration", { corroboration: corroborationFixture() }],
+        [
+          "project-research",
+          {
+            projectBrief: projectBriefFixture(),
+            applicabilityMatrix: applicabilityMatrixFixture(),
+          },
+        ],
+        [
+          "council-review",
+          { councilReview, opportunityAcceptances, opportunityCoverage: coverage },
+        ],
+      ]),
+      artifacts: new Map(),
+      outputDir,
+    },
+  };
+}
+
+function completePortfolioAuditFromCompiler(
+  compilerJson: string,
+  draft: ReturnType<typeof portfolioDraftFixture>,
+) {
+  const compiler = JSON.parse(compilerJson) as {
+    requiredCoverage?: { behaviorIds?: string[] };
+    specializedObligations?: Array<{ id: string }>;
+  };
+  const evidenceQuote = draft.coverageClaims[0]!.evidenceQuotes[0]!;
+  return {
+    behaviorAssessments: (compiler.requiredCoverage?.behaviorIds ?? []).map((behaviorId) => ({
+      behaviorId,
+      status: "complete" as const,
+      responsibleLayer: draft.coverageClaims[0]!.targetLayers[0]!,
+      evidenceQuotes: [evidenceQuote],
+      gaps: [],
+      rationale: "The canonical plan assigns the action and proof.",
+    })),
+    specializedAssessments: (compiler.specializedObligations ?? []).map((obligation) => ({
+      obligationId: obligation.id,
+      status: "complete" as const,
+      evidenceQuotes: [evidenceQuote],
+      rationale: "The canonical plan covers the specialized obligation.",
+    })),
+    unsupportedClaims: [],
+    contradictions: [],
+    summary: "Coverage complete.",
   };
 }
 

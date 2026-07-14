@@ -32,6 +32,10 @@ describe("source-to-project semantic verifier", () => {
             lesson: "Use the pattern",
             projectChange: "Change the workflow",
             changeSurface: "src/workflow",
+            practiceIds: ["practice-pattern"],
+            behaviorIds: ["practice-pattern/behavior-1"],
+            targetLayers: ["workflow"],
+            proofIds: ["practice-pattern/proof-1"],
             score: {
               applicability: 0.9,
               applicabilityReasoning: "Test fixture reasoning for applicability score 0.9.",
@@ -54,6 +58,10 @@ describe("source-to-project semantic verifier", () => {
             lesson: "Weak lesson",
             projectChange: "Risky change",
             changeSurface: "src/other",
+            practiceIds: ["practice-weak-pattern"],
+            behaviorIds: ["practice-weak-pattern/behavior-1"],
+            targetLayers: ["other"],
+            proofIds: ["practice-weak-pattern/proof-1"],
             score: {
               applicability: 0.2,
               applicabilityReasoning: "Test fixture reasoning for applicability score 0.2.",
@@ -346,6 +354,10 @@ describe("source-to-project semantic verifier", () => {
         {
           id: "bundle-1",
           opportunityIds: ["opp-1", "opp-2"],
+          practiceIds: ["practice-pattern"],
+          behaviorIds: ["practice-pattern/behavior-1"],
+          targetLayers: ["workflow"],
+          proofIds: ["practice-pattern/proof-1"],
           rationale: "",
           sharedChangeSurface: "src/workflow",
           combinedUserValue: "Better workflow",

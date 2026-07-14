@@ -1,0 +1,17 @@
+{
+  "name": "eslint-migration-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint src tests --max-warnings=0",
+    "lint:fix": "eslint src tests --fix",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "eslint": "^9.30.0",
+    "eslint-plugin-import": "^2.32.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contrived Todo App</title>
+  </head>
+  <body>
+    <main>
+      <h1>Todos</h1>
+      <form id="todo-form">
+        <label for="todo-title">Todo title</label>
+        <input id="todo-title" name="title" autocomplete="off" required />
+        <button type="submit">Add todo</button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+      <ul id="todo-list" aria-label="Todo items"></ul>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -3,7 +3,8 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runEval } from "../../src/eval/run.js";
-import type { ApiProvider } from "promptfoo";
+import { formatEvalCliOutput } from "../../src/eval-cli.js";
+import type { ApiProvider, EvaluateSummaryV3 } from "promptfoo";
 
 function tempCorpus(): { corpusDir: string; resultsDir: string } {
   const base = mkdtempSync(join(tmpdir(), "weavekit-eval-run-"));
@@ -31,24 +32,56 @@ rubric:
 }
 
 describe("runEval", () => {
-  it("builds a suite, evaluates, and writes a report", async () => {
+  it("formats its persisted evaluation ID for CLI inspection", () => {
+    expect(
+      formatEvalCliOutput({ outputDir: "/tmp/eval-run", evaluationId: "eval-decision-1" }),
+    ).toBe(
+      "Eval complete. Results written to /tmp/eval-run\n" +
+        "Evaluation ID: eval-decision-1\n" +
+        "View persisted evaluations: nubx promptfoo view\n",
+    );
+  });
+
+  it("returns the persisted evaluation and writes its reports", async () => {
     const { corpusDir, resultsDir } = tempCorpus();
-    let evaluatedItems = 0;
     const fakeProvider: ApiProvider = { id: () => "fake", callApi: async () => ({ output: "x" }) };
-    const dir = await runEval(
+    const summary = { stats: { successes: 1, failures: 0 } } as EvaluateSummaryV3;
+    const runPromptfoo = vi.fn(async (_args: { suite: { tests?: unknown[] } }) => ({
+      evaluationId: "eval-decision-1",
+      summary,
+    }));
+
+    const result = await runEval(
       { corpusDir, resultsDir },
       {
         providers: [fakeProvider],
-        evaluateFn: (async (suite: { tests?: unknown[] }) => {
-          evaluatedItems = suite.tests?.length ?? 0;
-          return { toEvaluateSummary: async () => ({ stats: { successes: 1, failures: 0 } }) };
-        }) as never,
+        runPromptfoo: runPromptfoo as never,
       },
     );
-    expect(evaluatedItems).toBe(1);
-    expect(existsSync(join(dir, "report.json"))).toBe(true);
-    expect(existsSync(join(dir, "summary.md"))).toBe(true);
-    expect(readFileSync(join(dir, "summary.md"), "utf8")).toContain("Items: 1");
+
+    expect(result).toEqual({
+      outputDir: expect.any(String),
+      evaluationId: "eval-decision-1",
+      summary,
+    });
+    expect(runPromptfoo).toHaveBeenCalledWith({
+      suite: expect.objectContaining({ tests: expect.any(Array) }),
+      description: "Decision council evaluation",
+      tags: {
+        workflow: "decision",
+        phase: "judge",
+        runId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      },
+      cache: false,
+      maxConcurrency: 1,
+    });
+    expect(runPromptfoo.mock.calls[0]?.[0].suite.tests).toHaveLength(1);
+    expect(existsSync(join(result.outputDir, "report.json"))).toBe(true);
+    expect(existsSync(join(result.outputDir, "summary.md"))).toBe(true);
+    expect(readFileSync(join(result.outputDir, "summary.md"), "utf8")).toContain("Items: 1");
+    expect(
+      JSON.parse(readFileSync(join(result.outputDir, "promptfoo-evaluation.json"), "utf8")),
+    ).toEqual({ evaluationId: "eval-decision-1" });
   });
 
   it("filters by id and throws when nothing matches", async () => {
@@ -58,7 +91,7 @@ describe("runEval", () => {
         { corpusDir, resultsDir, filterIds: ["does-not-exist"] },
         {
           providers: [],
-          evaluateFn: (async () => ({ toEvaluateSummary: async () => ({}) })) as never,
+          runPromptfoo: vi.fn() as never,
         },
       ),
     ).rejects.toThrow(/No corpus items/);
@@ -68,29 +101,33 @@ describe("runEval", () => {
     const explicit = tempCorpus();
     const omitted = tempCorpus();
     const fakeProvider: ApiProvider = { id: () => "fake", callApi: async () => ({ output: "x" }) };
+    const summary = { stats: { successes: 1, failures: 0 } } as EvaluateSummaryV3;
     const capturedMaxConcurrency: unknown[] = [];
-    const evaluateFn = (async (_suite: unknown, options: { maxConcurrency?: number }) => {
-      capturedMaxConcurrency.push(options.maxConcurrency);
-      return { toEvaluateSummary: async () => ({ stats: { successes: 1, failures: 0 } }) };
-    }) as never;
+    const runPromptfoo = vi.fn(async (args: { maxConcurrency?: number }) => {
+      capturedMaxConcurrency.push(args.maxConcurrency);
+      return { evaluationId: "eval-decision-1", summary };
+    });
 
-    await runEval({ ...explicit, maxConcurrency: 3 }, { providers: [fakeProvider], evaluateFn });
-    await runEval(omitted, { providers: [fakeProvider], evaluateFn });
+    await runEval(
+      { ...explicit, maxConcurrency: 3 },
+      { providers: [fakeProvider], runPromptfoo: runPromptfoo as never },
+    );
+    await runEval(omitted, { providers: [fakeProvider], runPromptfoo: runPromptfoo as never });
 
     expect(capturedMaxConcurrency).toEqual([3, 1]);
   });
 
   it("rejects invalid maxConcurrency before evaluating", async () => {
     const { corpusDir, resultsDir } = tempCorpus();
-    const evaluateFn = vi.fn(async () => ({ toEvaluateSummary: async () => ({}) }));
+    const runPromptfoo = vi.fn();
 
     await expect(
       runEval(
         { corpusDir, resultsDir, maxConcurrency: 0 },
-        { providers: [], evaluateFn: evaluateFn as never },
+        { providers: [], runPromptfoo: runPromptfoo as never },
       ),
     ).rejects.toThrow(/maxConcurrency.*integer >= 1/);
-    expect(evaluateFn).not.toHaveBeenCalled();
+    expect(runPromptfoo).not.toHaveBeenCalled();
   });
 });
 

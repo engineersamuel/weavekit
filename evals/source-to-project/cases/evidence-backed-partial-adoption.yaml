@@ -1,0 +1,56 @@
+id: evidence-backed-partial-adoption
+title: Adopt only practices supported by an offline batch tool
+objective: >
+  Apply the source's cache, queue, and retry guidance only where concrete target
+  evidence supports it, preserving the batch tool's offline deterministic architecture.
+projectDir: ../fixtures/evidence-backed-partial-adoption/project
+sourcePath: ../fixtures/evidence-backed-partial-adoption/source.md
+expectedPractices:
+  - id: adopt-bounded-local-cache
+    title: Adopt a bounded process-local cache for repeated immutable reads
+    sourceExpectation: Cache only repeated immutable work with explicit lifetime and deterministic invalidation.
+    projectEvidence:
+      - src/batch.ts reads the same immutable catalog file for every input row.
+      - Each run is single-process and already has a clear process lifetime.
+    expectedPlanActions:
+      - Cache the parsed catalog within one batch run using the catalog path and content state as the key.
+      - Add deterministic hit, miss, and changed-catalog tests without adding a network cache.
+  - id: partially-adapt-retry-guidance
+    title: Preserve the existing bounded retry and add only missing proof
+    sourceExpectation: Retry only transient operations with a strict attempt bound and observable failure.
+    projectEvidence:
+      - src/retry.ts already retries transient reads exactly three times.
+      - Tests do not prove the attempt bound or permanent-error behavior.
+    expectedPlanActions:
+      - Keep the existing retry architecture and clarify transient versus permanent failures.
+      - Add focused tests for success, three-attempt exhaustion, and immediate permanent failure.
+  - id: reject-durable-queue
+    title: Reject a durable queue when project evidence contradicts it
+    sourceExpectation: Durable queues are appropriate for concurrent producers, independent workers, or crash-resumable remote jobs, not every batch loop.
+    projectEvidence:
+      - README.md defines the tool as offline, single-process, deterministic, and rerunnable from the input file.
+      - src/batch.ts processes a bounded local array synchronously and writes one atomic output.
+    expectedPlanActions:
+      - Record the durable queue as not applicable with the concrete architecture contradiction.
+      - Preserve the synchronous in-process loop and avoid Redis, workers, brokers, or network infrastructure.
+antiGoals:
+  - Do not add Redis, a message broker, a durable queue, worker services, or network infrastructure.
+  - Do not replace the existing bounded retry with an unbounded retry framework.
+  - Do not treat already-satisfied behavior as a new implementation opportunity.
+  - Do not implement the changes during planning.
+rubric:
+  - criterion: source-practice-coverage
+    weight: 0.30
+    levels: 1.0 adopts the cache, partially adapts retry, and rejects the queue with evidence; 0.0 applies every pattern blindly.
+  - criterion: project-specific-diagnosis
+    weight: 0.25
+    levels: 1.0 cites repeated catalog reads, existing retry code, and offline batch constraints; 0.0 is generic.
+  - criterion: implementation-completeness
+    weight: 0.25
+    levels: 1.0 gives a bounded cache and test plan while preserving satisfied behavior; 0.0 proposes infrastructure.
+  - criterion: verification-quality
+    weight: 0.15
+    levels: 1.0 proves cache invalidation and retry bounds deterministically; 0.0 omits behavior proof.
+  - criterion: scope-discipline
+    weight: 0.05
+    levels: 1.0 explicitly rejects the durable queue and network services; 0.0 adds them.

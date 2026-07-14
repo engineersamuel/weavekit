@@ -48,6 +48,20 @@ describe("macro workflow templates", () => {
     expect(() => assertValidWorkflowPlan(plan)).not.toThrow();
   });
 
+  it("omits human visual-plan work from plan-only source-to-project runs", () => {
+    const plan = materializeWorkflowPlan("source-to-project", {
+      objective: "Evaluate source-to-project planning",
+      source: "source.md",
+      projectPath: "project",
+      mode: "advisory",
+      includeVisualDesign: false,
+    });
+
+    expect(plan.nodes.map((node) => node.id)).not.toContain("visual-plan-preflight");
+    expect(plan.nodes.find((node) => node.id === "source-reading")?.dependsOn).toEqual([]);
+    expect(() => assertValidWorkflowPlan(plan)).not.toThrow();
+  });
+
   it("materializes a one-node X article summary workflow", () => {
     const objective = [
       "Summarize this X article https://x.com/henrikhinai/status/2065471716093010128?s=51",

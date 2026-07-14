@@ -72,6 +72,10 @@ export type WorkflowCliArgs = {
   project?: string;
   projectPath?: string;
   mode?: "advisory" | "autonomous-pr";
+  includeVisualDesign?: boolean;
+  projectResearchMode?: "direct" | "hve";
+  projectResearchMaxToolCalls?: number;
+  portfolioPlanningMode?: "auto" | "direct";
   deepResearch?: Partial<DeepResearchDefaults>;
   configPath?: string;
   templateCandidateRunId?: string;
@@ -1217,6 +1221,12 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
           ? (effectiveMode ?? typedConfig.sourceToProject.mode)
           : typedConfig.sourceToProject.mode,
       };
+  const sourceToProjectRuntimeConfig: SourceToProjectDefaults = {
+    ...sourceToProjectConfig,
+    ...(args.projectResearchMaxToolCalls === undefined
+      ? {}
+      : { projectResearchMaxToolCalls: args.projectResearchMaxToolCalls }),
+  };
   const verificationOptimizerConfig =
     resumeContext?.verificationOptimizer ??
     (isVerificationOptimizer
@@ -1471,13 +1481,15 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
           prefetchedSourceContent,
           project: sourceToProjectProject!,
           mode: sourceToProjectMode!,
+          includeVisualDesign: args.includeVisualDesign,
+          portfolioPlanningMode: args.portfolioPlanningMode,
           maxOpportunities:
             sourceToProjectProject!.maxOpportunities ?? sourceToProjectConfig.maxOpportunities,
           thresholds: {
             ...sourceToProjectConfig.thresholds,
             ...sourceToProjectProject!.thresholds,
           },
-          sourceToProject: sourceToProjectConfig,
+          sourceToProject: sourceToProjectRuntimeConfig,
           budgetOverrideReason: args.budgetOverrideReason,
           tooling: typedConfig.tooling,
           plugins: typedConfig.plugins,
@@ -1486,7 +1498,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
             ? workflowSourceToProjectModule.createOfflineSourceToProjectHarnessClient()
             : workflowSourceToProjectModule.createCopilotSdkHarnessClient({
                 copilot: typedConfig.copilot,
-                sourceToProject: sourceToProjectConfig,
+                sourceToProject: sourceToProjectRuntimeConfig,
                 onUserInputRequest:
                   workflowSourceToProjectModule.createSourceToProjectUserInputRequestHandler({
                     project: sourceToProjectProject!,
@@ -1630,6 +1642,8 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
               prefetchedSourceContent,
               project: sourceToProjectProject!,
               mode: sourceToProjectMode!,
+              includeVisualDesign: args.includeVisualDesign,
+              portfolioPlanningMode: args.portfolioPlanningMode,
               maxOpportunities:
                 sourceToProjectProject!.maxOpportunities ?? sourceToProjectConfig.maxOpportunities,
               thresholds: {

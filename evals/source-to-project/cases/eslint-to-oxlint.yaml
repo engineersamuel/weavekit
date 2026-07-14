@@ -1,0 +1,75 @@
+id: eslint-to-oxlint
+title: Migrate an ESLint project safely to Oxlint
+objective: >
+  Use the source migration guide to produce a complete, evidence-backed plan for
+  adopting Oxlint in the target project while preserving unsupported ESLint behavior.
+projectDir: ../fixtures/eslint-to-oxlint/project
+sourcePath: ../fixtures/eslint-to-oxlint/source.md
+expectedPractices:
+  - id: install-and-configure-oxlint
+    title: Use Oxlint's real installation and configuration surfaces
+    sourceExpectation: Install Oxlint, create its native configuration, and translate ignore scope intentionally.
+    projectEvidence:
+      - package.json runs eslint over src and tests.
+      - eslint.config.js defines project globals, ignores, and plugins.
+    expectedPlanActions:
+      - Add Oxlint as a development dependency and introduce its native configuration.
+      - Translate the existing file scope, globals, and ignores without inventing unsupported configuration.
+  - id: inventory-rule-compatibility
+    title: Inventory semantic and plugin compatibility before replacement
+    sourceExpectation: Compare every enabled rule and plugin and retain ESLint only for unsupported behavior.
+    projectEvidence:
+      - eslint.config.js enables import/no-unresolved and no-warning-comments through plugin-backed or semantically sensitive rules.
+      - The lint script currently treats warnings as failures.
+    expectedPlanActions:
+      - Build an explicit supported, equivalent, different, and unsupported rule inventory.
+      - Keep a narrowly scoped ESLint compatibility command for rules Oxlint cannot safely replace.
+  - id: enforce-the-new-workflow
+    title: Wire the migration through stable scripts, CI, and editor behavior
+    sourceExpectation: Make the project's normal validation surfaces run the new tool rather than relying on one-off commands.
+    projectEvidence:
+      - package.json exposes lint and lint:fix scripts.
+      - .github/workflows/ci.yml invokes nub run lint.
+      - .vscode/settings.json configures ESLint as the formatter and fix provider.
+    expectedPlanActions:
+      - Update stable lint and fix scripts while preserving a compatibility script during migration.
+      - Update CI and editor settings to enforce the intended Oxlint plus compatibility workflow.
+  - id: migrate-and-clean-up
+    title: Stage coexistence, migration, documentation, and dependency cleanup
+    sourceExpectation: Run both tools during transition, migrate affected code, then remove only obsolete ESLint dependencies and configuration.
+    projectEvidence:
+      - package.json contains ESLint and eslint-plugin-import dependencies.
+      - README.md documents ESLint as the only lint command.
+    expectedPlanActions:
+      - Define a staged coexistence sequence and fix or document semantic differences before cleanup.
+      - Update documentation and remove only dependencies and config proven obsolete by the compatibility inventory.
+  - id: prove-and-rollback
+    title: Prove equivalent enforcement and retain a rollback path
+    sourceExpectation: Validate with real CLIs and stable project scripts, and make rollback explicit.
+    projectEvidence:
+      - CI currently gates pull requests on the lint script.
+      - The project has representative source and test files for migration checks.
+    expectedPlanActions:
+      - Run Oxlint, the bounded ESLint compatibility command, tests, and typecheck through stable scripts.
+      - Define rollback criteria and the exact script or dependency changes to restore if parity fails.
+antiGoals:
+  - Do not claim every ESLint plugin rule is automatically supported by Oxlint.
+  - Do not delete ESLint before the compatibility inventory and transition proof pass.
+  - Do not replace the application stack or add unrelated build infrastructure.
+  - Do not implement the migration during planning.
+rubric:
+  - criterion: source-practice-coverage
+    weight: 0.30
+    levels: 1.0 covers installation, compatibility, enforcement, migration, proof, and rollback; 0.0 is a package-swap checklist.
+  - criterion: project-specific-diagnosis
+    weight: 0.25
+    levels: 1.0 cites the actual scripts, rules, CI, editor, and docs; 0.0 could describe any JavaScript project.
+  - criterion: implementation-completeness
+    weight: 0.25
+    levels: 1.0 gives an ordered coexistence-to-cleanup migration with explicit ownership and files; 0.0 is generic advice.
+  - criterion: verification-quality
+    weight: 0.15
+    levels: 1.0 proves both real CLIs, stable scripts, CI parity, tests, typecheck, and rollback; 0.0 omits parity proof.
+  - criterion: scope-discipline
+    weight: 0.05
+    levels: 1.0 retains only justified compatibility and avoids unrelated work; 0.0 forces unsafe full replacement.

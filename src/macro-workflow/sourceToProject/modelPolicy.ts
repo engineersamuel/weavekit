@@ -2,10 +2,14 @@ export const SourceToProjectModelOperation = {
   SOURCE_READING: "source-reading",
   SOURCE_CORROBORATION: "source-corroboration",
   PROJECT_RESEARCH: "project-research",
+  PROJECT_APPLICABILITY: "project-applicability",
+  PROJECT_APPLICABILITY_REPAIR: "project-applicability-repair",
   OPPORTUNITY_MAPPING: "opportunity-mapping",
   PLAN_GENERATION: "plan-generation",
   VISUAL_DESIGN: "visual-design",
   PLAN_DISTILLATION: "plan-distillation",
+  PORTFOLIO_AUDIT: "portfolio-audit",
+  PORTFOLIO_REPAIR: "portfolio-repair",
   FINAL_RECOMMENDATION_REVIEW: "final-recommendation-review",
   IMPLEMENTATION: "implementation",
   IMPLEMENTATION_FIX: "implementation-fix",
@@ -34,8 +38,13 @@ export const SOURCE_TO_PROJECT_BAML_FUNCTION_OPERATIONS = {
   DistillSourceAnalysis: SourceToProjectModelOperation.SOURCE_READING,
   DistillCorroboration: SourceToProjectModelOperation.SOURCE_CORROBORATION,
   DistillProjectBrief: SourceToProjectModelOperation.PROJECT_RESEARCH,
+  DistillProjectApplicability: SourceToProjectModelOperation.PROJECT_APPLICABILITY,
+  RepairProjectApplicability: SourceToProjectModelOperation.PROJECT_APPLICABILITY_REPAIR,
   MapSourceToProject: SourceToProjectModelOperation.OPPORTUNITY_MAPPING,
   DistillPlanArtifact: SourceToProjectModelOperation.PLAN_DISTILLATION,
+  DistillPortfolioPlanDraft: SourceToProjectModelOperation.PLAN_DISTILLATION,
+  AuditPortfolioCoverage: SourceToProjectModelOperation.PORTFOLIO_AUDIT,
+  RepairPortfolioPlan: SourceToProjectModelOperation.PORTFOLIO_REPAIR,
   ReviewFinalRecommendation: SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW,
 } as const;
 export type SourceToProjectBamlFunctionName =
@@ -81,6 +90,16 @@ const OPERATION_POLICY: Record<SourceToProjectModelOperation, SourceToProjectMod
     model: PRIMARY_MODEL,
     modelRationale: "Project research is source-conditioned and uses the primary reasoning model.",
   },
+  [SourceToProjectModelOperation.PROJECT_APPLICABILITY]: {
+    model: PRIMARY_MODEL,
+    modelRationale:
+      "Project applicability classification requires the primary reasoning model to distinguish adoption gaps from contradictions.",
+  },
+  [SourceToProjectModelOperation.PROJECT_APPLICABILITY_REPAIR]: {
+    model: PRIMARY_MODEL,
+    modelRationale:
+      "Applicability repair resolves ambiguous project evidence with the primary reasoning model.",
+  },
   [SourceToProjectModelOperation.OPPORTUNITY_MAPPING]: {
     model: PLANNING_MODEL,
     modelRationale:
@@ -98,6 +117,14 @@ const OPERATION_POLICY: Record<SourceToProjectModelOperation, SourceToProjectMod
   [SourceToProjectModelOperation.PLAN_DISTILLATION]: {
     model: MINI_MODEL,
     modelRationale: "Plan distillation is structured extraction from an existing plan transcript.",
+  },
+  [SourceToProjectModelOperation.PORTFOLIO_AUDIT]: {
+    model: PRIMARY_MODEL,
+    modelRationale: "Portfolio coverage auditing requires the primary reasoning model.",
+  },
+  [SourceToProjectModelOperation.PORTFOLIO_REPAIR]: {
+    model: PRIMARY_MODEL,
+    modelRationale: "Bounded portfolio repair requires the primary reasoning model.",
   },
   [SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW]: {
     model: PRIMARY_MODEL,
@@ -147,6 +174,14 @@ const BAML_OPERATION_MODEL_OVERRIDES: Partial<
   },
 };
 
+const BAML_MODEL_OVERRIDE_OPERATIONS = new Set<SourceToProjectModelOperation>([
+  SourceToProjectModelOperation.SOURCE_READING,
+  SourceToProjectModelOperation.SOURCE_CORROBORATION,
+  SourceToProjectModelOperation.PROJECT_RESEARCH,
+  SourceToProjectModelOperation.PLAN_DISTILLATION,
+  SourceToProjectModelOperation.WORKFLOW_PLANNING,
+]);
+
 export function sourceToProjectModelDecision(
   operation: SourceToProjectModelOperation,
 ): SourceToProjectModelDecision {
@@ -180,7 +215,7 @@ export function sourceToProjectBamlRoute(
   env: NodeJS.ProcessEnv = process.env,
 ): SourceToProjectBamlRoute {
   const override = env.BAML_MODEL?.trim();
-  if (override) {
+  if (override && BAML_MODEL_OVERRIDE_OPERATIONS.has(operation)) {
     return {
       model: override,
       client: BAML_CLIENT_BY_MODEL[override],
@@ -224,6 +259,8 @@ export function sourceToProjectNodeModelMetadata(
   if (
     operation === SourceToProjectModelOperation.OPPORTUNITY_MAPPING ||
     operation === SourceToProjectModelOperation.PLAN_DISTILLATION ||
+    operation === SourceToProjectModelOperation.PORTFOLIO_AUDIT ||
+    operation === SourceToProjectModelOperation.PORTFOLIO_REPAIR ||
     operation === SourceToProjectModelOperation.FINAL_RECOMMENDATION_REVIEW
   ) {
     return sourceToProjectBamlRoute(operation, options.env);

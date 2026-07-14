@@ -1,10 +1,11 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { runEval } from "./run.js";
-import { type CorpusItem, loadCorpus } from "./schema.js";
+import type { EvaluateSummaryV3 } from "promptfoo";
 import { loadTypedWeavekitConfig } from "../config.js";
 import { routerBamlClientNameForModel } from "../macro-workflow/router/harnesses.js";
 import { BamlRouterProvider } from "./providers/router.js";
+import { runEval as defaultRunEval } from "./run.js";
+import { type CorpusItem, loadCorpus } from "./schema.js";
 
 export interface RouterEvalResult {
   id: string;
@@ -22,14 +23,35 @@ export interface RunRouterEvalOptions {
   maxConcurrency?: number;
 }
 
-export async function runRouterEval(options: RunRouterEvalOptions = {}): Promise<string> {
+export interface RunRouterEvalResult {
+  outputDir: string;
+  evaluationId: string;
+  summary: EvaluateSummaryV3;
+}
+
+export interface RunRouterEvalDeps {
+  runEval?: typeof defaultRunEval;
+}
+
+export async function runRouterEval(
+  options: RunRouterEvalOptions = {},
+  deps: RunRouterEvalDeps = {},
+): Promise<RunRouterEvalResult> {
   const corpusDir = options.corpusDir ?? "evals/corpus/router";
   const resultsDir = options.resultsDir ?? "evals/results/router";
   const items = loadCorpus(corpusDir);
   const routerConfig = loadTypedWeavekitConfig().router;
 
-  const outDir = await runEval(
-    { corpusDir, resultsDir, maxConcurrency: options.maxConcurrency },
+  const { outputDir, evaluationId, summary } = await (deps.runEval ?? defaultRunEval)(
+    {
+      corpusDir,
+      resultsDir,
+      maxConcurrency: options.maxConcurrency,
+      evaluation: {
+        description: "Router evaluation",
+        workflow: "router",
+      },
+    },
     {
       providers: [
         new BamlRouterProvider({
@@ -40,12 +62,12 @@ export async function runRouterEval(options: RunRouterEvalOptions = {}): Promise
       ],
     },
   );
-  const summaryText = readFileSync(join(outDir, "report.json"), "utf8");
-  const results = extractRouterEvalResults(items, JSON.parse(summaryText) as RouterEvalSummary);
-  writeFileSync(join(outDir, "router-results.json"), JSON.stringify(results, null, 2));
-  writeFileSync(join(outDir, "router-summary.md"), renderSummary(items, results));
-  writeFileSync(join(outDir, "router-report.json"), summaryText);
-  return outDir;
+  const results = extractRouterEvalResults(items, summary);
+  const summaryText = `${JSON.stringify(summary, null, 2)}\n`;
+  writeFileSync(join(outputDir, "router-results.json"), JSON.stringify(results, null, 2));
+  writeFileSync(join(outputDir, "router-summary.md"), renderSummary(items, results));
+  writeFileSync(join(outputDir, "router-report.json"), summaryText);
+  return { outputDir, evaluationId, summary };
 }
 
 type RouterEvalSummary = {

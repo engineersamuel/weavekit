@@ -53,6 +53,7 @@ export function buildProjectResearchPrompt(args: {
     "Stop browsing once you have enough evidence for concrete change surfaces, constraints, validation commands, and non-applicability notes.",
     `Hard budget: use at most ${maxToolCalls} tool calls for target project research. If you reach that budget, stop using tools and write the final answer from the evidence gathered.`,
     "Identify architecture, constraints, goals, source-relevant change surfaces, validation commands, risks, and disqualifying evidence. Cite project files from within the target project's working tree.",
+    "When source practices require documentation, cleanup, or retrieval proof, inspect and report the exact existing contributor and operator documentation paths, documentation conventions, and stale or conflicting commands. Cite only paths and conventions proven by files in the target project's working tree; do not invent a canonical location.",
     "If the Source findings do not map cleanly to the Target project, say so in the research transcript instead of forcing a fit.",
     "Be precise about tool names vs. file formats. A local CLI tool and a file format can share the same name or a similar name (e.g., a tool named 'foo' is not the same as a file type called '.foo' or 'foo' files). When you encounter a name that could be either a tool or a file format, confirm via file inspection whether it is a local binary/script or a file format before making claims about file types.",
     `Original objective:\n${args.objective}`,

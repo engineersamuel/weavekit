@@ -67,9 +67,9 @@ export default class TypeBuilder {
     
     NonApplicableLesson: ClassViewer<'NonApplicableLesson', "lesson" | "reason" | "evidence">;
     
-    Opportunity: ClassViewer<'Opportunity', "id" | "title" | "lesson" | "projectChange" | "changeSurface" | "score" | "evidence" | "speculative" | "rivalExplanationsConsidered" | "negativeSignal" | "negativeCases">;
+    Opportunity: ClassViewer<'Opportunity', "id" | "title" | "changeKind" | "lesson" | "projectChange" | "changeSurface" | "practiceIds" | "behaviorIds" | "targetLayers" | "proofIds" | "score" | "evidence" | "speculative" | "rivalExplanationsConsidered" | "negativeSignal" | "negativeCases">;
     
-    OpportunityBundle: ClassViewer<'OpportunityBundle', "id" | "opportunityIds" | "rationale" | "sharedChangeSurface" | "combinedUserValue" | "separationRisk" | "maxPrScope">;
+    OpportunityBundle: ClassViewer<'OpportunityBundle', "id" | "changeKind" | "opportunityIds" | "practiceIds" | "behaviorIds" | "targetLayers" | "proofIds" | "rationale" | "sharedChangeSurface" | "combinedUserValue" | "separationRisk" | "maxPrScope">;
     
     OpportunityCouncilReview: ClassViewer<'OpportunityCouncilReview', "opportunities" | "nonApplicableLessons" | "bundles" | "rankingRationale">;
     
@@ -88,6 +88,22 @@ export default class TypeBuilder {
     PersonaSelectionRequest: ClassViewer<'PersonaSelectionRequest', "workflowName" | "workflowPurpose" | "taskPrompt" | "context" | "constraints" | "roundNumber" | "roundFocus" | "previousSelectionIds" | "previousRoundSignals" | "minPersonas" | "maxPersonas" | "candidates">;
     
     PlanArtifactSummary: ClassViewer<'PlanArtifactSummary', "opportunityIds" | "title" | "recommendation" | "problemSolved" | "sourceLessonApplied" | "targetChange" | "expectedUserValue" | "implementationOutline" | "scope" | "filesLikelyTouched" | "validationCommands" | "risks" | "rawPlanArtifactPath" | "planFilePath">;
+    
+    PlanCriterionAssessment: ClassViewer<'PlanCriterionAssessment', "criterion" | "score" | "evidenceQuotes" | "gaps" | "rationale">;
+    
+    PlanRequirementAssessment: ClassViewer<'PlanRequirementAssessment', "requirementId" | "status" | "evidenceQuotes" | "gaps" | "rationale">;
+    
+    PortfolioCoverageAssessment: ClassViewer<'PortfolioCoverageAssessment', "behaviorId" | "status" | "responsibleLayer" | "evidenceQuotes" | "gaps" | "rationale">;
+    
+    PortfolioCoverageAudit: ClassViewer<'PortfolioCoverageAudit', "behaviorAssessments" | "specializedAssessments" | "unsupportedClaims" | "contradictions" | "summary">;
+    
+    PortfolioCoverageClaim: ClassViewer<'PortfolioCoverageClaim', "practiceId" | "behaviorIds" | "proofIds" | "targetLayers" | "evidenceQuotes">;
+    
+    PortfolioPlanDraft: ClassViewer<'PortfolioPlanDraft', "title" | "summary" | "markdown" | "coverageClaims">;
+    
+    PracticeApplicabilityAssessment: ClassViewer<'PracticeApplicabilityAssessment', "practiceId" | "status" | "applicableBehaviorIds" | "excludedBehaviorIds" | "targetLayers" | "projectEvidence" | "contradictionEvidence" | "rationale">;
+    
+    ProjectApplicabilityMatrix: ClassViewer<'ProjectApplicabilityMatrix', "projectId" | "assessments" | "architecture" | "constraints" | "validationCommands" | "evidence">;
     
     ProjectBrief: ClassViewer<'ProjectBrief', "projectId" | "displayName" | "architecture" | "constraints" | "goals" | "changeSurfaces" | "validationCommands" | "risks" | "evidence">;
     
@@ -111,7 +127,21 @@ export default class TypeBuilder {
     
     RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
     
-    SourceAnalysis: ClassViewer<'SourceAnalysis', "sourceId" | "title" | "accessLevel" | "summary" | "claims" | "transferableLessons" | "evidence">;
+    SourceAnalysis: ClassViewer<'SourceAnalysis', "sourceId" | "title" | "accessLevel" | "summary" | "claims" | "transferableLessons" | "evidence" | "practiceLedger">;
+    
+    SourcePractice: ClassViewer<'SourcePractice', "id" | "title" | "behavior" | "rationale" | "adoptionPreconditions" | "requiredBehaviors" | "proofObligations" | "behaviorIds" | "proofIds" | "evidence">;
+    
+    SourcePracticeDraft: ClassViewer<'SourcePracticeDraft', "id" | "title" | "behavior" | "rationale" | "adoptionPreconditions" | "requiredBehaviors" | "proofObligations" | "evidence">;
+    
+    SourcePracticeLedger: ClassViewer<'SourcePracticeLedger', "sourceId" | "summary" | "practices" | "claims" | "evidence">;
+    
+    SourcePracticeLedgerDraft: ClassViewer<'SourcePracticeLedgerDraft', "sourceId" | "summary" | "practices" | "claims" | "evidence">;
+    
+    SourceToProjectPairwiseJudgment: ClassViewer<'SourceToProjectPairwiseJudgment', "winner" | "confidence" | "decidingFactors" | "planAStrengths" | "planAGaps" | "planBStrengths" | "planBGaps" | "rationale">;
+    
+    SourceToProjectPlanJudgment: ClassViewer<'SourceToProjectPlanJudgment', "requirementAssessments" | "criterionAssessments" | "contradictions" | "unsupportedRecommendations" | "summary">;
+    
+    SpecializedObligationAssessment: ClassViewer<'SpecializedObligationAssessment', "obligationId" | "status" | "evidenceQuotes" | "rationale">;
     
     TemplateCandidate: ClassViewer<'TemplateCandidate', "id" | "templateId" | "mode" | "summary" | "sharedInitialNodes" | "modePolicies" | "changedInitialDag" | "changedExpansionPolicy" | "requiresAutonomousPrReview" | "rationale" | "suggestedCodeTouchpoints" | "adoptionTasks">;
     
@@ -146,7 +176,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SourceAnalysis","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             "RouterRoute",
@@ -235,11 +265,11 @@ export default class TypeBuilder {
         ]);
         
         this.Opportunity = this.tb.classViewer("Opportunity", [
-          "id","title","lesson","projectChange","changeSurface","score","evidence","speculative","rivalExplanationsConsidered","negativeSignal","negativeCases",
+          "id","title","changeKind","lesson","projectChange","changeSurface","practiceIds","behaviorIds","targetLayers","proofIds","score","evidence","speculative","rivalExplanationsConsidered","negativeSignal","negativeCases",
         ]);
         
         this.OpportunityBundle = this.tb.classViewer("OpportunityBundle", [
-          "id","opportunityIds","rationale","sharedChangeSurface","combinedUserValue","separationRisk","maxPrScope",
+          "id","changeKind","opportunityIds","practiceIds","behaviorIds","targetLayers","proofIds","rationale","sharedChangeSurface","combinedUserValue","separationRisk","maxPrScope",
         ]);
         
         this.OpportunityCouncilReview = this.tb.classViewer("OpportunityCouncilReview", [
@@ -276,6 +306,38 @@ export default class TypeBuilder {
         
         this.PlanArtifactSummary = this.tb.classViewer("PlanArtifactSummary", [
           "opportunityIds","title","recommendation","problemSolved","sourceLessonApplied","targetChange","expectedUserValue","implementationOutline","scope","filesLikelyTouched","validationCommands","risks","rawPlanArtifactPath","planFilePath",
+        ]);
+        
+        this.PlanCriterionAssessment = this.tb.classViewer("PlanCriterionAssessment", [
+          "criterion","score","evidenceQuotes","gaps","rationale",
+        ]);
+        
+        this.PlanRequirementAssessment = this.tb.classViewer("PlanRequirementAssessment", [
+          "requirementId","status","evidenceQuotes","gaps","rationale",
+        ]);
+        
+        this.PortfolioCoverageAssessment = this.tb.classViewer("PortfolioCoverageAssessment", [
+          "behaviorId","status","responsibleLayer","evidenceQuotes","gaps","rationale",
+        ]);
+        
+        this.PortfolioCoverageAudit = this.tb.classViewer("PortfolioCoverageAudit", [
+          "behaviorAssessments","specializedAssessments","unsupportedClaims","contradictions","summary",
+        ]);
+        
+        this.PortfolioCoverageClaim = this.tb.classViewer("PortfolioCoverageClaim", [
+          "practiceId","behaviorIds","proofIds","targetLayers","evidenceQuotes",
+        ]);
+        
+        this.PortfolioPlanDraft = this.tb.classViewer("PortfolioPlanDraft", [
+          "title","summary","markdown","coverageClaims",
+        ]);
+        
+        this.PracticeApplicabilityAssessment = this.tb.classViewer("PracticeApplicabilityAssessment", [
+          "practiceId","status","applicableBehaviorIds","excludedBehaviorIds","targetLayers","projectEvidence","contradictionEvidence","rationale",
+        ]);
+        
+        this.ProjectApplicabilityMatrix = this.tb.classViewer("ProjectApplicabilityMatrix", [
+          "projectId","assessments","architecture","constraints","validationCommands","evidence",
         ]);
         
         this.ProjectBrief = this.tb.classViewer("ProjectBrief", [
@@ -323,7 +385,35 @@ export default class TypeBuilder {
         ]);
         
         this.SourceAnalysis = this.tb.classViewer("SourceAnalysis", [
-          "sourceId","title","accessLevel","summary","claims","transferableLessons","evidence",
+          "sourceId","title","accessLevel","summary","claims","transferableLessons","evidence","practiceLedger",
+        ]);
+        
+        this.SourcePractice = this.tb.classViewer("SourcePractice", [
+          "id","title","behavior","rationale","adoptionPreconditions","requiredBehaviors","proofObligations","behaviorIds","proofIds","evidence",
+        ]);
+        
+        this.SourcePracticeDraft = this.tb.classViewer("SourcePracticeDraft", [
+          "id","title","behavior","rationale","adoptionPreconditions","requiredBehaviors","proofObligations","evidence",
+        ]);
+        
+        this.SourcePracticeLedger = this.tb.classViewer("SourcePracticeLedger", [
+          "sourceId","summary","practices","claims","evidence",
+        ]);
+        
+        this.SourcePracticeLedgerDraft = this.tb.classViewer("SourcePracticeLedgerDraft", [
+          "sourceId","summary","practices","claims","evidence",
+        ]);
+        
+        this.SourceToProjectPairwiseJudgment = this.tb.classViewer("SourceToProjectPairwiseJudgment", [
+          "winner","confidence","decidingFactors","planAStrengths","planAGaps","planBStrengths","planBGaps","rationale",
+        ]);
+        
+        this.SourceToProjectPlanJudgment = this.tb.classViewer("SourceToProjectPlanJudgment", [
+          "requirementAssessments","criterionAssessments","contradictions","unsupportedRecommendations","summary",
+        ]);
+        
+        this.SpecializedObligationAssessment = this.tb.classViewer("SpecializedObligationAssessment", [
+          "obligationId","status","evidenceQuotes","rationale",
         ]);
         
         this.TemplateCandidate = this.tb.classViewer("TemplateCandidate", [
