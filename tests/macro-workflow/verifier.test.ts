@@ -88,6 +88,70 @@ describe("macro workflow verifier", () => {
     expect(() => assertValidWorkflowPlan(validPlan())).not.toThrow();
   });
 
+  it("accepts planning fan-in followed by portfolio synthesis planning", () => {
+    const plan = validPlan();
+    const implement = plan.nodes.find((node) => node.id === "implement")!;
+    plan.nodes.splice(
+      2,
+      0,
+      {
+        id: "plan-a",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Plan opportunity A",
+        prompt: "Plan A.",
+        dependsOn: ["council"],
+        gates: [WorkflowGateKind.VERIFICATION],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
+      },
+      {
+        id: "plan-b",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Plan opportunity B",
+        prompt: "Plan B.",
+        dependsOn: ["council"],
+        gates: [WorkflowGateKind.VERIFICATION],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
+      },
+      {
+        id: "plan-portfolio",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.COPILOT_SDK,
+        title: "Synthesize plans",
+        prompt: "Create one portfolio plan.",
+        dependsOn: ["plan-a", "plan-b"],
+        gates: [WorkflowGateKind.VERIFICATION],
+        writeMode: "read-only" as const,
+        replanPolicy: "never" as const,
+      },
+    );
+    implement.dependsOn = ["plan-portfolio"];
+
+    expect(verifyWorkflowPlan(plan)).toMatchObject({ valid: true, issues: [] });
+  });
+
+  it("accepts implementation driven by an audited canonical report", () => {
+    const plan = validPlan();
+    const implement = plan.nodes.find((node) => node.id === "implement")!;
+    plan.nodes.splice(2, 0, {
+      id: "audited-plan-report",
+      kind: WorkflowNodeKind.REPORT,
+      harness: WorkflowHarnessKind.REPORTER,
+      title: "Publish audited canonical plan",
+      prompt: "Publish the audited plan before implementation.",
+      dependsOn: ["council"],
+      gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+      writeMode: "read-only" as const,
+      replanPolicy: "never" as const,
+    });
+    implement.dependsOn = ["audited-plan-report"];
+
+    expect(verifyWorkflowPlan(plan)).toMatchObject({ valid: true, issues: [] });
+  });
+
   it("rejects cycles", () => {
     const plan = validPlan();
     plan.nodes[0]!.dependsOn = ["report"];

@@ -1,0 +1,103 @@
+id: todo-safe-write-path
+title: Apply a safe todo mutation vertical slice
+objective: >
+  Use the source article to produce a concrete, bounded implementation plan that
+  makes the todo application's create, update, delete, and browser-rendering path
+  safe, testable, and consistent without replacing its current stack.
+projectDir: ../fixtures/todo-app
+sourcePath: ../sources/safe-todo-write-path.md
+expectedPractices:
+  - id: validate-http-boundaries
+    title: Validate and normalize every HTTP mutation boundary
+    sourceExpectation: >
+      Parse untrusted bodies and route parameters with explicit schemas, reject
+      unknown or malformed values, and normalize todo titles before domain logic.
+    projectEvidence:
+      - src/server.ts reads req.body.title without checking type, length, whitespace, or unknown fields.
+      - src/server.ts coerces req.body.completed with Boolean(), so strings such as "false" become true.
+      - src/server.ts accepts arbitrary route ids and does not distinguish malformed input from missing todos.
+    expectedPlanActions:
+      - Add reusable schemas for create, update, and identifier inputs.
+      - Return structured 400 responses for invalid requests before calling domain logic.
+      - Cover empty, whitespace-only, overlong, unknown-field, and wrong-type requests.
+  - id: separate-domain-from-transport
+    title: Keep Express routes thin and move todo behavior behind a testable boundary
+    sourceExpectation: >
+      Route handlers should translate HTTP input and output while a todo service
+      owns mutation rules and depends on a repository contract.
+    projectEvidence:
+      - src/server.ts creates ids, mutates todos, finds records, and defines HTTP responses in the same handlers.
+      - src/store.ts exports a process-wide mutable array directly to the transport layer.
+    expectedPlanActions:
+      - Introduce a focused todo service and repository contract without replacing Express.
+      - Keep the in-memory repository as the initial adapter and inject it into the service.
+      - Move create, completion update, delete, and not-found behavior out of route handlers.
+  - id: use-a-stable-error-contract
+    title: Use one stable JSON error contract
+    sourceExpectation: >
+      Map validation, not-found, and unexpected failures consistently, and keep
+      internal exception details out of client responses.
+    projectEvidence:
+      - 'src/server.ts sends unrelated ad hoc shapes such as { error: "title required" } and { ok: false }.'
+      - src/server.ts has no centralized Express error middleware.
+    expectedPlanActions:
+      - Define a stable error response with a machine-readable code and human-readable message.
+      - Map validation failures to 400 and missing todos to 404.
+      - Add centralized fallback middleware for unexpected failures.
+  - id: render-user-content-safely
+    title: Render persisted user content without HTML interpolation
+    sourceExpectation: >
+      Treat API-returned todo titles as untrusted and build DOM nodes with
+      textContent and event listeners rather than HTML strings.
+    projectEvidence:
+      - public/app.js interpolates todo.title into list.innerHTML.
+      - A todo title containing markup can become executable browser content.
+    expectedPlanActions:
+      - Replace innerHTML rendering with createElement, textContent, and addEventListener.
+      - Preserve completion and delete interactions with semantic buttons.
+      - Add a regression test using an HTML-like todo title.
+  - id: test-the-vertical-slice
+    title: Prove the complete mutation path with focused automated checks
+    sourceExpectation: >
+      Test domain rules directly, HTTP status and error contracts at the adapter,
+      and the browser rendering boundary for untrusted text.
+    projectEvidence:
+      - package.json defines no test or typecheck script.
+      - The project contains no automated tests for API mutations or browser rendering.
+    expectedPlanActions:
+      - Add service-level tests for create, update, delete, and not-found behavior.
+      - Add HTTP integration tests for valid and invalid mutation requests.
+      - Add a DOM-focused test proving markup-like titles render as text.
+      - Add test and typecheck scripts and list the commands in the plan.
+antiGoals:
+  - Do not replace Express or the browser client framework.
+  - Do not add authentication, a production database, queues, deployment infrastructure, or unrelated features.
+  - Do not implement the changes during planning.
+  - Do not modify the benchmark source article.
+rubric:
+  - criterion: source-practice-coverage
+    weight: 0.30
+    levels: >
+      1.0 identifies and applies all five source practices; 0.7 covers four with
+      minor gaps; 0.4 covers two or three; 0.0 is generic or misses the source.
+  - criterion: project-specific-diagnosis
+    weight: 0.25
+    levels: >
+      1.0 ties recommendations to the cited files and concrete current behavior;
+      0.5 mentions the project but lacks evidence; 0.0 could describe any todo app.
+  - criterion: implementation-completeness
+    weight: 0.25
+    levels: >
+      1.0 gives an ordered, cohesive vertical-slice plan with boundaries, likely
+      files, data/error contracts, and migration sequence; 0.5 is partly actionable;
+      0.0 is advice rather than a plan.
+  - criterion: verification-quality
+    weight: 0.15
+    levels: >
+      1.0 covers service, HTTP, browser-XSS, typecheck, and non-regression proof;
+      0.5 proposes generic tests; 0.0 omits meaningful validation.
+  - criterion: scope-discipline
+    weight: 0.05
+    levels: >
+      1.0 preserves the stack and rejects anti-goals; 0.5 adds minor unnecessary
+      work; 0.0 replaces the stack or proposes unrelated infrastructure.

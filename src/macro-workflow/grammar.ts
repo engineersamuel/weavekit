@@ -37,6 +37,7 @@ export const defaultWorkflowGrammar: WorkflowGrammar = {
       new Set([
         WorkflowNodeKind.RESEARCH,
         WorkflowNodeKind.DELIBERATION,
+        WorkflowNodeKind.PLANNING,
         WorkflowNodeKind.IMPLEMENTATION,
         WorkflowNodeKind.VERIFICATION,
         WorkflowNodeKind.REPORT,
@@ -54,7 +55,14 @@ export const defaultWorkflowGrammar: WorkflowGrammar = {
         WorkflowNodeKind.VISUALIZATION,
       ]),
     ],
-    [WorkflowNodeKind.REPORT, new Set([WorkflowNodeKind.PLANNING, WorkflowNodeKind.VISUALIZATION])],
+    [
+      WorkflowNodeKind.REPORT,
+      new Set([
+        WorkflowNodeKind.PLANNING,
+        WorkflowNodeKind.IMPLEMENTATION,
+        WorkflowNodeKind.VISUALIZATION,
+      ]),
+    ],
     [WorkflowNodeKind.VISUALIZATION, new Set([WorkflowNodeKind.VISUALIZATION])],
   ]),
   implementationHarnesses: new Set([WorkflowHarnessKind.COPILOT_SDK]),

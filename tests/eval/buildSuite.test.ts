@@ -54,7 +54,11 @@ describe("buildSuite", () => {
   it("wires providers, prompt template, vars, and judge config", () => {
     const suite = buildSuite([ITEM], {
       providers: [fakeProvider],
-      judge: { model: "judge-x", apiBaseUrl: "http://localhost:9/v1", apiKey: "k" },
+      judge: {
+        model: "judge-x",
+        apiBaseUrl: "http://localhost:9/v1",
+        apiKeyEnvar: "TEST_EVAL_JUDGE_API_KEY",
+      },
     });
     expect(suite.providers).toEqual([fakeProvider]);
     expect(suite.writeLatestResults).toBe(true);
@@ -73,8 +77,41 @@ describe("buildSuite", () => {
     expect(test.vars!.caseId).toBe("t-001");
     expect(test.vars!.contextItems).toEqual(["small team"]);
     expect(String(test.vars!.reference)).toContain("Recommendation: Use A.");
+    expect(test.assert?.filter((assertion) => assertion.type === "g-eval")).toEqual([
+      expect.objectContaining({
+        provider: {
+          id: "openai:chat:judge-x",
+          config: {
+            apiBaseUrl: "http://localhost:9/v1",
+            apiKeyEnvar: "TEST_EVAL_JUDGE_API_KEY",
+            apiKeyRequired: false,
+            temperature: 0,
+          },
+        },
+      }),
+      expect.objectContaining({
+        provider: {
+          id: "openai:chat:judge-x",
+          config: {
+            apiBaseUrl: "http://localhost:9/v1",
+            apiKeyEnvar: "TEST_EVAL_JUDGE_API_KEY",
+            apiKeyRequired: false,
+            temperature: 0,
+          },
+        },
+      }),
+    ]);
     const defaultTest = typeof suite.defaultTest === "string" ? undefined : suite.defaultTest;
-    const judge = defaultTest?.options?.provider as { id: string };
-    expect(judge.id).toBe("openai:chat:judge-x");
+    expect(defaultTest?.options?.provider).toEqual({
+      text: {
+        id: "openai:chat:judge-x",
+        config: {
+          apiBaseUrl: "http://localhost:9/v1",
+          apiKeyEnvar: "TEST_EVAL_JUDGE_API_KEY",
+          apiKeyRequired: false,
+          temperature: 0,
+        },
+      },
+    });
   });
 });

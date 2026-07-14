@@ -4,7 +4,7 @@ import { type CorpusItem, formatQuestion, formatReference } from "./schema.js";
 export interface JudgeConfig {
   model: string;
   apiBaseUrl: string;
-  apiKey: string;
+  apiKeyEnvar: string;
 }
 
 export interface BuildSuiteOptions {
@@ -16,19 +16,34 @@ function defaultJudge(): JudgeConfig {
   return {
     model: process.env.EVAL_JUDGE_MODEL ?? "gpt-4o",
     apiBaseUrl: process.env.EVAL_JUDGE_BASE_URL ?? "http://127.0.0.1:8080/v1",
-    apiKey: process.env.EVAL_JUDGE_API_KEY ?? "sk-local",
+    apiKeyEnvar: "EVAL_JUDGE_API_KEY",
   };
 }
 
-export function buildAssertions(item: CorpusItem, providerCount = 2): Assertion[] {
-  const judge = defaultJudge();
+function judgeProvider(judge: JudgeConfig) {
+  return {
+    id: `openai:chat:${judge.model}`,
+    config: {
+      apiBaseUrl: judge.apiBaseUrl,
+      apiKeyEnvar: judge.apiKeyEnvar,
+      apiKeyRequired: false,
+      temperature: 0,
+    },
+  };
+}
+
+export function buildAssertions(
+  item: CorpusItem,
+  providerCount = 2,
+  judge = defaultJudge(),
+): Assertion[] {
   const rubric: Assertion[] = item.rubric.map((criterion) => ({
     type: "g-eval",
     value: `${criterion.criterion}: ${criterion.levels}\n\nReference answer for grading:\n{{reference}}`,
     weight: criterion.weight,
     metric: criterion.criterion,
     threshold: 0.7,
-    provider: `openai:chat:${judge.model}`,
+    provider: judgeProvider(judge),
   }));
   if (providerCount <= 1) {
     return rubric;
@@ -43,8 +58,6 @@ export function buildAssertions(item: CorpusItem, providerCount = 2): Assertion[
 
 export function buildSuite(items: CorpusItem[], options: BuildSuiteOptions): EvaluateTestSuite {
   const judge = options.judge ?? defaultJudge();
-  process.env.OPENAI_BASE_URL ??= judge.apiBaseUrl;
-  process.env.OPENAI_API_KEY ??= judge.apiKey;
   const tests: TestCase[] = items.map((item) => ({
     description: `${item.id} — ${item.title}`,
     vars: {
@@ -55,7 +68,7 @@ export function buildSuite(items: CorpusItem[], options: BuildSuiteOptions): Eva
       question: formatQuestion(item),
       reference: formatReference(item.referenceAnswer),
     },
-    assert: buildAssertions(item, options.providers.length),
+    assert: buildAssertions(item, options.providers.length, judge),
   }));
 
   return {
@@ -71,12 +84,7 @@ export function buildSuite(items: CorpusItem[], options: BuildSuiteOptions): Eva
     defaultTest: {
       options: {
         provider: {
-          id: `openai:chat:${judge.model}`,
-          config: {
-            apiBaseUrl: judge.apiBaseUrl,
-            apiKey: judge.apiKey,
-            temperature: 0,
-          },
+          text: judgeProvider(judge),
         },
       },
     },

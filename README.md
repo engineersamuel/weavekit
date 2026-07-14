@@ -462,6 +462,16 @@ nub run build
 
 ## Evaluating the Decision Council
 
+Promptfoo is the system of record for repository evaluations. Every eval command
+persists and prints its Promptfoo evaluation ID. Inspect completed runs primarily
+with `nubx promptfoo view`, or list recent IDs with
+`nubx promptfoo list evals -n 20`. Repository-owned JSON and Markdown reports are
+deterministic projections of those persisted results, not a second evaluation path.
+The shared runner adds the immutable `schemaVersion=1` tag to every evaluation and
+disables Promptfoo caching unless a caller explicitly enables it.
+To verify local persistence without calling a model, run
+`nub run eval:promptfoo:smoke`.
+
 `evals/corpus/*.yaml` holds open-ended technical _decision_ questions, each with a
 detailed reference answer and a weighted rubric. The eval harness runs two
 providers against every question — the Decision Council (`runDecisionCouncil`,
@@ -490,6 +500,84 @@ corpus cells in parallel. Keep values small: each Council cell fans out roughly 
 Copilot SDK persona sessions, and each baseline cell starts a `copilot` CLI process,
 so concurrency `N` can mean up to `N × personas` concurrent Copilot SDK sessions plus
 `N` baseline processes against the local proxy.
+
+### Source-to-project verification
+
+The source-to-project benchmark compares the real weavekit advisory workflow with
+Copilot CLI plan mode and Codex CLI read-only planning. Each provider receives an
+isolated copy of a deliberately flawed full-stack todo app and the same stable
+best-practices article. Each run creates linked Promptfoo generation and judge
+evaluations. Generation collects one canonical plan per provider; an anonymous,
+counterbalanced BAML panel (`gpt-5.5` and `claude-opus-4.8`) performs
+evidence-backed absolute and pairwise judging. TypeScript validates and aggregates
+the judgments deterministically. Provider execution, workspace mutation, judge
+validity, plan quality, pairwise preference, and efficiency remain separate results.
+The eval omits both visual-plan preflight and visual-design opportunity nodes because
+those artifacts serve human review rather than plan-quality scoring.
+
+```bash
+# Run the three-provider benchmark:
+nub run eval:source-to-project
+
+# Run one immutable migration case:
+nub run eval:source-to-project -- \
+  --case evals/source-to-project/cases/eslint-to-oxlint.yaml
+
+# Run the four-case, three-trial reliability acceptance matrix:
+nub run eval:source-to-project -- \
+  --matrix evals/source-to-project/matrix.yaml --trials 3
+
+# Rejudge byte-identical stored plans without invoking any provider workflow:
+nub run eval:source-to-project -- \
+  --rejudge-from evals/source-to-project/results/<prior-run>
+
+# Verify the live two-model judge against weak/medium/strong fixtures:
+nub run eval:source-to-project:judge-calibration
+
+# Require weavekit to improve by at least 0.02 over a prior run:
+nub run eval:source-to-project -- \
+  --baseline evals/source-to-project/results/<prior-run>/scores.json \
+  --minimum-weavekit-delta 0.02
+```
+
+The command prints both Promptfoo evaluation IDs and writes them to `manifest.json`,
+`scores.json`, and `summary.md` alongside `promptfoo-report.json`, raw
+absolute/pairwise judgments, and per-provider plans under
+`evals/source-to-project/results/<timestamp>/`. Rejudge verifies every SHA-256
+digest, creates exactly one judge-only evaluation linked to the original generation
+evaluation, and writes its projections below the unchanged source result in
+`judge-replays/<timestamp>/`.
+A failed provider, workspace mutation, invalid absolute judgment, or missed minimum
+delta makes the command exit nonzero. Pairwise losses never mark generation failed;
+ties, disputes, single-judge outcomes, and invalid comparisons are reported directly.
+
+Every new Weavekit plan used by the matrix is compiled through a source-practice
+ledger, project applicability matrix, coverage map, structured draft, semantic
+audit, and at most one repair. Passing runs persist those linked JSON envelopes,
+their SHA-256 input digests, the original Copilot transcript, and the final audited
+Markdown at `raw-plans/plan-portfolio-full.md`. The matrix writes
+`matrix-scorecard.json` and `matrix-summary.md`, with the linked generation/judge
+evaluation-ID pair for every case/trial. It passes only when Weavekit beats
+both Codex and Copilot on majority wins, positive mean quality margin, the per-case
+deficit tolerance, and agreed pairwise reliability, with no invalid provider run,
+invalid judge panel, or unaudited Weavekit plan. Median and p95 latency, tokens, and
+cost are reported separately and never affect the quality gate. Judge-only replay
+reuses frozen plans for calibration but does not replace the twelve paired generation
+trials.
+
+Judge calibration is one persisted Promptfoo judge evaluation covering all frozen
+weak, medium, and strong fixtures; its command prints that evaluation ID.
+
+The default provider models are `gpt-5.4` for Copilot and `gpt-5.3-codex` for
+Codex. Override them with `PROJECT_VERIFICATION_COPILOT_MODEL` and
+`PROJECT_VERIFICATION_CODEX_MODEL`. The fixed judge panel uses
+`gpt-5.5` and `claude-opus-4.8` through
+`PROJECT_VERIFICATION_JUDGE_BASE_URL` (default
+`http://127.0.0.1:8080/v1`) and `PROJECT_VERIFICATION_JUDGE_API_KEY`. Judge requests
+default to a five-minute timeout for long stored plans; override it with the positive
+integer `PROJECT_VERIFICATION_JUDGE_TIMEOUT_MS`.
+Baseline CLI plans default to low reasoning so the three-provider loop remains
+bounded; set `PROJECT_VERIFICATION_REASONING_EFFORT` to override it.
 
 ### Router evals
 

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { CouncilProvider } from "../../src/eval/providers/council.js";
 import type { DecisionCouncilReport } from "../../src/index.js";
@@ -18,6 +19,16 @@ function fakeReport(overrides: Partial<DecisionCouncilReport> = {}): DecisionCou
 }
 
 describe("CouncilProvider", () => {
+  it("imports the council runner without loading the public barrel", async () => {
+    const source = await readFile(
+      new URL("../../src/eval/providers/council.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('from "../../decision-council/runner.js"');
+    expect(source).not.toContain('from "../../index.js"');
+  });
+
   it("maps vars to council input and returns the report markdown", async () => {
     let received: unknown;
     const provider = new CouncilProvider({

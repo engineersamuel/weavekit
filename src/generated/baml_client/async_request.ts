@@ -23,7 +23,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video, FunctionLog
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
 import type * as types from "./types.js"
-import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
+import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import type * as events from "./events.js"
 
@@ -141,6 +141,39 @@ env?: Record<string, string | undefined>
       }
       }
       
+  async AuditPortfolioCoverage(
+  compilerJson: string,draft: types.PortfolioPlanDraft,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "AuditPortfolioCoverage",
+      {
+      "compilerJson": compilerJson,"draft": draft
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
   async ChoosePersonasForTask(
   request: types.PersonaSelectionRequest,
   __baml_options__?: BamlCallOptions<never>
@@ -162,6 +195,39 @@ env?: Record<string, string | undefined>
       "ChoosePersonasForTask",
       {
       "request": request
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
+  async CompareSourceToProjectPlans(
+  caseJson: string,planA: string,planB: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "CompareSourceToProjectPlans",
+      {
+      "caseJson": caseJson,"planA": planA,"planB": planB
       },
       this.ctxManager.cloneContext(),
       __baml_options__?.tb?.__tb(),
@@ -294,6 +360,72 @@ env?: Record<string, string | undefined>
       "DistillPlanArtifact",
       {
       "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
+  async DistillPortfolioPlanDraft(
+  compilerJson: string,planMarkdown: string,validationFeedback: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "DistillPortfolioPlanDraft",
+      {
+      "compilerJson": compilerJson,"planMarkdown": planMarkdown,"validationFeedback": validationFeedback
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
+  async DistillProjectApplicability(
+  projectJson: string,practiceLedger: types.SourcePracticeLedger,rawResearch: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "DistillProjectApplicability",
+      {
+      "projectJson": projectJson,"practiceLedger": practiceLedger,"rawResearch": rawResearch
       },
       this.ctxManager.cloneContext(),
       __baml_options__?.tb?.__tb(),
@@ -504,6 +636,39 @@ env?: Record<string, string | undefined>
       }
       }
       
+  async JudgeSourceToProjectPlan(
+  caseJson: string,planMarkdown: string,validationFeedback: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "JudgeSourceToProjectPlan",
+      {
+      "caseJson": caseJson,"planMarkdown": planMarkdown,"validationFeedback": validationFeedback
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
   async JudgeTemplateFixture(
   objective: string,constraintsSummary: string,fixture: types.TemplateOptimizationFixture,incumbent: types.TemplateCandidate,challenger: types.TemplateCandidate,
   __baml_options__?: BamlCallOptions<never>
@@ -538,7 +703,7 @@ env?: Record<string, string | undefined>
       }
       
   async MapSourceToProject(
-  sourceAnalysis: types.SourceAnalysis,corroboration: types.CorroborationReport,projectBrief: types.ProjectBrief,
+  practiceLedger: types.SourcePracticeLedger,corroboration: types.CorroborationReport,applicabilityMatrix: types.ProjectApplicabilityMatrix,validationFeedback: string,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
     try {
@@ -557,7 +722,7 @@ env?: Record<string, string | undefined>
       return await this.runtime.buildRequest(
       "MapSourceToProject",
       {
-      "sourceAnalysis": sourceAnalysis,"corroboration": corroboration,"projectBrief": projectBrief
+      "practiceLedger": practiceLedger,"corroboration": corroboration,"applicabilityMatrix": applicabilityMatrix,"validationFeedback": validationFeedback
       },
       this.ctxManager.cloneContext(),
       __baml_options__?.tb?.__tb(),
@@ -690,6 +855,72 @@ env?: Record<string, string | undefined>
       "RefineVerificationOpportunitiesWithResearch",
       {
       "audit": audit,"initialReview": initialReview,"researchReports": researchReports
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
+  async RepairPortfolioPlan(
+  compilerJson: string,draft: types.PortfolioPlanDraft,auditFeedback: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "RepairPortfolioPlan",
+      {
+      "compilerJson": compilerJson,"draft": draft,"auditFeedback": auditFeedback
+      },
+      this.ctxManager.cloneContext(),
+      __baml_options__?.tb?.__tb(),
+      __clientRegistry__,
+      false,
+      __env__
+      )
+      } catch (error) {
+      throw toBamlError(error);
+      }
+      }
+      
+  async RepairProjectApplicability(
+  practiceLedger: types.SourcePracticeLedger,initialMatrix: types.ProjectApplicabilityMatrix,rawRepairResearch: string,
+  __baml_options__?: BamlCallOptions<never>
+  ): Promise<HTTPRequest> {
+    try {
+    const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+    const __env__: Record<string, string> = Object.fromEntries(
+      Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return await this.runtime.buildRequest(
+      "RepairProjectApplicability",
+      {
+      "practiceLedger": practiceLedger,"initialMatrix": initialMatrix,"rawRepairResearch": rawRepairResearch
       },
       this.ctxManager.cloneContext(),
       __baml_options__?.tb?.__tb(),
@@ -972,6 +1203,39 @@ env?: Record<string, string | undefined>
           }
           }
           
+      async AuditPortfolioCoverage(
+      compilerJson: string,draft: types.PortfolioPlanDraft,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "AuditPortfolioCoverage",
+          {
+          "compilerJson": compilerJson,"draft": draft
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
       async ChoosePersonasForTask(
       request: types.PersonaSelectionRequest,
       __baml_options__?: BamlCallOptions<never>
@@ -993,6 +1257,39 @@ env?: Record<string, string | undefined>
           "ChoosePersonasForTask",
           {
           "request": request
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
+      async CompareSourceToProjectPlans(
+      caseJson: string,planA: string,planB: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "CompareSourceToProjectPlans",
+          {
+          "caseJson": caseJson,"planA": planA,"planB": planB
           },
           this.ctxManager.cloneContext(),
           __baml_options__?.tb?.__tb(),
@@ -1125,6 +1422,72 @@ env?: Record<string, string | undefined>
           "DistillPlanArtifact",
           {
           "opportunityJson": opportunityJson,"rawPlan": rawPlan,"rawPlanArtifactPath": rawPlanArtifactPath
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
+      async DistillPortfolioPlanDraft(
+      compilerJson: string,planMarkdown: string,validationFeedback: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "DistillPortfolioPlanDraft",
+          {
+          "compilerJson": compilerJson,"planMarkdown": planMarkdown,"validationFeedback": validationFeedback
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
+      async DistillProjectApplicability(
+      projectJson: string,practiceLedger: types.SourcePracticeLedger,rawResearch: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "DistillProjectApplicability",
+          {
+          "projectJson": projectJson,"practiceLedger": practiceLedger,"rawResearch": rawResearch
           },
           this.ctxManager.cloneContext(),
           __baml_options__?.tb?.__tb(),
@@ -1335,6 +1698,39 @@ env?: Record<string, string | undefined>
           }
           }
           
+      async JudgeSourceToProjectPlan(
+      caseJson: string,planMarkdown: string,validationFeedback: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "JudgeSourceToProjectPlan",
+          {
+          "caseJson": caseJson,"planMarkdown": planMarkdown,"validationFeedback": validationFeedback
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
       async JudgeTemplateFixture(
       objective: string,constraintsSummary: string,fixture: types.TemplateOptimizationFixture,incumbent: types.TemplateCandidate,challenger: types.TemplateCandidate,
       __baml_options__?: BamlCallOptions<never>
@@ -1369,7 +1765,7 @@ env?: Record<string, string | undefined>
           }
           
       async MapSourceToProject(
-      sourceAnalysis: types.SourceAnalysis,corroboration: types.CorroborationReport,projectBrief: types.ProjectBrief,
+      practiceLedger: types.SourcePracticeLedger,corroboration: types.CorroborationReport,applicabilityMatrix: types.ProjectApplicabilityMatrix,validationFeedback: string,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
         try {
@@ -1388,7 +1784,7 @@ env?: Record<string, string | undefined>
           return await this.runtime.buildRequest(
           "MapSourceToProject",
           {
-          "sourceAnalysis": sourceAnalysis,"corroboration": corroboration,"projectBrief": projectBrief
+          "practiceLedger": practiceLedger,"corroboration": corroboration,"applicabilityMatrix": applicabilityMatrix,"validationFeedback": validationFeedback
           },
           this.ctxManager.cloneContext(),
           __baml_options__?.tb?.__tb(),
@@ -1521,6 +1917,72 @@ env?: Record<string, string | undefined>
           "RefineVerificationOpportunitiesWithResearch",
           {
           "audit": audit,"initialReview": initialReview,"researchReports": researchReports
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
+      async RepairPortfolioPlan(
+      compilerJson: string,draft: types.PortfolioPlanDraft,auditFeedback: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "RepairPortfolioPlan",
+          {
+          "compilerJson": compilerJson,"draft": draft,"auditFeedback": auditFeedback
+          },
+          this.ctxManager.cloneContext(),
+          __baml_options__?.tb?.__tb(),
+          __clientRegistry__,
+          true,
+          __env__
+          )
+          } catch (error) {
+          throw toBamlError(error);
+          }
+          }
+          
+      async RepairProjectApplicability(
+      practiceLedger: types.SourcePracticeLedger,initialMatrix: types.ProjectApplicabilityMatrix,rawRepairResearch: string,
+      __baml_options__?: BamlCallOptions<never>
+      ): Promise<HTTPRequest> {
+        try {
+        const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+        const __env__: Record<string, string> = Object.fromEntries(
+          Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+          );
+
+          // Resolve client option to clientRegistry (client takes precedence)
+          let __clientRegistry__ = __baml_options__?.clientRegistry;
+          if (__baml_options__?.client) {
+            __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+            __clientRegistry__.setPrimary(__baml_options__.client);
+          }
+
+          return await this.runtime.buildRequest(
+          "RepairProjectApplicability",
+          {
+          "practiceLedger": practiceLedger,"initialMatrix": initialMatrix,"rawRepairResearch": rawRepairResearch
           },
           this.ctxManager.cloneContext(),
           __baml_options__?.tb?.__tb(),

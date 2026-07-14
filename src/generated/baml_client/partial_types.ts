@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RouterHandoff,  RouterRecommendation,  RouterResult,  RouterRoute,  RouterRouteScore,  RoutingDecision,  SourceAnalysis,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  PlanCriterionAssessment,  PlanRequirementAssessment,  PortfolioCoverageAssessment,  PortfolioCoverageAudit,  PortfolioCoverageClaim,  PortfolioPlanDraft,  PracticeApplicabilityAssessment,  ProjectApplicabilityMatrix,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RouterHandoff,  RouterRecommendation,  RouterResult,  RouterRoute,  RouterRouteScore,  RoutingDecision,  SourceAnalysis,  SourcePractice,  SourcePracticeDraft,  SourcePracticeLedger,  SourcePracticeLedgerDraft,  SourceToProjectPairwiseJudgment,  SourceToProjectPlanJudgment,  SpecializedObligationAssessment,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -191,9 +191,14 @@ export namespace partial_types {
     export interface Opportunity {
       id?: string | null
       title?: string | null
+      changeKind?: "tool-integration" | "code-change" | "workflow-process" | "documentation" | null
       lesson?: string | null
       projectChange?: string | null
       changeSurface?: string | null
+      practiceIds: string[]
+      behaviorIds: string[]
+      targetLayers: string[]
+      proofIds: string[]
       score?: OpportunityScore | null
       evidence: EvidenceReference[]
       speculative?: boolean | null
@@ -203,7 +208,12 @@ export namespace partial_types {
     }
     export interface OpportunityBundle {
       id?: string | null
+      changeKind?: "tool-integration" | "code-change" | "workflow-process" | "documentation" | null
       opportunityIds: string[]
+      practiceIds: string[]
+      behaviorIds: string[]
+      targetLayers: string[]
+      proofIds: string[]
       rationale?: string | null
       sharedChangeSurface?: string | null
       combinedUserValue?: string | null
@@ -291,6 +301,66 @@ export namespace partial_types {
       risks: string[]
       rawPlanArtifactPath?: string | null
       planFilePath?: string | null
+    }
+    export interface PlanCriterionAssessment {
+      criterion?: string | null
+      score?: number | null
+      evidenceQuotes: string[]
+      gaps: string[]
+      rationale?: string | null
+    }
+    export interface PlanRequirementAssessment {
+      requirementId?: string | null
+      status?: "complete" | "partial" | "missing" | "contradicted" | null
+      evidenceQuotes: string[]
+      gaps: string[]
+      rationale?: string | null
+    }
+    export interface PortfolioCoverageAssessment {
+      behaviorId?: string | null
+      status?: "complete" | "partial" | "missing" | "contradicted" | null
+      responsibleLayer?: string | null
+      evidenceQuotes: string[]
+      gaps: string[]
+      rationale?: string | null
+    }
+    export interface PortfolioCoverageAudit {
+      behaviorAssessments: PortfolioCoverageAssessment[]
+      specializedAssessments: SpecializedObligationAssessment[]
+      unsupportedClaims: string[]
+      contradictions: string[]
+      summary?: string | null
+    }
+    export interface PortfolioCoverageClaim {
+      practiceId?: string | null
+      behaviorIds: string[]
+      proofIds: string[]
+      targetLayers: string[]
+      evidenceQuotes: string[]
+    }
+    export interface PortfolioPlanDraft {
+      title?: string | null
+      summary?: string | null
+      markdown?: string | null
+      coverageClaims: PortfolioCoverageClaim[]
+    }
+    export interface PracticeApplicabilityAssessment {
+      practiceId?: string | null
+      status?: "applicable" | "partial" | "not-applicable" | "unknown" | null
+      applicableBehaviorIds: string[]
+      excludedBehaviorIds: string[]
+      targetLayers: string[]
+      projectEvidence: EvidenceReference[]
+      contradictionEvidence: EvidenceReference[]
+      rationale?: string | null
+    }
+    export interface ProjectApplicabilityMatrix {
+      projectId?: string | null
+      assessments: PracticeApplicabilityAssessment[]
+      architecture?: string | null
+      constraints: string[]
+      validationCommands: string[]
+      evidence: EvidenceReference[]
     }
     export interface ProjectBrief {
       projectId?: string | null
@@ -384,6 +454,66 @@ export namespace partial_types {
       claims: string[]
       transferableLessons: string[]
       evidence: EvidenceReference[]
+      practiceLedger?: SourcePracticeLedgerDraft | null
+    }
+    export interface SourcePractice {
+      id?: string | null
+      title?: string | null
+      behavior?: string | null
+      rationale?: string | null
+      adoptionPreconditions: string[]
+      requiredBehaviors: string[]
+      proofObligations: string[]
+      behaviorIds: string[]
+      proofIds: string[]
+      evidence: EvidenceReference[]
+    }
+    export interface SourcePracticeDraft {
+      id?: string | null
+      title?: string | null
+      behavior?: string | null
+      rationale?: string | null
+      adoptionPreconditions: string[]
+      requiredBehaviors: string[]
+      proofObligations: string[]
+      evidence: EvidenceReference[]
+    }
+    export interface SourcePracticeLedger {
+      sourceId?: string | null
+      summary?: string | null
+      practices: SourcePractice[]
+      claims: string[]
+      evidence: EvidenceReference[]
+    }
+    export interface SourcePracticeLedgerDraft {
+      sourceId?: string | null
+      summary?: string | null
+      practices: SourcePracticeDraft[]
+      claims: string[]
+      evidence: EvidenceReference[]
+    }
+    export interface SourceToProjectPairwiseJudgment {
+      winner?: "plan-a" | "plan-b" | "tie" | null
+      confidence?: number | null
+      decidingFactors: string[]
+      planAStrengths: string[]
+      planAGaps: string[]
+      planBStrengths: string[]
+      planBGaps: string[]
+      rationale?: string | null
+    }
+    export interface SourceToProjectPlanJudgment {
+      requirementAssessments: PlanRequirementAssessment[]
+      criterionAssessments: PlanCriterionAssessment[]
+      contradictions: string[]
+      unsupportedRecommendations: string[]
+      summary?: string | null
+    }
+    export interface SpecializedObligationAssessment {
+      obligationId?: string | null
+      status?: "complete" | "partial" | "missing" | "not-required" | null
+      evidenceQuotes: string[]
+      rationale?: string | null
     }
     export interface TemplateCandidate {
       id?: string | null

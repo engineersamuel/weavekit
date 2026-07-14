@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { runMacroWorkflow } from "../../../src/macro-workflow/runner.js";
 import { materializeWorkflowPlan } from "../../../src/macro-workflow/templates.js";
 import {
@@ -19,8 +22,16 @@ function reviewJson(status: ReviewStatus, finding = "A regression test is missin
   });
 }
 
+const outputDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(outputDirs.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+});
+
 describe("source-to-project autonomous PR mode", () => {
   async function runScenario(reviewStatuses: ReviewStatus[]) {
+    const outputDir = await mkdtemp(join(tmpdir(), "weavekit-autonomous-pr-"));
+    outputDirs.push(outputDir);
     const plan = materializeWorkflowPlan("source-to-project", {
       objective: "Apply one opportunity",
       source: "https://example.com/post",
@@ -28,6 +39,7 @@ describe("source-to-project autonomous PR mode", () => {
       mode: "autonomous-pr",
     });
     const operations: string[] = [];
+    const implementationPrompts: string[] = [];
     const reviewQueue = reviewStatuses.map((status) => reviewJson(status));
     let validationRuns = 0;
     let prCreateRuns = 0;
@@ -49,6 +61,9 @@ describe("source-to-project autonomous PR mode", () => {
       copilot: {
         async run(args) {
           operations.push(args.operation ?? args.mode);
+          if (args.operation === "implement-selected-bundles") {
+            implementationPrompts.push(args.prompt);
+          }
           if (
             args.operation === "review-implementation" ||
             args.operation === "re-review-implementation"
@@ -92,16 +107,19 @@ describe("source-to-project autonomous PR mode", () => {
     };
     const harnesses = createSourceToProjectHarnessRegistry(sourceToProjectOptions);
 
+    const dynamicExpander = createSourceToProjectDynamicExpander(sourceToProjectOptions);
     const state = await runMacroWorkflow(plan, {
       harnesses,
-      expandAfterNode: createSourceToProjectDynamicExpander(sourceToProjectOptions),
+      expandAfterNode: dynamicExpander,
+      outputDir,
     });
 
-    return { state, operations, validationRuns, prCreateRuns };
+    return { state, operations, implementationPrompts, validationRuns, prCreateRuns };
   }
 
   it("opens a PR after the initial structured review accepts", async () => {
-    const { state, operations, validationRuns, prCreateRuns } = await runScenario(["accepted"]);
+    const { state, operations, implementationPrompts, validationRuns, prCreateRuns } =
+      await runScenario(["accepted"]);
 
     expect(state.status).toBe("passed");
     expect(operations).toContain("review-implementation");
@@ -112,6 +130,7 @@ describe("source-to-project autonomous PR mode", () => {
     expect(operations.indexOf("prepare-worktree")).toBeLessThan(
       operations.indexOf("implement-selected-bundles"),
     );
+    expect(implementationPrompts[0]).toContain("Audited canonical portfolio plan:\nraw output");
     for (const nodeId of [
       "fix-review-findings",
       "verify-review-fixes",

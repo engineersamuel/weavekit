@@ -1,20 +1,38 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { evaluate } from "promptfoo";
-import type { ApiProvider } from "promptfoo";
+import type { ApiProvider, EvaluateSummaryV3 } from "promptfoo";
 import { type CorpusItem, loadCorpus } from "./schema.js";
 import { buildSuite } from "./buildSuite.js";
+import {
+  runPersistedPromptfooEvaluation,
+  type PromptfooEvaluationTags,
+} from "./promptfooRunner.js";
+
+type RunEvalWorkflow = Extract<PromptfooEvaluationTags["workflow"], "decision" | "router">;
+
+export interface RunEvalMetadata {
+  description: string;
+  workflow: RunEvalWorkflow;
+}
 
 export interface RunEvalOptions {
   corpusDir?: string;
   resultsDir?: string;
   filterIds?: string[];
   maxConcurrency?: number;
+  evaluation?: RunEvalMetadata;
 }
 
 export interface RunEvalDeps {
   providers?: ApiProvider[];
-  evaluateFn?: typeof evaluate;
+  runPromptfoo?: typeof runPersistedPromptfooEvaluation;
+}
+
+export interface RunEvalResult {
+  outputDir: string;
+  evaluationId: string;
+  summary: EvaluateSummaryV3;
 }
 
 interface SummaryLike {
@@ -48,7 +66,7 @@ function renderSummary(items: CorpusItem[], summary: SummaryLike): string {
 export async function runEval(
   options: RunEvalOptions = {},
   deps: RunEvalDeps = {},
-): Promise<string> {
+): Promise<RunEvalResult> {
   if (
     options.maxConcurrency !== undefined &&
     (!Number.isInteger(options.maxConcurrency) || options.maxConcurrency < 1)
@@ -67,20 +85,33 @@ export async function runEval(
   }
 
   const providers = deps.providers ?? (await defaultProviders());
-  const evaluateFn = deps.evaluateFn ?? evaluate;
   const suite = buildSuite(items, { providers });
+  const evaluation = options.evaluation ?? {
+    description: "Decision council evaluation",
+    workflow: "decision",
+  };
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outDir = join(options.resultsDir ?? "evals/results", stamp);
   mkdirSync(outDir, { recursive: true });
 
-  const result = await evaluateFn(suite, {
-    maxConcurrency: options.maxConcurrency ?? 1,
+  const { evaluationId, summary } = await (deps.runPromptfoo ?? runPersistedPromptfooEvaluation)({
+    suite,
+    description: evaluation.description,
+    tags: {
+      workflow: evaluation.workflow,
+      phase: "judge",
+      runId: randomUUID(),
+    },
     cache: false,
+    maxConcurrency: options.maxConcurrency ?? 1,
   });
-  const summary = (await result.toEvaluateSummary()) as SummaryLike;
 
   writeFileSync(join(outDir, "report.json"), JSON.stringify(summary, null, 2));
   writeFileSync(join(outDir, "summary.md"), renderSummary(items, summary));
-  return outDir;
+  writeFileSync(
+    join(outDir, "promptfoo-evaluation.json"),
+    JSON.stringify({ evaluationId }, null, 2),
+  );
+  return { outputDir: outDir, evaluationId, summary };
 }

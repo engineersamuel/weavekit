@@ -1,0 +1,11 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: nub install
+      - run: nub run lint
+      - run: nub run test
+      - run: nub run typecheck

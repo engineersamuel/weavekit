@@ -1,0 +1,55 @@
+id: github-pattern-transfer
+title: Transfer independent repository safety patterns
+objective: >
+  Apply the source repository's independently adoptable boundary-validation,
+  output-escaping, and deterministic integration-fixture patterns to the target project.
+projectDir: ../fixtures/github-pattern-transfer/project
+sourcePath: ../fixtures/github-pattern-transfer/source.md
+expectedPractices:
+  - id: validate-adapter-boundaries
+    title: Validate untrusted input at the HTTP adapter
+    sourceExpectation: Parse request fields before domain code and distinguish malformed identifiers from missing resources.
+    projectEvidence:
+      - src/httpAdapter.ts casts req.body directly and accepts any id string.
+      - The adapter returns one generic 404 for malformed and missing ids.
+    expectedPlanActions:
+      - Add explicit request and identifier parsing in src/httpAdapter.ts.
+      - Add adapter tests for wrong types, empty values, malformed ids, and well-formed missing ids.
+  - id: escape-rendered-output
+    title: Keep untrusted content out of HTML interpolation
+    sourceExpectation: Render user-controlled content through an escaping or text-node boundary.
+    projectEvidence:
+      - src/renderer.ts inserts record.title directly into an HTML template.
+      - The current test fixture does not contain markup-like titles.
+    expectedPlanActions:
+      - Replace direct title interpolation with the project's explicit escaping boundary.
+      - Add a rendering regression using a markup-like title.
+  - id: deterministic-integration-fixtures
+    title: Prove adapters with deterministic checked-in fixtures
+    sourceExpectation: Use stable representative fixtures for happy paths, failures, and regressions.
+    projectEvidence:
+      - tests/integration.test.ts creates ad hoc records inside each test.
+      - No fixture captures malformed requests or unsafe rendered content.
+    expectedPlanActions:
+      - Add a small checked-in fixture set shared by adapter and renderer integration tests.
+      - Cover valid, malformed, missing, and markup-like records without network dependencies.
+antiGoals:
+  - Do not merge boundary validation and output escaping into the wrong architectural layer.
+  - Do not add a database, browser framework, or external fixture service.
+  - Do not implement the changes during planning.
+rubric:
+  - criterion: source-practice-coverage
+    weight: 0.30
+    levels: 1.0 preserves all three independently adoptable practices; 0.0 collapses or omits them.
+  - criterion: project-specific-diagnosis
+    weight: 0.25
+    levels: 1.0 cites the adapter, renderer, and current integration test behavior; 0.0 is generic.
+  - criterion: implementation-completeness
+    weight: 0.25
+    levels: 1.0 coordinates focused surfaces into one ordered final plan; 0.0 is disconnected advice.
+  - criterion: verification-quality
+    weight: 0.15
+    levels: 1.0 includes layer-appropriate unit and deterministic integration proof; 0.0 proposes generic tests.
+  - criterion: scope-discipline
+    weight: 0.05
+    levels: 1.0 avoids infrastructure and preserves layer ownership; 0.0 widens scope.

@@ -1,5 +1,16 @@
 import { pathToFileURL } from "node:url";
-import { runEval } from "./eval/run.js";
+import { runEval, type RunEvalResult } from "./eval/run.js";
+
+export function formatEvalCliOutput(
+  result: Pick<RunEvalResult, "outputDir" | "evaluationId">,
+): string {
+  return [
+    `Eval complete. Results written to ${result.outputDir}`,
+    `Evaluation ID: ${result.evaluationId}`,
+    "View persisted evaluations: nubx promptfoo view",
+    "",
+  ].join("\n");
+}
 
 export interface ParsedEvalArgs {
   filterIds?: string[];
@@ -73,8 +84,8 @@ function runCli(): void {
   }
 
   runEval(parsed)
-    .then((dir) => {
-      console.log(`Eval complete. Results written to ${dir}`);
+    .then((result) => {
+      process.stdout.write(formatEvalCliOutput(result));
     })
     .catch((error: unknown) => {
       console.error(error);

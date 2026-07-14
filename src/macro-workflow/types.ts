@@ -102,6 +102,7 @@ export type WorkflowExecutionMetadata = {
   cwd?: string;
   model?: string;
   calls?: WorkflowExecutionCall[];
+  metadata?: Record<string, unknown>;
 };
 
 export type WorkflowPluginCommandCapability = {
