@@ -177,6 +177,66 @@ _Avoid_: action
 A lightweight front-door classifier that inspects an incoming prompt and chooses the next workflow (for example plan, research, decision council, elicitation, or direct handling) before the main harness starts.
 _Avoid_: orchestrator, dispatcher (those are implementation choices, not the concept)
 
+**Router workflow**:
+A workflow that evaluates an incoming prompt and recommends how it should be handled across available harnesses, harness abilities, and Weavekit workflows. It may produce rewritten prompts and routing rationale, but it is advisory rather than the execution path itself.
+_Avoid_: prompt handler, prompt analyzer
+
+**Router reasoning**:
+The single typed reasoning step in a Router workflow that classifies the prompt, ranks candidate handling paths, and produces the primary Route-specific prompt rewrite.
+_Avoid_: multi-stage router, hidden deliberation
+
+**Router dashboard**:
+The UI surface for reviewing Router workflow outputs, including the primary Next action recommendation, alternatives, Route-specific prompt rewrite, and manual Create Worktree action when handoff requirements are satisfied.
+_Avoid_: prompt router page, hidden launcher
+
+**Next action recommendation**:
+The primary output of a Router workflow: the recommended immediate handling path for the user's prompt, including the target harness, ability, workflow, model, and handoff shape when applicable.
+_Avoid_: advice, suggestion
+
+**Prompt route score**:
+The evidence-backed score for a candidate handling path, based on task fit, context availability, mutation risk, parallelizability, automation or handoff fit, model specialty, and Routing preference overlay match.
+_Avoid_: confidence only, vibe check
+
+**Router eval corpus**:
+A representative set of prompts used to validate the Router workflow across the full Route taxonomy. V1 success requires expected primary routes, plausible harness/model/ability recommendations, primary Route-specific prompt rewrites, and Create Worktree eligibility only when handoff requirements are complete.
+_Avoid_: smoke prompt, manual-only check
+
+**Route-specific prompt rewrite**:
+A harness-native rewrite of the incoming prompt for the selected Next action recommendation, such as a goal prompt, fleet prompt, command-line harness prompt, or Herdr handoff prompt.
+_Avoid_: polished prompt, generic rewrite
+
+**Capability catalog**:
+A modifiable knowledge base of harnesses, harness abilities, workflows, models, and known-good task fits that the Router workflow uses as evidence for recommendations.
+_Avoid_: static docs dump, tool list
+
+**Routing preference overlay**:
+User- or project-specific guidance layered over the Capability catalog, used to encode known personal preferences such as preferred models, harnesses, worktree handoff behavior, and task-specific routing taste. Overlay entries are weighted preferences by default and become hard requirements only when explicitly forced.
+_Avoid_: personal flavor, hidden defaults
+
+**Capability configuration**:
+The typed Weavekit configuration surface that owns Capability catalog entries and Routing preference overlays. It is the source of truth for known-good harness, ability, model, workflow, and handoff fits.
+_Avoid_: generated catalog, entity manifest
+
+**Capability refresh**:
+An explicit maintenance path that researches current harness, ability, model, and workflow documentation and proposes cited updates to Capability configuration. It is separate from per-prompt recommendation so normal advisory runs stay fast and deterministic, and its output requires manual apply before changing routing behavior.
+_Avoid_: live lookup, background docs scrape
+
+**Route taxonomy**:
+The stable set of prompt handling categories that a Router workflow classifies into before ranking catalog-backed harnesses, abilities, workflows, models, and handoffs. The v1 taxonomy is direct-answer, refine-prompt, goal-prompt, plan, grill-with-docs, research, local-code-change, fleet-parallel, remote-delegate-pr, decision-council, source-to-project, and manual-herdr-worktree.
+_Avoid_: freeform route labels, ad hoc categories
+
+**Ambiguity resolution route**:
+The Route taxonomy category for prompts that lack enough context to recommend a safe next action. Its preferred handling is a grill-with-docs intake session that sharpens requirements, domain language, and decisions before another recommendation is made.
+_Avoid_: generic clarification, assumption-only fallback
+
+**Prompt handoff execution**:
+A manual Router workflow follow-on action that performs the recommended local handoff, such as creating a worktree and starting a selected harness, only after the user chooses the Create Worktree control. It is separate from advisory output so prompt evaluation remains read-only by default.
+_Avoid_: auto-run, implicit launch, automatic handoff
+
+**Prompt handoff requirements**:
+The minimum data required before Prompt handoff execution can create a worktree and start a harness: target project, branch or worktree name, chosen harness or agent, and Route-specific prompt rewrite. Defaults may come from Capability configuration only when unambiguous.
+_Avoid_: best-effort launch, inferred everything
+
 **Route decision**:
 The typed output of the Initial router: the selected route plus the scores and rationale that explain why it was chosen.
 _Avoid_: routing policy (that is the implementation strategy, not the domain object)

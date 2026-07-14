@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { runRouteClassificationEval } from "./eval/routerRunner.js";
+import { runRouterEval } from "./eval/routerRunner.js";
 
 function parseCliArgs(argv: string[]): {
   corpusDir?: string;
@@ -7,7 +7,6 @@ function parseCliArgs(argv: string[]): {
   maxConcurrency?: number;
 } {
   const options: { corpusDir?: string; resultsDir?: string; maxConcurrency?: number } = {};
-
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--corpus-dir") {
@@ -21,16 +20,13 @@ function parseCliArgs(argv: string[]): {
       index += 1;
     }
   }
-
   return options;
 }
 
 function runCli(): void {
-  const parsed = parseCliArgs(process.argv.slice(2));
-  runRouteClassificationEval(parsed)
+  runRouterEval(parseCliArgs(process.argv.slice(2)))
     .then((dir) => {
       console.log(`Router eval complete. Results written to ${dir}`);
-      console.log(`Dashboard: ${dir}/dashboard.html`);
     })
     .catch((error: unknown) => {
       console.error(error);

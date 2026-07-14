@@ -1,0 +1,28 @@
+id: decision-vs-plan
+domain: router
+difficulty: advanced
+title: Decision versus plan
+prompt: "Should we do this as a quick shim or a full rename? Include tradeoffs."
+context: []
+constraints: ["Choose between competing approaches."]
+referenceAnswer:
+  recommendation: decision-council
+  rationale: ["The user asks for a decision between alternatives with tradeoffs."]
+  strongestObjections: ["After the choice is made, plan becomes the next step."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not jump to implementation without choosing."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be decision-council."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite frames the decision and tradeoffs."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Decision council ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids premature implementation."

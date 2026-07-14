@@ -1,0 +1,28 @@
+id: local-code-change
+domain: router
+difficulty: intermediate
+title: Local code change route
+prompt: "Fix the failing unit test in this local worktree and update the implementation."
+context: ["The repository is checked out locally."]
+constraints: ["Run targeted validation."]
+referenceAnswer:
+  recommendation: local-code-change
+  rationale: ["The task is a local code mutation with validation."]
+  strongestObjections: ["Remote delegation may be preferable if the local worktree is unavailable."]
+  conditions: []
+  viableAlternatives: ["remote-delegate-pr"]
+  redFlags: ["Do not classify as read-only planning."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be local-code-change."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite includes code change and validation."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Local coding harness/model is plausible."
+  - criterion: safety
+    weight: 0.15
+    levels: "Acknowledges mutation risk."

@@ -47,6 +47,21 @@ export function all_succeeded<CheckName extends string>(checks: Record<CheckName
 export function get_checks<CheckName extends string>(checks: Record<CheckName, Check>): Check[] {
     return Object.values(checks)
 }
+export enum RouterRoute {
+  DirectAnswer = "DirectAnswer",
+  RefinePrompt = "RefinePrompt",
+  GoalPrompt = "GoalPrompt",
+  Plan = "Plan",
+  GrillWithDocs = "GrillWithDocs",
+  Research = "Research",
+  LocalCodeChange = "LocalCodeChange",
+  FleetParallel = "FleetParallel",
+  RemoteDelegatePr = "RemoteDelegatePr",
+  DecisionCouncil = "DecisionCouncil",
+  SourceToProject = "SourceToProject",
+  ManualHerdrWorktree = "ManualHerdrWorktree",
+}
+
 export interface AdoptionTask {
   title: string
   kind: "template" | "expander" | "test" | "docs"
@@ -420,6 +435,46 @@ export interface RoundAssessment {
   needsHumanInput: boolean
   clarifyingQuestions: ClarifyingQuestion[]
   nextRoundBrief?: string | null
+  
+}
+
+export interface RouterHandoff {
+  provider?: string | null
+  targetProjectId?: string | null
+  branchOrWorktreeName?: string | null
+  harnessOrAgent?: string | null
+  createWorktreeEligible: boolean
+  missingRequirements: string[]
+  
+}
+
+export interface RouterRecommendation {
+  route: RouterRoute
+  harness: string
+  ability?: string | null
+  model?: string | null
+  modelRationale: string
+  confidence: number
+  rationale: string
+  scores: RouterRouteScore[]
+  promptRewrite?: string | null
+  handoff?: RouterHandoff | null
+  
+}
+
+export interface RouterResult {
+  primary: RouterRecommendation
+  alternatives: RouterRecommendation[]
+  catalogEvidence: string[]
+  preferenceEvidence: string[]
+  warnings: string[]
+  
+}
+
+export interface RouterRouteScore {
+  dimension: string
+  score: number
+  rationale: string
   
 }
 

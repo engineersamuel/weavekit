@@ -1,0 +1,28 @@
+id: goal-method-plan-first
+domain: router
+difficulty: advanced
+title: Goal method plan first
+prompt: "Before we start, use /plan to map out the full approach for replacing the router. Then convert that plan into a /goal."
+context: ["Inspired by the image's Method 2: architect before running."]
+constraints: ["Plan first; do not start goal mode yet."]
+referenceAnswer:
+  recommendation: plan
+  rationale: ["The first requested action is planning before converting the plan into a goal."]
+  strongestObjections: ["The prompt mentions /goal, but the routing intent is plan-first."]
+  conditions: []
+  viableAlternatives: ["goal-prompt"]
+  redFlags: ["Do not keyword-match /goal and skip the planning step."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be plan."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for a plan that can later become a goal."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Planning ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Does not start execution prematurely."

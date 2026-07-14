@@ -1,0 +1,28 @@
+id: research
+domain: router
+difficulty: intermediate
+title: Research route
+prompt: "Research the latest framework options from the last 30 days and cite sources."
+context: []
+constraints: ["Needs current evidence."]
+referenceAnswer:
+  recommendation: research
+  rationale: ["The prompt depends on recent external evidence and citations."]
+  strongestObjections: ["If no current evidence is needed, direct-answer may suffice."]
+  conditions: []
+  viableAlternatives: ["direct-answer"]
+  redFlags: ["Do not answer from stale memory only."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be research."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for cited research."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Research harness/model is plausible."
+  - criterion: safety
+    weight: 0.15
+    levels: "Preserves source citation requirement."

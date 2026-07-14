@@ -1,0 +1,28 @@
+id: vague-build-goal
+domain: router
+difficulty: intermediate
+title: Vague build goal
+prompt: "Make this better and write the goal."
+context: []
+constraints: ["No target artifact or success criteria are provided."]
+referenceAnswer:
+  recommendation: grill-with-docs
+  rationale: ["The user asks for a goal but does not provide enough context to write one safely."]
+  strongestObjections: ["If a concrete outcome were known, goal-prompt would be viable."]
+  conditions: []
+  viableAlternatives: ["goal-prompt"]
+  redFlags: ["Do not invent what 'this' refers to."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be grill-with-docs."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks what should be improved and how success is measured."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Grilling/docs ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids fabricating scope."

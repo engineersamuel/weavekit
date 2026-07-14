@@ -1,0 +1,32 @@
+id: goal-method-context-dump
+domain: router
+difficulty: advanced
+title: Goal method context dump
+prompt: "Based on everything you know about me, this codebase, and how I work, what /goal prompts should we build?"
+context: ["Inspired by the image's Method 3: broad context dump."]
+constraints: ["Do not invent private memory or missing project priorities."]
+referenceAnswer:
+  recommendation: grill-with-docs
+  rationale:
+    [
+      "The prompt asks the agent to infer goals from broad implicit context and should elicit scope before selecting goals.",
+    ]
+  strongestObjections:
+    ["If the concrete desired outcome were supplied, goal-prompt could be correct."]
+  conditions: []
+  viableAlternatives: ["goal-prompt", "plan"]
+  redFlags: ["Do not fabricate durable goals from unavailable context."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be grill-with-docs."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks targeted questions about desired outcomes and available context."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Grilling/docs ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids inventing memory or project priorities."

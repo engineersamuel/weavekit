@@ -1,0 +1,28 @@
+id: fleet-vs-local
+domain: router
+difficulty: advanced
+title: Fleet versus local
+prompt: "This touches BAML, CLI, tests, dashboard, and docs; split it across independent workers."
+context: []
+constraints: ["Use independent workers where scopes are separable."]
+referenceAnswer:
+  recommendation: fleet-parallel
+  rationale: ["The prompt asks to split multi-surface work across independent workers."]
+  strongestObjections: ["If the user wanted one local editor, local-code-change would apply."]
+  conditions: []
+  viableAlternatives: ["local-code-change"]
+  redFlags: ["Do not treat separable work as a single serial task."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be fleet-parallel."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite decomposes BAML, CLI, tests, dashboard, and docs."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Parallel orchestration ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Keeps worker scopes independent."

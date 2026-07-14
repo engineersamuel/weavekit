@@ -1,0 +1,28 @@
+id: goal-method-direct-outcome
+domain: router
+difficulty: intermediate
+title: Goal method direct outcome
+prompt: "I want to migrate the auth flow. Write me the optimal /goal prompt with success criteria, constraints, and checkpoints."
+context: ["Inspired by the image's Method 1: describe the outcome, ask for the /goal."]
+constraints: ["Do not start executing the goal."]
+referenceAnswer:
+  recommendation: goal-prompt
+  rationale: ["The user explicitly asks for a production-ready /goal prompt for a known outcome."]
+  strongestObjections: ["If the outcome were vague, grill-with-docs would be safer."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not convert this into a generic implementation plan."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be goal-prompt."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite produces a goal-mode prompt with success criteria, constraints, and checkpoints."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Goal ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Does not start executing the goal."

@@ -1,0 +1,29 @@
+id: council-tradeoff
+domain: router
+difficulty: advanced
+title: Council tradeoff
+prompt: "Use decision council to choose whether Router should keep compatibility shims or hard-remove old names."
+context: []
+constraints: ["Surface tradeoffs and a recommendation."]
+referenceAnswer:
+  recommendation: decision-council
+  rationale:
+    ["The user explicitly asks for a decision council and a tradeoff-heavy recommendation."]
+  strongestObjections: ["If the choice were already made, plan could be enough."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not implement before deciding."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be decision-council."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for tradeoff analysis and recommendation."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Decision council ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Does not start implementation before decision."

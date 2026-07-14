@@ -46,6 +46,17 @@ describe("InitialWorkflowRouter", () => {
     expect(decision.needsElicitation).toBe(true);
   });
 
+  it("prioritizes elicitation over incidental decision language", async () => {
+    const router = createInitialWorkflowRouter();
+    const decision = await router.route({
+      prompt:
+        "I need help with this system, but I am not sure what the goal is, what constraints matter, or what success should look like.",
+    });
+
+    expect(decision.route).toBe(Classifier.ELICITATION);
+    expect(decision.needsElicitation).toBe(true);
+  });
+
   it("falls back to direct when no strong signal exists", async () => {
     const router = createInitialWorkflowRouter();
     const decision = await router.route({

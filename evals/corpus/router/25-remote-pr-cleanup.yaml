@@ -1,0 +1,28 @@
+id: remote-pr-cleanup
+domain: router
+difficulty: intermediate
+title: Remote PR cleanup
+prompt: "Delegate this cleanup to a cloud coding agent and have it open a PR."
+context: []
+constraints: ["The user wants a remote PR-producing handoff."]
+referenceAnswer:
+  recommendation: remote-delegate-pr
+  rationale: ["The prompt asks for cloud/remote delegation that opens a PR."]
+  strongestObjections: ["If local edits were requested, local-code-change would be better."]
+  conditions: []
+  viableAlternatives: ["local-code-change"]
+  redFlags: ["Do not mutate the local worktree as the primary route."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be remote-delegate-pr."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite is suitable for a PR-producing remote coding agent."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Remote coding agent is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Preserves remote PR intent."

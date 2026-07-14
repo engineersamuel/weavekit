@@ -1,0 +1,28 @@
+id: decision-council
+domain: router
+difficulty: advanced
+title: Decision council route
+prompt: "Use decision council to choose between adopting Flue or building our own workflow runtime."
+context: ["This is a tradeoff-heavy architecture decision."]
+constraints: ["Recommend one option with objections."]
+referenceAnswer:
+  recommendation: decision-council
+  rationale: ["The prompt asks for multi-perspective tradeoff deliberation."]
+  strongestObjections: ["If implementation is already decided, local-code-change may be next."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not implement before deciding."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be decision-council."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite frames the decision clearly."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Decision Council is selected as a route, not an internal dependency."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids premature implementation."

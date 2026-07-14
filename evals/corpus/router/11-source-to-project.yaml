@@ -1,0 +1,28 @@
+id: source-to-project
+domain: router
+difficulty: advanced
+title: Source to project route
+prompt: "Map this source artifact against the target project and identify implementation opportunities."
+context: ["Source artifact and target project are both available."]
+constraints: ["Produce ranked opportunities."]
+referenceAnswer:
+  recommendation: source-to-project
+  rationale: ["The prompt matches the source-to-project workflow shape."]
+  strongestObjections: ["If only a plan is requested, plan route may be enough."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not use Decision Council internally to route."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be source-to-project."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite includes source and target project framing."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Weavekit source-to-project ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Requires source and project evidence."

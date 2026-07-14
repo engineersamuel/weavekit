@@ -1,0 +1,28 @@
+id: local-test-failure
+domain: router
+difficulty: intermediate
+title: Local test failure
+prompt: "The router corpus test fails locally; diagnose and patch the code."
+context: []
+constraints: ["Inspect failure output before patching."]
+referenceAnswer:
+  recommendation: local-code-change
+  rationale: ["The user asks to diagnose and patch local code."]
+  strongestObjections: ["If no patch were requested, direct-answer could explain the failure."]
+  conditions: []
+  viableAlternatives: ["direct-answer"]
+  redFlags: ["Do not stop at analysis without fixing."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be local-code-change."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for diagnosis, patch, and validation."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Local coding harness is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Requires targeted validation."

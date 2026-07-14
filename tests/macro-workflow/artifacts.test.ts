@@ -424,6 +424,71 @@ describe("macro workflow artifacts", () => {
     }
   });
 
+  it("renders router content in the workflow report", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
+    try {
+      const artifacts = await writeMacroWorkflowArtifacts({
+        outputDir,
+        state: {
+          planId: "router-plan",
+          objective: "Should this become a goal?",
+          templateId: "router",
+          status: "passed",
+          startedAt: new Date("2026-07-10T00:00:00Z"),
+          completedAt: new Date("2026-07-10T00:01:00Z"),
+          currentPlan: {
+            id: "router-plan",
+            objective: "Should this become a goal?",
+            templateId: "router",
+            maxReplans: 0,
+            nodes: [],
+          },
+          nodeResults: [
+            {
+              nodeId: "advise-prompt",
+              status: "passed",
+              output: "Primary route: goal-prompt.",
+              payload: {
+                routerResult: {
+                  primary: {
+                    route: "goal-prompt",
+                    harness: "copilot-cli",
+                    ability: "goal",
+                    model: "gpt-5.5",
+                    confidence: 0.91,
+                    rationale: "The user asked for durable completion.",
+                    promptRewrite: "/goal implement the feature and verify it.",
+                    scores: [],
+                  },
+                  alternatives: [
+                    {
+                      route: "plan",
+                      harness: "copilot-cli",
+                      rationale: "Planning first is plausible.",
+                    },
+                  ],
+                  catalogEvidence: ["copilot-goal-mode"],
+                  preferenceEvidence: [],
+                  warnings: [],
+                },
+              },
+            },
+          ],
+          replans: [],
+        },
+      });
+
+      const report = await readFile(artifacts.reportPath, "utf8");
+
+      expect(report).toContain("## Router");
+      expect(report).toContain("- Primary route: goal-prompt");
+      expect(report).toContain("/goal implement the feature and verify it.");
+      expect(report).toContain("**plan** via copilot-cli");
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
   it("renders rejected final source-to-project reviews instead of active recommendations", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
     try {

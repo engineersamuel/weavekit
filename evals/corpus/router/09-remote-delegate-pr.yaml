@@ -1,0 +1,28 @@
+id: remote-delegate-pr
+domain: router
+difficulty: intermediate
+title: Remote delegate PR route
+prompt: "Delegate this to a remote PR coding agent so it opens a pull request."
+context: ["The task is bounded and can run in the cloud."]
+constraints: ["Needs PR output."]
+referenceAnswer:
+  recommendation: remote-delegate-pr
+  rationale: ["The prompt asks for remote PR-producing delegation."]
+  strongestObjections: ["Local changes may be better when secrets or local state are required."]
+  conditions: []
+  viableAlternatives: ["local-code-change"]
+  redFlags: ["Do not mutate the current worktree if remote PR was requested."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be remote-delegate-pr."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite is suitable for a PR-producing agent."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Remote coding agent is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Keeps delegation bounded."

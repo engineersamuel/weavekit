@@ -1,0 +1,28 @@
+id: source-to-project-blog
+domain: router
+difficulty: intermediate
+title: Source to project blog
+prompt: "Map this source article against weavekit and find implementation opportunities."
+context: ["The source article content or URL is expected to be provided with the prompt."]
+constraints: ["Rank opportunities against the target project."]
+referenceAnswer:
+  recommendation: source-to-project
+  rationale: ["The user asks to map a source artifact against a target project."]
+  strongestObjections: ["If no source is available, grill-with-docs should ask for it."]
+  conditions: []
+  viableAlternatives: ["grill-with-docs"]
+  redFlags: ["Do not invent source content."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be source-to-project."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite preserves source artifact and target project mapping."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Source-to-project workflow is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Does not fabricate missing source details."

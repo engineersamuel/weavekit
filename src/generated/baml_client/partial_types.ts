@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RoutingDecision,  SourceAnalysis,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RouterHandoff,  RouterRecommendation,  RouterResult,  RouterRoute,  RouterRouteScore,  RoutingDecision,  SourceAnalysis,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -337,6 +337,38 @@ export namespace partial_types {
       needsHumanInput?: boolean | null
       clarifyingQuestions: ClarifyingQuestion[]
       nextRoundBrief?: string | null
+    }
+    export interface RouterHandoff {
+      provider?: string | null
+      targetProjectId?: string | null
+      branchOrWorktreeName?: string | null
+      harnessOrAgent?: string | null
+      createWorktreeEligible?: boolean | null
+      missingRequirements: string[]
+    }
+    export interface RouterRecommendation {
+      route?: types.RouterRoute | null
+      harness?: string | null
+      ability?: string | null
+      model?: string | null
+      modelRationale?: string | null
+      confidence?: number | null
+      rationale?: string | null
+      scores: RouterRouteScore[]
+      promptRewrite?: string | null
+      handoff?: RouterHandoff | null
+    }
+    export interface RouterResult {
+      primary?: RouterRecommendation | null
+      alternatives: RouterRecommendation[]
+      catalogEvidence: string[]
+      preferenceEvidence: string[]
+      warnings: string[]
+    }
+    export interface RouterRouteScore {
+      dimension?: string | null
+      score?: number | null
+      rationale?: string | null
     }
     export interface RoutingDecision {
       clientName?: string | null

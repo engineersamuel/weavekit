@@ -1,0 +1,28 @@
+id: goal-prompt
+domain: router
+difficulty: intermediate
+title: Goal prompt route
+prompt: "Start /goal for this feature and keep working until every issue is fixed and verified."
+context: []
+constraints: ["Needs persistent remaining-work tracking."]
+referenceAnswer:
+  recommendation: goal-prompt
+  rationale: ["The user explicitly requests durable goal-mode execution."]
+  strongestObjections: ["If they only wanted a plan, plan route would be enough."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not ignore the explicit goal-mode signal."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be goal-prompt."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite is goal-mode specific."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Goal ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Mentions verification and persistence."

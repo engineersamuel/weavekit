@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo 'Usage: mise run router "<prompt>"' >&2
+  echo '       WEAVEKIT_DASHBOARD=off mise run router "<prompt>"' >&2
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 2
+fi
+
+prompt_args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      prompt_args+=("$@")
+      break
+      ;;
+    *)
+      prompt_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ ${#prompt_args[@]} -eq 0 ]]; then
+  usage
+  exit 2
+fi
+
+prompt="${prompt_args[*]}"
+dashboard_mode="${WEAVEKIT_DASHBOARD:-embedded}"
+dashboard_url="${WEAVEKIT_DASHBOARD_URL:-}"
+
+args=(
+  --template router
+  --prompt "$prompt"
+  --output runs
+)
+
+run_with_portless=false
+case "$dashboard_mode" in
+  embedded)
+    if [[ -n "$dashboard_url" ]]; then
+      args+=(--dashboard-url "$dashboard_url")
+    else
+      args+=(--dashboard)
+      run_with_portless=true
+    fi
+    ;;
+  off|none)
+    ;;
+  *)
+    echo 'WEAVEKIT_DASHBOARD must be "embedded" or "off".' >&2
+    exit 2
+    ;;
+esac
+
+if [[ ! -d node_modules ]]; then
+  echo '[weavekit] node_modules missing; running nub install --prefer-frozen-lockfile.' >&2
+  nub install --prefer-frozen-lockfile
+fi
+
+if [[ "$run_with_portless" == "true" ]]; then
+  nubx portless run --name weavekit-router nub src/cli.ts workflow run "${args[@]}"
+else
+  nub src/cli.ts workflow run "${args[@]}"
+fi

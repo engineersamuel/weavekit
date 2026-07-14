@@ -1,0 +1,30 @@
+id: underspecified-success-criteria
+domain: router
+difficulty: intermediate
+title: Missing goal, constraints, and success criteria
+prompt: "I need help with this system, but I am not sure what the goal is, what constraints matter, or what success should look like."
+context: []
+constraints: ["Do not treat incidental decision language as a concrete decision request."]
+referenceAnswer:
+  recommendation: grill-with-docs
+  rationale:
+    - "The request explicitly lacks a goal, relevant constraints, and success criteria, so clarification must precede execution or recommendation."
+  strongestObjections:
+    - "The word 'should' appears incidentally, but the prompt does not present concrete options or ask for a recommendation."
+  conditions: []
+  viableAlternatives: ["direct-answer"]
+  redFlags: ["Do not invent the missing objective, constraints, or definition of success."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be grill-with-docs."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for the goal, constraints, and success criteria."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Grilling/docs ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids inventing missing context or treating incidental language as a decision request."

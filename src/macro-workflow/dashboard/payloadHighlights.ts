@@ -35,6 +35,28 @@ export type DeepResearchQuestionBatchSummary = {
   questions: DeepResearchQuestionSummary[];
 };
 
+export type RouterSummary = {
+  route: string;
+  harness: string;
+  ability?: string;
+  model?: string;
+  confidence?: number;
+  rationale?: string;
+  promptRewrite: string;
+  createWorktreeEligible?: boolean;
+  alternatives: Array<{
+    route: string;
+    harness: string;
+    rationale?: string;
+  }>;
+  scores: Array<{
+    dimension: string;
+    score?: number;
+    rationale?: string;
+  }>;
+  warnings: string[];
+};
+
 export type DeepResearchProviderFailureSummary = {
   runId?: string;
   failureCount: number;
@@ -169,6 +191,67 @@ export function buildVerificationOpportunityAdvancementSummary(
         }),
         score: readScore(opportunity.score),
       };
+    }),
+  };
+}
+
+export function buildRouterSummary(payload: unknown): RouterSummary | null {
+  const record = asRecord(payload);
+  const result = asRecord(record.routerResult);
+  const primary = asRecord(result.primary);
+  const route = readString(primary.route);
+  const harness = readString(primary.harness);
+  const promptRewrite = readString(primary.promptRewrite);
+  if (!route || !harness || !promptRewrite) {
+    return null;
+  }
+  const handoff = asRecord(primary.handoff);
+  return {
+    route,
+    harness,
+    ability: readString(primary.ability),
+    model: readString(primary.model),
+    confidence: readNumber(primary.confidence),
+    rationale: readString(primary.rationale),
+    promptRewrite,
+    createWorktreeEligible:
+      handoff.createWorktreeEligible === undefined
+        ? undefined
+        : handoff.createWorktreeEligible === true,
+    alternatives: readArray(result.alternatives)
+      .map(asRecord)
+      .flatMap((alternative) => {
+        const alternativeRoute = readString(alternative.route);
+        const alternativeHarness = readString(alternative.harness);
+        if (!alternativeRoute || !alternativeHarness) {
+          return [];
+        }
+        return [
+          {
+            route: alternativeRoute,
+            harness: alternativeHarness,
+            rationale: readString(alternative.rationale),
+          },
+        ];
+      }),
+    scores: readArray(primary.scores)
+      .map(asRecord)
+      .flatMap((score) => {
+        const dimension = readString(score.dimension);
+        if (!dimension) {
+          return [];
+        }
+        return [
+          {
+            dimension,
+            score: readNumber(score.score),
+            rationale: readString(score.rationale),
+          },
+        ];
+      }),
+    warnings: readArray(result.warnings).flatMap((warning) => {
+      const value = readString(warning);
+      return value ? [value] : [];
     }),
   };
 }

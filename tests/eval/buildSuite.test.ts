@@ -57,12 +57,20 @@ describe("buildSuite", () => {
       judge: { model: "judge-x", apiBaseUrl: "http://localhost:9/v1", apiKey: "k" },
     });
     expect(suite.providers).toEqual([fakeProvider]);
-    expect(suite.prompts).toEqual(["{{question}}"]);
+    expect(suite.writeLatestResults).toBe(true);
+    expect(suite.prompts).toEqual([
+      {
+        id: "corpus-question",
+        label: "Corpus question",
+        raw: "{{question}}",
+      },
+    ]);
     expect(suite.tests).toHaveLength(1);
     const tests = Array.isArray(suite.tests) ? suite.tests : [];
     const test = tests[0];
     if (!test || typeof test === "string" || !("vars" in test)) throw new Error("Invalid test");
     expect(test.vars!.prompt).toBe("A or B?");
+    expect(test.vars!.caseId).toBe("t-001");
     expect(test.vars!.contextItems).toEqual(["small team"]);
     expect(String(test.vars!.reference)).toContain("Recommendation: Use A.");
     const defaultTest = typeof suite.defaultTest === "string" ? undefined : suite.defaultTest;

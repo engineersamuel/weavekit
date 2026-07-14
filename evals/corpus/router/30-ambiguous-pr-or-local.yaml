@@ -1,0 +1,29 @@
+id: ambiguous-pr-or-local
+domain: router
+difficulty: intro
+title: Ambiguous PR or local
+prompt: "Can you handle this change in the best place?"
+context: []
+constraints: ["No target repository, change description, or execution preference is provided."]
+referenceAnswer:
+  recommendation: grill-with-docs
+  rationale: ["The prompt is too vague to choose local, remote, or manual handoff safely."]
+  strongestObjections:
+    ["If the target and desired execution mode were known, a handoff route could be chosen."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not guess the target project or harness."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be grill-with-docs."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for target, change, and preferred execution mode."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Grilling/docs ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids guessing."

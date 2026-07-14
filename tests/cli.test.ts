@@ -207,5 +207,5 @@ describe("CLI", () => {
     expect(result.stderr).toContain("Usage: weavekit decision-council run");
     expect(result.stderr).not.toContain("Unknown file extension");
     expect(result.stderr).not.toContain("SKILL.md");
-  });
+  }, 15_000);
 });

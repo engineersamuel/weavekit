@@ -101,6 +101,14 @@ export default class TypeBuilder {
     
     RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "needsHumanInput" | "clarifyingQuestions" | "nextRoundBrief">;
     
+    RouterHandoff: ClassViewer<'RouterHandoff', "provider" | "targetProjectId" | "branchOrWorktreeName" | "harnessOrAgent" | "createWorktreeEligible" | "missingRequirements">;
+    
+    RouterRecommendation: ClassViewer<'RouterRecommendation', "route" | "harness" | "ability" | "model" | "modelRationale" | "confidence" | "rationale" | "scores" | "promptRewrite" | "handoff">;
+    
+    RouterResult: ClassViewer<'RouterResult', "primary" | "alternatives" | "catalogEvidence" | "preferenceEvidence" | "warnings">;
+    
+    RouterRouteScore: ClassViewer<'RouterRouteScore', "dimension" | "score" | "rationale">;
+    
     RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
     
     SourceAnalysis: ClassViewer<'SourceAnalysis', "sourceId" | "title" | "accessLevel" | "summary" | "claims" | "transferableLessons" | "evidence">;
@@ -132,14 +140,16 @@ export default class TypeBuilder {
     WorkflowReplanPatch: ClassViewer<'WorkflowReplanPatch', "reason" | "replaceRemainingNodeIds" | "newNodes">;
     
     
+    RouterRoute: EnumViewer<'RouterRoute', "DirectAnswer" | "RefinePrompt" | "GoalPrompt" | "Plan" | "GrillWithDocs" | "Research" | "LocalCodeChange" | "FleetParallel" | "RemoteDelegatePr" | "DecisionCouncil" | "SourceToProject" | "ManualHerdrWorktree">;
+    
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RoutingDecision","SourceAnalysis","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SourceAnalysis","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
-            
+            "RouterRoute",
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
@@ -292,6 +302,22 @@ export default class TypeBuilder {
           "roundNumber","consensus","disagreements","confidence","convergence","shouldContinue","diminishingReturns","needsHumanInput","clarifyingQuestions","nextRoundBrief",
         ]);
         
+        this.RouterHandoff = this.tb.classViewer("RouterHandoff", [
+          "provider","targetProjectId","branchOrWorktreeName","harnessOrAgent","createWorktreeEligible","missingRequirements",
+        ]);
+        
+        this.RouterRecommendation = this.tb.classViewer("RouterRecommendation", [
+          "route","harness","ability","model","modelRationale","confidence","rationale","scores","promptRewrite","handoff",
+        ]);
+        
+        this.RouterResult = this.tb.classViewer("RouterResult", [
+          "primary","alternatives","catalogEvidence","preferenceEvidence","warnings",
+        ]);
+        
+        this.RouterRouteScore = this.tb.classViewer("RouterRouteScore", [
+          "dimension","score","rationale",
+        ]);
+        
         this.RoutingDecision = this.tb.classViewer("RoutingDecision", [
           "clientName","model","reasoningEffort","rationale",
         ]);
@@ -352,6 +378,10 @@ export default class TypeBuilder {
           "reason","replaceRemainingNodeIds","newNodes",
         ]);
         
+        
+        this.RouterRoute = this.tb.enumViewer("RouterRoute", [
+          "DirectAnswer","RefinePrompt","GoalPrompt","Plan","GrillWithDocs","Research","LocalCodeChange","FleetParallel","RemoteDelegatePr","DecisionCouncil","SourceToProject","ManualHerdrWorktree",
+        ]);
         
     }
 

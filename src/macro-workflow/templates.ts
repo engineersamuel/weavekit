@@ -129,6 +129,13 @@ const templates = {
       "Read one Source artifact against one Target project and produce ranked opportunities, plans, and optional PRs.",
     materialize: makeSourceToProjectPlan,
   },
+  router: {
+    id: "router",
+    title: "Router",
+    description:
+      "Classify any prompt into a recommended next action with route-specific prompt rewrites and handoff guidance.",
+    materialize: makeRouterPlan,
+  },
   "verification-optimizer": {
     id: "verification-optimizer",
     title: "Verification Optimizer",
@@ -313,6 +320,45 @@ function makeDeepResearchPlan(
           config,
         },
         dependsOn: [],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only" as WorkflowNodeWriteMode,
+        replanPolicy: "never" as WorkflowReplanPolicy,
+      },
+    ],
+  };
+}
+
+function makeRouterPlan(objective: string): RuntimeWorkflowPlan {
+  return {
+    id: workflowPlanId("router", objective),
+    objective,
+    templateId: "router",
+    maxReplans: 0,
+    nodes: [
+      {
+        id: "advise-prompt",
+        kind: WorkflowNodeKind.PLANNING,
+        harness: WorkflowHarnessKind.RESEARCH,
+        title: "Advise prompt route",
+        description: "Classify the prompt, rank candidates, and produce the router contract.",
+        model: "gpt-5.5",
+        modelRationale: "Router uses the configured primary advisory model.",
+        prompt: objective,
+        dependsOn: [],
+        gates: [WorkflowGateKind.OUTPUT_CONTRACT],
+        writeMode: "read-only" as WorkflowNodeWriteMode,
+        replanPolicy: "never" as WorkflowReplanPolicy,
+      },
+      {
+        id: "report",
+        kind: WorkflowNodeKind.REPORT,
+        harness: WorkflowHarnessKind.REPORTER,
+        title: "Publish router report",
+        description: "Format the advisory result for CLI and dashboard consumption.",
+        model: "deterministic",
+        modelRationale: "The report node formats typed router output without a model call.",
+        prompt: "Write deterministic router JSON and Markdown artifacts.",
+        dependsOn: ["advise-prompt"],
         gates: [WorkflowGateKind.OUTPUT_CONTRACT],
         writeMode: "read-only" as WorkflowNodeWriteMode,
         replanPolicy: "never" as WorkflowReplanPolicy,

@@ -26,6 +26,7 @@ import {
   buildCouncilPersonaDisplay,
   buildDeepResearchQuestionBatchSummary,
   buildDeepResearchProviderFailureSummary,
+  buildRouterSummary,
   buildVerificationOpportunityAdvancementSummary,
 } from "./payloadHighlights.ts";
 
@@ -890,6 +891,11 @@ function RichNodeOutput({ result }) {
 }
 
 function PayloadHighlights({ payload }) {
+  const router = buildRouterSummary(payload);
+  if (router) {
+    return <RouterHighlights summary={router} />;
+  }
+
   const verificationAdvancement = buildVerificationOpportunityAdvancementSummary(payload);
   if (verificationAdvancement) {
     return <VerificationOpportunityAdvancementHighlights summary={verificationAdvancement} />;
@@ -922,6 +928,82 @@ function PayloadHighlights({ payload }) {
   }
 
   return null;
+}
+
+function RouterHighlights({ summary }) {
+  return (
+    <section className="payload-highlights">
+      <h3>Router</h3>
+      <div className="highlight-grid">
+        <article className="highlight-card">
+          <div className="highlight-kicker">Primary route</div>
+          <h4>{summary.route}</h4>
+          <p>{summary.rationale || "No rationale recorded."}</p>
+          <div className="highlight-field">
+            <span>Harness</span>
+            <p>
+              {summary.harness}
+              {summary.ability ? ` / ${summary.ability}` : ""}
+              {summary.model ? ` / ${summary.model}` : ""}
+            </p>
+          </div>
+          {summary.confidence !== undefined ? (
+            <div className="highlight-field">
+              <span>Confidence</span>
+              <p>{summary.confidence}</p>
+            </div>
+          ) : null}
+          {summary.createWorktreeEligible !== undefined ? (
+            <div className="highlight-field">
+              <span>Create Worktree</span>
+              <p>{summary.createWorktreeEligible ? "Eligible" : "Missing required fields"}</p>
+            </div>
+          ) : null}
+        </article>
+        <article className="highlight-card highlight-card-wide">
+          <div className="highlight-kicker">Prompt rewrite</div>
+          <pre className="highlight-pre">{summary.promptRewrite}</pre>
+        </article>
+      </div>
+      {summary.alternatives.length > 0 ? (
+        <div className="highlight-list-block">
+          <h4>Alternatives</h4>
+          <ul>
+            {summary.alternatives.map((alternative, index) => (
+              <li key={`${alternative.route}-${index}`}>
+                <strong>{alternative.route}</strong> via {alternative.harness}
+                {alternative.rationale ? ` — ${alternative.rationale}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {summary.scores.length > 0 ? (
+        <div className="highlight-list-block">
+          <h4>Scores</h4>
+          <ul>
+            {summary.scores.map((score, index) => (
+              <li key={`${score.dimension}-${index}`}>
+                <strong>{score.dimension}</strong>
+                {score.score !== undefined ? `: ${score.score}/5` : ""}
+                {score.rationale ? ` — ${score.rationale}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {summary.warnings.length > 0 ? (
+        <div className="highlight-list-block">
+          <h4>Warnings</h4>
+          <ul>
+            {summary.warnings.map((warning, index) => (
+              <li key={`${warning}-${index}`}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function PlanHighlights({ plans }) {
