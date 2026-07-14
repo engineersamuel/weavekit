@@ -1353,6 +1353,8 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
               project: effectiveProject,
               projectPath: effectiveProjectPath,
               mode: sourceToProjectMode ?? verificationOptimizerMode ?? effectiveMode,
+              includeVisualDesign: args.includeVisualDesign,
+              projectResearchMode: args.projectResearchMode,
               externalResearch: isVerificationOptimizer
                 ? verificationOptimizerConfig.externalResearch
                 : undefined,
@@ -1387,7 +1389,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
       projectPath: effectiveProjectPath,
       mode: sourceToProjectMode ?? verificationOptimizerMode ?? effectiveMode,
       resolvedProject: sourceToProjectProject ?? verificationOptimizerProject,
-      sourceToProject: sourceToProjectConfig,
+      sourceToProject: sourceToProjectRuntimeConfig,
       verificationOptimizer: verificationOptimizerConfig,
       deepResearch: deepResearchConfig,
     });
