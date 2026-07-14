@@ -371,7 +371,11 @@ function scoreFor(scorecard: ProjectVerificationScorecard, providerId: string) {
 
 function totalTokens(usage?: Record<string, number>): number | undefined {
   if (!usage) return undefined;
-  return Object.values(usage).reduce((sum, value) => sum + value, 0);
+  if (typeof usage.total === "number") return usage.total;
+  const components = Object.entries(usage)
+    .filter(([key]) => key !== "total" && key !== "cached")
+    .map(([, value]) => value);
+  return components.length > 0 ? components.reduce((sum, value) => sum + value, 0) : undefined;
 }
 
 function distribution(values: number[]): { median?: number; p95?: number } {

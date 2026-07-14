@@ -296,12 +296,17 @@ async function collectProviderPlans(args: {
   const promptfooSummary = sanitizePersistedErrorFields(
     evaluation.summary as unknown as PromptfooSummary,
   );
+  const rows = promptfooSummary.results ?? [];
+  assertExactGenerationProviderRows(
+    providers.map((provider) => provider.id()),
+    rows,
+  );
   const manifest = await buildProjectVerificationManifest({
     caseId: args.definition.id,
     caseSha256: args.caseSha256,
     createdAt: args.createdAt,
     promptfooGenerationEvaluationId: evaluation.evaluationId,
-    rows: promptfooSummary.results ?? [],
+    rows,
   });
   return { outputDir, artifactRootDir: outputDir, manifest, promptfooSummary };
 }
@@ -309,6 +314,29 @@ async function collectProviderPlans(args: {
 async function allocateExclusiveOutputDirectory(outputDir: string): Promise<void> {
   await mkdir(dirname(outputDir), { recursive: true });
   await mkdir(outputDir);
+}
+
+function assertExactGenerationProviderRows(
+  requestedProviderIds: string[],
+  rows: ProjectVerificationExecutionRow[],
+): void {
+  const requested = new Set(requestedProviderIds);
+  const rowCounts = new Map<string, number>();
+  for (const row of rows) {
+    rowCounts.set(row.provider.id, (rowCounts.get(row.provider.id) ?? 0) + 1);
+  }
+  const missing = [...requested].filter((providerId) => !rowCounts.has(providerId));
+  const unknown = [...rowCounts.keys()].filter((providerId) => !requested.has(providerId));
+  const duplicates = [...rowCounts.entries()]
+    .filter(([, count]) => count !== 1)
+    .map(([providerId]) => providerId);
+  if (missing.length === 0 && unknown.length === 0 && duplicates.length === 0) return;
+  const details = [
+    ...(missing.length > 0 ? [`missing: ${missing.sort().join(", ")}`] : []),
+    ...(unknown.length > 0 ? [`unknown: ${unknown.sort().join(", ")}`] : []),
+    ...(duplicates.length > 0 ? [`duplicate: ${duplicates.sort().join(", ")}`] : []),
+  ];
+  throw new Error(`Promptfoo generation provider identity mismatch (${details.join("; ")}).`);
 }
 
 async function persistGenerationArtifacts(args: {

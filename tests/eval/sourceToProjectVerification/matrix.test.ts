@@ -108,6 +108,57 @@ describe("source-to-project reliability matrix", () => {
     expect(markdown).toContain("View persisted evaluations: `nubx promptfoo view`");
   });
 
+  it("prefers reported total tokens when component and cached counts coexist", async () => {
+    const root = mkdtempSync(join(tmpdir(), "weavekit-project-verification-matrix-tokens-"));
+    const matrixPath = writeMatrix(root);
+    const trial = trialResult(root, 1);
+    trial.scorecard.providers[0]!.tokenUsage = {
+      prompt: 100,
+      completion: 50,
+      cached: 40,
+      total: 150,
+    };
+
+    const result = await runProjectVerificationMatrix(
+      { matrixPath },
+      {
+        createMatrixRunId: () => "matrix-token-totals",
+        now: () => new Date("2026-07-12T18:15:00.000Z"),
+        runTrial: vi.fn().mockResolvedValue(trial),
+      },
+    );
+
+    expect(result.scorecard.efficiency[ProjectVerificationProviderId.WEAVEKIT]?.tokens).toEqual({
+      median: 150,
+      p95: 150,
+    });
+  });
+
+  it("does not add cached tokens to component totals when no total is reported", async () => {
+    const root = mkdtempSync(join(tmpdir(), "weavekit-project-verification-matrix-components-"));
+    const matrixPath = writeMatrix(root);
+    const trial = trialResult(root, 1);
+    trial.scorecard.providers[0]!.tokenUsage = {
+      prompt: 100,
+      completion: 50,
+      cached: 40,
+    };
+
+    const result = await runProjectVerificationMatrix(
+      { matrixPath },
+      {
+        createMatrixRunId: () => "matrix-component-totals",
+        now: () => new Date("2026-07-12T18:16:00.000Z"),
+        runTrial: vi.fn().mockResolvedValue(trial),
+      },
+    );
+
+    expect(result.scorecard.efficiency[ProjectVerificationProviderId.WEAVEKIT]?.tokens).toEqual({
+      median: 150,
+      p95: 150,
+    });
+  });
+
   it("keeps same-time matrix launches distinct by generated identity", async () => {
     const root = mkdtempSync(join(tmpdir(), "weavekit-project-verification-matrix-identity-"));
     const matrixPath = writeMatrix(root);

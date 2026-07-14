@@ -465,6 +465,82 @@ describe("source-to-project verification run", () => {
     expect(judgeCalls).toBe(0);
   });
 
+  it("rejects a Promptfoo generation summary missing a requested provider before freezing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "weavekit-generation-missing-provider-"));
+    let evaluationCalls = 0;
+
+    await expect(
+      runSourceToProjectVerification(
+        {
+          resultsDir: root,
+          providerIds: [
+            ProjectVerificationProviderId.WEAVEKIT,
+            ProjectVerificationProviderId.COPILOT,
+          ],
+        },
+        {
+          providers: [
+            providerFor(ProjectVerificationProviderId.WEAVEKIT),
+            providerFor(ProjectVerificationProviderId.COPILOT),
+          ],
+          judges: [judge("gpt"), judge("claude")],
+          now: () => new Date("2026-07-10T12:01:00.000Z"),
+          runPromptfoo: (async () => {
+            evaluationCalls += 1;
+            return {
+              evaluationId: "eval-generation-missing-provider",
+              summary: promptfooGenerationSummary([
+                successfulRow(
+                  ProjectVerificationProviderId.WEAVEKIT,
+                  "# plan\n",
+                  join(root, "not-materialized", "weavekit.md"),
+                ),
+              ]),
+            };
+          }) as never,
+        },
+      ),
+    ).rejects.toThrow(/missing.*copilot-cli:plan/i);
+
+    expect(evaluationCalls).toBe(1);
+  });
+
+  it("rejects an unknown Promptfoo generation provider before freezing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "weavekit-generation-unknown-provider-"));
+    let evaluationCalls = 0;
+
+    await expect(
+      runSourceToProjectVerification(
+        { resultsDir: root, providerIds: [ProjectVerificationProviderId.WEAVEKIT] },
+        {
+          providers: [providerFor(ProjectVerificationProviderId.WEAVEKIT)],
+          judges: [judge("gpt"), judge("claude")],
+          now: () => new Date("2026-07-10T12:02:00.000Z"),
+          runPromptfoo: (async () => {
+            evaluationCalls += 1;
+            return {
+              evaluationId: "eval-generation-unknown-provider",
+              summary: promptfooGenerationSummary([
+                successfulRow(
+                  ProjectVerificationProviderId.WEAVEKIT,
+                  "# plan\n",
+                  join(root, "not-materialized", "weavekit.md"),
+                ),
+                successfulRow(
+                  "unknown-provider",
+                  "# unknown\n",
+                  join(root, "not-materialized", "unknown.md"),
+                ),
+              ]),
+            };
+          }) as never,
+        },
+      ),
+    ).rejects.toThrow(/unknown.*unknown-provider/i);
+
+    expect(evaluationCalls).toBe(1);
+  });
+
   it("persists only bounded redacted generation errors in reports and manifests", async () => {
     const root = await mkdtemp(join(tmpdir(), "weavekit-project-verification-redaction-"));
     const outputDir = join(root, "2026-07-10T12-00-00-000Z");
