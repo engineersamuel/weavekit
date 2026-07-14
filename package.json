@@ -18,6 +18,7 @@
     "council": "tsx src/cli.ts",
     "eval": "tsx src/eval-cli.ts",
     "eval:router": "tsx src/eval-router-cli.ts",
+    "eval:router:compare": "nub scripts/router-llm-comparison.ts",
     "bench:router": "tsx scripts/router-benchmark.ts",
     "dashboard": "nubx portless run --name weavekit-dashboard nub src/cli.ts workflow dashboard --watch-dir runs",
     "repro:visual-design": "nub scripts/source-to-project-visual-design-repro.ts",

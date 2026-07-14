@@ -44,6 +44,10 @@ const verificationOptimizerHarnesses = vi.hoisted(() => ({
   createVerificationOptimizerDynamicExpander: vi.fn(),
 }));
 
+const routerHarnesses = vi.hoisted(() => ({
+  createRouterHarnessRegistry: vi.fn(),
+}));
+
 const workflowPlanner = vi.hoisted(() => ({
   planWorkflow: vi.fn(async (args: { objective: string; prompt: string; templateId: string }) => ({
     id: "mock-plan",
@@ -144,6 +148,16 @@ vi.mock("../../src/macro-workflow/nodeCostHistory.js", async () => {
   };
 });
 
+vi.mock("../../src/macro-workflow/router/harnesses.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../src/macro-workflow/router/harnesses.js")
+  >("../../src/macro-workflow/router/harnesses.js");
+  return {
+    ...actual,
+    createRouterHarnessRegistry: routerHarnesses.createRouterHarnessRegistry,
+  };
+});
+
 beforeEach(() => {
   entityValidation.assertValidEntityCatalog.mockReset();
   entityValidation.assertValidEntityCatalog.mockImplementation(() => {});
@@ -192,6 +206,40 @@ beforeEach(() => {
   verificationOptimizerHarnesses.createVerificationOptimizerDynamicExpander.mockReturnValue(
     undefined,
   );
+  routerHarnesses.createRouterHarnessRegistry.mockReset();
+  routerHarnesses.createRouterHarnessRegistry.mockReturnValue(
+    createStaticHarnessRegistry({
+      [WorkflowHarnessKind.RESEARCH]: async () => ({
+        status: "passed",
+        output: "Primary route: grill-with-docs.",
+        payload: {
+          routerResult: {
+            primary: {
+              route: "grill-with-docs",
+              harness: "copilot-cli",
+              ability: "grill-with-docs",
+              model: "claude-opus-4.8",
+              confidence: 0.8,
+              rationale: "Prompt is ambiguous.",
+              promptRewrite: "Ask clarifying questions with docs.",
+              scores: [],
+            },
+            alternatives: [],
+            catalogEvidence: [],
+            preferenceEvidence: [],
+            warnings: [],
+          },
+        },
+      }),
+      [WorkflowHarnessKind.REPORTER]: async (_node, context) => ({
+        status: "passed",
+        output: "Router report generated.",
+        payload: {
+          routerResult: context.payloads.get("advise-prompt")?.routerResult,
+        },
+      }),
+    }),
+  );
 });
 
 afterEach(() => {
@@ -200,6 +248,29 @@ afterEach(() => {
 });
 
 describe("macro workflow CLI", () => {
+  it("parses router template arguments", () => {
+    expect(
+      parseWorkflowCliArgs([
+        "workflow",
+        "run",
+        "--template",
+        "router",
+        "--prompt",
+        "Should I delegate this?",
+      ]),
+    ).toMatchObject({
+      command: "run",
+      template: "router",
+      prompt: "Should I delegate this?",
+    });
+  });
+
+  it("requires router input", () => {
+    expect(() => parseWorkflowCliArgs(["workflow", "run", "--template", "router"])).toThrow(
+      "Missing router input",
+    );
+  });
+
   it("fails entity validation before workflow planning", async () => {
     entityValidation.assertValidEntityCatalog.mockImplementationOnce(() => {
       throw new Error("Entity catalog validation failed with 1 error(s).");
@@ -215,6 +286,41 @@ describe("macro workflow CLI", () => {
         template: "implementation-review",
       }),
     ).rejects.toThrow("Entity catalog validation failed");
+  });
+
+  it("runs router through its harness registry", async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), "router-cli-"));
+    try {
+      const result = await runWorkflowCli({
+        command: "run",
+        prompt: "Maybe make this a durable goal?",
+        outputDir,
+        staticTemplate: true,
+        dryRun: false,
+        template: "router",
+      });
+
+      expect(result).toContain("Macro workflow plan:");
+      expect(routerHarnesses.createRouterHarnessRegistry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({ primaryModel: "gpt-5.5" }),
+        }),
+      );
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to run router without a prompt or input", async () => {
+    await expect(
+      runWorkflowCli({
+        command: "run",
+        outputDir: "runs",
+        staticTemplate: true,
+        dryRun: false,
+        template: "router",
+      }),
+    ).rejects.toThrow("Missing router input");
   });
 
   it("formats live Copilot SDK harness diagnostics for stderr", () => {
@@ -1189,6 +1295,50 @@ autonomous_pr_allowed = false
     }
   });
 
+  it("resumes an explicit router template without requiring new input", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-router-resume-"));
+    const outputRoot = join(rootDir, "runs");
+    const runId = "router-run";
+    const outputDir = join(outputRoot, runId);
+    const currentPlan = createResumePlan("router", WorkflowHarnessKind.REPORTER);
+    const state: MacroWorkflowRunState = {
+      runId,
+      runName: "Router Resume",
+      planId: currentPlan.id,
+      objective: currentPlan.objective,
+      templateId: currentPlan.templateId,
+      status: "running",
+      startedAt: new Date("2026-07-14T09:00:00.000Z"),
+      plan: currentPlan,
+      currentPlan,
+      nodeResults: [
+        {
+          nodeId: "remaining-node",
+          status: "failed",
+          output: "interrupted",
+          error: "process exited",
+        },
+      ],
+      replans: [],
+    };
+    await new MacroWorkflowStateStore(outputDir).write(state);
+
+    try {
+      await expect(
+        runWorkflowCli({
+          command: "run",
+          outputDir: outputRoot,
+          staticTemplate: true,
+          dryRun: false,
+          template: "router",
+          resumeRunId: runId,
+        }),
+      ).resolves.toContain("Macro workflow plan:");
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("reconstructs source-to-project runtime context and rejects conflicting resume flags", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-source-resume-"));
     const outputRoot = join(rootDir, "runs");
@@ -1643,7 +1793,7 @@ autonomous_pr_allowed = false
 });
 
 function createResumePlan(
-  templateId: "source-to-project" | "deep-research",
+  templateId: "source-to-project" | "deep-research" | "router",
   harness: typeof WorkflowHarnessKind.REPORTER | typeof WorkflowHarnessKind.RESEARCH,
 ) {
   return {

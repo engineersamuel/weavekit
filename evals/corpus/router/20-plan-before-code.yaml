@@ -1,0 +1,28 @@
+id: plan-before-code
+domain: router
+difficulty: intro
+title: Plan before code
+prompt: "Create a milestone implementation plan before anyone writes code."
+context: []
+constraints: ["No code changes yet."]
+referenceAnswer:
+  recommendation: plan
+  rationale: ["The user asks for a plan and explicitly prohibits coding."]
+  strongestObjections: ["If requirements are missing, grill-with-docs could precede planning."]
+  conditions: []
+  viableAlternatives: ["grill-with-docs"]
+  redFlags: ["Do not route to local-code-change."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be plan."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite requests milestones and tasks."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Planning ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Preserves no-code constraint."

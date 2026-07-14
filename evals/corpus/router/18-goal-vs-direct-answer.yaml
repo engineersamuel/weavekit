@@ -1,0 +1,28 @@
+id: goal-vs-direct-answer
+domain: router
+difficulty: intro
+title: Goal versus direct answer
+prompt: "What is /goal mode in one paragraph?"
+context: []
+constraints: ["Answer the factual question; do not start or write a goal."]
+referenceAnswer:
+  recommendation: direct-answer
+  rationale: ["The user asks a narrow factual question about goal mode."]
+  strongestObjections: ["The prompt mentions /goal, but does not ask to create or run one."]
+  conditions: []
+  viableAlternatives: ["refine-prompt"]
+  redFlags: ["Do not route solely on the /goal keyword."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be direct-answer."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for a concise factual answer."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Direct answer ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Does not initiate goal mode."

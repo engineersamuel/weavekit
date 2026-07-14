@@ -1,0 +1,28 @@
+id: manual-herdr-worktree
+domain: router
+difficulty: intermediate
+title: Manual Herdr worktree route
+prompt: "Create worktree with herdr. Project: weavekit Branch: router Agent: codex. Implement the router workflow."
+context: ["Manual launch must remain user-controlled."]
+constraints: ["Create Worktree eligibility should be true only because all fields are present."]
+referenceAnswer:
+  recommendation: manual-herdr-worktree
+  rationale: ["The prompt includes complete fields for a manual Herdr worktree handoff."]
+  strongestObjections: ["If any field were missing, grill-with-docs should be selected."]
+  conditions: []
+  viableAlternatives: ["local-code-change"]
+  redFlags: ["Do not auto-launch from advisory completion."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be manual-herdr-worktree."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite is suitable for the selected agent."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Herdr manual Create Worktree handoff is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Eligibility requires project, branch/worktree, harness/agent, and rewritten prompt."

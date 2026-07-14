@@ -59,6 +59,7 @@ export type WorkflowReplanPolicy =
 
 export type WorkflowPlanTemplateId =
   | "implementation-review"
+  | "router"
   | "source-to-project"
   | "verification-optimizer"
   | "x-article-summary"

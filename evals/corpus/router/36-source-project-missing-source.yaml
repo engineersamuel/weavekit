@@ -1,0 +1,34 @@
+id: source-project-missing-source
+domain: router
+difficulty: intermediate
+title: Source project missing source
+prompt: "Run source-to-project for my project."
+context: []
+constraints: ["Source artifact and target project identifier are missing."]
+referenceAnswer:
+  recommendation: source-to-project
+  rationale:
+    [
+      "The user explicitly requested the source-to-project workflow; missing inputs should be captured by the rewrite, not rerouted.",
+    ]
+  strongestObjections:
+    [
+      "If the user wanted requirements elicitation before routing, grill-with-docs could ask for missing inputs.",
+    ]
+  conditions: []
+  viableAlternatives: ["grill-with-docs"]
+  redFlags: ["Do not invent a source or project."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be source-to-project."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite preserves source-to-project intent and asks for source artifact and target project."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Weavekit source-to-project ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids fabricating workflow inputs."

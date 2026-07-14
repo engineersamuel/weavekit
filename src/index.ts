@@ -11,6 +11,16 @@ export { type DecisionCouncilWorkflowDeps } from "./decision-council/workflow.js
 export * from "./entities/index.js";
 export * from "./macro-workflow/index.js";
 export {
+  createRouter,
+  RouterRoute,
+  WorkflowRouter,
+  type Router,
+  type RouterAdvisor,
+  type RouterDecision,
+  type RouterInput,
+  type RouterProviderResult,
+} from "./router.js";
+export {
   Classifier,
   createInitialWorkflowRouter,
   createInitialWorkflowRouter as createInitialRouter,

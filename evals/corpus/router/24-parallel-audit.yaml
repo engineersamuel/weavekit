@@ -1,0 +1,28 @@
+id: parallel-audit
+domain: router
+difficulty: advanced
+title: Parallel audit
+prompt: "Use parallel agents to audit CLI, dashboard, evals, and docs independently."
+context: []
+constraints: ["Each surface can be inspected independently."]
+referenceAnswer:
+  recommendation: fleet-parallel
+  rationale: ["The task explicitly asks for parallel agents over separable surfaces."]
+  strongestObjections: ["If the scope were a single file, local-code-change would be better."]
+  conditions: []
+  viableAlternatives: ["local-code-change"]
+  redFlags: ["Do not serialize independent audits unnecessarily."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be fleet-parallel."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite decomposes independent audit scopes."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Parallel orchestration ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Keeps scopes independent and bounded."

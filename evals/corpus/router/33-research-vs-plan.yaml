@@ -1,0 +1,29 @@
+id: research-vs-plan
+domain: router
+difficulty: advanced
+title: Deep research versus plan
+prompt: "Compare current eval frameworks and then propose a plan."
+context: []
+constraints: ["Comparison depends on current ecosystem information."]
+referenceAnswer:
+  recommendation: research
+  rationale:
+    ["The first necessary step is deep research with current comparison evidence before planning."]
+  strongestObjections: ["If the comparison were already supplied, plan would be enough."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not skip current evidence gathering."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be research, backed by the deep-research ability."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite requests current comparison research before planning."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Deep research-capable workflow is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Does not present stale comparison as fact."

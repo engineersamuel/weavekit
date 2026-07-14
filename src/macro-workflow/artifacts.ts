@@ -73,6 +73,7 @@ export async function writeMacroWorkflowArtifacts(
     `- Status: ${input.state.status}`,
     "",
     ...renderSourceToProjectAdvisory(input.state),
+    ...renderRouter(input.state),
     "",
     "## Node Results",
     ...(input.state.nodeResults.length === 0
@@ -98,6 +99,50 @@ export async function writeMacroWorkflowArtifacts(
   await writeFile(reportPath, report, "utf8");
   if (input.replayEvents) {
     await writeWorkflowReplayEventsAtomically(input.outputDir, eventLogPath, input.replayEvents);
+  }
+
+  function renderRouter(state: MacroWorkflowRunStateLike): string[] {
+    if (state.templateId !== "router") {
+      return [];
+    }
+    const result =
+      getPayloadValue<Record<string, unknown>>(state, "report", "routerResult") ??
+      getPayloadValue<Record<string, unknown>>(state, "advise-prompt", "routerResult");
+    if (!result) {
+      return ["## Router", "", "No router result recorded.", ""];
+    }
+    const primary = asRecord(result.primary);
+    const alternatives = readArray(result.alternatives).map(asRecord);
+    const handoff = asRecord(primary.handoff);
+    return [
+      "## Router",
+      "",
+      `- Primary route: ${readString(primary, "route") || "unknown"}`,
+      `- Harness: ${readString(primary, "harness") || "unknown"}`,
+      ...(readString(primary, "ability") ? [`- Ability: ${readString(primary, "ability")}`] : []),
+      ...(readString(primary, "model") ? [`- Model: ${readString(primary, "model")}`] : []),
+      `- Confidence: ${readNumber(primary, "confidence") ?? "n/a"}`,
+      ...(readString(primary, "rationale")
+        ? [`- Rationale: ${readString(primary, "rationale")}`]
+        : []),
+      ...(Object.keys(handoff).length > 0
+        ? [
+            `- Create Worktree eligible: ${readBoolean(handoff, "createWorktreeEligible") ? "yes" : "no"}`,
+          ]
+        : []),
+      "",
+      "### Prompt Rewrite",
+      "",
+      readString(primary, "promptRewrite") || "No prompt rewrite recorded.",
+      "",
+      "### Alternatives",
+      ...(alternatives.length === 0
+        ? ["No alternatives recorded."]
+        : alternatives.map(
+            (alternative, index) =>
+              `${index + 1}. **${readString(alternative, "route") || "unknown"}** via ${readString(alternative, "harness") || "unknown"}: ${readString(alternative, "rationale") || "No rationale recorded."}`,
+          )),
+    ];
   }
 
   return { reportPath, statePath, eventLogPath };
@@ -293,6 +338,15 @@ function readString(record: Record<string, unknown>, key: string): string {
 
 function readBoolean(record: Record<string, unknown>, key: string): boolean {
   return record[key] === true;
+}
+
+function readNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function readStringArray(record: Record<string, unknown>, key: string): string[] {

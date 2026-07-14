@@ -1,0 +1,28 @@
+id: current-tools-research
+domain: router
+difficulty: intermediate
+title: Current tools research
+prompt: "Research the latest Copilot CLI routing capabilities with citations before recommending an approach."
+context: []
+constraints: ["Use current sources and citations."]
+referenceAnswer:
+  recommendation: research
+  rationale: ["The request depends on recent external evidence and citations."]
+  strongestObjections: ["If sources were already supplied, plan could be enough."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not answer from stale memory only."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be research."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite requests current cited research."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Research-capable workflow is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Requires citations for current claims."

@@ -1,0 +1,28 @@
+id: refine-prompt
+domain: router
+difficulty: intro
+title: Refine prompt route
+prompt: "Rewrite this prompt to be clearer before I send it to an AI."
+context: []
+constraints: []
+referenceAnswer:
+  recommendation: refine-prompt
+  rationale: ["The user asks for prompt improvement rather than execution."]
+  strongestObjections: ["If they need durable execution, goal-prompt may be better."]
+  conditions: []
+  viableAlternatives: ["direct-answer"]
+  redFlags: ["Do not execute the underlying task."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be refine-prompt."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Prompt rewrite is present."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Prompt engineering ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Keeps output advisory."

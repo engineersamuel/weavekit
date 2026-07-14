@@ -1,0 +1,28 @@
+id: grill-with-docs
+domain: router
+difficulty: intermediate
+title: Grill with docs route
+prompt: "This request is ambiguous and missing requirements; help me figure out what to ask."
+context: []
+constraints: ["Do not invent missing requirements."]
+referenceAnswer:
+  recommendation: grill-with-docs
+  rationale: ["Ambiguity and missing fields should trigger structured grilling."]
+  strongestObjections: ["If all fields were known, a handoff route could be eligible."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not fabricate target project, branch, or acceptance criteria."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be grill-with-docs."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite elicits missing information."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Grilling/docs ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids unsafe handoff."

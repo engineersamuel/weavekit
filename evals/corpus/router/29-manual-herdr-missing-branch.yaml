@@ -1,0 +1,28 @@
+id: manual-herdr-missing-branch
+domain: router
+difficulty: intermediate
+title: Manual Herdr missing branch
+prompt: "Create a Herdr worktree for weavekit using codex to implement evals."
+context: []
+constraints: ["Branch/worktree name is missing."]
+referenceAnswer:
+  recommendation: grill-with-docs
+  rationale: ["A Herdr handoff request is missing required safe handoff fields."]
+  strongestObjections: ["If branch/worktree were provided, manual-herdr-worktree would be correct."]
+  conditions: []
+  viableAlternatives: ["manual-herdr-worktree"]
+  redFlags: ["Do not infer a branch name."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be grill-with-docs."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for the missing branch/worktree name."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Grilling/docs ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids unsafe handoff."

@@ -1,0 +1,28 @@
+id: explicit-keep-working
+domain: router
+difficulty: intro
+title: Explicit keep working
+prompt: "Start /goal and keep working until the failing evals are fixed and verified."
+context: []
+constraints: ["Needs persisted remaining-work tracking and verification evidence."]
+referenceAnswer:
+  recommendation: goal-prompt
+  rationale: ["The user explicitly asks to start /goal and keep working until completion."]
+  strongestObjections: ["If no execution were requested, refine-prompt could be enough."]
+  conditions: []
+  viableAlternatives: ["local-code-change"]
+  redFlags: ["Do not treat this as a one-shot answer."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be goal-prompt."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite includes durable completion and verification requirements."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Goal ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Preserves verification and persistence."

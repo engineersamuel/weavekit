@@ -491,6 +491,52 @@ body {
   gap: 8px;
 }
 
+.highlight-card-wide {
+  grid-column: 1 / -1;
+}
+
+.highlight-pre {
+  background: rgba(15, 23, 42, 0.68);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font:
+    0.9rem/1.5 ui-monospace,
+    SFMono-Regular,
+    "SF Mono",
+    Consolas,
+    monospace;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.highlight-list-block {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.highlight-list-block h4 {
+  color: #f8fafc;
+  font-size: 0.96rem;
+  margin: 0;
+}
+
+.highlight-list-block ul {
+  color: #dce7ff;
+  line-height: 1.55;
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.highlight-list-block li {
+  margin: 0.28em 0;
+  overflow-wrap: anywhere;
+}
+
 .opportunity-card.advanced {
   border-color: rgba(20, 184, 166, 0.32);
   box-shadow: inset 3px 0 0 rgba(20, 184, 166, 0.85);

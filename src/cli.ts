@@ -139,6 +139,22 @@ export async function runEntityCli(_args: EntityCliArgs): Promise<string> {
       ].join("\n"),
     );
   }
+  const routerPlan = materializeWorkflowPlan("router", {
+    objective: "Validate router workflow metadata",
+  });
+  const routerValidation = verifyWorkflowPlan(routerPlan);
+  if (!routerValidation.valid) {
+    throw new Error(
+      [
+        `Router workflow metadata validation failed with ${routerValidation.issues.length} error(s).`,
+        "",
+        ...routerValidation.issues.map(
+          (issue, index) =>
+            `${index + 1}. ${issue.nodeId ?? "<plan>"} ${issue.code}: ${issue.message}`,
+        ),
+      ].join("\n"),
+    );
+  }
   return "Entity catalog valid.\n";
 }
 
@@ -305,13 +321,15 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
   const template = templateIndex === -1 ? undefined : argv[templateIndex + 1];
   const isSourceToProject = template === "source-to-project";
   const isVerificationOptimizer = template === "verification-optimizer";
+  const isRouter = template === "router";
   const isProjectScopedTemplate = isSourceToProject || isVerificationOptimizer;
   if (
     command !== "dashboard" &&
     inputIndex === -1 &&
     promptIndex === -1 &&
     resumeIndex === -1 &&
-    !isProjectScopedTemplate
+    !isProjectScopedTemplate &&
+    !isRouter
   ) {
     throw new Error("Missing required --input <path> or --prompt <text> argument.");
   }
@@ -334,6 +352,9 @@ export function parseWorkflowCliArgs(argv: string[]): WorkflowCliArgs {
     projectPathIndex === -1
   ) {
     throw new Error("Missing required --project <id> or --project-path <path> argument.");
+  }
+  if (command !== "dashboard" && isRouter && inputIndex === -1 && promptIndex === -1) {
+    throw new Error("Missing router input. Provide --prompt <text> or --input <path>.");
   }
 
   const dryRun = command === "plan" || argv.includes("--dry-run");
@@ -630,6 +651,7 @@ function resolveWorkflowTemplateId(
   }
   if (
     template !== "implementation-review" &&
+    template !== "router" &&
     template !== "source-to-project" &&
     template !== "verification-optimizer" &&
     template !== "x-article-summary" &&
@@ -680,7 +702,7 @@ function createLegacyResumeContext(
     version: MacroWorkflowResumeContextVersion,
     templateId,
   } as const;
-  if (templateId === "implementation-review") {
+  if (templateId === "implementation-review" || templateId === "router") {
     return base;
   }
   if (templateId === "x-article-summary") {
@@ -1108,9 +1130,13 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     !args.prompt &&
     !resumedState &&
     args.template !== "source-to-project" &&
-    args.template !== "verification-optimizer"
+    args.template !== "verification-optimizer" &&
+    args.template !== "router"
   ) {
     throw new Error("Missing required --input <path> or --prompt <text> argument.");
+  }
+  if (!args.inputPath && !args.prompt && !resumedState && args.template === "router") {
+    throw new Error("Missing router input. Provide --prompt <text> or --input <path>.");
   }
   if (args.inputPath && args.prompt) {
     throw new Error("Use either --input <path> or --prompt <text>, not both.");
@@ -1159,6 +1185,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
   const isSourceToProject = templateId === "source-to-project";
   const isVerificationOptimizer = templateId === "verification-optimizer";
   const isDeepResearch = templateId === "deep-research";
+  const isRouter = templateId === "router";
   const resumeContext =
     resumedState && templateId
       ? resolveMacroWorkflowResumeContext({
@@ -1259,6 +1286,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     workflowSourceToProjectModule,
     workflowDeepResearchModule,
     workflowVerificationOptimizerModule,
+    workflowRouterModule,
     workflowUsageModule,
     workflowNodeCostHistoryModule,
     workflowTemplateCandidateModule,
@@ -1273,6 +1301,7 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
     import("./macro-workflow/sourceToProject/harnesses.js"),
     import("./macro-workflow/deepResearch/harnesses.js"),
     import("./macro-workflow/verificationOptimizer/harnesses.js"),
+    import("./macro-workflow/router/harnesses.js"),
     import("./macro-workflow/usage.js"),
     import("./macro-workflow/nodeCostHistory.js"),
     import("./macro-workflow/templateOptimizer/candidatePlan.js"),
@@ -1571,9 +1600,13 @@ export async function runWorkflowCli(args: WorkflowCliArgs): Promise<string> {
                   }
                 : undefined,
             })
-          : templateId === "x-article-summary"
-            ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)
-            : workflowHarnessModule.createStaticHarnessRegistry();
+          : isRouter
+            ? workflowRouterModule.createRouterHarnessRegistry({
+                config: typedConfig.router,
+              })
+            : templateId === "x-article-summary"
+              ? createXArticleSummaryHarnessRegistry(workflowHarnessModule)
+              : workflowHarnessModule.createStaticHarnessRegistry();
 
     const state = await workflowRunnerModule.runMacroWorkflow(plan, {
       initialState: resumedInitialState,

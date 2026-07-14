@@ -68,6 +68,11 @@ description = "Run verification-optimizer for a required project with advisory m
 env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
 run = ".mise/tasks/verification-optimizer"
 
+[tasks."router"]
+description = "Run router against a quoted prompt and write workflow artifacts under runs/."
+env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }
+run = ".mise/tasks/router"
+
 [tasks."optimize-template"]
 description = "Run the offline template optimizer for a static workflow template."
 env = { BAML_LOG = "warn", COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1", COPILOT_PROXY_API_KEY = "anything" }

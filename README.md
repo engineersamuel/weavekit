@@ -491,16 +491,17 @@ Copilot SDK persona sessions, and each baseline cell starts a `copilot` CLI proc
 so concurrency `N` can mean up to `N × personas` concurrent Copilot SDK sessions plus
 `N` baseline processes against the local proxy.
 
-### Router classification evals
+### Router evals
 
-A focused Promptfoo suite for the initial route classifier lives under
-`evals/corpus/router-classification/`. It exercises the direct, plan, research,
-decision-council, and elicitation routes and writes a lightweight HTML dashboard
-alongside the Promptfoo report.
+A focused Promptfoo suite for the canonical Router workflow lives under
+`evals/corpus/router/`. It exercises the full Router route taxonomy, including
+direct answers, planning, research, decision council, goal prompts, prompt
+refinement, local code changes, fleet delegation, source-to-project, and manual
+Herdr worktree handoffs.
 
 ```bash
 nub run eval:router
 ```
 
-The run writes `dashboard.html`, `report.json`, `summary.md`, and `route-results.json`
-into `evals/results/router-classification/<timestamp>/`.
+The run writes `report.json`, `router-summary.md`, `router-report.json`, and
+`router-results.json` into `evals/results/router/<timestamp>/`.

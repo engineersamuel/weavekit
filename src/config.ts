@@ -8,6 +8,54 @@ export type VerificationOptimizerMode = "advisory" | "autonomous-pr";
 export type NotificationPolicy = "cli" | "telegram";
 export type KnowledgeExportPolicy = "off" | "sanitized";
 
+export const RouterRoute = {
+  DIRECT_ANSWER: "direct-answer",
+  REFINE_PROMPT: "refine-prompt",
+  GOAL_PROMPT: "goal-prompt",
+  PLAN: "plan",
+  GRILL_WITH_DOCS: "grill-with-docs",
+  RESEARCH: "research",
+  LOCAL_CODE_CHANGE: "local-code-change",
+  FLEET_PARALLEL: "fleet-parallel",
+  REMOTE_DELEGATE_PR: "remote-delegate-pr",
+  DECISION_COUNCIL: "decision-council",
+  SOURCE_TO_PROJECT: "source-to-project",
+  MANUAL_HERDR_WORKTREE: "manual-herdr-worktree",
+} as const;
+export type RouterRoute = (typeof RouterRoute)[keyof typeof RouterRoute];
+
+export type CapabilityCatalogEntry = {
+  id: string;
+  route: RouterRoute;
+  harness: string;
+  ability?: string;
+  model?: string;
+  taskFit: string[];
+  strengths: string[];
+  limitations: string[];
+  source?: string;
+};
+
+export type RoutingPreferenceOverlay = {
+  id: string;
+  match: string[];
+  prefer?: {
+    route?: RouterRoute;
+    harness?: string;
+    ability?: string;
+    model?: string;
+  };
+  weight?: number;
+  force?: boolean;
+  rationale: string;
+};
+
+export type RouterDefaults = {
+  primaryModel: string;
+  catalog: CapabilityCatalogEntry[];
+  preferences: RoutingPreferenceOverlay[];
+};
+
 export type SourceToProjectThresholds = {
   minApplicability: number;
   minConfidence: number;
@@ -163,6 +211,7 @@ export type WeavekitConfig = {
   flue: FlueDefaults;
   tooling: ToolingDefaults;
   sourceToProject: SourceToProjectDefaults;
+  router: RouterDefaults;
   deepResearch: DeepResearchDefaults;
   verificationOptimizer: VerificationOptimizerDefaults;
   plugins: PluginConfigs;
@@ -369,6 +418,7 @@ export function loadTypedWeavekitConfig(
       flue: readFlueDefaults(undefined, env),
       tooling: readToolingDefaults(undefined, env),
       sourceToProject: readSourceToProjectDefaults(undefined, env),
+      router: readRouterDefaults(undefined),
       deepResearch: readDeepResearchDefaults(undefined, env),
       verificationOptimizer: readVerificationOptimizerDefaults(undefined),
       plugins: readPluginConfigs(undefined, env),
@@ -382,6 +432,7 @@ export function loadTypedWeavekitConfig(
   const flue = readFlueDefaults(parsed.flue, env);
   const tooling = readToolingDefaults(parsed.tooling, env);
   const sourceToProject = readSourceToProjectDefaults(parsed.source_to_project, env);
+  const router = readRouterDefaults(parsed.router);
   const deepResearch = readDeepResearchDefaults(parsed.deep_research, env);
   const verificationOptimizer = readVerificationOptimizerDefaults(parsed.verification_optimizer);
   const plugins = readPluginConfigs(parsed.plugins, env);
@@ -393,6 +444,7 @@ export function loadTypedWeavekitConfig(
     flue,
     tooling,
     sourceToProject,
+    router,
     deepResearch,
     verificationOptimizer,
     plugins,
@@ -476,6 +528,190 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
     },
     autoImplementOnReport: false,
     councilDeliberation: defaultCouncilDeliberationConfig(),
+  };
+}
+
+function defaultRouterDefaults(): RouterDefaults {
+  return {
+    primaryModel: "gpt-5.5",
+    catalog: [
+      {
+        id: "copilot-direct-answer",
+        route: RouterRoute.DIRECT_ANSWER,
+        harness: "copilot-cli",
+        ability: "direct-answer",
+        model: "gpt-5.5",
+        taskFit: ["narrow factual questions", "simple guidance", "low-mutation advice"],
+        strengths: ["fast response", "uses current session context"],
+        limitations: ["not suitable for broad implementation or multi-source research"],
+        source: "default-config",
+      },
+      {
+        id: "copilot-refine-prompt",
+        route: RouterRoute.REFINE_PROMPT,
+        harness: "copilot-cli",
+        ability: "prompt-build",
+        model: "gpt-5.5",
+        taskFit: ["prompt cleanup", "instruction restructuring", "prompt quality improvement"],
+        strengths: ["improves prompt clarity without starting execution"],
+        limitations: ["does not persist execution state"],
+        source: "default-config",
+      },
+      {
+        id: "copilot-goal-mode",
+        route: RouterRoute.GOAL_PROMPT,
+        harness: "copilot-cli",
+        ability: "goal",
+        model: "gpt-5.5",
+        taskFit: ["durable execution goals", "keep-working requests", "strict verification loops"],
+        strengths: ["persists remaining work", "records completion proof"],
+        limitations: ["requires explicit goal-mode intent"],
+        source: "default-config",
+      },
+      {
+        id: "copilot-plan",
+        route: RouterRoute.PLAN,
+        harness: "copilot-cli",
+        ability: "task-plan",
+        model: "claude-opus-4.8",
+        taskFit: ["implementation planning", "requirements decomposition", "task breakdowns"],
+        strengths: ["strong planning synthesis", "keeps workflow advisory"],
+        limitations: ["does not modify code by itself"],
+        source: "default-config",
+      },
+      {
+        id: "mattpocock-grill-with-docs",
+        route: RouterRoute.GRILL_WITH_DOCS,
+        harness: "copilot-cli",
+        ability: "grill-with-docs",
+        model: "claude-opus-4.8",
+        taskFit: ["ambiguous prompts", "missing requirements", "domain-model interrogation"],
+        strengths: ["elicits missing fields before handoff"],
+        limitations: ["requires user answers before execution"],
+        source: "mattpocock/skills",
+      },
+      {
+        id: "copilot-deep-research",
+        route: RouterRoute.RESEARCH,
+        harness: "weavekit",
+        ability: "deep-research",
+        model: "claude-sonnet-5",
+        taskFit: ["current evidence", "multi-source synthesis", "recent ecosystem research"],
+        strengths: ["cited research loop", "bounded provider strategy"],
+        limitations: ["higher latency than direct answer"],
+        source: "default-config",
+      },
+      {
+        id: "codex-local-code-change",
+        route: RouterRoute.LOCAL_CODE_CHANGE,
+        harness: "codex-cli",
+        ability: "local-code-change",
+        model: "gpt-5.3-codex",
+        taskFit: [
+          "single-worktree implementation",
+          "targeted bug fixes",
+          "test-driven code changes",
+        ],
+        strengths: ["optimized for code editing", "runs local validation"],
+        limitations: ["mutates the current worktree"],
+        source: "default-config",
+      },
+      {
+        id: "copilot-fleet-parallel",
+        route: RouterRoute.FLEET_PARALLEL,
+        harness: "copilot-cli",
+        ability: "orchestration",
+        model: "gpt-5.5",
+        taskFit: ["decomposable work", "parallel subagent research", "multi-surface audits"],
+        strengths: ["coordinates independent workers"],
+        limitations: ["requires separable task boundaries"],
+        source: "default-config",
+      },
+      {
+        id: "copilot-remote-delegate-pr",
+        route: RouterRoute.REMOTE_DELEGATE_PR,
+        harness: "copilot-coding-agent",
+        ability: "pull-request",
+        model: "gpt-5.3-codex",
+        taskFit: ["remote PR delegation", "cloud agent handoff", "non-local implementation"],
+        strengths: ["produces PRs without occupying local worktree"],
+        limitations: ["needs clear repository and PR scope"],
+        source: "default-config",
+      },
+      {
+        id: "weavekit-decision-council",
+        route: RouterRoute.DECISION_COUNCIL,
+        harness: "weavekit",
+        ability: "decision-council",
+        model: "gpt-5.5",
+        taskFit: ["tradeoff-heavy decisions", "architecture choices", "multi-perspective review"],
+        strengths: ["explicit objections and alternatives"],
+        limitations: ["not an implementation engine"],
+        source: "default-config",
+      },
+      {
+        id: "weavekit-source-to-project",
+        route: RouterRoute.SOURCE_TO_PROJECT,
+        harness: "weavekit",
+        ability: "source-to-project",
+        model: "claude-opus-4.8",
+        taskFit: ["map source artifact to target project", "opportunity discovery"],
+        strengths: ["typed source/project contract", "ranked project opportunities"],
+        limitations: ["requires source and target project"],
+        source: "default-config",
+      },
+      {
+        id: "herdr-manual-worktree",
+        route: RouterRoute.MANUAL_HERDR_WORKTREE,
+        harness: "herdr",
+        ability: "manual-create-worktree",
+        model: "gpt-5.3-codex",
+        taskFit: ["manual worktree handoff", "branch-scoped agent launch"],
+        strengths: ["keeps launch human-controlled", "supports chosen harness"],
+        limitations: ["requires project, branch/worktree, harness, and rewritten prompt"],
+        source: "default-config",
+      },
+      {
+        id: "claude-ui-frontend-planning",
+        route: RouterRoute.PLAN,
+        harness: "claude-code",
+        ability: "ui-frontend-plan",
+        model: "claude-opus-4.8",
+        taskFit: ["frontend architecture", "UI planning", "accessibility-sensitive design"],
+        strengths: ["strong visual and interaction planning"],
+        limitations: ["advisory unless explicitly handed off"],
+        source: "default-config",
+      },
+    ],
+    preferences: [
+      {
+        id: "ambiguous-prompts-require-grilling",
+        match: ["unclear", "ambiguous", "not sure", "maybe", "figure out what I mean"],
+        prefer: {
+          route: RouterRoute.GRILL_WITH_DOCS,
+          harness: "copilot-cli",
+          ability: "grill-with-docs",
+          model: "claude-opus-4.8",
+        },
+        weight: 1.5,
+        force: true,
+        rationale:
+          "Ambiguous prompts should elicit requirements instead of inventing missing fields.",
+      },
+      {
+        id: "frontend-ui-prefers-claude-opus",
+        match: ["ui", "frontend", "react", "accessibility", "visual design"],
+        prefer: {
+          route: RouterRoute.PLAN,
+          harness: "claude-code",
+          ability: "ui-frontend-plan",
+          model: "claude-opus-4.8",
+        },
+        weight: 1.2,
+        rationale:
+          "UI and frontend planning should prefer Claude Opus 4.8 when the run is advisory.",
+      },
+    ],
   };
 }
 
@@ -797,6 +1033,110 @@ function readDeepResearchDefaults(value: unknown, env: NodeJS.ProcessEnv): DeepR
       readEnvBoolean(env, "WEAVEKIT_DEEP_RESEARCH_VISUALIZE") ?? defaults.visualize,
     ),
   };
+}
+
+function readRouterDefaults(value: unknown): RouterDefaults {
+  const defaults = defaultRouterDefaults();
+  const record = asRecord(value);
+  const catalog = readRouterCatalog(record.catalog, defaults.catalog);
+  const preferences = readRouterPreferences(record.preferences, defaults.preferences);
+  return {
+    primaryModel: readString(record.primary_model, defaults.primaryModel),
+    catalog,
+    preferences,
+  };
+}
+
+function readRouterCatalog(
+  value: unknown,
+  defaults: CapabilityCatalogEntry[],
+): CapabilityCatalogEntry[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return defaults;
+  }
+  const entries = value
+    .map((entry): CapabilityCatalogEntry | undefined => {
+      const record = asRecord(entry);
+      const id = readOptionalString(record.id);
+      const route = readRouterRoute(record.route);
+      const harness = readOptionalString(record.harness);
+      if (!id || !route || !harness) {
+        return undefined;
+      }
+      return {
+        id,
+        route,
+        harness,
+        ability: readOptionalString(record.ability),
+        model: readOptionalString(record.model),
+        taskFit: readStringArray(record.task_fit),
+        strengths: readStringArray(record.strengths),
+        limitations: readStringArray(record.limitations),
+        source: readOptionalString(record.source),
+      };
+    })
+    .filter((entry): entry is CapabilityCatalogEntry => entry !== undefined);
+  return entries.length > 0 ? entries : defaults;
+}
+
+function readRouterPreferences(
+  value: unknown,
+  defaults: RoutingPreferenceOverlay[],
+): RoutingPreferenceOverlay[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return defaults;
+  }
+  const entries = value
+    .map((entry): RoutingPreferenceOverlay | undefined => {
+      const record = asRecord(entry);
+      const id = readOptionalString(record.id);
+      const match = readStringArray(record.match);
+      const rationale = readOptionalString(record.rationale);
+      if (!id || match.length === 0 || !rationale) {
+        return undefined;
+      }
+      const prefer = readRouterPreference(record.prefer);
+      return {
+        id,
+        match,
+        ...(prefer ? { prefer } : {}),
+        weight:
+          typeof record.weight === "number" && Number.isFinite(record.weight)
+            ? record.weight
+            : undefined,
+        force: readBoolean(record.force, false),
+        rationale,
+      };
+    })
+    .filter((entry): entry is RoutingPreferenceOverlay => entry !== undefined);
+  return entries.length > 0 ? entries : defaults;
+}
+
+function readRouterPreference(value: unknown): RoutingPreferenceOverlay["prefer"] | undefined {
+  const record = asRecord(value);
+  const route = readRouterRoute(record.route);
+  const harness = readOptionalString(record.harness);
+  const ability = readOptionalString(record.ability);
+  const model = readOptionalString(record.model);
+  if (!route && !harness && !ability && !model) {
+    return undefined;
+  }
+  return {
+    ...(route ? { route } : {}),
+    ...(harness ? { harness } : {}),
+    ...(ability ? { ability } : {}),
+    ...(model ? { model } : {}),
+  };
+}
+
+function readRouterRoute(value: unknown): RouterRoute | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return Object.values(RouterRoute).includes(normalized as RouterRoute)
+    ? (normalized as RouterRoute)
+    : undefined;
 }
 
 function readDeepResearchProviders(

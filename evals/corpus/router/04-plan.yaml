@@ -1,0 +1,28 @@
+id: plan
+domain: router
+difficulty: intro
+title: Plan route
+prompt: "Create an implementation plan with milestones and tasks before anyone writes code."
+context: []
+constraints: ["No code changes yet."]
+referenceAnswer:
+  recommendation: plan
+  rationale: ["The user asks for a plan before implementation."]
+  strongestObjections: ["If requirements are vague, grill-with-docs may come first."]
+  conditions: []
+  viableAlternatives: ["grill-with-docs"]
+  redFlags: ["Do not start coding."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be plan."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite asks for a plan."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Planning-capable model/ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Read-only advisory behavior is preserved."

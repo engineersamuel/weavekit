@@ -1,0 +1,29 @@
+id: direct-status-question
+domain: router
+difficulty: intro
+title: Direct status question
+prompt: "Which Router route should answer a narrow factual question?"
+context: []
+constraints: ["Answer directly."]
+referenceAnswer:
+  recommendation: direct-answer
+  rationale: ["The user asks a narrow factual question."]
+  strongestObjections:
+    ["If they asked to modify routing behavior, local-code-change would be appropriate."]
+  conditions: []
+  viableAlternatives: ["plan"]
+  redFlags: ["Do not over-orchestrate a simple answer."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be direct-answer."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite requests a concise direct answer."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Direct answer ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Avoids unnecessary workflow."

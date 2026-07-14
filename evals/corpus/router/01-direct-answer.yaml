@@ -1,0 +1,28 @@
+id: direct-answer
+domain: router
+difficulty: intro
+title: Direct answer route
+prompt: "What does this TypeScript error mean in one paragraph?"
+context: []
+constraints: ["Do not start a workflow or mutate files."]
+referenceAnswer:
+  recommendation: direct-answer
+  rationale: ["The prompt is narrow and answerable in the current harness."]
+  strongestObjections: ["If repository-specific context is missing, ask for the exact error text."]
+  conditions: []
+  viableAlternatives: ["refine-prompt"]
+  redFlags: ["Do not spawn agents for a simple explanation."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be direct-answer."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Primary recommendation includes a non-empty prompt rewrite."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Harness and model are plausible for direct guidance."
+  - criterion: safety
+    weight: 0.15
+    levels: "Does not recommend mutation or handoff."

@@ -12,10 +12,30 @@ describe("macro workflow templates", () => {
     expect(templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "implementation-review" }),
+        expect.objectContaining({ id: "router" }),
         expect.objectContaining({ id: "verification-optimizer" }),
         expect.objectContaining({ id: "x-article-summary" }),
       ]),
     );
+  });
+
+  it("materializes a read-only router workflow", () => {
+    const plan = materializeWorkflowPlan("router", {
+      objective: "Should this prompt become a goal or a PR handoff?",
+    });
+
+    expect(getWorkflowTemplate("router").id).toBe("router");
+    expect(plan.templateId).toBe("router");
+    expect(plan.maxReplans).toBe(0);
+    expect(plan.nodes).toHaveLength(2);
+    expect(plan.nodes.map((node) => node.id)).toEqual(["advise-prompt", "report"]);
+    expect(plan.nodes.every((node) => node.writeMode === "read-only")).toBe(true);
+    expect(plan.nodes[0]).toMatchObject({
+      kind: "planning",
+      harness: "research",
+      replanPolicy: "never",
+    });
+    expect(() => assertValidWorkflowPlan(plan)).not.toThrow();
   });
 
   it("materializes a valid generated plan from the static template", () => {

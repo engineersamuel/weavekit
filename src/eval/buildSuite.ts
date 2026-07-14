@@ -21,12 +21,14 @@ function defaultJudge(): JudgeConfig {
 }
 
 export function buildAssertions(item: CorpusItem, providerCount = 2): Assertion[] {
+  const judge = defaultJudge();
   const rubric: Assertion[] = item.rubric.map((criterion) => ({
     type: "g-eval",
     value: `${criterion.criterion}: ${criterion.levels}\n\nReference answer for grading:\n{{reference}}`,
     weight: criterion.weight,
     metric: criterion.criterion,
     threshold: 0.7,
+    provider: `openai:chat:${judge.model}`,
   }));
   if (providerCount <= 1) {
     return rubric;
@@ -41,9 +43,12 @@ export function buildAssertions(item: CorpusItem, providerCount = 2): Assertion[
 
 export function buildSuite(items: CorpusItem[], options: BuildSuiteOptions): EvaluateTestSuite {
   const judge = options.judge ?? defaultJudge();
+  process.env.OPENAI_BASE_URL ??= judge.apiBaseUrl;
+  process.env.OPENAI_API_KEY ??= judge.apiKey;
   const tests: TestCase[] = items.map((item) => ({
     description: `${item.id} — ${item.title}`,
     vars: {
+      caseId: item.id,
       prompt: item.prompt,
       contextItems: item.context,
       constraints: item.constraints,
@@ -54,8 +59,15 @@ export function buildSuite(items: CorpusItem[], options: BuildSuiteOptions): Eva
   }));
 
   return {
+    writeLatestResults: true,
     providers: options.providers,
-    prompts: ["{{question}}"],
+    prompts: [
+      {
+        id: "corpus-question",
+        label: "Corpus question",
+        raw: "{{question}}",
+      },
+    ],
     defaultTest: {
       options: {
         provider: {

@@ -1,0 +1,28 @@
+id: fleet-parallel
+domain: router
+difficulty: advanced
+title: Fleet parallel route
+prompt: "Use parallel subagents to decompose this large audit across independent modules."
+context: ["The modules can be reviewed independently."]
+constraints: ["Coordinate results before acting."]
+referenceAnswer:
+  recommendation: fleet-parallel
+  rationale: ["The prompt explicitly asks for decomposed parallel subagent work."]
+  strongestObjections: ["If modules are tightly coupled, a single local code change may be safer."]
+  conditions: []
+  viableAlternatives: ["local-code-change"]
+  redFlags: ["Do not duplicate work across agents."]
+  sources: []
+rubric:
+  - criterion: route-match
+    weight: 0.4
+    levels: "Primary route must be fleet-parallel."
+  - criterion: rewrite-present
+    weight: 0.25
+    levels: "Rewrite preserves decomposition."
+  - criterion: harness-fit
+    weight: 0.2
+    levels: "Parallel orchestration ability is selected."
+  - criterion: safety
+    weight: 0.15
+    levels: "Keeps work coordinated."

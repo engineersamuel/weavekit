@@ -244,6 +244,26 @@ mode = "warn"
         { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
       ],
     });
+    expect(config.router.primaryModel).toBe("gpt-5.5");
+    expect(config.router.catalog.map((entry) => entry.route)).toEqual(
+      expect.arrayContaining([
+        "direct-answer",
+        "grill-with-docs",
+        "local-code-change",
+        "decision-council",
+        "source-to-project",
+        "manual-herdr-worktree",
+      ]),
+    );
+    expect(config.router.preferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "ambiguous-prompts-require-grilling",
+          force: true,
+          prefer: expect.objectContaining({ route: "grill-with-docs" }),
+        }),
+      ]),
+    );
     expect(config.sourceToProject.thresholds.minApplicability).toBe(0.7);
     expect(config.sourceToProject.thresholds.minAcceptanceAverage).toBe(0.85);
     expect(config.projects.weavekit).toMatchObject({
@@ -371,6 +391,78 @@ agent_args = ["--allow-all"]
       },
       { id: "copilot", label: "Copilot", agentCommand: "copilot", agentArgs: ["--allow-all"] },
     ]);
+  });
+
+  it("loads router catalog and preference overlays from typed config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[router]
+primary_model = "claude-opus-4.8"
+
+[[router.catalog]]
+id = "custom-local"
+route = "local-code-change"
+harness = "codex-cli"
+ability = "implementation"
+model = "gpt-5.3-codex"
+task_fit = ["code edits"]
+strengths = ["local validation"]
+limitations = ["mutates worktree"]
+source = "test"
+
+[[router.preferences]]
+id = "force-local"
+match = ["fix", "implement"]
+weight = 2.5
+force = true
+rationale = "Prefer local implementation for explicit fix prompts."
+
+[router.preferences.prefer]
+route = "local-code-change"
+harness = "codex-cli"
+ability = "implementation"
+model = "gpt-5.3-codex"
+`,
+      "utf8",
+    );
+
+    const config = loadTypedWeavekitConfig(configPath, {});
+
+    expect(config.router).toEqual({
+      primaryModel: "claude-opus-4.8",
+      catalog: [
+        {
+          id: "custom-local",
+          route: "local-code-change",
+          harness: "codex-cli",
+          ability: "implementation",
+          model: "gpt-5.3-codex",
+          taskFit: ["code edits"],
+          strengths: ["local validation"],
+          limitations: ["mutates worktree"],
+          source: "test",
+        },
+      ],
+      preferences: [
+        {
+          id: "force-local",
+          match: ["fix", "implement"],
+          weight: 2.5,
+          force: true,
+          rationale: "Prefer local implementation for explicit fix prompts.",
+          prefer: {
+            route: "local-code-change",
+            harness: "codex-cli",
+            ability: "implementation",
+            model: "gpt-5.3-codex",
+          },
+        },
+      ],
+    });
   });
 
   it("expands a leading tilde in project working tree paths", async () => {
@@ -540,6 +632,11 @@ directory = "/config/hve-core"
         },
         autoImplementOnReport: false,
       },
+      router: {
+        primaryModel: "gpt-5.5",
+        catalog: [],
+        preferences: [],
+      },
       deepResearch: {
         providers: [
           DeepResearchProvider.GROK,
@@ -646,6 +743,7 @@ max_rounds = -1
       enabled: false,
       maxRounds: 1,
     });
+    expect(config.router.catalog.length).toBeGreaterThanOrEqual(12);
     expect(config.deepResearch).toEqual({
       providers: ["grok", "exa", "copilot-last30days"],
       maxIterations: 3,
