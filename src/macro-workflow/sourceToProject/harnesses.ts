@@ -3613,11 +3613,7 @@ export function createSourceToProjectDynamicExpander(
         ? buildPortfolioPlanNodes(promotedCandidates, planningRoute)
         : [];
     return options.mode === "autonomous-pr"
-      ? [
-          ...opportunityNodes,
-          ...portfolioNodes,
-          ...buildAutonomousPrNodes(promotedCandidates.map(({ acceptance }) => acceptance)),
-        ]
+      ? [...opportunityNodes, ...portfolioNodes, ...buildAutonomousPrNodes()]
       : [...opportunityNodes, ...portfolioNodes];
   };
 }
@@ -4064,10 +4060,7 @@ function buildPortfolioPlanNodes(
   ];
 }
 
-function buildAutonomousPrNodes(accepted: OpportunityAcceptance[]): RuntimeWorkflowNode[] {
-  const reviewNodeIds = accepted.map(
-    (acceptance) => `review-opportunity-${toNodeIdPart(acceptance.id)}`,
-  );
+function buildAutonomousPrNodes(): RuntimeWorkflowNode[] {
   const needsChanges = {
     nodeId: "review-implementation",
     key: "implementationReviewVerdict.status",
