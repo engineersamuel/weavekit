@@ -22,7 +22,7 @@ import type { BamlRuntime, FunctionResult, BamlCtxManager, Image, Audio, Pdf, Vi
 import { toBamlError, BamlAbortError, ClientRegistry, type HTTPRequest } from "@boundaryml/baml"
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type * as types from "./types.js"
-import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
+import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, LinearTicketInput, MastermindAction, MastermindNextActionDecision, MastermindProjectPolicyInput, MastermindReviewDecisionContext, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PostImplementationReview, PostImplementationReviewDossier, PostImplementationReviewFinding, PostImplementationReviewVerdict, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, ProjectRepositoryMode, ProposedLinearTicketPatch, RawPersonaResult, RepositoryEvidenceType, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, ReviewEvidenceKind, ReviewOpenItemDisposition, ReviewOpenItemKind, ReviewOpenItemOwner, ReviewReadiness, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, TicketKind, TicketReviewDossier, TicketReviewEvidence, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { HttpRequest, HttpStreamRequest } from "./sync_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -192,6 +192,56 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.RoundAssessment
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  AssessPostImplementationReview(
+      ticket: types.LinearTicketInput,dossier: types.PostImplementationReviewDossier,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.PostImplementationReview {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "AssessPostImplementationReview",
+        {
+          "ticket": ticket,"dossier": dossier
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.PostImplementationReview
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -492,6 +542,56 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.CouncilReport
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideNextAction(
+      ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,review: types.MastermindReviewDecisionContext,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.MastermindNextActionDecision {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "DecideNextAction",
+        {
+          "ticket": ticket,"project": project,"review": review
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.MastermindNextActionDecision
     } catch (error: any) {
       throw toBamlError(error);
     }
@@ -1692,6 +1792,56 @@ export class BamlSyncClient {
         __options__.watchers,
       )
       return __raw__.parsed(false) as types.RouterResult
+    } catch (error: any) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SynthesizeLinearTicketPatch(
+      ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,dossier: types.TicketReviewDossier,
+      __baml_options__?: BamlCallOptions<never>
+  ): types.ProposedLinearTicketPatch {
+    try {
+      const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+      const __signal__ = __options__.signal;
+
+      if (__signal__?.aborted) {
+        throw new BamlAbortError('Operation was aborted', __signal__.reason);
+      }
+
+      // Check if onTick is provided and reject for sync operations
+      if (__options__.onTick) {
+        throw new Error("onTick is not supported for synchronous functions. Please use the async client instead.");
+      }
+
+      const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector : [__options__.collector]) : [];
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __options__.clientRegistry;
+      if (__options__.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__options__.client);
+      }
+
+      const __raw__ = this.runtime.callFunctionSync(
+        "SynthesizeLinearTicketPatch",
+        {
+          "ticket": ticket,"project": project,"dossier": dossier
+        },
+        this.ctxManager.cloneContext(),
+        __options__.tb?.__tb(),
+        __clientRegistry__,
+        __collector__,
+        __options__.tags || {},
+        __env__,
+        __signal__,
+        __options__.watchers,
+      )
+      return __raw__.parsed(false) as types.ProposedLinearTicketPatch
     } catch (error: any) {
       throw toBamlError(error);
     }

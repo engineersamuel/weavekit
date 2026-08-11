@@ -24,7 +24,7 @@ import { toBamlError, BamlStream, BamlAbortError, Collector, ClientRegistry } fr
 import type { Checked, Check, RecursivePartialNull as MovedRecursivePartialNull } from "./types.js"
 import type { partial_types } from "./partial_types.js"
 import type * as types from "./types.js"
-import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
+import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, LinearTicketInput, MastermindAction, MastermindNextActionDecision, MastermindProjectPolicyInput, MastermindReviewDecisionContext, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PostImplementationReview, PostImplementationReviewDossier, PostImplementationReviewFinding, PostImplementationReviewVerdict, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, ProjectRepositoryMode, ProposedLinearTicketPatch, RawPersonaResult, RepositoryEvidenceType, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, ReviewEvidenceKind, ReviewOpenItemDisposition, ReviewOpenItemKind, ReviewOpenItemOwner, ReviewReadiness, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, TicketKind, TicketReviewDossier, TicketReviewEvidence, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import { AsyncHttpRequest, AsyncHttpStreamRequest } from "./async_request.js"
 import { LlmResponseParser, LlmStreamParser } from "./parser.js"
@@ -204,6 +204,62 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             __options__.watchers,
             )
             return __raw__.parsed(false) as types.RoundAssessment
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
+        async AssessPostImplementationReview(
+        ticket: types.LinearTicketInput,dossier: types.PostImplementationReviewDossier,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.PostImplementationReview> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.AssessPostImplementationReview(
+          ticket,dossier,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "AssessPostImplementationReview",
+            {
+            "ticket": ticket,"dossier": dossier
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.PostImplementationReview
             } catch (error) {
             throw toBamlError(error);
             }
@@ -540,6 +596,62 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             __options__.watchers,
             )
             return __raw__.parsed(false) as types.CouncilReport
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
+        async DecideNextAction(
+        ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,review: types.MastermindReviewDecisionContext,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.MastermindNextActionDecision> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.DecideNextAction(
+          ticket,project,review,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "DecideNextAction",
+            {
+            "ticket": ticket,"project": project,"review": review
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.MastermindNextActionDecision
             } catch (error) {
             throw toBamlError(error);
             }
@@ -1889,6 +2001,62 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
             }
             
+        async SynthesizeLinearTicketPatch(
+        ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,dossier: types.TicketReviewDossier,
+        __baml_options__?: BamlCallOptions<never>
+        ): Promise<types.ProposedLinearTicketPatch> {
+          try {
+          const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+          const __signal__ = __options__.signal;
+
+          if (__signal__?.aborted) {
+          throw new BamlAbortError('Operation was aborted', __signal__.reason);
+          }
+
+          // Check if onTick is provided - route through streaming if so
+          if (__options__.onTick) {
+          const __stream__ = this.stream.SynthesizeLinearTicketPatch(
+          ticket,project,dossier,
+          __baml_options__
+          );
+
+          return await __stream__.getFinalResponse();
+          }
+
+          const __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+          [__options__.collector]) : [];
+          const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+          const __env__: Record<string, string> = Object.fromEntries(
+            Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+            );
+
+            // Resolve client option to clientRegistry (client takes precedence)
+            let __clientRegistry__ = __options__.clientRegistry;
+            if (__options__.client) {
+              __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+              __clientRegistry__.setPrimary(__options__.client);
+            }
+
+            const __raw__ = await this.runtime.callFunction(
+            "SynthesizeLinearTicketPatch",
+            {
+            "ticket": ticket,"project": project,"dossier": dossier
+            },
+            this.ctxManager.cloneContext(),
+            __options__.tb?.__tb(),
+            __clientRegistry__,
+            __collector__,
+            __options__.tags || {},
+            __env__,
+            __signal__,
+            __options__.watchers,
+            )
+            return __raw__.parsed(false) as types.ProposedLinearTicketPatch
+            } catch (error) {
+            throw toBamlError(error);
+            }
+            }
+            
             }
 
             class BamlStreamClient {
@@ -2043,6 +2211,80 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   __raw__,
                   (a): partial_types.RoundAssessment => a,
                   (a): types.RoundAssessment => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            AssessPostImplementationReview(
+            ticket: types.LinearTicketInput,dossier: types.PostImplementationReviewDossier,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.PostImplementationReview, types.PostImplementationReview>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for AssessPostImplementationReview", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "AssessPostImplementationReview",
+                {
+                "ticket": ticket,"dossier": dossier
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.PostImplementationReview, types.PostImplementationReview>(
+                  __raw__,
+                  (a): partial_types.PostImplementationReview => a,
+                  (a): types.PostImplementationReview => a,
                   this.ctxManager.cloneContext(),
                   __options__.signal,
                   )
@@ -2487,6 +2729,80 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   __raw__,
                   (a): partial_types.CouncilReport => a,
                   (a): types.CouncilReport => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            DecideNextAction(
+            ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,review: types.MastermindReviewDecisionContext,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.MastermindNextActionDecision, types.MastermindNextActionDecision>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for DecideNextAction", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "DecideNextAction",
+                {
+                "ticket": ticket,"project": project,"review": review
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.MastermindNextActionDecision, types.MastermindNextActionDecision>(
+                  __raw__,
+                  (a): partial_types.MastermindNextActionDecision => a,
+                  (a): types.MastermindNextActionDecision => a,
                   this.ctxManager.cloneContext(),
                   __options__.signal,
                   )
@@ -4263,6 +4579,80 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   __raw__,
                   (a): partial_types.RouterResult => a,
                   (a): types.RouterResult => a,
+                  this.ctxManager.cloneContext(),
+                  __options__.signal,
+                  )
+                  } catch (error) {
+                  throw toBamlError(error);
+                  }
+                  }
+                  
+            SynthesizeLinearTicketPatch(
+            ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,dossier: types.TicketReviewDossier,
+            __baml_options__?: BamlCallOptions<never>
+            ): BamlStream<partial_types.ProposedLinearTicketPatch, types.ProposedLinearTicketPatch>
+              {
+              try {
+              const __options__ = { ...this.bamlOptions, ...(__baml_options__ || {}) }
+              const __signal__ = __options__.signal;
+
+              if (__signal__?.aborted) {
+              throw new BamlAbortError('Operation was aborted', __signal__.reason);
+              }
+
+              let __collector__ = __options__.collector ? (Array.isArray(__options__.collector) ? __options__.collector :
+              [__options__.collector]) : [];
+
+              let __onTickWrapper__: (() => void) | undefined;
+
+              // Create collector and wrap onTick if provided
+              if (__options__.onTick) {
+              const __tickCollector__ = new Collector("on-tick-collector");
+              __collector__ = [...__collector__, __tickCollector__];
+
+              __onTickWrapper__ = () => {
+              const __log__ = __tickCollector__.last;
+              if (__log__) {
+              try {
+              __options__.onTick!("Unknown", __log__);
+              } catch (error) {
+              console.error("Error in onTick callback for SynthesizeLinearTicketPatch", error);
+              }
+              }
+              };
+              }
+
+              const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+              const __env__: Record<string, string> = Object.fromEntries(
+                Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+                );
+
+                // Resolve client option to clientRegistry (client takes precedence)
+                let __clientRegistry__ = __options__.clientRegistry;
+                if (__options__.client) {
+                  __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+                  __clientRegistry__.setPrimary(__options__.client);
+                }
+
+                const __raw__ = this.runtime.streamFunction(
+                "SynthesizeLinearTicketPatch",
+                {
+                "ticket": ticket,"project": project,"dossier": dossier
+                },
+                undefined,
+                this.ctxManager.cloneContext(),
+                __options__.tb?.__tb(),
+                __clientRegistry__,
+                __collector__,
+                __options__.tags || {},
+                __env__,
+                __signal__,
+                __onTickWrapper__,
+                )
+                return new BamlStream<partial_types.ProposedLinearTicketPatch, types.ProposedLinearTicketPatch>(
+                  __raw__,
+                  (a): partial_types.ProposedLinearTicketPatch => a,
+                  (a): types.ProposedLinearTicketPatch => a,
                   this.ctxManager.cloneContext(),
                   __options__.signal,
                   )

@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  PlanCriterionAssessment,  PlanRequirementAssessment,  PortfolioCoverageAssessment,  PortfolioCoverageAudit,  PortfolioCoverageClaim,  PortfolioPlanDraft,  PracticeApplicabilityAssessment,  ProjectApplicabilityMatrix,  ProjectBrief,  RawPersonaResult,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  RoundAssessment,  RouterHandoff,  RouterRecommendation,  RouterResult,  RouterRoute,  RouterRouteScore,  RoutingDecision,  SourceAnalysis,  SourcePractice,  SourcePracticeDraft,  SourcePracticeLedger,  SourcePracticeLedgerDraft,  SourceToProjectPairwiseJudgment,  SourceToProjectPlanJudgment,  SpecializedObligationAssessment,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  LinearTicketInput,  MastermindAction,  MastermindNextActionDecision,  MastermindProjectPolicyInput,  MastermindReviewDecisionContext,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  PlanCriterionAssessment,  PlanRequirementAssessment,  PortfolioCoverageAssessment,  PortfolioCoverageAudit,  PortfolioCoverageClaim,  PortfolioPlanDraft,  PostImplementationReview,  PostImplementationReviewDossier,  PostImplementationReviewFinding,  PostImplementationReviewVerdict,  PracticeApplicabilityAssessment,  ProjectApplicabilityMatrix,  ProjectBrief,  ProjectRepositoryMode,  ProposedLinearTicketPatch,  RawPersonaResult,  RepositoryEvidenceType,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  ReviewEvidenceKind,  ReviewOpenItemDisposition,  ReviewOpenItemKind,  ReviewOpenItemOwner,  ReviewReadiness,  RoundAssessment,  RouterHandoff,  RouterRecommendation,  RouterResult,  RouterRoute,  RouterRouteScore,  RoutingDecision,  SourceAnalysis,  SourcePractice,  SourcePracticeDraft,  SourcePracticeLedger,  SourcePracticeLedgerDraft,  SourceToProjectPairwiseJudgment,  SourceToProjectPlanJudgment,  SpecializedObligationAssessment,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  TicketKind,  TicketReviewDossier,  TicketReviewEvidence,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -176,6 +176,42 @@ export namespace partial_types {
       status?: "accepted" | "needs_changes" | null
       blockingFindings: string[]
       rationale?: string | null
+    }
+    export interface LinearTicketInput {
+      id?: string | null
+      identifier?: string | null
+      title?: string | null
+      description?: string | null
+      labels: string[]
+      status?: string | null
+      projectId?: string | null
+      teamId?: string | null
+    }
+    export interface MastermindNextActionDecision {
+      action?: types.MastermindAction | null
+      rationale?: string | null
+      prerequisites: string[]
+      policyEvidence: string[]
+      suggestedExecutorShape?: string | null
+      confidence?: number | null
+    }
+    export interface MastermindProjectPolicyInput {
+      id?: string | null
+      displayName?: string | null
+      repositoryMode?: types.ProjectRepositoryMode | null
+      repositoryPath?: string | null
+      provisioningRoot?: string | null
+      allowedActions: types.MastermindAction[]
+    }
+    export interface MastermindReviewDecisionContext {
+      hasCurrentReview?: boolean | null
+      readiness?: types.ReviewReadiness | null
+      requiresHumanApproval?: boolean | null
+      blockingReasons: string[]
+      warnings: string[]
+      unansweredQuestions: string[]
+      openItemDispositions: ReviewOpenItemDisposition[]
+      reviewConfidence?: number | null
     }
     export interface ModeTemplatePolicy {
       mode?: "advisory" | "autonomous-pr" | null
@@ -344,6 +380,33 @@ export namespace partial_types {
       markdown?: string | null
       coverageClaims: PortfolioCoverageClaim[]
     }
+    export interface PostImplementationReview {
+      verdict?: types.PostImplementationReviewVerdict | null
+      summary?: string | null
+      acceptanceCriteriaCoverage: string[]
+      verificationAssessment: string[]
+      manualVerification: string[]
+      findings: PostImplementationReviewFinding[]
+      knownRisks: string[]
+      unansweredQuestions: string[]
+      confidence?: number | null
+    }
+    export interface PostImplementationReviewDossier {
+      summary?: string | null
+      acceptanceCriteriaCoverage: string[]
+      verificationAssessment: string[]
+      manualVerification: string[]
+      findings: PostImplementationReviewFinding[]
+      knownRisks: string[]
+      unansweredQuestions: string[]
+      confidence?: number | null
+    }
+    export interface PostImplementationReviewFinding {
+      severity?: "BLOCKING" | "IMPORTANT" | "SUGGESTION" | null
+      summary?: string | null
+      evidence: string[]
+      remediation?: string | null
+    }
     export interface PracticeApplicabilityAssessment {
       practiceId?: string | null
       status?: "applicable" | "partial" | "not-applicable" | "unknown" | null
@@ -373,6 +436,33 @@ export namespace partial_types {
       risks: string[]
       evidence: EvidenceReference[]
     }
+    export interface ProposedLinearTicketPatch {
+      proposedTitle?: string | null
+      proposedDescriptionMarkdown?: string | null
+      ticketKind?: types.TicketKind | null
+      preservedIntent?: string | null
+      acceptanceCriteria: string[]
+      assumptions: string[]
+      ambiguities: string[]
+      unansweredQuestions: string[]
+      openItemDispositions: ReviewOpenItemDisposition[]
+      dependencies: string[]
+      risks: string[]
+      automatedVerification: string[]
+      manualVerification: string[]
+      validationSteps: string[]
+      observability: string[]
+      rolloutPlan: string[]
+      rollbackPlan: string[]
+      outOfScope: string[]
+      evidence: TicketReviewEvidence[]
+      readiness?: types.ReviewReadiness | null
+      blockingReasons: string[]
+      warnings: string[]
+      materialScopeChange?: boolean | null
+      requiresHumanApproval?: boolean | null
+      confidence?: number | null
+    }
     export interface RawPersonaResult {
       personaId?: string | null
       text?: string | null
@@ -395,6 +485,12 @@ export namespace partial_types {
     export interface ResearchQuestionSet {
       iteration?: number | null
       questions: DeepResearchQuestion[]
+    }
+    export interface ReviewOpenItemDisposition {
+      kind?: types.ReviewOpenItemKind | null
+      text?: string | null
+      owner?: types.ReviewOpenItemOwner | null
+      rationale?: string | null
     }
     export interface RoundAssessment {
       roundNumber?: number | null
@@ -561,6 +657,41 @@ export namespace partial_types {
       idealFeatures: string[]
       mustPreserve: string[]
       failureModes: string[]
+    }
+    export interface TicketReviewDossier {
+      ticketKind?: types.TicketKind | null
+      preservedIntent?: string | null
+      summary?: string | null
+      repositoryEvidence: TicketReviewEvidence[]
+      linearEvidence: TicketReviewEvidence[]
+      externalEvidence: TicketReviewEvidence[]
+      assumptions: string[]
+      ambiguities: string[]
+      unansweredQuestions: string[]
+      risks: string[]
+      dependencies: string[]
+      suggestedAcceptanceCriteria: string[]
+      automatedVerification: string[]
+      manualVerification: string[]
+      validationSteps: string[]
+      observability: string[]
+      rolloutPlan: string[]
+      rollbackPlan: string[]
+      outOfScope: string[]
+      materialScopeChange?: boolean | null
+      confidence?: number | null
+    }
+    export interface TicketReviewEvidence {
+      id?: string | null
+      kind?: types.ReviewEvidenceKind | null
+      locator?: string | null
+      repositoryEvidenceType?: types.RepositoryEvidenceType | null
+      repositoryPath?: string | null
+      repositoryLine?: number | null
+      repositorySymbol?: string | null
+      repositoryQuery?: string | null
+      claim?: string | null
+      confidence?: number | null
     }
     export interface VerificationAudit {
       projectId?: string | null

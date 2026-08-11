@@ -47,6 +47,56 @@ export function all_succeeded<CheckName extends string>(checks: Record<CheckName
 export function get_checks<CheckName extends string>(checks: Record<CheckName, Check>): Check[] {
     return Object.values(checks)
 }
+export enum MastermindAction {
+  REVIEW_TICKET = "REVIEW_TICKET",
+  IMPLEMENT_DIRECTLY = "IMPLEMENT_DIRECTLY",
+  DELEGATE_SUBMIND = "DELEGATE_SUBMIND",
+  WAIT = "WAIT",
+  NEEDS_HUMAN = "NEEDS_HUMAN",
+  IGNORE = "IGNORE",
+}
+
+export enum PostImplementationReviewVerdict {
+  PASS = "PASS",
+  CHANGES_REQUIRED = "CHANGES_REQUIRED",
+  NEEDS_HUMAN = "NEEDS_HUMAN",
+}
+
+export enum ProjectRepositoryMode {
+  EXISTING_REPOSITORY = "EXISTING_REPOSITORY",
+  GREENFIELD = "GREENFIELD",
+}
+
+export enum RepositoryEvidenceType {
+  FILE = "FILE",
+  SYMBOL = "SYMBOL",
+  SEARCH = "SEARCH",
+}
+
+export enum ReviewEvidenceKind {
+  REPOSITORY = "REPOSITORY",
+  LINEAR = "LINEAR",
+  EXTERNAL = "EXTERNAL",
+}
+
+export enum ReviewOpenItemKind {
+  UNANSWERED_QUESTION = "UNANSWERED_QUESTION",
+  BLOCKING_REASON = "BLOCKING_REASON",
+}
+
+export enum ReviewOpenItemOwner {
+  HUMAN = "HUMAN",
+  EXECUTOR_PREFLIGHT = "EXECUTOR_PREFLIGHT",
+  IMPLEMENTATION_DISCOVERY = "IMPLEMENTATION_DISCOVERY",
+  EXTERNAL_DEPENDENCY = "EXTERNAL_DEPENDENCY",
+}
+
+export enum ReviewReadiness {
+  READY = "READY",
+  READY_WITH_NONBLOCKING_GAPS = "READY_WITH_NONBLOCKING_GAPS",
+  BLOCKED = "BLOCKED",
+}
+
 export enum RouterRoute {
   DirectAnswer = "DirectAnswer",
   RefinePrompt = "RefinePrompt",
@@ -60,6 +110,14 @@ export enum RouterRoute {
   DecisionCouncil = "DecisionCouncil",
   SourceToProject = "SourceToProject",
   ManualHerdrWorktree = "ManualHerdrWorktree",
+}
+
+export enum TicketKind {
+  USER_STORY = "USER_STORY",
+  BUG = "BUG",
+  TECHNICAL_TASK = "TECHNICAL_TASK",
+  SPIKE = "SPIKE",
+  OPERATIONAL = "OPERATIONAL",
 }
 
 export interface AdoptionTask {
@@ -236,6 +294,50 @@ export interface ImplementationReviewVerdict {
   status: "accepted" | "needs_changes"
   blockingFindings: string[]
   rationale: string
+  
+}
+
+export interface LinearTicketInput {
+  id: string
+  identifier: string
+  title: string
+  description: string
+  labels: string[]
+  status: string
+  projectId?: string | null
+  teamId: string
+  
+}
+
+export interface MastermindNextActionDecision {
+  action: MastermindAction
+  rationale: string
+  prerequisites: string[]
+  policyEvidence: string[]
+  suggestedExecutorShape?: string | null
+  confidence: number
+  
+}
+
+export interface MastermindProjectPolicyInput {
+  id: string
+  displayName: string
+  repositoryMode: ProjectRepositoryMode
+  repositoryPath?: string | null
+  provisioningRoot?: string | null
+  allowedActions: MastermindAction[]
+  
+}
+
+export interface MastermindReviewDecisionContext {
+  hasCurrentReview: boolean
+  readiness?: ReviewReadiness | null
+  requiresHumanApproval: boolean
+  blockingReasons: string[]
+  warnings: string[]
+  unansweredQuestions: string[]
+  openItemDispositions: ReviewOpenItemDisposition[]
+  reviewConfidence?: number | null
   
 }
 
@@ -444,6 +546,39 @@ export interface PortfolioPlanDraft {
   
 }
 
+export interface PostImplementationReview {
+  verdict: PostImplementationReviewVerdict
+  summary: string
+  acceptanceCriteriaCoverage: string[]
+  verificationAssessment: string[]
+  manualVerification: string[]
+  findings: PostImplementationReviewFinding[]
+  knownRisks: string[]
+  unansweredQuestions: string[]
+  confidence: number
+  
+}
+
+export interface PostImplementationReviewDossier {
+  summary: string
+  acceptanceCriteriaCoverage: string[]
+  verificationAssessment: string[]
+  manualVerification: string[]
+  findings: PostImplementationReviewFinding[]
+  knownRisks: string[]
+  unansweredQuestions: string[]
+  confidence: number
+  
+}
+
+export interface PostImplementationReviewFinding {
+  severity: "BLOCKING" | "IMPORTANT" | "SUGGESTION"
+  summary: string
+  evidence: string[]
+  remediation?: string | null
+  
+}
+
 export interface PracticeApplicabilityAssessment {
   practiceId: string
   status: "applicable" | "partial" | "not-applicable" | "unknown"
@@ -479,6 +614,35 @@ export interface ProjectBrief {
   
 }
 
+export interface ProposedLinearTicketPatch {
+  proposedTitle: string
+  proposedDescriptionMarkdown: string
+  ticketKind: TicketKind
+  preservedIntent: string
+  acceptanceCriteria: string[]
+  assumptions: string[]
+  ambiguities: string[]
+  unansweredQuestions: string[]
+  openItemDispositions: ReviewOpenItemDisposition[]
+  dependencies: string[]
+  risks: string[]
+  automatedVerification: string[]
+  manualVerification: string[]
+  validationSteps: string[]
+  observability: string[]
+  rolloutPlan: string[]
+  rollbackPlan: string[]
+  outOfScope: string[]
+  evidence: TicketReviewEvidence[]
+  readiness: ReviewReadiness
+  blockingReasons: string[]
+  warnings: string[]
+  materialScopeChange: boolean
+  requiresHumanApproval: boolean
+  confidence: number
+  
+}
+
 export interface RawPersonaResult {
   personaId: string
   text: string
@@ -507,6 +671,14 @@ export interface ResearchQuestionCoverage {
 export interface ResearchQuestionSet {
   iteration: number
   questions: DeepResearchQuestion[]
+  
+}
+
+export interface ReviewOpenItemDisposition {
+  kind: ReviewOpenItemKind
+  text: string
+  owner: ReviewOpenItemOwner
+  rationale: string
   
 }
 
@@ -709,6 +881,45 @@ export interface TemplateOptimizationFixture {
   idealFeatures: string[]
   mustPreserve: string[]
   failureModes: string[]
+  
+}
+
+export interface TicketReviewDossier {
+  ticketKind: TicketKind
+  preservedIntent: string
+  summary: string
+  repositoryEvidence: TicketReviewEvidence[]
+  linearEvidence: TicketReviewEvidence[]
+  externalEvidence: TicketReviewEvidence[]
+  assumptions: string[]
+  ambiguities: string[]
+  unansweredQuestions: string[]
+  risks: string[]
+  dependencies: string[]
+  suggestedAcceptanceCriteria: string[]
+  automatedVerification: string[]
+  manualVerification: string[]
+  validationSteps: string[]
+  observability: string[]
+  rolloutPlan: string[]
+  rollbackPlan: string[]
+  outOfScope: string[]
+  materialScopeChange: boolean
+  confidence: number
+  
+}
+
+export interface TicketReviewEvidence {
+  id: string
+  kind: ReviewEvidenceKind
+  locator?: string | null
+  repositoryEvidenceType?: RepositoryEvidenceType | null
+  repositoryPath?: string | null
+  repositoryLine?: number | null
+  repositorySymbol?: string | null
+  repositoryQuery?: string | null
+  claim: string
+  confidence: number
   
 }
 

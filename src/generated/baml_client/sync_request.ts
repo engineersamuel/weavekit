@@ -22,7 +22,7 @@ import type { BamlRuntime, BamlCtxManager, Image, Audio, Pdf, Video } from "@bou
 import { toBamlError, HTTPRequest, ClientRegistry } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
 import type * as types from "./types.js"
-import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, RawPersonaResult, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
+import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, LinearTicketInput, MastermindAction, MastermindNextActionDecision, MastermindProjectPolicyInput, MastermindReviewDecisionContext, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PostImplementationReview, PostImplementationReviewDossier, PostImplementationReviewFinding, PostImplementationReviewVerdict, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, ProjectRepositoryMode, ProposedLinearTicketPatch, RawPersonaResult, RepositoryEvidenceType, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, ReviewEvidenceKind, ReviewOpenItemDisposition, ReviewOpenItemKind, ReviewOpenItemOwner, ReviewReadiness, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, TicketKind, TicketReviewDossier, TicketReviewEvidence, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 import type * as events from "./events.js"
 
@@ -92,6 +92,39 @@ export class HttpRequest {
         "AssessCouncilRound",
         {
           "roundNumber": roundNumber,"critiques": critiques,"failures": failures
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        false,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  AssessPostImplementationReview(
+      ticket: types.LinearTicketInput,dossier: types.PostImplementationReviewDossier,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "AssessPostImplementationReview",
+        {
+          "ticket": ticket,"dossier": dossier
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -290,6 +323,39 @@ export class HttpRequest {
         "CreateCouncilReport",
         {
           "critiques": critiques,"assessments": assessments,"failures": failures
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        false,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideNextAction(
+      ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,review: types.MastermindReviewDecisionContext,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "DecideNextAction",
+        {
+          "ticket": ticket,"project": project,"review": review
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -1082,6 +1148,39 @@ export class HttpRequest {
         "RoutePrompt",
         {
           "userPrompt": userPrompt,"routeTaxonomy": routeTaxonomy,"capabilityCatalogJson": capabilityCatalogJson,"preferenceOverlayJson": preferenceOverlayJson
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        false,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SynthesizeLinearTicketPatch(
+      ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,dossier: types.TicketReviewDossier,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "SynthesizeLinearTicketPatch",
+        {
+          "ticket": ticket,"project": project,"dossier": dossier
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -1166,6 +1265,39 @@ export class HttpStreamRequest {
     }
   }
   
+  AssessPostImplementationReview(
+      ticket: types.LinearTicketInput,dossier: types.PostImplementationReviewDossier,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "AssessPostImplementationReview",
+        {
+          "ticket": ticket,"dossier": dossier
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        true,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   AssessResearchIteration(
       questionSet: types.ResearchQuestionSet,evidence: types.DeepResearchEvidence[],priorState: types.DeepResearchPriorState,
       __baml_options__?: BamlCallOptions<never>
@@ -1352,6 +1484,39 @@ export class HttpStreamRequest {
         "CreateCouncilReport",
         {
           "critiques": critiques,"assessments": assessments,"failures": failures
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        true,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DecideNextAction(
+      ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,review: types.MastermindReviewDecisionContext,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "DecideNextAction",
+        {
+          "ticket": ticket,"project": project,"review": review
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -2144,6 +2309,39 @@ export class HttpStreamRequest {
         "RoutePrompt",
         {
           "userPrompt": userPrompt,"routeTaxonomy": routeTaxonomy,"capabilityCatalogJson": capabilityCatalogJson,"preferenceOverlayJson": preferenceOverlayJson
+        },
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __clientRegistry__,
+        true,
+        __env__,
+      )
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  SynthesizeLinearTicketPatch(
+      ticket: types.LinearTicketInput,project: types.MastermindProjectPolicyInput,dossier: types.TicketReviewDossier,
+      __baml_options__?: BamlCallOptions<never>
+  ): HTTPRequest {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+
+      // Resolve client option to clientRegistry (client takes precedence)
+      let __clientRegistry__ = __baml_options__?.clientRegistry;
+      if (__baml_options__?.client) {
+        __clientRegistry__ = __clientRegistry__ || new ClientRegistry();
+        __clientRegistry__.setPrimary(__baml_options__.client);
+      }
+
+      return this.runtime.buildRequestSync(
+        "SynthesizeLinearTicketPatch",
+        {
+          "ticket": ticket,"project": project,"dossier": dossier
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),

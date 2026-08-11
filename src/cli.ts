@@ -5,6 +5,7 @@ import { basename, dirname, join } from "node:path";
 import {
   DeepResearchProvider,
   expandHomePath,
+  loadMastermindRuntimeConfig,
   loadLocalEnvFiles,
   loadTypedWeavekitConfig,
   loadWeavekitConfig,
@@ -55,6 +56,11 @@ export type EntityCliArgs = {
   command: "validate";
 };
 
+export type MastermindCliArgs = {
+  command: "serve";
+  configPath?: string;
+};
+
 export type WorkflowCliArgs = {
   command: "plan" | "run" | "dashboard";
   inputPath?: string;
@@ -96,6 +102,76 @@ export function parseEntityCliArgs(argv: string[]): EntityCliArgs {
     throw new Error("Usage: weavekit entity validate");
   }
   return { command: "validate" };
+}
+
+export function parseMastermindCliArgs(argv: string[]): MastermindCliArgs {
+  if (argv[0] !== "mastermind" || argv[1] !== "serve") {
+    throw new Error("Usage: weavekit mastermind serve [--config <path>]");
+  }
+  const configIndex = argv.indexOf("--config");
+  if (configIndex !== -1 && !argv[configIndex + 1]) {
+    throw new Error("Missing value for --config <path>.");
+  }
+  return {
+    command: "serve",
+    configPath: configIndex === -1 ? undefined : argv[configIndex + 1],
+  };
+}
+
+export async function runMastermindCli(args: MastermindCliArgs): Promise<void> {
+  const { serve } = await import("@hono/node-server");
+  const {
+    createMastermindApp,
+    createMastermindExecutionCoordinator,
+    GeneratedMastermindDecisionProvider,
+    createTicketReviewHarness,
+    LinearGraphQlGateway,
+    MastermindDecisionLoop,
+    MastermindService,
+    SqliteMastermindStore,
+    validateMastermindRuntimeConfig,
+  } = await import("./mastermind/index.js");
+  const config = await loadMastermindRuntimeConfig(args.configPath);
+  validateMastermindRuntimeConfig(config.mastermind, process.env);
+  const store = new SqliteMastermindStore(config.mastermind.sqlitePath);
+  const linear = new LinearGraphQlGateway(process.env.LINEAR_API_KEY!);
+  const decisions = new GeneratedMastermindDecisionProvider(undefined, {
+    synthesisModel: config.mastermind.synthesisModel,
+  });
+  const reviewHarness = createTicketReviewHarness(config);
+  const loop = new MastermindDecisionLoop(config, store, linear, decisions, reviewHarness);
+  const service = new MastermindService(
+    config.mastermind,
+    store,
+    loop,
+    createMastermindExecutionCoordinator(config, store, linear),
+  );
+  await service.start();
+  const app = createMastermindApp({
+    config: config.mastermind,
+    webhookSecret: process.env.LINEAR_WEBHOOK_SECRET!,
+    store,
+    service,
+  });
+  const server = serve({
+    fetch: app.fetch,
+    hostname: config.mastermind.host,
+    port: config.mastermind.port,
+  });
+  process.stdout.write(
+    `weavekit-mastermind listening on http://${config.mastermind.host}:${config.mastermind.port}\n`,
+  );
+  await new Promise<void>((resolve) => {
+    let stopping = false;
+    const stop = () => {
+      if (stopping) return;
+      stopping = true;
+      server.close(() => resolve());
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+  });
+  await service.stop();
 }
 
 export async function runEntityCli(_args: EntityCliArgs): Promise<string> {
@@ -1953,6 +2029,8 @@ export async function main(): Promise<void> {
       const entityArgs = parseEntityCliArgs(argv);
       const message = await runEntityCli(entityArgs);
       process.stdout.write(message);
+    } else if (argv[0] === "mastermind") {
+      await runMastermindCli(parseMastermindCliArgs(argv));
     } else {
       const { createSmokeModelRouter } = await import("./decision-council/modelRouter.js");
       const { runDecisionCouncil } = await import("./decision-council/runner.js");

@@ -8,6 +8,29 @@ node = "24"
 description = "Validate workflow entity manifests, prompt references, BAML outputs, and skill capabilities."
 run = "nub src/cli.ts entity validate"
 
+[tasks."mastermind:live"]
+description = "Start Mastermind through a Cloudflare Quick Tunnel and review one selected Linear ticket."
+env = { BAML_LOG = "warn" }
+run = "nub scripts/mastermind-live.ts"
+
+[tasks."mastermind:execute-one"]
+description = "Resume or launch one ready Mastermind direct execution, reconcile it to a projected terminal outcome, then exit."
+env = { BAML_LOG = "warn" }
+run = "nub scripts/mastermind-execute-one.ts"
+
+[tasks."mastermind:attach"]
+description = "Focus or attach to the Herdr agent for a Mastermind ticket, work item, issue, or attempt."
+run = "nub scripts/mastermind-attach.ts"
+
+[tasks."mastermind:review-one"]
+description = "Run the independent post-implementation review for one successful Mastermind execution."
+env = { BAML_LOG = "warn" }
+run = "nub scripts/mastermind-review-one.ts"
+
+[tasks."mastermind:accept"]
+description = "Record human acceptance for reviewed Mastermind work and move its Linear ticket to Done."
+run = "nub scripts/mastermind-accept.ts"
+
 [tasks."doctor:sdk"]
 description = "Validate configured entity skills against a live Copilot SDK session."
 run = "nub scripts/entity-sdk-doctor.ts"
