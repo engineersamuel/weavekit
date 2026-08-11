@@ -1,16 +1,25 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DeepResearchProvider,
+  MastermindHarnessTransport,
+  ProjectRepositoryMode,
   defaultCacheConfig,
   expandHomePath,
   loadLocalEnvFiles,
+  loadMastermindRuntimeConfig,
   loadTypedWeavekitConfig,
   loadWeavekitConfig,
   resolveProjectCatalogEntry,
 } from "../src/config.js";
+import {
+  DEFAULT_MASTERMIND_LIVE_BAML_MODEL,
+  DEFAULT_MASTERMIND_LIVE_PROXY_BASE_URL,
+  applyMastermindLiveEnvironmentDefaults,
+} from "../src/mastermind/liveEnv.js";
+import { ExecutorKind } from "../src/submind/contracts.js";
 
 const tempDirs: string[] = [];
 
@@ -24,6 +33,161 @@ afterEach(async () => {
 });
 
 describe("weavekit config loader", () => {
+  it("keeps direct execution disabled until global and project policy explicitly opt in", async () => {
+    expect(
+      loadTypedWeavekitConfig("/path/that/does/not/exist", {}).mastermind.execution,
+    ).toBeUndefined();
+
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[mastermind.execution]
+executor_kind = "herdr-copilot"
+harness_kind = "copilot"
+max_autopilot_continues = 7
+allow_tools = ["write", "shell(git:*)"]
+deny_tools = ["shell(git push)"]
+allow_urls = ["github.com"]
+deny_urls = ["malicious.example"]
+poll_interval_ms = 1000
+unknown_status_threshold = 3
+cancellation_grace_ms = 5000
+prompt_acceptance_timeout_ms = 30000
+max_attempts = 2
+
+[projects.weavekit]
+working_tree = "${process.cwd()}"
+
+[projects.weavekit.execution.direct]
+enabled = true
+allowed_executors = ["herdr-copilot"]
+allowed_pr_hosts = ["github.com"]
+`,
+    );
+
+    const config = loadTypedWeavekitConfig(configPath, {});
+    expect(config.mastermind.execution).toMatchObject({
+      executorKind: ExecutorKind.HERDR_COPILOT,
+      harnessKind: "copilot",
+      maxAutopilotContinues: 7,
+      maxAttempts: 2,
+    });
+    expect(config.projects.weavekit?.directExecution).toEqual({
+      enabled: true,
+      allowedExecutorKinds: [ExecutorKind.HERDR_COPILOT],
+      allowedPullRequestHosts: ["github.com"],
+    });
+  });
+
+  it("loads independent configurable harness commands for each Mastermind phase", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[mastermind.harnesses.ticket_review]
+transport = "copilot-sdk"
+command = "copilot-review"
+args = ["--profile", "ticket"]
+model = "gpt-5.5"
+
+[mastermind.harnesses.implementation]
+transport = "herdr"
+command = "codx"
+args = ["--profile", "implementation"]
+
+[mastermind.harnesses.code_review]
+transport = "command"
+command = "claude-review"
+args = ["--profile", "review", "{prompt}"]
+`,
+    );
+
+    expect(loadTypedWeavekitConfig(configPath, {}).mastermind.harnesses).toEqual({
+      ticketReview: {
+        transport: MastermindHarnessTransport.COPILOT_SDK,
+        command: "copilot-review",
+        args: ["--profile", "ticket"],
+        model: "gpt-5.5",
+      },
+      implementation: {
+        transport: MastermindHarnessTransport.HERDR,
+        command: "codx",
+        args: ["--profile", "implementation"],
+        kind: "copilot",
+      },
+      codeReview: {
+        transport: MastermindHarnessTransport.COMMAND,
+        command: "claude-review",
+        args: ["--profile", "review", "{prompt}"],
+        model: "claude-opus-4.8",
+      },
+    });
+  });
+
+  it("rejects unsafe or incomplete direct execution policy", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[mastermind.execution]
+executor_kind = "herdr-copilot"
+harness_kind = "copilot"
+max_autopilot_continues = 7
+allow_tools = ["--allow-all"]
+poll_interval_ms = 1000
+unknown_status_threshold = 3
+cancellation_grace_ms = 5000
+prompt_acceptance_timeout_ms = 30000
+max_attempts = 0
+`,
+    );
+
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      "mastermind.execution.max_attempts",
+    );
+    await writeFile(
+      configPath,
+      (await readFile(configPath, "utf8")).replace("max_attempts = 0", "max_attempts = 2"),
+    );
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      "prohibited broad permission flag",
+    );
+  });
+
+  it("rejects unknown project executor kinds", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[projects.weavekit.execution.direct]
+enabled = false
+allowed_executors = ["unknown-executor"]
+`,
+    );
+
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      "contains unknown executor unknown-executor",
+    );
+  });
+
+  it("marks non-secret Langfuse settings public in the Varlock schema", async () => {
+    const schema = await readFile(join(process.cwd(), ".env.schema"), "utf8");
+
+    for (const key of ["LANGFUSE_BASE_URL", "LANGFUSE_PROJECT_ID", "LANGFUSE_EXPORT_RAW"]) {
+      expect(schema).toMatch(new RegExp(`# @public\\n${key}=`, "u"));
+    }
+    expect(schema).toMatch(/# @public\nMASTERMIND_SYNTHESIS_MODEL=/u);
+  });
+
   it("loads local .env and .env.fish values without overriding existing env vars", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-env-"));
     tempDirs.push(dir);
@@ -65,20 +229,33 @@ describe("weavekit config loader", () => {
     const configPath = join(dir, "config.toml");
     await writeFile(
       configPath,
-      'COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1"\nBAML_MODEL = "gpt-5-mini"\n',
+      [
+        'COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1"',
+        'BAML_MODEL = "gpt-5-mini"',
+        'LINEAR_API_KEY = "lin_api_test"',
+        'LINEAR_WEBHOOK_SECRET = "webhook_secret_test"',
+      ].join("\n"),
     );
 
     const original = process.env.COPILOT_PROXY_BASE_URL;
+    const originalLinearApiKey = process.env.LINEAR_API_KEY;
+    const originalLinearWebhookSecret = process.env.LINEAR_WEBHOOK_SECRET;
     process.env.COPILOT_PROXY_BASE_URL = "https://existing.example/v1";
+    delete process.env.LINEAR_API_KEY;
+    delete process.env.LINEAR_WEBHOOK_SECRET;
 
     try {
       const loaded = loadWeavekitConfig(configPath, process.env);
       expect(loaded).toEqual({
         COPILOT_PROXY_BASE_URL: "http://127.0.0.1:8080/v1",
         BAML_MODEL: "gpt-5-mini",
+        LINEAR_API_KEY: "lin_api_test",
+        LINEAR_WEBHOOK_SECRET: "webhook_secret_test",
       });
       expect(process.env.COPILOT_PROXY_BASE_URL).toBe("https://existing.example/v1");
       expect(process.env.BAML_MODEL).toBe("gpt-5-mini");
+      expect(process.env.LINEAR_API_KEY).toBe("lin_api_test");
+      expect(process.env.LINEAR_WEBHOOK_SECRET).toBe("webhook_secret_test");
     } finally {
       if (original === undefined) {
         delete process.env.COPILOT_PROXY_BASE_URL;
@@ -86,7 +263,224 @@ describe("weavekit config loader", () => {
         process.env.COPILOT_PROXY_BASE_URL = original;
       }
       delete process.env.BAML_MODEL;
+      if (originalLinearApiKey === undefined) {
+        delete process.env.LINEAR_API_KEY;
+      } else {
+        process.env.LINEAR_API_KEY = originalLinearApiKey;
+      }
+      if (originalLinearWebhookSecret === undefined) {
+        delete process.env.LINEAR_WEBHOOK_SECRET;
+      } else {
+        process.env.LINEAR_WEBHOOK_SECRET = originalLinearWebhookSecret;
+      }
     }
+  });
+
+  it("loads persistent Mastermind webhook and Cloudflare Tunnel settings", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[mastermind]
+public_webhook_url = "https://mastermind.example.com/channels/linear/webhook"
+linear_webhook_id = "webhook-one"
+cloudflare_tunnel = "weavekit-mastermind"
+cloudflare_tunnel_config = "~/.cloudflared/weavekit-mastermind.yml"
+`,
+      "utf8",
+    );
+
+    expect(loadTypedWeavekitConfig(configPath, {}).mastermind).toMatchObject({
+      publicWebhookUrl: "https://mastermind.example.com/channels/linear/webhook",
+      linearWebhookId: "webhook-one",
+      cloudflareTunnel: "weavekit-mastermind",
+      cloudflareTunnelConfig: join(homedir(), ".cloudflared/weavekit-mastermind.yml"),
+    });
+  });
+
+  it("defaults the Mastermind synthesis model to the stable baseline", () => {
+    expect(loadTypedWeavekitConfig("/path/that/does/not/exist", {}).mastermind.synthesisModel).toBe(
+      "gpt-5.5",
+    );
+  });
+
+  it("loads the Mastermind synthesis model from TOML before environment overrides", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[mastermind]
+synthesis_model = "claude-sonnet-5"
+`,
+      "utf8",
+    );
+
+    expect(
+      loadTypedWeavekitConfig(configPath, {
+        MASTERMIND_SYNTHESIS_MODEL: "gemini-3.6-flash",
+      }).mastermind.synthesisModel,
+    ).toBe("claude-sonnet-5");
+  });
+
+  it("loads the Mastermind synthesis model from the environment when TOML omits it", () => {
+    expect(
+      loadTypedWeavekitConfig("/path/that/does/not/exist", {
+        MASTERMIND_SYNTHESIS_MODEL: "gemini-3.6-flash",
+      }).mastermind.synthesisModel,
+    ).toBe("gemini-3.6-flash");
+  });
+
+  it("falls back to BAML_MODEL when Mastermind-specific synthesis config is absent", () => {
+    expect(
+      loadTypedWeavekitConfig("/path/that/does/not/exist", {
+        BAML_MODEL: "claude-sonnet-5",
+      }).mastermind.synthesisModel,
+    ).toBe("claude-sonnet-5");
+  });
+
+  it("loads Varlock overrides before final Mastermind runtime config is constructed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    const env: NodeJS.ProcessEnv = {};
+    await writeFile(
+      configPath,
+      [
+        'LINEAR_API_KEY = "lin_api_test"',
+        'LINEAR_WEBHOOK_SECRET = "webhook_secret_test"',
+        "[mastermind]",
+        'synthesis_model = "gpt-5.5"',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const config = await loadMastermindRuntimeConfig(configPath, env, {
+      loadVarlock: async () => {
+        expect(env.LINEAR_API_KEY).toBe("lin_api_test");
+        expect(env.LINEAR_WEBHOOK_SECRET).toBe("webhook_secret_test");
+        env.MASTERMIND_SYNTHESIS_MODEL = "gemini-3.6-flash";
+      },
+    });
+
+    expect(config.mastermind.synthesisModel).toBe("gpt-5.5");
+    delete env.MASTERMIND_SYNTHESIS_MODEL;
+
+    const fallbackConfig = await loadMastermindRuntimeConfig(configPath, env, {
+      loadVarlock: async () => {
+        delete env.MASTERMIND_SYNTHESIS_MODEL;
+      },
+    });
+    expect(fallbackConfig.mastermind.synthesisModel).toBe("gpt-5.5");
+
+    const envOnlyConfigPath = join(dir, "runtime-config.toml");
+    await writeFile(
+      envOnlyConfigPath,
+      [
+        'LINEAR_API_KEY = "lin_api_test"',
+        'LINEAR_WEBHOOK_SECRET = "webhook_secret_test"',
+        "[mastermind]",
+      ].join("\n"),
+      "utf8",
+    );
+    const envOnlyConfig = await loadMastermindRuntimeConfig(envOnlyConfigPath, env, {
+      loadVarlock: async () => {
+        env.MASTERMIND_SYNTHESIS_MODEL = "gemini-3.6-flash";
+      },
+    });
+    expect(envOnlyConfig.mastermind.synthesisModel).toBe("gemini-3.6-flash");
+  });
+
+  it("preserves configured proxy, key, and model when Mastermind live applies local defaults", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    const env: NodeJS.ProcessEnv = {};
+    await writeFile(
+      configPath,
+      [
+        'COPILOT_PROXY_BASE_URL = "https://config.example/v1"',
+        'COPILOT_PROXY_API_KEY = "config-key"',
+        'BAML_MODEL = "claude-sonnet-5"',
+        'LINEAR_API_KEY = "lin_api_test"',
+        'LINEAR_WEBHOOK_SECRET = "webhook_secret_test"',
+        "[mastermind]",
+        'synthesis_model = "gpt-5.5"',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const config = await loadMastermindRuntimeConfig(configPath, env, {
+      loadVarlock: async () => {},
+    });
+    applyMastermindLiveEnvironmentDefaults(config, env);
+
+    expect(env.COPILOT_PROXY_BASE_URL).toBe("https://config.example/v1");
+    expect(env.COPILOT_PROXY_API_KEY).toBe("config-key");
+    expect(env.BAML_MODEL).toBe("claude-sonnet-5");
+  });
+
+  it("lets caller and Varlock values win before Mastermind live falls back to local defaults", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    const env: NodeJS.ProcessEnv = {
+      COPILOT_PROXY_BASE_URL: "https://caller.example/v1",
+    };
+    await writeFile(
+      configPath,
+      [
+        'COPILOT_PROXY_BASE_URL = "https://config.example/v1"',
+        'COPILOT_PROXY_API_KEY = "config-key"',
+        'BAML_MODEL = "claude-sonnet-5"',
+        'LINEAR_API_KEY = "lin_api_test"',
+        'LINEAR_WEBHOOK_SECRET = "webhook_secret_test"',
+        "[mastermind]",
+        'synthesis_model = "gpt-5.5"',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const config = await loadMastermindRuntimeConfig(configPath, env, {
+      loadVarlock: async () => {
+        env.COPILOT_PROXY_API_KEY = "varlock-key";
+        env.BAML_MODEL = "gemini-3.6-flash";
+      },
+    });
+    applyMastermindLiveEnvironmentDefaults(config, env);
+
+    expect(env.COPILOT_PROXY_BASE_URL).toBe("https://caller.example/v1");
+    expect(env.COPILOT_PROXY_API_KEY).toBe("varlock-key");
+    expect(env.BAML_MODEL).toBe("gemini-3.6-flash");
+  });
+
+  it("fills missing Mastermind live proxy values without deriving BAML_MODEL from synthesis_model", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    const env: NodeJS.ProcessEnv = {};
+    await writeFile(
+      configPath,
+      [
+        'LINEAR_API_KEY = "lin_api_test"',
+        'LINEAR_WEBHOOK_SECRET = "webhook_secret_test"',
+        "[mastermind]",
+        'synthesis_model = "gemini-3.6-flash"',
+      ].join("\n"),
+      "utf8",
+    );
+
+    const config = await loadMastermindRuntimeConfig(configPath, env, {
+      loadVarlock: async () => {},
+    });
+    applyMastermindLiveEnvironmentDefaults(config, env);
+
+    expect(env.COPILOT_PROXY_BASE_URL).toBe(DEFAULT_MASTERMIND_LIVE_PROXY_BASE_URL);
+    expect(env.COPILOT_PROXY_API_KEY).toBe("anything");
+    expect(env.BAML_MODEL).toBe(DEFAULT_MASTERMIND_LIVE_BAML_MODEL);
   });
 
   it("loads source-to-project defaults and named project catalog entries", async () => {
@@ -174,6 +568,10 @@ knowledge_export = "off"
 [projects.weavekit.budget_gate]
 ceiling_usd = 60
 mode = "warn"
+
+[projects.weavekit.execution.azure]
+subscription_id = "subscription-one"
+tenant_id = "tenant-one"
 `,
       "utf8",
     );
@@ -272,6 +670,13 @@ mode = "warn"
       workingTree: "/tmp/weavekit",
       mainline: "origin main",
       validationCommands: ["nub run typecheck", "nub run test"],
+      executionPreflightRequirements: [
+        {
+          kind: "azure-cli",
+          subscriptionId: "subscription-one",
+          tenantId: "tenant-one",
+        },
+      ],
       autonomousPrAllowed: true,
       maxOpportunities: 2,
       notification: "telegram",
@@ -485,6 +890,48 @@ working_tree = "~/projects/personal/weavekit"
     );
   });
 
+  it("loads a greenfield project with a provisioning root", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[projects.prototypes]
+working_tree = "~/projects/prototypes"
+repository_mode = "greenfield"
+provisioning_root = "~/projects/prototypes"
+`,
+      "utf8",
+    );
+
+    const config = loadTypedWeavekitConfig(configPath, {});
+
+    expect(config.projects.prototypes).toMatchObject({
+      repositoryMode: ProjectRepositoryMode.GREENFIELD,
+      provisioningRoot: join(homedir(), "projects/prototypes"),
+    });
+  });
+
+  it("rejects a greenfield project without a provisioning root", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[projects.prototypes]
+working_tree = "~/projects/prototypes"
+repository_mode = "greenfield"
+`,
+      "utf8",
+    );
+
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      "projects.prototypes.provisioning_root must be set for greenfield projects",
+    );
+  });
+
   it("loads and expands the hve-core plugin directory from typed config", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
@@ -605,6 +1052,28 @@ directory = "/config/hve-core"
       flue: {
         model: "anthropic/claude-haiku-4-5",
       },
+      mastermind: {
+        enabled: false,
+        host: "127.0.0.1",
+        port: 8787,
+        sqlitePath: "/tmp/mastermind.sqlite",
+        instanceId: "test-mastermind",
+        webhookPath: "/channels/linear/webhook",
+        synthesisModel: "gpt-5.5",
+        reviewedLabelId: "",
+        reviewedLabelName: "mastermind-reviewed",
+        readyLabelId: "",
+        readyLabelName: "mastermind-ready",
+        needsInputLabelId: "",
+        needsInputLabelName: "mastermind-needs-input",
+        reviewFailedLabelId: "",
+        reviewFailedLabelName: "mastermind-review-failed",
+        leaseDurationMs: 60_000,
+        reconcileIntervalMs: 30_000,
+        maxDecisionIterations: 3,
+        allowedActions: [],
+        projectMappings: [],
+      },
       tooling: {},
       sourceToProject: {
         maxOpportunities: 1,
@@ -687,6 +1156,27 @@ directory = "/config/hve-core"
     expect(resolveProjectCatalogEntry(config, "weavekit").workingTree).toBe("/tmp/weavekit");
     expect(() => resolveProjectCatalogEntry(config, "missing")).toThrow(
       "Unknown project id: missing",
+    );
+  });
+
+  it("rejects Azure execution preflight without a subscription", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    await writeFile(
+      configPath,
+      `
+[projects.prototypes]
+working_tree = "/tmp/prototypes"
+
+[projects.prototypes.execution.azure]
+tenant_id = "tenant-one"
+`,
+      "utf8",
+    );
+
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      "projects.prototypes.execution.azure.subscription_id must be a non-empty string",
     );
   });
 

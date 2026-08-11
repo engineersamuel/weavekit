@@ -2,11 +2,24 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
+import {
+  MastermindAction,
+  type MastermindAction as MastermindActionValue,
+} from "./mastermind/domain/events.js";
+import { ExecutorKind, type ExecutorKind as ExecutorKindValue } from "./submind/contracts.js";
+import { ExecutionPreflightKind, type ExecutionPreflightRequirement } from "./submind/preflight.js";
 
 export type SourceToProjectMode = "advisory" | "autonomous-pr";
 export type VerificationOptimizerMode = "advisory" | "autonomous-pr";
 export type NotificationPolicy = "cli" | "telegram";
 export type KnowledgeExportPolicy = "off" | "sanitized";
+
+export const ProjectRepositoryMode = {
+  EXISTING_REPOSITORY: "EXISTING_REPOSITORY",
+  GREENFIELD: "GREENFIELD",
+} as const;
+export type ProjectRepositoryMode =
+  (typeof ProjectRepositoryMode)[keyof typeof ProjectRepositoryMode];
 
 export const RouterRoute = {
   DIRECT_ANSWER: "direct-answer",
@@ -164,6 +177,96 @@ export type FlueDefaults = {
   model: string;
 };
 
+export type MastermindProjectMapping = {
+  teamId: string;
+  linearProjectId?: string;
+  projectId: string;
+};
+
+export type MastermindExecutionDefaults = {
+  executorKind: ExecutorKindValue;
+  harnessKind: string;
+  harnessCommand?: string;
+  harnessArgs?: string[];
+  maxAutopilotContinues: number;
+  allowTools: string[];
+  denyTools: string[];
+  allowUrls: string[];
+  denyUrls: string[];
+  pollIntervalMs: number;
+  unknownStatusThreshold: number;
+  cancellationGraceMs: number;
+  promptAcceptanceTimeoutMs: number;
+  maxAttempts: number;
+};
+
+export const MastermindHarnessTransport = {
+  COPILOT_SDK: "copilot-sdk",
+  COMMAND: "command",
+  HERDR: "herdr",
+} as const;
+export type MastermindHarnessTransport =
+  (typeof MastermindHarnessTransport)[keyof typeof MastermindHarnessTransport];
+
+export type MastermindHarnessProfile = {
+  transport: MastermindHarnessTransport;
+  command: string;
+  args: string[];
+  kind?: string;
+  model?: string;
+};
+
+export type MastermindHarnessProfiles = {
+  ticketReview: MastermindHarnessProfile;
+  implementation: MastermindHarnessProfile;
+  codeReview: MastermindHarnessProfile;
+};
+
+export type MastermindDefaults = {
+  enabled: boolean;
+  host: string;
+  port: number;
+  sqlitePath: string;
+  instanceId: string;
+  webhookPath: string;
+  publicWebhookUrl?: string;
+  cloudflareTunnel?: string;
+  cloudflareTunnelConfig?: string;
+  linearOrganizationId?: string;
+  linearWebhookId?: string;
+  synthesisModel: string;
+  reviewedLabelId: string;
+  reviewedLabelName: string;
+  readyLabelId: string;
+  readyLabelName: string;
+  needsInputLabelId: string;
+  needsInputLabelName: string;
+  reviewFailedLabelId: string;
+  reviewFailedLabelName: string;
+  codeReviewLabelId?: string;
+  codeReviewLabelName?: string;
+  codeReviewPassedLabelId?: string;
+  codeReviewPassedLabelName?: string;
+  changesRequestedLabelId?: string;
+  changesRequestedLabelName?: string;
+  inProgressStateName?: string;
+  inReviewStateName?: string;
+  doneStateName?: string;
+  leaseDurationMs: number;
+  reconcileIntervalMs: number;
+  maxDecisionIterations: number;
+  allowedActions: MastermindActionValue[];
+  projectMappings: MastermindProjectMapping[];
+  harnesses?: MastermindHarnessProfiles;
+  execution?: MastermindExecutionDefaults;
+};
+
+export type ProjectDirectExecutionPolicy = {
+  enabled: boolean;
+  allowedExecutorKinds: ExecutorKindValue[];
+  allowedPullRequestHosts: string[];
+};
+
 export type ToolingDefaults = {
   skillsDirectory?: string;
   agentNativeSkillsInstaller?: string;
@@ -192,10 +295,14 @@ export type ProjectCatalogEntry = {
   id: string;
   displayName: string;
   workingTree: string;
+  repositoryMode?: ProjectRepositoryMode;
+  provisioningRoot?: string;
   mainline: string;
   remote: string;
   contextDocs: string[];
   validationCommands: string[];
+  executionPreflightRequirements?: ExecutionPreflightRequirement[];
+  directExecution?: ProjectDirectExecutionPolicy;
   autonomousPrAllowed: boolean;
   /** Cap on accepted opportunities promoted per run. 0 or undefined means unlimited (falls back to the global default, which also defaults to unlimited). */
   maxOpportunities?: number;
@@ -209,6 +316,7 @@ export type WeavekitConfig = {
   env: Record<string, string>;
   copilot: CopilotDefaults;
   flue: FlueDefaults;
+  mastermind: MastermindDefaults;
   tooling: ToolingDefaults;
   sourceToProject: SourceToProjectDefaults;
   router: RouterDefaults;
@@ -416,6 +524,7 @@ export function loadTypedWeavekitConfig(
       env: loadedEnv,
       copilot: readCopilotDefaults(undefined, env),
       flue: readFlueDefaults(undefined, env),
+      mastermind: readMastermindDefaults(undefined, env),
       tooling: readToolingDefaults(undefined, env),
       sourceToProject: readSourceToProjectDefaults(undefined, env),
       router: readRouterDefaults(undefined),
@@ -430,6 +539,7 @@ export function loadTypedWeavekitConfig(
   const parsed = parseToml(readFileSync(configPath, "utf8")) as Record<string, unknown>;
   const copilot = readCopilotDefaults(parsed.copilot, env);
   const flue = readFlueDefaults(parsed.flue, env);
+  const mastermind = readMastermindDefaults(parsed.mastermind, env);
   const tooling = readToolingDefaults(parsed.tooling, env);
   const sourceToProject = readSourceToProjectDefaults(parsed.source_to_project, env);
   const router = readRouterDefaults(parsed.router);
@@ -442,6 +552,7 @@ export function loadTypedWeavekitConfig(
     env: loadedEnv,
     copilot,
     flue,
+    mastermind,
     tooling,
     sourceToProject,
     router,
@@ -451,6 +562,22 @@ export function loadTypedWeavekitConfig(
     projects,
     cache,
   };
+}
+
+export async function loadVarlockEnvironment(): Promise<void> {
+  await import("varlock/auto-load");
+}
+
+export async function loadMastermindRuntimeConfig(
+  configPath = getDefaultWeavekitConfigPath(),
+  env: NodeJS.ProcessEnv = process.env,
+  options: {
+    loadVarlock?: () => Promise<void>;
+  } = {},
+): Promise<WeavekitConfig> {
+  loadWeavekitConfig(configPath, env);
+  await (options.loadVarlock ?? loadVarlockEnvironment)();
+  return loadTypedWeavekitConfig(configPath, env);
 }
 
 function readCacheConfig(value: unknown, env: NodeJS.ProcessEnv): CacheConfig {
@@ -528,6 +655,79 @@ function defaultSourceToProjectDefaults(): SourceToProjectDefaults {
     },
     autoImplementOnReport: false,
     councilDeliberation: defaultCouncilDeliberationConfig(),
+  };
+}
+
+const DEFAULT_MASTERMIND_SYNTHESIS_MODEL = "gpt-5.5";
+
+function defaultMastermindDefaults(env: NodeJS.ProcessEnv): MastermindDefaults {
+  return {
+    enabled: false,
+    host: "127.0.0.1",
+    port: 8787,
+    sqlitePath: join(homedir(), ".weavekit", "mastermind.sqlite"),
+    instanceId: env.MASTERMIND_INSTANCE_ID?.trim() || `mastermind-${process.pid}`,
+    webhookPath: "/channels/linear/webhook",
+    publicWebhookUrl: env.MASTERMIND_PUBLIC_WEBHOOK_URL?.trim() || undefined,
+    cloudflareTunnel: env.MASTERMIND_CLOUDFLARE_TUNNEL?.trim() || undefined,
+    cloudflareTunnelConfig:
+      expandOptionalPath(env.MASTERMIND_CLOUDFLARE_TUNNEL_CONFIG?.trim()) ?? undefined,
+    linearOrganizationId: env.LINEAR_ORGANIZATION_ID?.trim() || undefined,
+    linearWebhookId: env.LINEAR_WEBHOOK_ID?.trim() || undefined,
+    synthesisModel: env.BAML_MODEL?.trim() || DEFAULT_MASTERMIND_SYNTHESIS_MODEL,
+    reviewedLabelId: env.MASTERMIND_REVIEWED_LABEL_ID?.trim() || "",
+    reviewedLabelName: env.MASTERMIND_REVIEWED_LABEL_NAME?.trim() || "mastermind-reviewed",
+    readyLabelId: env.MASTERMIND_READY_LABEL_ID?.trim() || "",
+    readyLabelName: env.MASTERMIND_READY_LABEL_NAME?.trim() || "mastermind-ready",
+    needsInputLabelId: env.MASTERMIND_NEEDS_INPUT_LABEL_ID?.trim() || "",
+    needsInputLabelName: env.MASTERMIND_NEEDS_INPUT_LABEL_NAME?.trim() || "mastermind-needs-input",
+    reviewFailedLabelId: env.MASTERMIND_REVIEW_FAILED_LABEL_ID?.trim() || "",
+    reviewFailedLabelName:
+      env.MASTERMIND_REVIEW_FAILED_LABEL_NAME?.trim() || "mastermind-review-failed",
+    codeReviewLabelId: env.MASTERMIND_CODE_REVIEW_LABEL_ID?.trim() || "",
+    codeReviewLabelName: env.MASTERMIND_CODE_REVIEW_LABEL_NAME?.trim() || "mastermind-code-review",
+    codeReviewPassedLabelId: env.MASTERMIND_CODE_REVIEW_PASSED_LABEL_ID?.trim() || "",
+    codeReviewPassedLabelName:
+      env.MASTERMIND_CODE_REVIEW_PASSED_LABEL_NAME?.trim() || "mastermind-code-review-passed",
+    changesRequestedLabelId: env.MASTERMIND_CHANGES_REQUESTED_LABEL_ID?.trim() || "",
+    changesRequestedLabelName:
+      env.MASTERMIND_CHANGES_REQUESTED_LABEL_NAME?.trim() || "mastermind-changes-requested",
+    inProgressStateName: env.MASTERMIND_IN_PROGRESS_STATE_NAME?.trim() || "In Progress",
+    inReviewStateName: env.MASTERMIND_IN_REVIEW_STATE_NAME?.trim() || "In Review",
+    doneStateName: env.MASTERMIND_DONE_STATE_NAME?.trim() || "Done",
+    leaseDurationMs: 60_000,
+    reconcileIntervalMs: 30_000,
+    maxDecisionIterations: 3,
+    allowedActions: [
+      MastermindAction.REVIEW_TICKET,
+      MastermindAction.IMPLEMENT_DIRECTLY,
+      MastermindAction.DELEGATE_SUBMIND,
+      MastermindAction.WAIT,
+      MastermindAction.NEEDS_HUMAN,
+      MastermindAction.IGNORE,
+    ],
+    projectMappings: [],
+    harnesses: {
+      ticketReview: {
+        transport: MastermindHarnessTransport.COPILOT_SDK,
+        command: "copilot",
+        args: [],
+        model: "claude-opus-4.8",
+      },
+      implementation: {
+        transport: MastermindHarnessTransport.HERDR,
+        command: "copilot",
+        args: [],
+        kind: "copilot",
+      },
+      codeReview: {
+        transport: MastermindHarnessTransport.COPILOT_SDK,
+        command: "copilot",
+        args: [],
+        model: "claude-opus-4.8",
+      },
+    },
+    execution: undefined,
   };
 }
 
@@ -1275,6 +1475,251 @@ function readFlueDefaults(value: unknown, env: NodeJS.ProcessEnv): FlueDefaults 
   };
 }
 
+function readMastermindDefaults(value: unknown, env: NodeJS.ProcessEnv): MastermindDefaults {
+  const defaults = defaultMastermindDefaults(env);
+  const record = asRecord(value);
+  const allowedActions = readStringArray(record.allowed_actions).flatMap((action) =>
+    Object.values(MastermindAction).includes(action as MastermindActionValue)
+      ? [action as MastermindActionValue]
+      : [],
+  );
+  return {
+    enabled: readBoolean(
+      record.enabled,
+      readEnvBoolean(env, "WEAVEKIT_MASTERMIND_ENABLED") ?? defaults.enabled,
+    ),
+    host: readString(record.host, env.MASTERMIND_HOST?.trim() || defaults.host),
+    port:
+      readOptionalInteger(record.port) ??
+      readEnvPositiveInteger(env, "MASTERMIND_PORT") ??
+      defaults.port,
+    sqlitePath:
+      expandOptionalPath(
+        readOptionalString(record.sqlite_path) ?? env.MASTERMIND_SQLITE_PATH?.trim(),
+      ) ?? defaults.sqlitePath,
+    instanceId:
+      readOptionalString(record.instance_id) ??
+      env.MASTERMIND_INSTANCE_ID?.trim() ??
+      defaults.instanceId,
+    webhookPath: readString(record.webhook_path, defaults.webhookPath),
+    publicWebhookUrl:
+      readOptionalString(record.public_webhook_url) ??
+      env.MASTERMIND_PUBLIC_WEBHOOK_URL?.trim() ??
+      defaults.publicWebhookUrl,
+    cloudflareTunnel:
+      readOptionalString(record.cloudflare_tunnel) ??
+      env.MASTERMIND_CLOUDFLARE_TUNNEL?.trim() ??
+      defaults.cloudflareTunnel,
+    cloudflareTunnelConfig:
+      expandOptionalPath(
+        readOptionalString(record.cloudflare_tunnel_config) ??
+          env.MASTERMIND_CLOUDFLARE_TUNNEL_CONFIG?.trim(),
+      ) ?? defaults.cloudflareTunnelConfig,
+    linearOrganizationId:
+      readOptionalString(record.linear_organization_id) ??
+      env.LINEAR_ORGANIZATION_ID?.trim() ??
+      defaults.linearOrganizationId,
+    linearWebhookId:
+      readOptionalString(record.linear_webhook_id) ??
+      env.LINEAR_WEBHOOK_ID?.trim() ??
+      defaults.linearWebhookId,
+    synthesisModel:
+      readOptionalString(record.synthesis_model) ??
+      env.MASTERMIND_SYNTHESIS_MODEL?.trim() ??
+      defaults.synthesisModel,
+    reviewedLabelId:
+      readOptionalString(record.reviewed_label_id) ??
+      env.MASTERMIND_REVIEWED_LABEL_ID?.trim() ??
+      defaults.reviewedLabelId,
+    reviewedLabelName: readString(record.reviewed_label_name, defaults.reviewedLabelName),
+    readyLabelId:
+      readOptionalString(record.ready_label_id) ??
+      env.MASTERMIND_READY_LABEL_ID?.trim() ??
+      defaults.readyLabelId,
+    readyLabelName: readString(record.ready_label_name, defaults.readyLabelName),
+    needsInputLabelId:
+      readOptionalString(record.needs_input_label_id) ??
+      env.MASTERMIND_NEEDS_INPUT_LABEL_ID?.trim() ??
+      defaults.needsInputLabelId,
+    needsInputLabelName: readString(record.needs_input_label_name, defaults.needsInputLabelName),
+    reviewFailedLabelId:
+      readOptionalString(record.review_failed_label_id) ??
+      env.MASTERMIND_REVIEW_FAILED_LABEL_ID?.trim() ??
+      defaults.reviewFailedLabelId,
+    reviewFailedLabelName: readString(
+      record.review_failed_label_name,
+      defaults.reviewFailedLabelName,
+    ),
+    codeReviewLabelId:
+      readOptionalString(record.code_review_label_id) ?? defaults.codeReviewLabelId,
+    codeReviewLabelName: readString(record.code_review_label_name, defaults.codeReviewLabelName!),
+    codeReviewPassedLabelId:
+      readOptionalString(record.code_review_passed_label_id) ?? defaults.codeReviewPassedLabelId,
+    codeReviewPassedLabelName: readString(
+      record.code_review_passed_label_name,
+      defaults.codeReviewPassedLabelName!,
+    ),
+    changesRequestedLabelId:
+      readOptionalString(record.changes_requested_label_id) ?? defaults.changesRequestedLabelId,
+    changesRequestedLabelName: readString(
+      record.changes_requested_label_name,
+      defaults.changesRequestedLabelName!,
+    ),
+    inProgressStateName: readString(record.in_progress_state_name, defaults.inProgressStateName!),
+    inReviewStateName: readString(record.in_review_state_name, defaults.inReviewStateName!),
+    doneStateName: readString(record.done_state_name, defaults.doneStateName!),
+    leaseDurationMs: readOptionalInteger(record.lease_duration_ms) ?? defaults.leaseDurationMs,
+    reconcileIntervalMs:
+      readOptionalInteger(record.reconcile_interval_ms) ?? defaults.reconcileIntervalMs,
+    maxDecisionIterations:
+      readOptionalInteger(record.max_decision_iterations) ?? defaults.maxDecisionIterations,
+    allowedActions: allowedActions.length > 0 ? allowedActions : defaults.allowedActions,
+    projectMappings: readMastermindProjectMappings(record.project_mappings),
+    harnesses: readMastermindHarnessProfiles(record.harnesses, defaults.harnesses!),
+    execution: readMastermindExecutionDefaults(record.execution),
+  };
+}
+
+function readMastermindHarnessProfiles(
+  value: unknown,
+  defaults: MastermindHarnessProfiles,
+): MastermindHarnessProfiles {
+  const record = asRecord(value);
+  return {
+    ticketReview: readMastermindHarnessProfile(record.ticket_review, defaults.ticketReview),
+    implementation: readMastermindHarnessProfile(record.implementation, defaults.implementation),
+    codeReview: readMastermindHarnessProfile(record.code_review, defaults.codeReview),
+  };
+}
+
+function readMastermindHarnessProfile(
+  value: unknown,
+  defaults: MastermindHarnessProfile,
+): MastermindHarnessProfile {
+  if (value === undefined) return { ...defaults, args: [...defaults.args] };
+  const record = asRecord(value);
+  const transport = readString(record.transport, defaults.transport);
+  if (
+    !Object.values(MastermindHarnessTransport).includes(transport as MastermindHarnessTransport)
+  ) {
+    throw new Error(`mastermind harness transport is invalid: ${transport}`);
+  }
+  const command = readString(record.command, defaults.command).trim();
+  if (!command) throw new Error("mastermind harness command must not be empty");
+  return {
+    transport: transport as MastermindHarnessTransport,
+    command,
+    args: record.args === undefined ? [...defaults.args] : readStringArray(record.args),
+    kind: readOptionalString(record.kind) ?? defaults.kind,
+    model: readOptionalString(record.model) ?? defaults.model,
+  };
+}
+
+function readMastermindExecutionDefaults(value: unknown): MastermindExecutionDefaults | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const record = asRecord(value);
+  const executorKind = readString(record.executor_kind, "");
+  if (executorKind !== ExecutorKind.HERDR_COPILOT) {
+    throw new Error(`mastermind.execution.executor_kind must be ${ExecutorKind.HERDR_COPILOT}`);
+  }
+  const harnessKind = readString(record.harness_kind, "");
+  if (!harnessKind.trim()) throw new Error("mastermind.execution.harness_kind must not be empty");
+  const maxAttempts = readRequiredBoundedInteger(
+    record.max_attempts,
+    "mastermind.execution.max_attempts",
+    1,
+    20,
+  );
+  const maxAutopilotContinues = readRequiredBoundedInteger(
+    record.max_autopilot_continues,
+    "mastermind.execution.max_autopilot_continues",
+    1,
+    100,
+  );
+  const allowTools = readStringArray(record.allow_tools);
+  const denyTools = readStringArray(record.deny_tools);
+  if (allowTools.length === 0 && denyTools.length === 0) {
+    throw new Error(
+      "mastermind.execution must configure explicit allow_tools or deny_tools for Copilot",
+    );
+  }
+  const permissionValues = [
+    ...allowTools,
+    ...denyTools,
+    ...readStringArray(record.allow_urls),
+    ...readStringArray(record.deny_urls),
+  ];
+  const prohibited = [
+    "--allow-all",
+    "--yolo",
+    "--allow-all-tools",
+    "--allow-all-paths",
+    "--allow-all-urls",
+  ];
+  if (permissionValues.some((value) => prohibited.some((flag) => value.includes(flag)))) {
+    throw new Error("mastermind.execution contains a prohibited broad permission flag");
+  }
+  return {
+    executorKind: ExecutorKind.HERDR_COPILOT,
+    harnessKind: "copilot",
+    harnessCommand: readString(record.harness_command, harnessKind),
+    harnessArgs: readStringArray(record.harness_args),
+    maxAutopilotContinues,
+    allowTools,
+    denyTools,
+    allowUrls: readStringArray(record.allow_urls),
+    denyUrls: readStringArray(record.deny_urls),
+    pollIntervalMs: readRequiredBoundedInteger(
+      record.poll_interval_ms,
+      "mastermind.execution.poll_interval_ms",
+      250,
+      300_000,
+    ),
+    unknownStatusThreshold: readRequiredBoundedInteger(
+      record.unknown_status_threshold,
+      "mastermind.execution.unknown_status_threshold",
+      1,
+      100,
+    ),
+    cancellationGraceMs: readRequiredBoundedInteger(
+      record.cancellation_grace_ms,
+      "mastermind.execution.cancellation_grace_ms",
+      100,
+      300_000,
+    ),
+    promptAcceptanceTimeoutMs: readRequiredBoundedInteger(
+      record.prompt_acceptance_timeout_ms,
+      "mastermind.execution.prompt_acceptance_timeout_ms",
+      1_000,
+      600_000,
+    ),
+    maxAttempts,
+  };
+}
+
+function readMastermindProjectMappings(value: unknown): MastermindProjectMapping[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    const record = asRecord(entry);
+    const teamId = readOptionalString(record.team_id);
+    const projectId = readOptionalString(record.project_id);
+    if (!teamId || !projectId) {
+      return [];
+    }
+    return [
+      {
+        teamId,
+        projectId,
+        linearProjectId: readOptionalString(record.linear_project_id),
+      },
+    ];
+  });
+}
+
 function readToolingDefaults(value: unknown, env: NodeJS.ProcessEnv): ToolingDefaults {
   const record = asRecord(value);
   return {
@@ -1330,16 +1775,33 @@ function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry>
         thresholds.minAcceptanceAverage = record.min_acceptance_average;
       if (typeof record.max_risk === "number") thresholds.maxRisk = record.max_risk;
       const budgetGate = readBudgetGateOverride(record.budget_gate, `projects.${id}.budget_gate`);
+      const executionPreflightRequirements = readExecutionPreflightRequirements(
+        record.execution,
+        id,
+      );
+      const directExecution = readProjectDirectExecutionPolicy(record.execution, id);
+      const repositoryMode =
+        record.repository_mode === "greenfield"
+          ? ProjectRepositoryMode.GREENFIELD
+          : ProjectRepositoryMode.EXISTING_REPOSITORY;
+      const provisioningRoot = expandOptionalPath(readOptionalString(record.provisioning_root));
+      if (repositoryMode === ProjectRepositoryMode.GREENFIELD && !provisioningRoot) {
+        throw new Error(`projects.${id}.provisioning_root must be set for greenfield projects`);
+      }
       return [
         id,
         {
           id,
           displayName: readString(record.display_name, id),
           workingTree: expandHomePath(readString(record.working_tree, "")),
+          repositoryMode,
+          ...(provisioningRoot === undefined ? {} : { provisioningRoot }),
           mainline: readString(record.mainline, "origin main"),
           remote: readString(record.remote, "origin"),
           contextDocs: readStringArray(record.context_docs),
           validationCommands: readStringArray(record.validation_commands),
+          executionPreflightRequirements,
+          ...(directExecution ? { directExecution } : {}),
           autonomousPrAllowed: readBoolean(record.autonomous_pr_allowed, false),
           maxOpportunities:
             typeof record.max_opportunities === "number"
@@ -1353,4 +1815,78 @@ function readProjectCatalog(value: unknown): Record<string, ProjectCatalogEntry>
       ];
     }),
   );
+}
+
+function readProjectDirectExecutionPolicy(
+  value: unknown,
+  projectId: string,
+): ProjectDirectExecutionPolicy | undefined {
+  const execution = asRecord(value);
+  if (!("direct" in execution)) {
+    return undefined;
+  }
+  const direct = asRecord(execution.direct);
+  const enabled = readBoolean(direct.enabled, false);
+  const configuredExecutorKinds = readStringArray(direct.allowed_executors);
+  const unknownExecutorKind = configuredExecutorKinds.find(
+    (kind) => kind !== ExecutorKind.HERDR_COPILOT,
+  );
+  if (unknownExecutorKind) {
+    throw new Error(
+      `projects.${projectId}.execution.direct.allowed_executors contains unknown executor ${unknownExecutorKind}`,
+    );
+  }
+  const allowedExecutorKinds = configuredExecutorKinds.flatMap((kind) =>
+    kind === ExecutorKind.HERDR_COPILOT ? [ExecutorKind.HERDR_COPILOT] : [],
+  );
+  if (enabled && allowedExecutorKinds.length === 0) {
+    throw new Error(
+      `projects.${projectId}.execution.direct.allowed_executors must include ${ExecutorKind.HERDR_COPILOT}`,
+    );
+  }
+  return {
+    enabled,
+    allowedExecutorKinds,
+    allowedPullRequestHosts: readStringArray(direct.allowed_pr_hosts).map((host) =>
+      host.toLowerCase(),
+    ),
+  };
+}
+
+function readRequiredBoundedInteger(
+  value: unknown,
+  field: string,
+  minimum: number,
+  maximum: number,
+): number {
+  const integer = readOptionalInteger(value);
+  if (integer === undefined || integer < minimum || integer > maximum) {
+    throw new Error(`${field} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return integer;
+}
+
+function readExecutionPreflightRequirements(
+  value: unknown,
+  projectId: string,
+): ExecutionPreflightRequirement[] {
+  const execution = asRecord(value);
+  if (!("azure" in execution)) {
+    return [];
+  }
+  const azure = asRecord(execution.azure);
+  const subscriptionId = readString(azure.subscription_id, "").trim();
+  if (!subscriptionId) {
+    throw new Error(
+      `projects.${projectId}.execution.azure.subscription_id must be a non-empty string`,
+    );
+  }
+  const tenantId = readString(azure.tenant_id, "").trim();
+  return [
+    {
+      kind: ExecutionPreflightKind.AZURE_CLI,
+      subscriptionId,
+      ...(tenantId ? { tenantId } : {}),
+    },
+  ];
 }

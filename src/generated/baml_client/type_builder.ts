@@ -63,6 +63,14 @@ export default class TypeBuilder {
     
     ImplementationReviewVerdict: ClassViewer<'ImplementationReviewVerdict', "status" | "blockingFindings" | "rationale">;
     
+    LinearTicketInput: ClassViewer<'LinearTicketInput', "id" | "identifier" | "title" | "description" | "labels" | "status" | "projectId" | "teamId">;
+    
+    MastermindNextActionDecision: ClassViewer<'MastermindNextActionDecision', "action" | "rationale" | "prerequisites" | "policyEvidence" | "suggestedExecutorShape" | "confidence">;
+    
+    MastermindProjectPolicyInput: ClassViewer<'MastermindProjectPolicyInput', "id" | "displayName" | "repositoryMode" | "repositoryPath" | "provisioningRoot" | "allowedActions">;
+    
+    MastermindReviewDecisionContext: ClassViewer<'MastermindReviewDecisionContext', "hasCurrentReview" | "readiness" | "requiresHumanApproval" | "blockingReasons" | "warnings" | "unansweredQuestions" | "openItemDispositions" | "reviewConfidence">;
+    
     ModeTemplatePolicy: ClassViewer<'ModeTemplatePolicy', "mode" | "enabledForOptimization" | "expansionCases" | "constraints">;
     
     NonApplicableLesson: ClassViewer<'NonApplicableLesson', "lesson" | "reason" | "evidence">;
@@ -101,11 +109,19 @@ export default class TypeBuilder {
     
     PortfolioPlanDraft: ClassViewer<'PortfolioPlanDraft', "title" | "summary" | "markdown" | "coverageClaims">;
     
+    PostImplementationReview: ClassViewer<'PostImplementationReview', "verdict" | "summary" | "acceptanceCriteriaCoverage" | "verificationAssessment" | "manualVerification" | "findings" | "knownRisks" | "unansweredQuestions" | "confidence">;
+    
+    PostImplementationReviewDossier: ClassViewer<'PostImplementationReviewDossier', "summary" | "acceptanceCriteriaCoverage" | "verificationAssessment" | "manualVerification" | "findings" | "knownRisks" | "unansweredQuestions" | "confidence">;
+    
+    PostImplementationReviewFinding: ClassViewer<'PostImplementationReviewFinding', "severity" | "summary" | "evidence" | "remediation">;
+    
     PracticeApplicabilityAssessment: ClassViewer<'PracticeApplicabilityAssessment', "practiceId" | "status" | "applicableBehaviorIds" | "excludedBehaviorIds" | "targetLayers" | "projectEvidence" | "contradictionEvidence" | "rationale">;
     
     ProjectApplicabilityMatrix: ClassViewer<'ProjectApplicabilityMatrix', "projectId" | "assessments" | "architecture" | "constraints" | "validationCommands" | "evidence">;
     
     ProjectBrief: ClassViewer<'ProjectBrief', "projectId" | "displayName" | "architecture" | "constraints" | "goals" | "changeSurfaces" | "validationCommands" | "risks" | "evidence">;
+    
+    ProposedLinearTicketPatch: ClassViewer<'ProposedLinearTicketPatch', "proposedTitle" | "proposedDescriptionMarkdown" | "ticketKind" | "preservedIntent" | "acceptanceCriteria" | "assumptions" | "ambiguities" | "unansweredQuestions" | "openItemDispositions" | "dependencies" | "risks" | "automatedVerification" | "manualVerification" | "validationSteps" | "observability" | "rolloutPlan" | "rollbackPlan" | "outOfScope" | "evidence" | "readiness" | "blockingReasons" | "warnings" | "materialScopeChange" | "requiresHumanApproval" | "confidence">;
     
     RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
     
@@ -114,6 +130,8 @@ export default class TypeBuilder {
     ResearchQuestionCoverage: ClassViewer<'ResearchQuestionCoverage', "questionId" | "coverageScore" | "evidenceQuality" | "contradictions" | "gaps">;
     
     ResearchQuestionSet: ClassViewer<'ResearchQuestionSet', "iteration" | "questions">;
+    
+    ReviewOpenItemDisposition: ClassViewer<'ReviewOpenItemDisposition', "kind" | "text" | "owner" | "rationale">;
     
     RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "needsHumanInput" | "clarifyingQuestions" | "nextRoundBrief">;
     
@@ -151,6 +169,10 @@ export default class TypeBuilder {
     
     TemplateOptimizationFixture: ClassViewer<'TemplateOptimizationFixture', "id" | "mode" | "scenarioSummary" | "sourceLessons" | "projectConstraints" | "opportunities" | "idealFeatures" | "mustPreserve" | "failureModes">;
     
+    TicketReviewDossier: ClassViewer<'TicketReviewDossier', "ticketKind" | "preservedIntent" | "summary" | "repositoryEvidence" | "linearEvidence" | "externalEvidence" | "assumptions" | "ambiguities" | "unansweredQuestions" | "risks" | "dependencies" | "suggestedAcceptanceCriteria" | "automatedVerification" | "manualVerification" | "validationSteps" | "observability" | "rolloutPlan" | "rollbackPlan" | "outOfScope" | "materialScopeChange" | "confidence">;
+    
+    TicketReviewEvidence: ClassViewer<'TicketReviewEvidence', "id" | "kind" | "locator" | "repositoryEvidenceType" | "repositoryPath" | "repositoryLine" | "repositorySymbol" | "repositoryQuery" | "claim" | "confidence">;
+    
     VerificationAudit: ClassViewer<'VerificationAudit', "projectId" | "summary" | "verificationCommands" | "verificationSurfaces" | "gaps" | "evidence">;
     
     VerificationOpportunity: ClassViewer<'VerificationOpportunity', "id" | "title" | "currentVerificationGap" | "targetChange" | "allowedChangeKind" | "score" | "evidence" | "proofCommands" | "speculative">;
@@ -170,16 +192,34 @@ export default class TypeBuilder {
     WorkflowReplanPatch: ClassViewer<'WorkflowReplanPatch', "reason" | "replaceRemainingNodeIds" | "newNodes">;
     
     
+    MastermindAction: EnumViewer<'MastermindAction', "REVIEW_TICKET" | "IMPLEMENT_DIRECTLY" | "DELEGATE_SUBMIND" | "WAIT" | "NEEDS_HUMAN" | "IGNORE">;
+    
+    PostImplementationReviewVerdict: EnumViewer<'PostImplementationReviewVerdict', "PASS" | "CHANGES_REQUIRED" | "NEEDS_HUMAN">;
+    
+    ProjectRepositoryMode: EnumViewer<'ProjectRepositoryMode', "EXISTING_REPOSITORY" | "GREENFIELD">;
+    
+    RepositoryEvidenceType: EnumViewer<'RepositoryEvidenceType', "FILE" | "SYMBOL" | "SEARCH">;
+    
+    ReviewEvidenceKind: EnumViewer<'ReviewEvidenceKind', "REPOSITORY" | "LINEAR" | "EXTERNAL">;
+    
+    ReviewOpenItemKind: EnumViewer<'ReviewOpenItemKind', "UNANSWERED_QUESTION" | "BLOCKING_REASON">;
+    
+    ReviewOpenItemOwner: EnumViewer<'ReviewOpenItemOwner', "HUMAN" | "EXECUTOR_PREFLIGHT" | "IMPLEMENTATION_DISCOVERY" | "EXTERNAL_DEPENDENCY">;
+    
+    ReviewReadiness: EnumViewer<'ReviewReadiness', "READY" | "READY_WITH_NONBLOCKING_GAPS" | "BLOCKED">;
+    
     RouterRoute: EnumViewer<'RouterRoute', "DirectAnswer" | "RefinePrompt" | "GoalPrompt" | "Plan" | "GrillWithDocs" | "Research" | "LocalCodeChange" | "FleetParallel" | "RemoteDelegatePr" | "DecisionCouncil" | "SourceToProject" | "ManualHerdrWorktree">;
+    
+    TicketKind: EnumViewer<'TicketKind', "USER_STORY" | "BUG" | "TECHNICAL_TASK" | "SPIKE" | "OPERATIONAL">;
     
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","LinearTicketInput","MastermindNextActionDecision","MastermindProjectPolicyInput","MastermindReviewDecisionContext","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PostImplementationReview","PostImplementationReviewDossier","PostImplementationReviewFinding","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","ProposedLinearTicketPatch","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","ReviewOpenItemDisposition","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","TicketReviewDossier","TicketReviewEvidence","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
-            "RouterRoute",
+            "MastermindAction","PostImplementationReviewVerdict","ProjectRepositoryMode","RepositoryEvidenceType","ReviewEvidenceKind","ReviewOpenItemKind","ReviewOpenItemOwner","ReviewReadiness","RouterRoute","TicketKind",
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
@@ -254,6 +294,22 @@ export default class TypeBuilder {
         
         this.ImplementationReviewVerdict = this.tb.classViewer("ImplementationReviewVerdict", [
           "status","blockingFindings","rationale",
+        ]);
+        
+        this.LinearTicketInput = this.tb.classViewer("LinearTicketInput", [
+          "id","identifier","title","description","labels","status","projectId","teamId",
+        ]);
+        
+        this.MastermindNextActionDecision = this.tb.classViewer("MastermindNextActionDecision", [
+          "action","rationale","prerequisites","policyEvidence","suggestedExecutorShape","confidence",
+        ]);
+        
+        this.MastermindProjectPolicyInput = this.tb.classViewer("MastermindProjectPolicyInput", [
+          "id","displayName","repositoryMode","repositoryPath","provisioningRoot","allowedActions",
+        ]);
+        
+        this.MastermindReviewDecisionContext = this.tb.classViewer("MastermindReviewDecisionContext", [
+          "hasCurrentReview","readiness","requiresHumanApproval","blockingReasons","warnings","unansweredQuestions","openItemDispositions","reviewConfidence",
         ]);
         
         this.ModeTemplatePolicy = this.tb.classViewer("ModeTemplatePolicy", [
@@ -332,6 +388,18 @@ export default class TypeBuilder {
           "title","summary","markdown","coverageClaims",
         ]);
         
+        this.PostImplementationReview = this.tb.classViewer("PostImplementationReview", [
+          "verdict","summary","acceptanceCriteriaCoverage","verificationAssessment","manualVerification","findings","knownRisks","unansweredQuestions","confidence",
+        ]);
+        
+        this.PostImplementationReviewDossier = this.tb.classViewer("PostImplementationReviewDossier", [
+          "summary","acceptanceCriteriaCoverage","verificationAssessment","manualVerification","findings","knownRisks","unansweredQuestions","confidence",
+        ]);
+        
+        this.PostImplementationReviewFinding = this.tb.classViewer("PostImplementationReviewFinding", [
+          "severity","summary","evidence","remediation",
+        ]);
+        
         this.PracticeApplicabilityAssessment = this.tb.classViewer("PracticeApplicabilityAssessment", [
           "practiceId","status","applicableBehaviorIds","excludedBehaviorIds","targetLayers","projectEvidence","contradictionEvidence","rationale",
         ]);
@@ -342,6 +410,10 @@ export default class TypeBuilder {
         
         this.ProjectBrief = this.tb.classViewer("ProjectBrief", [
           "projectId","displayName","architecture","constraints","goals","changeSurfaces","validationCommands","risks","evidence",
+        ]);
+        
+        this.ProposedLinearTicketPatch = this.tb.classViewer("ProposedLinearTicketPatch", [
+          "proposedTitle","proposedDescriptionMarkdown","ticketKind","preservedIntent","acceptanceCriteria","assumptions","ambiguities","unansweredQuestions","openItemDispositions","dependencies","risks","automatedVerification","manualVerification","validationSteps","observability","rolloutPlan","rollbackPlan","outOfScope","evidence","readiness","blockingReasons","warnings","materialScopeChange","requiresHumanApproval","confidence",
         ]);
         
         this.RawPersonaResult = this.tb.classViewer("RawPersonaResult", [
@@ -358,6 +430,10 @@ export default class TypeBuilder {
         
         this.ResearchQuestionSet = this.tb.classViewer("ResearchQuestionSet", [
           "iteration","questions",
+        ]);
+        
+        this.ReviewOpenItemDisposition = this.tb.classViewer("ReviewOpenItemDisposition", [
+          "kind","text","owner","rationale",
         ]);
         
         this.RoundAssessment = this.tb.classViewer("RoundAssessment", [
@@ -432,6 +508,14 @@ export default class TypeBuilder {
           "id","mode","scenarioSummary","sourceLessons","projectConstraints","opportunities","idealFeatures","mustPreserve","failureModes",
         ]);
         
+        this.TicketReviewDossier = this.tb.classViewer("TicketReviewDossier", [
+          "ticketKind","preservedIntent","summary","repositoryEvidence","linearEvidence","externalEvidence","assumptions","ambiguities","unansweredQuestions","risks","dependencies","suggestedAcceptanceCriteria","automatedVerification","manualVerification","validationSteps","observability","rolloutPlan","rollbackPlan","outOfScope","materialScopeChange","confidence",
+        ]);
+        
+        this.TicketReviewEvidence = this.tb.classViewer("TicketReviewEvidence", [
+          "id","kind","locator","repositoryEvidenceType","repositoryPath","repositoryLine","repositorySymbol","repositoryQuery","claim","confidence",
+        ]);
+        
         this.VerificationAudit = this.tb.classViewer("VerificationAudit", [
           "projectId","summary","verificationCommands","verificationSurfaces","gaps","evidence",
         ]);
@@ -469,8 +553,44 @@ export default class TypeBuilder {
         ]);
         
         
+        this.MastermindAction = this.tb.enumViewer("MastermindAction", [
+          "REVIEW_TICKET","IMPLEMENT_DIRECTLY","DELEGATE_SUBMIND","WAIT","NEEDS_HUMAN","IGNORE",
+        ]);
+        
+        this.PostImplementationReviewVerdict = this.tb.enumViewer("PostImplementationReviewVerdict", [
+          "PASS","CHANGES_REQUIRED","NEEDS_HUMAN",
+        ]);
+        
+        this.ProjectRepositoryMode = this.tb.enumViewer("ProjectRepositoryMode", [
+          "EXISTING_REPOSITORY","GREENFIELD",
+        ]);
+        
+        this.RepositoryEvidenceType = this.tb.enumViewer("RepositoryEvidenceType", [
+          "FILE","SYMBOL","SEARCH",
+        ]);
+        
+        this.ReviewEvidenceKind = this.tb.enumViewer("ReviewEvidenceKind", [
+          "REPOSITORY","LINEAR","EXTERNAL",
+        ]);
+        
+        this.ReviewOpenItemKind = this.tb.enumViewer("ReviewOpenItemKind", [
+          "UNANSWERED_QUESTION","BLOCKING_REASON",
+        ]);
+        
+        this.ReviewOpenItemOwner = this.tb.enumViewer("ReviewOpenItemOwner", [
+          "HUMAN","EXECUTOR_PREFLIGHT","IMPLEMENTATION_DISCOVERY","EXTERNAL_DEPENDENCY",
+        ]);
+        
+        this.ReviewReadiness = this.tb.enumViewer("ReviewReadiness", [
+          "READY","READY_WITH_NONBLOCKING_GAPS","BLOCKED",
+        ]);
+        
         this.RouterRoute = this.tb.enumViewer("RouterRoute", [
           "DirectAnswer","RefinePrompt","GoalPrompt","Plan","GrillWithDocs","Research","LocalCodeChange","FleetParallel","RemoteDelegatePr","DecisionCouncil","SourceToProject","ManualHerdrWorktree",
+        ]);
+        
+        this.TicketKind = this.tb.enumViewer("TicketKind", [
+          "USER_STORY","BUG","TECHNICAL_TASK","SPIKE","OPERATIONAL",
         ]);
         
     }

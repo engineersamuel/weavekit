@@ -8,6 +8,10 @@ const envKeys = [
   "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
   "OTEL_SERVICE_NAME",
   "OTEL_GENAI_CAPTURE_CONTENT",
+  "OTEL_EXPORTER_OTLP_HEADERS",
+  "LANGFUSE_PUBLIC_KEY",
+  "LANGFUSE_SECRET_KEY",
+  "LANGFUSE_BASE_URL",
 ] as const;
 
 let envSnapshot = new Map<string, string | undefined>();
@@ -63,6 +67,24 @@ describe("copilot SDK telemetry options", () => {
         captureContent: true,
       },
     });
+  });
+
+  it("exports Copilot SDK spans directly to Langfuse when no OTLP collector is configured", () => {
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-lf-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-lf-test";
+    process.env.LANGFUSE_BASE_URL = "http://localhost:3000/";
+
+    const options = buildCopilotClientOptions();
+
+    expect(options).toMatchObject({
+      telemetry: {
+        otlpEndpoint: "http://localhost:3000/api/public/otel",
+        otlpProtocol: "http/protobuf",
+        sourceName: "weavekit",
+      },
+    });
+    expect(options?.env?.OTEL_EXPORTER_OTLP_HEADERS).toMatch(/^Authorization=Basic /u);
+    expect(options?.env?.OTEL_EXPORTER_OTLP_HEADERS).not.toContain("sk-lf-test");
   });
 
   it("injects the active trace context into the callback carrier", () => {

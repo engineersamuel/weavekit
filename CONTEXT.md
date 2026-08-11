@@ -2,7 +2,41 @@
 
 Weavekit runs multi-persona deliberation workflows (the Decision Council) that debate a question and emit a recommendation, with BAML-typed reasoning and Langfuse/OpenTelemetry observability.
 
+**Mastermind** is weavekit's durable control-plane application. It is an explicit exception to the
+finite-Run architecture: a supervised Flue Node service receives verified Linear webhooks, stores
+authoritative ticket workflow state and an append-only audit in SQLite, asks BAML for typed review
+and next-action recommendations, and validates transitions with XState. Existing macro workflows
+remain bounded and in-process. **Submind** is the internal contract for future bounded delegated
+execution; it does not own ticket leases or durable state.
+
 ## Language
+
+**Mastermind**:
+The durable application that owns Linear ticket intake, policy, state transitions, retries, and
+recovery.
+_Avoid_: workflow, queue worker, submind
+
+**Submind**:
+A bounded delegated execution owned by Mastermind. It may coordinate one or more executor calls
+but never owns the Linear ticket lease.
+_Avoid_: durable authority, ticket owner
+
+**Execution Attempt**:
+Mastermind's durable, monotonically numbered record for one `IMPLEMENT_DIRECTLY` try. It is the
+fencing identity for workspace, executor status, result collection, verification, and Linear
+projection.
+_Avoid_: queue job, Herdr workspace ID, agent session
+
+**Execution Workspace**:
+The canonical source-repository and dedicated writable worktree descriptor provisioned for one
+Mastermind work item. Herdr workspace, tab, and pane IDs are only last-observed live addresses.
+_Avoid_: provisioning root, parent repository workspace, durable pane identity
+
+**Executor Adapter**:
+A bounded harness integration that performs preflight, starts or adopts an executor, observes
+lifecycle status, attempts cancellation, and collects a typed result. It never owns the ticket
+lease or mutates Linear.
+_Avoid_: durable coordinator, Linear worker, unrestricted shell
 
 **Decision Council**:
 The core workflow — a multi-persona deliberation that debates a question over rounds and emits a recommendation report.
