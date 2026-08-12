@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./scripts/hooks/post-tool-use.sh",
+            "command": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/post-tool-use.sh\"",
             "timeout": 30
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./scripts/hooks/commit-gate.sh",
+            "command": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/commit-gate.sh\"",
             "timeout": 120
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./scripts/hooks/stop-format-dirty.sh",
+            "command": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/stop-format-dirty.sh\"",
             "timeout": 30
           }
         ]
