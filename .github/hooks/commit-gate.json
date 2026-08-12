@@ -4,7 +4,7 @@
     "preToolUse": [
       {
         "type": "command",
-        "bash": "./scripts/hooks/commit-gate.sh",
+        "bash": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/commit-gate.sh\"",
         "cwd": ".",
         "timeoutSec": 120,
         "matcher": "bash"
