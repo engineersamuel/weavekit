@@ -1,14 +1,12 @@
-import { execFile } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { promisify } from "node:util";
 import { z } from "zod";
 import type { SubmindRunState } from "./contracts.js";
 import { SubmindController, stageSubmindSkill, type ControllerDependencies } from "./controller.js";
 import { canonicalRepository, provisionHerdrWorktree } from "./provision.js";
 import { ScopedHerdr } from "./scope.js";
-import { HerdrSocketClient, loadInstalledHerdrApiSchema } from "./socket.js";
+import type { HerdrSocketClient } from "./socket.js";
+import { createHerdrClient, isAmbiguousHerdrMutation, withHerdrClient } from "../herdr/client.js";
 
-const execFileAsync = promisify(execFile);
 const interactiveCommands = ["copilot", "grx", "codx", "trellage"] as const;
 
 export async function createDefaultController(controlRoot: string): Promise<SubmindController> {
@@ -18,7 +16,7 @@ export async function createDefaultController(controlRoot: string): Promise<Subm
     provision: provisionHerdrWorktree,
     stageSkill: stageSubmindSkill,
     preflight: async (input) => {
-      await withClient(input.worktreePath, async (client) => {
+      await withHerdrClient(input.worktreePath, async (client) => {
         const scoped = new ScopedHerdr(client, {
           workspaceId: input.workspaceId,
           worktreePath: input.worktreePath,
@@ -68,7 +66,7 @@ export async function createDefaultController(controlRoot: string): Promise<Subm
       });
     },
     startOrchestrator: async (input) =>
-      withClient(input.worktreePath, async (client) => {
+      withHerdrClient(input.worktreePath, async (client) => {
         const scoped = new ScopedHerdr(client, input);
         const initialSnapshot = await scoped.snapshot();
         const existing = initialSnapshot.agents.find((candidate) => candidate.name === input.name);
@@ -143,7 +141,7 @@ export async function createDefaultController(controlRoot: string): Promise<Subm
         throw new Error("Timed out waiting for Copilot orchestrator detection.");
       }),
     promptOrchestrator: async (input) =>
-      withClient(input.worktreePath, async (client) => {
+      withHerdrClient(input.worktreePath, async (client) => {
         const scoped = new ScopedHerdr(client, input);
         await scoped.prompt(input.agentId, input.prompt);
         await scoped.wait(input.agentId, ["working", "blocked", "done"], 30_000);
@@ -172,17 +170,13 @@ export function parsePreflightResults(
   return results;
 }
 
-function isAmbiguousHerdrMutation(error: unknown): boolean {
-  return String(error).includes("ambiguous operation state");
-}
-
 export async function createScopedHerdrForRun(state: SubmindRunState): Promise<{
   client: HerdrSocketClient;
   scoped: ScopedHerdr;
 }> {
   if (!state.workspaceId || !state.worktreePath)
     throw new Error("Run has no provisioned workspace.");
-  const client = await createClient(state.worktreePath);
+  const client = await createHerdrClient(state.worktreePath);
   return {
     client,
     scoped: new ScopedHerdr(client, {
@@ -219,66 +213,6 @@ export function classifyOrchestratorStatus(
   if (status === "done" || status === "idle" || status === "working") return "active";
   if (["blocked", "failed", "unknown", "exited"].includes(status ?? "")) return "failed";
   return "unknown";
-}
-
-async function withClient<T>(cwd: string, operation: (client: HerdrSocketClient) => Promise<T>) {
-  const client = await createClient(cwd);
-  try {
-    return await operation(client);
-  } finally {
-    client.close();
-  }
-}
-
-async function createClient(cwd: string): Promise<HerdrSocketClient> {
-  const { document, methods } = await loadInstalledHerdrApiSchema(cwd);
-  const socketPath = await resolveSocketPath(cwd, document);
-  return new HerdrSocketClient({ socketPath, allowedMethods: methods });
-}
-
-async function resolveSocketPath(cwd: string, schemaDocument: unknown): Promise<string> {
-  const fromEnvironment =
-    process.env.HERDR_SOCKET_PATH ?? process.env.HERDR_API_SOCKET ?? process.env.HERDR_SOCKET;
-  if (fromEnvironment) return fromEnvironment;
-  const fromSchema = findSocketPath(schemaDocument);
-  if (fromSchema) return fromSchema;
-  try {
-    const result = await execFileAsync("herdr", ["api", "socket", "--json"], {
-      cwd,
-      encoding: "utf8",
-    });
-    const path = findSocketPath(JSON.parse(result.stdout));
-    if (path) return path;
-  } catch {
-    // Fall through to explicit error.
-  }
-  throw new Error(
-    "Herdr socket path is unavailable; expected inherited Herdr socket environment or API discovery.",
-  );
-}
-
-function findSocketPath(value: unknown): string | undefined {
-  if (Array.isArray(value)) {
-    for (const child of value) {
-      const found = findSocketPath(child);
-      if (found) return found;
-    }
-    return undefined;
-  }
-  if (!value || typeof value !== "object") return undefined;
-  const record = value as Record<string, unknown>;
-  for (const key of ["socket_path", "socketPath"]) {
-    if (typeof record[key] === "string" && record[key]) return record[key];
-  }
-  const socketRecord = [record.kind, record.type, record.name].some(
-    (field) => typeof field === "string" && field.toLowerCase().includes("socket"),
-  );
-  if (socketRecord && typeof record.path === "string" && record.path) return record.path;
-  for (const child of Object.values(record)) {
-    const found = findSocketPath(child);
-    if (found) return found;
-  }
-  return undefined;
 }
 
 function extractText(value: unknown): string {

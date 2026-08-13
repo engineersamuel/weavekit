@@ -1,0 +1,5 @@
+{
+  "id": "portfolio-valuation",
+  "summary": "Compute portfolio valuation metrics (deferred load)",
+  "body": "SKILL.md"
+}

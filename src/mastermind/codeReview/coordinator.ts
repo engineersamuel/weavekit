@@ -49,7 +49,18 @@ export class PostImplementationReviewCoordinator {
       return;
     }
     if (work.state !== MastermindState.CODE_REVIEWING) return;
-    let review = await this.requireFreshReview(work, attempt);
+    let review = await this.ensureReview(work, attempt);
+    if (review.status !== "running") {
+      const eventType = eventForReviewStatus(review.status);
+      if (!eventType) {
+        throw new Error(`Code review ${review.id} is not running.`);
+      }
+      if (review.review && review.projection?.disposition !== "applied") {
+        await this.project(work, attempt, review);
+      }
+      await this.transition(work, owner, eventType);
+      return;
+    }
     const ticket = await this.store.getLatestTicketSnapshot(work.id);
     const ticketReview = await this.store.getLatestReview(work.id);
     if (!ticket || !ticketReview) throw new Error("Code review context is incomplete.");
@@ -108,17 +119,6 @@ export class PostImplementationReviewCoordinator {
       executionAttemptId: attempt.id,
       ...identity,
     });
-  }
-
-  private async requireFreshReview(
-    work: MastermindWorkItem,
-    attempt: ExecutionAttempt,
-  ): Promise<StoredCodeReview> {
-    const review = await this.ensureReview(work, attempt);
-    if (review.status !== "running") {
-      throw new Error(`Code review ${review.id} is not running.`);
-    }
-    return review;
   }
 
   private async identity(
@@ -246,6 +246,19 @@ export class PostImplementationReviewCoordinator {
 
 function hashJson(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function eventForReviewStatus(status: StoredCodeReview["status"]): string | undefined {
+  switch (status) {
+    case "passed":
+      return MastermindEventType.CODE_REVIEW_PASSED;
+    case "changes_requested":
+      return MastermindEventType.CODE_CHANGES_REQUESTED;
+    case "needs_human":
+      return MastermindEventType.CODE_REVIEW_NEEDS_HUMAN;
+    default:
+      return undefined;
+  }
 }
 
 function codeReviewComment(

@@ -10,6 +10,7 @@ import {
 import {
   CopilotSdkTicketReviewHarness,
   createReviewPermissionHandler,
+  parseTicketReviewDossier,
 } from "../../src/mastermind/review/harness.js";
 import { resolveReviewSkillDiscoveryDirectory } from "../../src/mastermind/review/skillDirectory.js";
 
@@ -48,6 +49,48 @@ const dossier: TicketReviewDossier = {
 const reviewSkillsDirectory = `${process.cwd()}/.github/skills`;
 
 describe("Copilot SDK ticket review harness", () => {
+  it("infers an omitted evidence kind from its typed evidence array", () => {
+    const raw = structuredClone(dossier) as unknown as Record<string, unknown>;
+    raw.linearEvidence = [
+      {
+        id: "linear-ticket",
+        locator: "WK-1",
+        claim: "The ticket defines the objective.",
+        confidence: 1,
+      },
+    ];
+
+    expect(parseTicketReviewDossier(JSON.stringify(raw)).linearEvidence).toEqual([
+      {
+        id: "linear-ticket",
+        kind: ReviewEvidenceKind.LINEAR,
+        locator: "WK-1",
+        claim: "The ticket defines the objective.",
+        confidence: 1,
+      },
+    ]);
+  });
+
+  it("moves shell preflight observations out of HTTPS-only external evidence", () => {
+    const raw = structuredClone(dossier) as unknown as Record<string, unknown>;
+    raw.externalEvidence = [
+      {
+        id: "auth-check",
+        kind: ReviewEvidenceKind.EXTERNAL,
+        locator: "shell: gh auth status (2026-08-13)",
+        claim: "GitHub CLI authentication succeeded.",
+        confidence: 1,
+      },
+    ];
+
+    const parsed = parseTicketReviewDossier(JSON.stringify(raw));
+
+    expect(parsed.externalEvidence).toEqual([]);
+    expect(parsed.assumptions).toContain(
+      "Executor preflight observation (shell: gh auth status (2026-08-13)): GitHub CLI authentication succeeded.",
+    );
+  });
+
   it("loads the review skill with an explicit read-only tool allowlist", async () => {
     let sessionConfig: unknown;
     let readPermission: unknown;
@@ -121,7 +164,7 @@ describe("Copilot SDK ticket review harness", () => {
     expect(sessionConfig).toMatchObject({
       streaming: false,
       skillDirectories: [reviewSkillsDirectory],
-      availableTools: ["read_file", "list_dir", "grep", "glob", "skill"],
+      availableTools: ["read_file", "list_dir", "grep", "glob", "skill", "bash"],
       onPermissionRequest: expect.any(Function),
     });
     expect(disconnected).toBe(true);
@@ -185,7 +228,8 @@ describe("Copilot SDK ticket review harness", () => {
 
     expect(workingDirectory).toBe("/Users/example/projects/prototypes");
     expect(sessionConfig).toMatchObject({
-      availableTools: ["web_fetch", "skill"],
+      workingDirectory: "/Users/example/projects/prototypes",
+      availableTools: ["web_fetch", "skill", "bash"],
     });
   });
 
@@ -319,6 +363,19 @@ describe("Copilot SDK ticket review harness", () => {
       feedback: "Repository-backed reviews cannot fetch external URLs in the same agent session.",
     });
     expect(events).toEqual([]);
+  });
+
+  it("approves pwd when the SDK does not classify it as read-only", () => {
+    const handler = createReviewPermissionHandler({ mode: "repository" });
+
+    expect(
+      handler({
+        kind: "shell",
+        hasWriteFileRedirection: false,
+        requestSandboxBypass: false,
+        commands: [{ identifier: "pwd", readOnly: false }],
+      } as Parameters<ReturnType<typeof createReviewPermissionHandler>>[0]),
+    ).toEqual({ kind: "approve-once" });
   });
 
   it("prefers the packaged dist skill directory when it exists", () => {

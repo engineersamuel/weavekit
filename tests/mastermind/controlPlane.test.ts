@@ -31,8 +31,13 @@ import {
 import type { MastermindDecisionProvider } from "../../src/mastermind/decision/bamlAdapters.js";
 import { MastermindDecisionLoop } from "../../src/mastermind/decision/loop.js";
 import { MastermindEventType, MastermindState } from "../../src/mastermind/domain/events.js";
+import { transitionMastermindState } from "../../src/mastermind/domain/machine.js";
 import { resolveMastermindFailureReasons } from "../../src/mastermind/failure.js";
-import { validateMastermindRuntimeConfig } from "../../src/mastermind/config.js";
+import { ExecutorKind } from "../../src/submind/contracts.js";
+import {
+  validateMastermindExecutionRuntimeConfig,
+  validateMastermindRuntimeConfig,
+} from "../../src/mastermind/config.js";
 import { mountLinearWebhook, verifyLinearSignature } from "../../src/mastermind/linear/channel.js";
 import { LinearGraphQlGateway, type LinearGateway } from "../../src/mastermind/linear/client.js";
 import type {
@@ -583,6 +588,56 @@ class WaitForBlockedPreflightDecisionProvider extends FakeDecisionProvider {
 }
 
 describe("Mastermind durable control plane", () => {
+  it("yields an in-progress execution state to the execution coordinator", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174099",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    let work = (await store.acquireLease(delivery.workId, "test-mastermind", new Date(), 30_000))!;
+    for (const eventType of [
+      MastermindEventType.CLAIM,
+      MastermindEventType.DECIDE,
+      MastermindEventType.PLAN_ACTION,
+    ] as const) {
+      const nextState = transitionMastermindState(work.state, { type: eventType });
+      work = await store.transition(work, "test-mastermind", {
+        eventType,
+        priorState: work.state,
+        nextState,
+        ...(eventType === MastermindEventType.PLAN_ACTION
+          ? { metadata: { plannedAction: MastermindAction.DELEGATE_SUBMIND } }
+          : {}),
+      });
+    }
+    await store.setProjectPolicy(work.id, "weavekit");
+    await store.createExecutionAttempt({
+      work,
+      owner: "test-mastermind",
+      projectPolicyId: "weavekit",
+      projectPolicyVersion: "policy-one",
+      executorKind: ExecutorKind.RLM_SUBMIND,
+      action: MastermindAction.DELEGATE_SUBMIND,
+    });
+    await store.releaseLease(work.id, "test-mastermind");
+    const loop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      new FakeLinearGateway(),
+      new FakeDecisionProvider(),
+      new FakeReviewHarness(),
+    );
+
+    await expect(loop.process(work.id)).resolves.toBeUndefined();
+    expect(await store.getWork(work.id)).toMatchObject({
+      state: MastermindState.PROVISIONING,
+    });
+    store.close();
+  });
+
   it("does not allow the same instance to acquire one work lease concurrently", async () => {
     const { store } = await createStore();
     const delivery = await store.ingestDelivery({
@@ -739,6 +794,27 @@ describe("Mastermind durable control plane", () => {
         LINEAR_API_KEY: "test-key",
         LINEAR_WEBHOOK_SECRET: "test-secret",
       }),
+    ).not.toThrow();
+    store.close();
+  });
+
+  it("accepts RLM-only execution runtime configuration", async () => {
+    const { path, store } = await createStore();
+    const config = createConfig(path).mastermind;
+    config.rlmExecution = {
+      executorKind: "rlm-submind",
+      profile: "general",
+      maxDepth: 3,
+      maxTotalCalls: 20,
+      enableTrellage: true,
+      pollIntervalMs: 1_000,
+      unknownStatusThreshold: 3,
+      cancellationGraceMs: 5_000,
+      maxAttempts: 2,
+    };
+
+    expect(() =>
+      validateMastermindExecutionRuntimeConfig(config, { LINEAR_API_KEY: "test-key" }),
     ).not.toThrow();
     store.close();
   });

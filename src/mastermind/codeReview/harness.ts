@@ -3,12 +3,14 @@ import type {
   LinearTicketInput,
   PostImplementationReviewDossier,
 } from "../../generated/baml_client/index.js";
-import { buildCopilotClientOptions } from "../../telemetry/copilotSdk.js";
+import { buildCopilotClientConnectionOptions } from "../../telemetry/copilotSdk.js";
 import { runConfiguredHarnessCommand } from "../harness/command.js";
-import { createReviewPermissionHandler } from "../review/harness.js";
+import { createReviewPermissionHandler, extractJsonObject } from "../review/harness.js";
 import type { ExecutionAttempt, StoredReview } from "../store/store.js";
 
-const CODE_REVIEW_TOOLS = ["read_file", "list_dir", "grep", "glob", "shell"] as const;
+// NOTE: the SDK's built-in command-execution tool is named "bash", not "shell" — "shell" is only
+// the permission-request kind for it (see createReviewPermissionHandler's `case "shell"`).
+const CODE_REVIEW_TOOLS = ["read_file", "list_dir", "grep", "glob", "bash"] as const;
 
 export type CodeReviewHarnessRequest = {
   ticket: LinearTicketInput;
@@ -39,10 +41,8 @@ export class CopilotSdkCodeReviewHarness implements CodeReviewHarness {
       const { CopilotClient } = await import("@github/copilot-sdk");
       const Client = CopilotClient as unknown as new (options?: unknown) => ReviewClient;
       return new Client({
-        ...buildCopilotClientOptions(),
-        cwd,
-        cliPath: profile.command,
-        cliArgs: profile.args,
+        ...(await buildCopilotClientConnectionOptions(profile.command, profile.args)),
+        workingDirectory: cwd,
       });
     },
   ) {}
@@ -56,6 +56,7 @@ export class CopilotSdkCodeReviewHarness implements CodeReviewHarness {
       session = await client.createSession({
         model: this.profile.model,
         streaming: false,
+        workingDirectory: worktree,
         availableTools: [...CODE_REVIEW_TOOLS],
         onPermissionRequest: createReviewPermissionHandler({ mode: "repository" }),
       });
@@ -63,7 +64,28 @@ export class CopilotSdkCodeReviewHarness implements CodeReviewHarness {
         { prompt: buildCodeReviewPrompt(request) },
         10 * 60_000,
       );
-      return parseCodeReviewDossier(response?.data?.content ?? "");
+      const content = response?.data?.content ?? "";
+      try {
+        return parseCodeReviewDossier(content);
+      } catch (firstError) {
+        const correction = await session.sendAndWait(
+          {
+            prompt: `Your previous response did not satisfy the required JSON contract: ${formatError(
+              firstError,
+            )}. Return the same review again as one JSON object only. Do not include prose or Markdown fences.`,
+          },
+          2 * 60_000,
+        );
+        try {
+          return parseCodeReviewDossier(correction?.data?.content ?? "");
+        } catch (retryError) {
+          throw new Error(
+            `Code-review harness returned invalid structured output after one correction: ${formatError(
+              retryError,
+            )}`,
+          );
+        }
+      }
     } finally {
       await session?.disconnect();
       await client.stop();
@@ -97,9 +119,17 @@ export function createCodeReviewHarness(profile: MastermindHarnessProfile): Code
 }
 
 export function buildCodeReviewPrompt(request: CodeReviewHarnessRequest): string {
+  const worktree = requireWorktree(request.attempt);
   return `Perform an independent post-implementation code review in the current worktree.
 This is not ticket-readiness review. Do not edit files, run destructive commands, mutate Linear,
 or change requirements. Inspect the implementation, tests, git history/diff, and result evidence.
+
+Canonical review worktree: ${worktree}
+Run pwd first and verify it equals that exact path. Inspect artifacts only in that checkout. Do not
+substitute the parent source repository, provisioning root, another worktree, or ~/projects. Include
+untracked files in the review because a greenfield result can exist before its first implementation
+commit. If the current directory does not equal the canonical path, return an unanswered question
+that reports the observed path instead of reviewing a different directory.
 
 Frozen reviewed ticket:
 ${JSON.stringify(request.ticket, null, 2)}
@@ -133,12 +163,8 @@ Return JSON only:
 }`;
 }
 
-function parseCodeReviewDossier(content: string): PostImplementationReviewDossier {
-  const trimmed = content
-    .trim()
-    .replace(/^```(?:json)?\s*/u, "")
-    .replace(/\s*```$/u, "");
-  const value = JSON.parse(trimmed) as PostImplementationReviewDossier;
+export function parseCodeReviewDossier(content: string): PostImplementationReviewDossier {
+  const value = JSON.parse(extractJsonObject(content)) as PostImplementationReviewDossier;
   if (
     !value ||
     typeof value.summary !== "string" ||
@@ -149,6 +175,10 @@ function parseCodeReviewDossier(content: string): PostImplementationReviewDossie
     throw new Error("Code-review harness returned an invalid dossier.");
   }
   return value;
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function requireWorktree(attempt: ExecutionAttempt): string {

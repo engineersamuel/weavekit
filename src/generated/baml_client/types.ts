@@ -623,7 +623,6 @@ export interface ProposedLinearTicketPatch {
   assumptions: string[]
   ambiguities: string[]
   unansweredQuestions: string[]
-  openItemDispositions: ReviewOpenItemDisposition[]
   dependencies: string[]
   risks: string[]
   automatedVerification: string[]
@@ -636,6 +635,7 @@ export interface ProposedLinearTicketPatch {
   evidence: TicketReviewEvidence[]
   readiness: ReviewReadiness
   blockingReasons: string[]
+  openItemDispositions: ReviewOpenItemDisposition[]
   warnings: string[]
   materialScopeChange: boolean
   requiresHumanApproval: boolean
@@ -744,6 +744,22 @@ export interface RoutingDecision {
   
 }
 
+export interface SelfImprovementFinding {
+  severity: "BLOCKING" | "IMPORTANT" | "SUGGESTION"
+  category: "MISSION_DEVIATION" | "INEFFICIENT_ROUTING" | "ERROR_OR_RETRY" | "MISSED_REQUIREMENT" | "OTHER"
+  title: string
+  description: string
+  evidence: string[]
+  suggestedTicketBody: string
+  
+}
+
+export interface SelfImprovementReport {
+  summary: string
+  findings: SelfImprovementFinding[]
+  
+}
+
 export interface SourceAnalysis {
   sourceId: string
   title: string
@@ -826,6 +842,25 @@ export interface SpecializedObligationAssessment {
   status: "complete" | "partial" | "missing" | "not-required"
   evidenceQuotes: string[]
   rationale: string
+  
+}
+
+export interface SubmindTraceObservation {
+  name: string
+  type: string
+  status: string
+  summary: string
+  model?: string | null
+  durationMs?: number | null
+  
+}
+
+export interface SubmindTraceSummary {
+  traceId: string
+  url?: string | null
+  rootInput?: string | null
+  rootOutput?: string | null
+  observations: SubmindTraceObservation[]
   
 }
 

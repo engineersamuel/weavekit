@@ -2,14 +2,34 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { BatchSpanProcessor, type SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { LangfuseSpanProcessor, isDefaultExportSpan } from "@langfuse/otel";
+import { loadLocalEnvFiles } from "../config.js";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 
 export type TelemetryHandle = { shutdown(): Promise<void> };
 
 const noopHandle: TelemetryHandle = { async shutdown() {} };
 const defaultLangfuseBaseUrl = "https://cloud.langfuse.com";
-const rawContentRedactionMessage =
-  "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>";
+const rawContentRedactionMessage = "<redacted because LANGFUSE_EXPORT_RAW=false>";
+
+export function loadTelemetryEnvironment(
+  directory: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const fileEnv: NodeJS.ProcessEnv = {};
+  loadLocalEnvFiles(directory, fileEnv);
+  const loaded: string[] = [];
+  for (const [key, value] of Object.entries(fileEnv)) {
+    if (
+      value !== undefined &&
+      env[key] === undefined &&
+      (key.startsWith("LANGFUSE_") || key.startsWith("OTEL_"))
+    ) {
+      env[key] = value;
+      loaded.push(key);
+    }
+  }
+  return loaded;
+}
 
 export function telemetryEnabled(): boolean {
   return process.env.OTEL_SDK_DISABLED !== "true";
@@ -34,7 +54,7 @@ function readLangfuseConfig(): LangfuseConfig | null {
 }
 
 function isRawExportEnabled(): boolean {
-  return process.env.LANGFUSE_EXPORT_RAW === "true";
+  return process.env.LANGFUSE_EXPORT_RAW !== "false";
 }
 
 function redactLangfuseValue(data: unknown): unknown {
@@ -136,14 +156,38 @@ function createSdkConfig(
   };
 }
 
-export async function startTelemetry(serviceName: string): Promise<TelemetryHandle> {
+function hasExplicitTelemetryExporter(): boolean {
+  const hasLangfuse = Boolean(process.env.LANGFUSE_PUBLIC_KEY && process.env.LANGFUSE_SECRET_KEY);
+  return Boolean(
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
+    process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
+    process.env.OTEL_TRACES_EXPORTER ||
+    hasLangfuse,
+  );
+}
+
+export async function startTelemetry(
+  serviceName: string,
+  options: { skipWhenUnconfigured?: boolean } = {},
+): Promise<TelemetryHandle> {
   if (!telemetryEnabled()) return noopHandle;
+  if (options.skipWhenUnconfigured && !hasExplicitTelemetryExporter()) return noopHandle;
 
   const sdk = new NodeSDK(createSdkConfig(serviceName));
   sdk.start();
   return {
     async shutdown() {
-      await sdk.shutdown();
+      // Best-effort: telemetry export failures (e.g. misconfigured/expired Langfuse
+      // credentials returning 401) must never crash the process during shutdown.
+      try {
+        await sdk.shutdown();
+      } catch (error) {
+        process.stderr.write(
+          `[telemetry] shutdown export failed (ignored): ${
+            error instanceof Error ? error.message : String(error)
+          }\n`,
+        );
+      }
     },
   };
 }

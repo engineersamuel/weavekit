@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
+import { ProjectRepositoryMode, type ProjectCatalogEntry } from "../../src/config.js";
 import {
   MastermindAction,
   MastermindEventType,
@@ -53,6 +54,12 @@ describe("Mastermind execution attempt store", () => {
     ).toBe(true);
     expect(
       migrated
+        .prepare("PRAGMA table_info(mastermind_work_items)")
+        .all()
+        .some((column) => (column as { name: string }).name === "resolved_project_json"),
+    ).toBe(true);
+    expect(
+      migrated
         .prepare(
           "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mastermind_execution_attempts'",
         )
@@ -60,6 +67,43 @@ describe("Mastermind execution attempt store", () => {
     ).toBeDefined();
     migrated.close();
     store.close();
+  });
+
+  it("persists a dynamically resolved project across store restarts", async () => {
+    const path = await databasePath();
+    const store = new SqliteMastermindStore(path);
+    await store.initialize();
+    const delivery = await store.ingestDelivery({
+      deliveryId: crypto.randomUUID(),
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-10",
+    });
+    const project: ProjectCatalogEntry = {
+      id: "prototype-eng-10",
+      displayName: "Prototype ENG-10",
+      workingTree: "",
+      repositoryMode: ProjectRepositoryMode.GREENFIELD,
+      provisioningRoot: "/home/test/projects/prototypes",
+      mainline: "main",
+      remote: "origin",
+      contextDocs: [],
+      validationCommands: [],
+      autonomousPrAllowed: false,
+      notification: "cli",
+      knowledgeExport: "off",
+    };
+    await store.setProjectPolicy(delivery.workId, project.id, project);
+    store.close();
+
+    const reopened = new SqliteMastermindStore(path);
+    await reopened.initialize();
+    expect(await reopened.getWork(delivery.workId)).toMatchObject({
+      projectPolicyId: project.id,
+      resolvedProject: project,
+    });
+    reopened.close();
   });
 
   it("atomically creates one current attempt and fences concurrent creators", async () => {
@@ -277,6 +321,7 @@ function createInput(work: MastermindWorkItem) {
     projectPolicyId: "weavekit",
     projectPolicyVersion: "policy-one",
     executorKind: ExecutorKind.HERDR_COPILOT,
+    action: MastermindAction.IMPLEMENT_DIRECTLY,
   };
 }
 

@@ -1,0 +1,25 @@
+services:
+  prompt-forge:
+    image: ghcr.io/insaanimanav/prompt-forge@sha256:1c512e17b2f4cd10397c0b7d5ef964910ac23138f4d2ceb941f8c66cccc70d0e
+    container_name: prototype-prompt-forge
+    command: ["/bin/sh", "-c", "ln -sf /data/promptforge.db /root/promptforge.db && exec ./main"]
+    ports:
+      - "127.0.0.1:8090:8080"
+    environment:
+      - OPENAI_BASE_URL=http://host.docker.internal:8080/v1
+      - OPENAI_API_KEY=local-dev
+      - DEFAULT_AI_PROVIDER=openai
+    volumes:
+      - promptforge-data:/data
+      - ./env.js:/root/frontend/env.js:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  promptforge-data:
+    driver: local

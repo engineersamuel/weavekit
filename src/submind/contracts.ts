@@ -6,6 +6,12 @@ import { assertExecutionPreflight } from "./preflight.js";
 
 export const ExecutorKind = {
   HERDR_COPILOT: "herdr-copilot",
+  /**
+   * Delegates directly to the RLM ("Submind") recursive Copilot SDK meta-harness
+   * (`src/rlm-poc/runtime.ts`) instead of a Herdr-managed pane running the plain `copilot` CLI.
+   * Used for `MastermindAction.DELEGATE_SUBMIND` work items.
+   */
+  RLM_SUBMIND: "rlm-submind",
 } as const;
 export type ExecutorKind = (typeof ExecutorKind)[keyof typeof ExecutorKind];
 
@@ -62,6 +68,10 @@ export type ExecutorHandle = {
   lastObservedWorkspaceId?: string;
   lastObservedTabId?: string;
   lastObservedPaneId?: string;
+  /** Detached child-process PID, used by {@link ExecutorKind.RLM_SUBMIND}. */
+  pid?: number;
+  /** Path to the detached process's stdout/stderr log, used by {@link ExecutorKind.RLM_SUBMIND}. */
+  logPath?: string;
 };
 
 export type ExecutorStatus = {
@@ -77,6 +87,12 @@ export type VerificationEntry = {
   summary: string;
 };
 
+export type SubmindTraceReference = {
+  traceId: string;
+  conversationId?: string;
+  url?: string;
+};
+
 export type DirectExecutionResult = {
   schemaVersion: 1;
   workId: string;
@@ -89,6 +105,12 @@ export type DirectExecutionResult = {
   verification: VerificationEntry[];
   knownRisks: string[];
   remainingWork: string[];
+  /**
+   * Set only by {@link ExecutorKind.RLM_SUBMIND} executions: identifies the Langfuse trace for the
+   * Submind run that produced this result, so a later self-improvement pass can fetch and analyze
+   * it. Never present for {@link ExecutorKind.HERDR_COPILOT} results.
+   */
+  submindTrace?: SubmindTraceReference;
 };
 
 export type VerificationEvidence = {
@@ -132,7 +154,14 @@ export type DirectExecutor = {
   ): Promise<ExecutorHandle>;
   status(handle: ExecutorHandle): Promise<ExecutorStatus>;
   cancel(handle: ExecutorHandle): Promise<{ confirmed: boolean; status: ExecutorStatus }>;
-  collect(handle: ExecutorHandle): Promise<DirectExecutionResult>;
+  /**
+   * `request` is passed alongside the handle (not just the handle) so executors that cannot
+   * honor the `.weavekit/mastermind-result.json` manifest contract (e.g. {@link RlmDirectExecutor}
+   * falling back to a `needs-human` result) can still stamp the correct workId/attemptId/
+   * attemptNumber, rather than relying on {@link validateResultForRequest} to reject a
+   * placeholder result after the fact.
+   */
+  collect(handle: ExecutorHandle, request: DirectExecutionRequest): Promise<DirectExecutionResult>;
 };
 
 export async function startDirectExecutionWithPreflight(

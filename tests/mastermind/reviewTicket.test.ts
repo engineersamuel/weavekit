@@ -163,18 +163,26 @@ class CountingReviewHarness implements TicketReviewHarness {
 
 class CountingDecisionProvider implements MastermindDecisionProvider {
   synthesisCalls = 0;
+  readonly synthesisProjects: MastermindProjectPolicyInput[] = [];
+  private readonly patches: ProposedLinearTicketPatch[] | undefined;
+
+  constructor(patches?: ProposedLinearTicketPatch[]) {
+    this.patches = patches;
+  }
 
   async synthesizeTicketPatch(
     ticket: LinearTicketInput,
-    _project: MastermindProjectPolicyInput,
+    project: MastermindProjectPolicyInput,
     dossier: TicketReviewDossier,
   ): Promise<ProposedLinearTicketPatch> {
-    this.synthesisCalls += 1;
     expect(ticket.id).toBe("issue-one");
     expect(dossier.preservedIntent).toBe(
       "Keep pending review reuse fail-closed under the current ownership policy.",
     );
-    return createCurrentPendingPatch();
+    this.synthesisProjects.push(project);
+    const patch = this.patches?.[this.synthesisCalls] ?? createCurrentPendingPatch();
+    this.synthesisCalls += 1;
+    return patch;
   }
 
   async decideNextAction(): Promise<MastermindNextActionDecision> {
@@ -258,6 +266,32 @@ function createReviewStore(initialReview?: StoredReview): {
 }
 
 describe("generateReviewProposal", () => {
+  it("synthesizes against the project resolved from repository evidence", async () => {
+    const { store } = createReviewStore();
+    const decisions = new CountingDecisionProvider();
+    const harness = new CountingReviewHarness();
+    const dynamicProject: MastermindProjectPolicyInput = {
+      id: "prototype-wk-1",
+      displayName: "Prototype WK-1",
+      repositoryMode: ProjectRepositoryMode.GREENFIELD,
+      provisioningRoot: "/home/test/projects/prototypes",
+      allowedActions: [],
+    };
+
+    await generateReviewProposal({
+      workId: "work-one",
+      ticket: createTicketSnapshot(),
+      project: createProject(),
+      harness,
+      decisions,
+      store,
+      resolveProject: () => dynamicProject,
+    });
+
+    expect(decisions.synthesisProjects).toEqual([dynamicProject]);
+    expect(harness.reviewCalls).toBe(2);
+  });
+
   it("reuses a valid current pending review without rerunning the harness or synthesis", async () => {
     const pending = createStoredReview();
     const { store, invalidations, savedReviews } = createReviewStore(pending);
@@ -335,5 +369,119 @@ describe("generateReviewProposal", () => {
         ),
       }),
     ]);
+  });
+
+  it("resynthesizes the patch when open-item disposition coverage is incomplete", async () => {
+    const { store, savedReviews } = createReviewStore();
+    const harness = new CountingReviewHarness();
+    const gappyPatch: ProposedLinearTicketPatch = {
+      ...createCurrentPendingPatch(),
+      readiness: ReviewReadiness.BLOCKED,
+      blockingReasons: ["Product owner must choose the compatibility policy."],
+      unansweredQuestions: [],
+      openItemDispositions: [],
+      requiresHumanApproval: true,
+    };
+    const goodPatch: ProposedLinearTicketPatch = {
+      ...gappyPatch,
+      openItemDispositions: [
+        {
+          kind: ReviewOpenItemKind.BLOCKING_REASON,
+          text: "Product owner must choose the compatibility policy.",
+          owner: ReviewOpenItemOwner.HUMAN,
+          rationale: "Only the product owner can decide the compatibility policy.",
+        },
+      ],
+    };
+    const decisions = new CountingDecisionProvider([gappyPatch, goodPatch]);
+
+    const review = await generateReviewProposal({
+      workId: "work-one",
+      ticket: createTicketSnapshot(),
+      project: createProject(),
+      harness,
+      decisions,
+      store,
+    });
+
+    expect(decisions.synthesisCalls).toBe(2);
+    expect(review.patch.openItemDispositions).toHaveLength(1);
+    expect(review.validation).toMatchObject({ accepted: true });
+    expect(savedReviews).toHaveLength(1);
+    expect(savedReviews[0]?.patch).toEqual(goodPatch);
+  });
+
+  it("backfills a safe default disposition after the retry budget is exhausted", async () => {
+    const { store, savedReviews } = createReviewStore();
+    const harness = new CountingReviewHarness();
+    const gappyPatch: ProposedLinearTicketPatch = {
+      ...createCurrentPendingPatch(),
+      readiness: ReviewReadiness.BLOCKED,
+      blockingReasons: ["Product owner must choose the compatibility policy."],
+      unansweredQuestions: [],
+      openItemDispositions: [],
+      requiresHumanApproval: true,
+    };
+    const decisions = new CountingDecisionProvider([gappyPatch, gappyPatch, gappyPatch]);
+
+    const review = await generateReviewProposal({
+      workId: "work-one",
+      ticket: createTicketSnapshot(),
+      project: createProject(),
+      harness,
+      decisions,
+      store,
+    });
+
+    expect(decisions.synthesisCalls).toBe(3);
+    expect(review.validation?.accepted).toBe(true);
+    expect(review.patch.openItemDispositions).toEqual([
+      expect.objectContaining({
+        kind: ReviewOpenItemKind.BLOCKING_REASON,
+        text: "Product owner must choose the compatibility policy.",
+        owner: ReviewOpenItemOwner.HUMAN,
+      }),
+    ]);
+    expect(review.patch.requiresHumanApproval).toBe(true);
+    expect(savedReviews[0]?.patch.openItemDispositions).toEqual(review.patch.openItemDispositions);
+  });
+
+  it("normalizes a self-inconsistent requiresHumanApproval flag instead of failing validation", async () => {
+    const { store, savedReviews } = createReviewStore();
+    const harness = new CountingReviewHarness();
+    // The model correctly used EXECUTOR_PREFLIGHT-only ownership and READY_WITH_NONBLOCKING_GAPS
+    // readiness, but incorrectly self-reported requiresHumanApproval: true even though nothing
+    // requires human approval — a known model self-consistency slip on this redundant field.
+    const inconsistentPatch: ProposedLinearTicketPatch = {
+      ...createCurrentPendingPatch(),
+      readiness: ReviewReadiness.READY_WITH_NONBLOCKING_GAPS,
+      blockingReasons: [],
+      unansweredQuestions: ["Verify gh/az CLI auth before starting."],
+      openItemDispositions: [
+        {
+          kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+          text: "Verify gh/az CLI auth before starting.",
+          owner: ReviewOpenItemOwner.EXECUTOR_PREFLIGHT,
+          rationale: "The executor can verify auth itself before starting.",
+        },
+      ],
+      requiresHumanApproval: true,
+      materialScopeChange: false,
+    };
+    const decisions = new CountingDecisionProvider([inconsistentPatch]);
+
+    const review = await generateReviewProposal({
+      workId: "work-one",
+      ticket: createTicketSnapshot(),
+      project: createProject(),
+      harness,
+      decisions,
+      store,
+    });
+
+    expect(decisions.synthesisCalls).toBe(1);
+    expect(review.patch.requiresHumanApproval).toBe(false);
+    expect(review.validation).toMatchObject({ accepted: true, requiresHumanApproval: false });
+    expect(savedReviews[0]?.patch.requiresHumanApproval).toBe(false);
   });
 });

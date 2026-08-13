@@ -200,6 +200,40 @@ export type MastermindExecutionDefaults = {
   maxAttempts: number;
 };
 
+/**
+ * Sibling execution config for `MastermindAction.DELEGATE_SUBMIND`, executed via
+ * {@link ExecutorKind.RLM_SUBMIND} (a detached `rlm-poc` process) instead of the Herdr-pane
+ * `IMPLEMENT_DIRECTLY` path configured by {@link MastermindExecutionDefaults}.
+ */
+export type MastermindRlmExecutionDefaults = {
+  executorKind: ExecutorKindValue;
+  /** RLM profile used for the delegated implementation session. Fixed to "general". */
+  profile: string;
+  model?: string;
+  maxDepth: number;
+  maxTotalCalls: number;
+  /** Enables `invoke_trellage` on the RLM run so it may itself delegate to a nested worktree. */
+  enableTrellage: boolean;
+  pollIntervalMs: number;
+  unknownStatusThreshold: number;
+  cancellationGraceMs: number;
+  maxAttempts: number;
+};
+
+/**
+ * Opt-in self-improvement feedback loop: after a RLM/Submind-delegated work item reaches a
+ * terminal state, analyze its captured Langfuse trace against the ticket and mission-statement
+ * text, and file triage tickets in a separate Linear team/project for concrete findings. Only
+ * meaningful for {@link ExecutorKind.RLM_SUBMIND} attempts (only those carry a Submind trace).
+ */
+export type MastermindSelfImprovementDefaults = {
+  enabled: boolean;
+  targetTeamId: string;
+  targetProjectId?: string;
+  minSeverity: "BLOCKING" | "IMPORTANT" | "SUGGESTION";
+  ticketLabelId?: string;
+};
+
 export const MastermindHarnessTransport = {
   COPILOT_SDK: "copilot-sdk",
   COMMAND: "command",
@@ -259,6 +293,8 @@ export type MastermindDefaults = {
   projectMappings: MastermindProjectMapping[];
   harnesses?: MastermindHarnessProfiles;
   execution?: MastermindExecutionDefaults;
+  rlmExecution?: MastermindRlmExecutionDefaults;
+  selfImprovement?: MastermindSelfImprovementDefaults;
 };
 
 export type ProjectDirectExecutionPolicy = {
@@ -728,6 +764,8 @@ function defaultMastermindDefaults(env: NodeJS.ProcessEnv): MastermindDefaults {
       },
     },
     execution: undefined,
+    rlmExecution: undefined,
+    selfImprovement: undefined,
   };
 }
 
@@ -1577,6 +1615,8 @@ function readMastermindDefaults(value: unknown, env: NodeJS.ProcessEnv): Masterm
     projectMappings: readMastermindProjectMappings(record.project_mappings),
     harnesses: readMastermindHarnessProfiles(record.harnesses, defaults.harnesses!),
     execution: readMastermindExecutionDefaults(record.execution),
+    rlmExecution: readMastermindRlmExecutionDefaults(record.rlm_execution),
+    selfImprovement: readMastermindSelfImprovementDefaults(record.self_improvement),
   };
 }
 
@@ -1696,6 +1736,90 @@ function readMastermindExecutionDefaults(value: unknown): MastermindExecutionDef
       600_000,
     ),
     maxAttempts,
+  };
+}
+
+function readMastermindRlmExecutionDefaults(
+  value: unknown,
+): MastermindRlmExecutionDefaults | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const record = asRecord(value);
+  const executorKind = readString(record.executor_kind, ExecutorKind.RLM_SUBMIND);
+  if (executorKind !== ExecutorKind.RLM_SUBMIND) {
+    throw new Error(`mastermind.rlm_execution.executor_kind must be ${ExecutorKind.RLM_SUBMIND}`);
+  }
+  const maxAttempts = readRequiredBoundedInteger(
+    record.max_attempts,
+    "mastermind.rlm_execution.max_attempts",
+    1,
+    20,
+  );
+  return {
+    executorKind: ExecutorKind.RLM_SUBMIND,
+    // The RLM implementation profile is fixed to "general" per design decision - it is not
+    // operator-configurable, unlike the model/depth/budget knobs below.
+    profile: "general",
+    model: readOptionalString(record.model),
+    maxDepth: readRequiredBoundedInteger(
+      record.max_depth,
+      "mastermind.rlm_execution.max_depth",
+      1,
+      10,
+    ),
+    maxTotalCalls: readRequiredBoundedInteger(
+      record.max_total_calls,
+      "mastermind.rlm_execution.max_total_calls",
+      1,
+      1_000,
+    ),
+    enableTrellage: readBoolean(record.enable_trellage, true),
+    pollIntervalMs: readRequiredBoundedInteger(
+      record.poll_interval_ms,
+      "mastermind.rlm_execution.poll_interval_ms",
+      250,
+      300_000,
+    ),
+    unknownStatusThreshold: readRequiredBoundedInteger(
+      record.unknown_status_threshold,
+      "mastermind.rlm_execution.unknown_status_threshold",
+      1,
+      100,
+    ),
+    cancellationGraceMs: readRequiredBoundedInteger(
+      record.cancellation_grace_ms,
+      "mastermind.rlm_execution.cancellation_grace_ms",
+      100,
+      300_000,
+    ),
+    maxAttempts,
+  };
+}
+
+function readMastermindSelfImprovementDefaults(
+  value: unknown,
+): MastermindSelfImprovementDefaults | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const record = asRecord(value);
+  const targetTeamId = readOptionalString(record.target_team_id);
+  if (!targetTeamId) {
+    throw new Error("mastermind.self_improvement.target_team_id is required.");
+  }
+  const minSeverity = readOptionalString(record.min_severity) ?? "IMPORTANT";
+  if (minSeverity !== "BLOCKING" && minSeverity !== "IMPORTANT" && minSeverity !== "SUGGESTION") {
+    throw new Error(
+      "mastermind.self_improvement.min_severity must be BLOCKING, IMPORTANT, or SUGGESTION.",
+    );
+  }
+  return {
+    enabled: readBoolean(record.enabled, true),
+    targetTeamId,
+    targetProjectId: readOptionalString(record.target_project_id),
+    minSeverity,
+    ticketLabelId: readOptionalString(record.ticket_label_id),
   };
 }
 
@@ -1828,20 +1952,21 @@ function readProjectDirectExecutionPolicy(
   const direct = asRecord(execution.direct);
   const enabled = readBoolean(direct.enabled, false);
   const configuredExecutorKinds = readStringArray(direct.allowed_executors);
-  const unknownExecutorKind = configuredExecutorKinds.find(
-    (kind) => kind !== ExecutorKind.HERDR_COPILOT,
-  );
+  const validExecutorKinds = new Set<string>(Object.values(ExecutorKind));
+  const unknownExecutorKind = configuredExecutorKinds.find((kind) => !validExecutorKinds.has(kind));
   if (unknownExecutorKind) {
     throw new Error(
       `projects.${projectId}.execution.direct.allowed_executors contains unknown executor ${unknownExecutorKind}`,
     );
   }
-  const allowedExecutorKinds = configuredExecutorKinds.flatMap((kind) =>
-    kind === ExecutorKind.HERDR_COPILOT ? [ExecutorKind.HERDR_COPILOT] : [],
+  const allowedExecutorKinds = configuredExecutorKinds.filter((kind): kind is ExecutorKindValue =>
+    validExecutorKinds.has(kind),
   );
   if (enabled && allowedExecutorKinds.length === 0) {
     throw new Error(
-      `projects.${projectId}.execution.direct.allowed_executors must include ${ExecutorKind.HERDR_COPILOT}`,
+      `projects.${projectId}.execution.direct.allowed_executors must include at least one of: ${[
+        ...validExecutorKinds,
+      ].join(", ")}`,
     );
   }
   return {

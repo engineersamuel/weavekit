@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import type { MastermindExecutionDefaults } from "../config.js";
@@ -11,7 +11,6 @@ import {
   type DirectExecutor,
   type ExecutorHandle,
   type ExecutorStatus,
-  type VerificationEntry,
 } from "./contracts.js";
 import { findHerdrString, findWorkspaceRootPaneId, parseHerdrEnvelope } from "./herdrJson.js";
 import {
@@ -20,6 +19,7 @@ import {
   type ExecutionCommandRunner,
   type ExecutionPreflightReport,
 } from "./preflight.js";
+import { readAndValidateResultManifest } from "./resultManifest.js";
 import type { WorkspaceShell } from "./workspace.js";
 
 const execFileAsync = promisify(execFile);
@@ -207,12 +207,11 @@ export class HerdrDirectExecutor implements DirectExecutor {
     return { confirmed: status.state === "idle" || status.state === "done", status };
   }
 
-  async collect(handle: ExecutorHandle): Promise<DirectExecutionResult> {
-    const manifestPath = join(handle.worktreePath, ".weavekit", "mastermind-result.json");
-    const raw = JSON.parse(await readFile(manifestPath, "utf8")) as unknown;
-    const result = parseDirectExecutionResult(raw);
-    await validateArtifacts(handle.worktreePath, result.artifactPaths);
-    return result;
+  async collect(
+    handle: ExecutorHandle,
+    _request: DirectExecutionRequest,
+  ): Promise<DirectExecutionResult> {
+    return readAndValidateResultManifest(handle.worktreePath);
   }
 
   private async resolveLiveWorktree(
@@ -355,6 +354,15 @@ export function buildDirectExecutionPrompt(request: DirectExecutionRequest): str
     `- First durable action: write ${startMarker} with schemaVersion 1 and the exact work/attempt IDs below.`,
     `- Final durable action: atomically write ${request.resultManifestPath} using the required result contract.`,
     "",
+    "Execution environment:",
+    ...(request.workspace.kind === "greenfield-repository-worktree"
+      ? [
+          "- This current worktree is the dedicated greenfield prototype worktree requested by the ticket.",
+          "- An empty seeded repository is expected. Acquire required upstream source into this worktree and implement here; do not request another project or worktree.",
+        ]
+      : ["- This current worktree is the governed checkout selected for the ticket."]),
+    "- A successful `gh auth status` is sufficient proof of GitHub CLI authentication. Do not infer that Copilot Requests permission is missing from the OAuth scope list because that permission is not enumerable there; escalate only if an authenticated operation rejects it.",
+    "",
     `Work ID: ${request.workId}`,
     `Attempt ID: ${request.attemptId}`,
     `Attempt number: ${request.attemptNumber}`,
@@ -393,64 +401,6 @@ export function buildDirectExecutionPrompt(request: DirectExecutionRequest): str
   ].join("\n");
 }
 
-export function parseDirectExecutionResult(value: unknown): DirectExecutionResult {
-  const record = asRecord(value);
-  const outcome = record.outcome;
-  if (
-    record.schemaVersion !== 1 ||
-    typeof record.workId !== "string" ||
-    typeof record.attemptId !== "string" ||
-    !Number.isInteger(record.attemptNumber) ||
-    !["succeeded", "retryable-failure", "terminal-failure", "needs-human"].includes(
-      String(outcome),
-    ) ||
-    typeof record.summary !== "string"
-  ) {
-    throw new Error("Execution result manifest has an invalid required contract.");
-  }
-  const verification = parseVerification(record.verification);
-  if (
-    outcome === "succeeded" &&
-    (verification.length === 0 || verification.some((entry) => entry.exitCode !== 0))
-  ) {
-    throw new Error("Successful execution result requires passing verification evidence.");
-  }
-  const pullRequestUrl =
-    typeof record.pullRequestUrl === "string" ? validateHttpsUrl(record.pullRequestUrl) : undefined;
-  return {
-    schemaVersion: 1,
-    workId: record.workId,
-    attemptId: record.attemptId,
-    attemptNumber: Number(record.attemptNumber),
-    outcome: outcome as DirectExecutionResult["outcome"],
-    summary: record.summary.trim(),
-    artifactPaths: stringArray(record.artifactPaths),
-    ...(pullRequestUrl ? { pullRequestUrl } : {}),
-    verification,
-    knownRisks: stringArray(record.knownRisks),
-    remainingWork: stringArray(record.remainingWork),
-  };
-}
-
-export function validateResultForRequest(
-  result: DirectExecutionResult,
-  request: DirectExecutionRequest,
-): void {
-  if (
-    result.workId !== request.workId ||
-    result.attemptId !== request.attemptId ||
-    result.attemptNumber !== request.attemptNumber
-  ) {
-    throw new Error("Execution result manifest belongs to a stale or different attempt.");
-  }
-  if (result.pullRequestUrl && request.allowedPullRequestHosts.length > 0) {
-    const host = new URL(result.pullRequestUrl).hostname.toLowerCase();
-    if (!request.allowedPullRequestHosts.includes(host)) {
-      throw new Error(`Execution result PR host is not allowed: ${host}`);
-    }
-  }
-}
-
 function permissionArgs(config: MastermindExecutionDefaults): string[] {
   return [
     ...config.allowTools.map((value) => `--allow-tool=${value}`),
@@ -484,57 +434,6 @@ function normalizeHerdrState(value: string | undefined): ExecutorStatus["state"]
   return value && ["idle", "working", "blocked", "done", "unknown"].includes(value)
     ? (value as ExecutorStatus["state"])
     : "unknown";
-}
-
-function parseVerification(value: unknown): VerificationEntry[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((entry) => {
-    const record = asRecord(entry);
-    if (
-      typeof record.command !== "string" ||
-      !Number.isInteger(record.exitCode) ||
-      typeof record.summary !== "string"
-    ) {
-      throw new Error("Execution verification entry is invalid.");
-    }
-    return {
-      command: record.command,
-      exitCode: Number(record.exitCode),
-      summary: record.summary,
-    };
-  });
-}
-
-async function validateArtifacts(worktreePath: string, paths: string[]): Promise<void> {
-  const root = await realpath(worktreePath);
-  for (const artifactPath of paths) {
-    if (isAbsolute(artifactPath)) {
-      throw new Error("Execution artifact paths must be relative.");
-    }
-    const candidate = await realpath(join(root, artifactPath));
-    const path = relative(root, candidate);
-    if (path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) {
-      throw new Error(`Execution artifact escapes the worktree: ${artifactPath}`);
-    }
-    await stat(candidate);
-  }
-}
-
-function validateHttpsUrl(value: string): string {
-  const url = new URL(value);
-  if (url.protocol !== "https:" || url.username || url.password || !url.hostname) {
-    throw new Error("Execution pull request URL must be HTTPS without credentials.");
-  }
-  return url.toString();
-}
-
-function stringArray(value: unknown): string[] {
-  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
-    throw new Error("Execution result manifest contains an invalid string array.");
-  }
-  return value as string[];
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

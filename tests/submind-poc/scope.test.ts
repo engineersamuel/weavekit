@@ -210,7 +210,7 @@ describe("ScopedHerdr", () => {
       { target: "pane-run", until: ["idle", "done"], timeout_ms: 120_000 },
     ]);
 
-    await scoped.read("pane-run", 120);
+    await scoped.read("pane-run", { lines: 120 });
     expect(requestMock.mock.lastCall?.slice(0, 2)).toEqual([
       "agent.read",
       { target: "pane-run", source: "visible", lines: 120 },

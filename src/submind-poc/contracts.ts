@@ -192,47 +192,12 @@ export const SubmindEventSchema = z
 
 export type SubmindEvent = z.infer<typeof SubmindEventSchema>;
 
-export const HerdrApiSchemaDocumentSchema = z.record(z.unknown());
-
-export const HerdrSnapshotSchema = z
-  .object({
-    workspaces: z
-      .array(
-        z
-          .object({
-            id: IdentifierSchema,
-            cwd: z.string().min(1).optional(),
-          })
-          .passthrough(),
-      )
-      .default([]),
-    panes: z
-      .array(
-        z
-          .object({
-            id: IdentifierSchema,
-            workspaceId: IdentifierSchema,
-            cwd: z.string().min(1).optional(),
-            exited: z.boolean().optional(),
-          })
-          .passthrough(),
-      )
-      .default([]),
-    agents: z
-      .array(
-        z
-          .object({
-            id: IdentifierSchema,
-            name: IdentifierSchema,
-            paneId: IdentifierSchema,
-            kind: z.string().optional(),
-            status: z.string().optional(),
-            interactiveReady: z.boolean().optional(),
-          })
-          .passthrough(),
-      )
-      .default([]),
-  })
-  .passthrough();
-
-export type HerdrSnapshot = z.infer<typeof HerdrSnapshotSchema>;
+/**
+ * Re-exported from `src/herdr/` (ADR 0011), which now owns the shared Herdr client surface.
+ * Kept here so existing `submind-poc` imports continue to resolve unchanged.
+ */
+export {
+  HerdrApiSchemaDocumentSchema,
+  HerdrSnapshotSchema,
+  type HerdrSnapshot,
+} from "../herdr/contracts.js";

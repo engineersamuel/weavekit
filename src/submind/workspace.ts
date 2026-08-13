@@ -52,6 +52,7 @@ export class HerdrWorkspaceProvisioner implements WorkspaceProvisioner {
     if (!request.project.provisioningRoot) {
       throw new Error(`Greenfield project ${request.project.id} has no provisioning root.`);
     }
+    await mkdir(request.project.provisioningRoot, { recursive: true });
     const provisioningRoot = await realpath(request.project.provisioningRoot);
     const directoryName = greenfieldDirectoryName(request);
     if (isAbsolute(directoryName)) {

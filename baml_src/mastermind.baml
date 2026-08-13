@@ -129,7 +129,6 @@ class ProposedLinearTicketPatch {
   assumptions string[]
   ambiguities string[]
   unansweredQuestions string[]
-  openItemDispositions ReviewOpenItemDisposition[]
   dependencies string[]
   risks string[]
   automatedVerification string[]
@@ -142,6 +141,7 @@ class ProposedLinearTicketPatch {
   evidence TicketReviewEvidence[]
   readiness ReviewReadiness
   blockingReasons string[]
+  openItemDispositions ReviewOpenItemDisposition[]
   warnings string[]
   materialScopeChange bool
   requiresHumanApproval bool
@@ -212,6 +212,8 @@ function SynthesizeLinearTicketPatch(
 
     Rules:
     - Preserve the user's factual intent.
+    - Copy dossier.preservedIntent verbatim into this patch's preservedIntent field; do not
+      paraphrase, summarize, or edit it in any way.
     - Use repository or external claims only when the dossier provides evidence.
     - Keep unanswered product decisions as questions or blocking reasons. Never silently decide.
     - Keep the existing string arrays. openItemDispositions classifies unansweredQuestions and
@@ -221,11 +223,38 @@ function SynthesizeLinearTicketPatch(
     - For every blockingReasons entry, emit exactly one openItemDispositions entry with kind
       BLOCKING_REASON and the exact same text after trimming.
     - Do not emit openItemDispositions entries for any other text.
+    - Before returning, double-check: openItemDispositions.length must equal
+      unansweredQuestions.length + blockingReasons.length, and every unansweredQuestions/
+      blockingReasons string must appear verbatim (after trimming) as exactly one
+      openItemDispositions.text value with the matching kind. If any blockingReasons entry is
+      missing its disposition, add it rather than omitting it.
     - Use HUMAN for product behavior, acceptance intent, authorization, scope approval, account
       choice, or another decision the executor must not make.
     - Use EXECUTOR_PREFLIGHT for tool or package availability, credentials or auth state, selected
       tenant or account context, runtime version, or another environment fact that can be proven
       fail-closed immediately before implementation starts.
+    - Standing Mastermind platform defaults: GitHub CLI (`gh`) and Azure CLI (`az`) authentication
+      state are always EXECUTOR_PREFLIGHT (never HUMAN) open items — the executor can verify auth
+      itself before starting; only keep them as open items at all if the dossier's own evidence
+      shows the CLI is not authenticated. A dossier finding that `gh auth status` succeeded fully
+      satisfies any GitHub-auth precondition, including a PAT's Copilot Requests permission —
+      fine-grained PAT scopes are not enumerable via `gh auth status` or any other read-only
+      command, so never keep a separate unansweredQuestions/blockingReasons entry asking to
+      further confirm a specific PAT permission when `gh auth status` already showed the CLI is
+      authenticated; drop it instead. Model/inference provider selection (Mastermind always
+      uses the user's GitHub Copilot subscription, natively or proxied through copilot-proxy-rs),
+      prototype/spike workspace location (always a new dedicated worktree under
+      ~/projects/prototypes/<name>, never this project's own repository), and the target Azure
+      subscription/tenant/region (always whatever the executor's authenticated `az account show`
+      reports, with `eastus2` as the default region/location for any new resource, per the
+      executor's `az configure --defaults location=eastus2`) are standing platform defaults, not
+      open questions at all — do not add them to unansweredQuestions or blockingReasons, and do
+      not emit an openItemDispositions entry for them, unless the ticket text itself explicitly
+      disputes one of these defaults or the dossier's own `az account show` evidence shows the CLI
+      is not authenticated. If the dossier nonetheless lists a gh/az auth check as an
+      unansweredQuestions entry (never as a blockingReasons entry — these are executor-preflight
+      facts, not blockers), emit its required openItemDispositions entry with owner
+      EXECUTOR_PREFLIGHT and readiness READY_WITH_NONBLOCKING_GAPS, never BLOCKED.
     - Use IMPLEMENTATION_DISCOVERY for bounded repository or code investigation that is part of
       implementation and does not change product intent.
     - Use EXTERNAL_DEPENDENCY for a known blocker outside executor control, such as an upstream
@@ -239,8 +268,12 @@ function SynthesizeLinearTicketPatch(
     - READY requires no blocking reasons, unanswered questions, or openItemDispositions.
     - READY_WITH_NONBLOCKING_GAPS may have warnings and EXECUTOR_PREFLIGHT or
       IMPLEMENTATION_DISCOVERY open items, but no blocking reasons, no HUMAN open items, and no
-      EXTERNAL_DEPENDENCY open items.
-    - BLOCKED requires at least one blocking reason.
+      EXTERNAL_DEPENDENCY open items. If any open item requires HUMAN or EXTERNAL_DEPENDENCY
+      ownership, you must choose BLOCKED instead and add the corresponding text to
+      blockingReasons, not just unansweredQuestions.
+    - BLOCKED requires at least one non-empty blockingReasons entry. If you cannot articulate a
+      concrete blocking reason as a string in blockingReasons, do not choose BLOCKED — choose
+      READY_WITH_NONBLOCKING_GAPS (put open concerns in unansweredQuestions or warnings) instead.
     - requiresHumanApproval must be true when any openItemDispositions owner is HUMAN or when
       materialScopeChange is true.
     - A BLOCKED patch may set requiresHumanApproval false only when every openItemDispositions

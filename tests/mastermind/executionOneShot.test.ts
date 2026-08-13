@@ -102,6 +102,24 @@ describe("one-shot Mastermind execution", () => {
       }),
     ).rejects.toThrow("Verify global execution configuration and project opt-in");
   });
+
+  it("fails immediately when review ends before an execution attempt starts", async () => {
+    const work = workItem("failed-review", MastermindState.FAILED);
+    const process = vi.fn();
+    const wait = vi.fn();
+
+    await expect(
+      executeOneReadyWork({
+        store: fakeStore({ work }),
+        coordinator: { process },
+        pollIntervalMs: 1,
+        wait,
+        workId: work.id,
+      }),
+    ).rejects.toThrow("ended in failed before an execution attempt started");
+    expect(process).toHaveBeenCalledTimes(1);
+    expect(wait).not.toHaveBeenCalled();
+  });
 });
 
 function fakeStore(

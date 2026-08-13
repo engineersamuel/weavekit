@@ -16,6 +16,7 @@ import {
 import { acceptMastermindWork } from "../../src/mastermind/codeReview/accept.js";
 import { PostImplementationReviewCoordinator } from "../../src/mastermind/codeReview/coordinator.js";
 import { MastermindExecutionCoordinator } from "../../src/mastermind/execution/coordinator.js";
+import type { DirectExecutorResolver } from "../../src/mastermind/execution/coordinator.js";
 import {
   MastermindAction,
   MastermindEventType,
@@ -47,11 +48,56 @@ afterEach(async () => {
 });
 
 describe("Mastermind execution coordinator", () => {
+  it("starts execution from a persisted dynamic project after restart", async () => {
+    const directory = await tempDirectory();
+    const path = join(directory, "mastermind.sqlite");
+    let store = new SqliteMastermindStore(path);
+    await store.initialize();
+    const work = await createPlannedDirectWork(store);
+    const dynamicProject = {
+      ...executionConfig(directory).projects.weavekit!,
+      id: "prototype-wk-1",
+      displayName: "Prototype WK-1",
+      workingTree: "",
+      repositoryMode: ProjectRepositoryMode.GREENFIELD,
+      provisioningRoot: join(directory, "prototypes"),
+      mainline: "main",
+      validationCommands: [],
+    };
+    await store.setProjectPolicy(work.id, dynamicProject.id, dynamicProject);
+    store.close();
+
+    store = new SqliteMastermindStore(path);
+    await store.initialize();
+    const config = { ...executionConfig(directory), projects: {} };
+    const coordinator = new MastermindExecutionCoordinator(
+      config,
+      store,
+      new FakeExecutionLinear(),
+      new FakeProvisioner(directory),
+      executorResolver(new FakeExecutor()),
+      { run: vi.fn() },
+    );
+
+    await coordinator.process(work.id);
+
+    expect(await store.getWork(work.id)).toMatchObject({
+      state: MastermindState.PROVISIONING,
+      projectPolicyId: dynamicProject.id,
+      resolvedProject: dynamicProject,
+    });
+    expect(await store.getCurrentExecutionAttempt(work.id)).toMatchObject({
+      projectPolicyId: dynamicProject.id,
+    });
+    store.close();
+  });
+
   it("reconciles every durable phase and projects one terminal outcome across restart", async () => {
     const directory = await tempDirectory();
     const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
     await store.initialize();
     const config = executionConfig(directory);
+    config.mastermind.leaseDurationMs = 40;
     const work = await createPlannedDirectWork(store);
     const provisioner = new FakeProvisioner(directory);
     const executor = new FakeExecutor();
@@ -64,7 +110,7 @@ describe("Mastermind execution coordinator", () => {
       store,
       linear,
       provisioner,
-      executor,
+      executorResolver(executor),
       runner,
     );
 
@@ -85,7 +131,7 @@ describe("Mastermind execution coordinator", () => {
       store,
       linear,
       provisioner,
-      executor,
+      executorResolver(executor),
       runner,
     );
     await coordinator.process(work.id);
@@ -128,7 +174,7 @@ describe("Mastermind execution coordinator", () => {
     store.close();
   });
 
-  it("does not launch without project opt-in or for a delegated action", async () => {
+  it("does not launch without project opt-in", async () => {
     const directory = await tempDirectory();
     const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
     await store.initialize();
@@ -141,7 +187,7 @@ describe("Mastermind execution coordinator", () => {
       store,
       new FakeExecutionLinear(),
       new FakeProvisioner(directory),
-      executor,
+      executorResolver(executor),
       { run: vi.fn() },
     );
 
@@ -155,7 +201,90 @@ describe("Mastermind execution coordinator", () => {
     store.close();
   });
 
-  it("moves successful implementation through independent code review to human acceptance", async () => {
+  it("records and projects workspace description failures to Linear", async () => {
+    const directory = await tempDirectory();
+    const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
+    await store.initialize();
+    const work = await createPlannedDirectWork(store);
+    const linear = new FakeExecutionLinear();
+    const provisioner: WorkspaceProvisioner = {
+      describe: vi
+        .fn()
+        .mockRejectedValue(
+          new Error("ENOENT: no such file or directory, realpath '/missing/prototypes'"),
+        ),
+      provision: vi.fn(),
+    };
+    const coordinator = new MastermindExecutionCoordinator(
+      executionConfig(directory),
+      store,
+      linear,
+      provisioner,
+      executorResolver(new FakeExecutor()),
+      { run: vi.fn() },
+    );
+
+    await coordinator.process(work.id);
+    await expect(coordinator.process(work.id)).resolves.toBeUndefined();
+    expect(await store.getCurrentExecutionAttempt(work.id)).toMatchObject({
+      state: MastermindState.NEEDS_HUMAN,
+      failureClass: "WORKSPACE_PROVISIONING",
+      failureMessage: "ENOENT: no such file or directory, realpath '/missing/prototypes'",
+    });
+
+    await coordinator.process(work.id);
+    expect(linear.comments[0]?.body).toContain(
+      "ENOENT: no such file or directory, realpath '/missing/prototypes'",
+    );
+    expect(linear.labelReplacements).toContainEqual({
+      remove: ["ready", "failed"],
+      add: ["needs-input"],
+    });
+    store.close();
+  });
+
+  it("delegates a DELEGATE_SUBMIND-planned work item to the RLM executor", async () => {
+    const directory = await tempDirectory();
+    const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
+    await store.initialize();
+    const config = executionConfig(directory);
+    const work = await createPlannedDirectWork(store, MastermindAction.DELEGATE_SUBMIND);
+    const provisioner = new FakeProvisioner(directory);
+    const rlmExecutor = new FakeExecutor(ExecutorKind.RLM_SUBMIND);
+    const linear = new FakeExecutionLinear();
+    const coordinator = new MastermindExecutionCoordinator(
+      config,
+      store,
+      linear,
+      provisioner,
+      { [ExecutorKind.RLM_SUBMIND]: rlmExecutor },
+      { run: vi.fn().mockResolvedValue({ exitCode: 0, stdout: "passed", stderr: "" }) },
+    );
+
+    await coordinator.process(work.id);
+    expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.PROVISIONING });
+    await coordinator.process(work.id);
+    expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.PREFLIGHTING });
+    await coordinator.process(work.id);
+    expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.LAUNCHING });
+    await coordinator.process(work.id);
+    expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.RUNNING });
+    expect(rlmExecutor.startCalls).toBe(1);
+
+    const attempt = await store.getCurrentExecutionAttempt(work.id);
+    expect(attempt).toMatchObject({ executorKind: ExecutorKind.RLM_SUBMIND });
+    expect(attempt?.executorHandle).toMatchObject({ executor: ExecutorKind.RLM_SUBMIND });
+
+    await coordinator.process(work.id);
+    await coordinator.process(work.id);
+    expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.COLLECTING });
+    await coordinator.process(work.id);
+    expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.SUCCEEDED });
+    expect(rlmExecutor.collectCalls).toBe(1);
+    store.close();
+  });
+
+  it("resumes a stored code-review result after its state transition is interrupted", async () => {
     const directory = await tempDirectory();
     await execFileAsync("git", ["init"], { cwd: directory });
     await execFileAsync("git", ["config", "user.email", "mastermind@example.test"], {
@@ -177,6 +306,7 @@ describe("Mastermind execution coordinator", () => {
       linear,
       {
         async review() {
+          await new Promise((resolve) => setTimeout(resolve, 80));
           return {
             summary: "Implementation satisfies the frozen ticket.",
             acceptanceCriteriaCoverage: ["Criterion covered by README.md."],
@@ -206,16 +336,32 @@ describe("Mastermind execution coordinator", () => {
       store,
       linear,
       new FakeProvisioner(directory),
-      new FakeExecutor(),
+      executorResolver(new FakeExecutor()),
       { run: vi.fn().mockResolvedValue({ exitCode: 0, stdout: "passed", stderr: "" }) },
       undefined,
       postReview,
     );
+    const transition = store.transition.bind(store);
+    let interrupted = false;
+    store.transition = async (currentWork, owner, event) => {
+      if (event.eventType === MastermindEventType.CODE_REVIEW_PASSED && !interrupted) {
+        interrupted = true;
+        throw new Error("simulated code-review transition interruption");
+      }
+      return transition(currentWork, owner, event);
+    };
 
     for (let phase = 0; phase < 12; phase += 1) {
-      await coordinator.process(work.id);
+      try {
+        await coordinator.process(work.id);
+      } catch (error) {
+        expect(error).toMatchObject({
+          message: "simulated code-review transition interruption",
+        });
+      }
     }
 
+    expect(interrupted).toBe(true);
     expect(await store.getWork(work.id)).toMatchObject({
       state: MastermindState.AWAITING_ACCEPTANCE,
     });
@@ -231,6 +377,15 @@ describe("Mastermind execution coordinator", () => {
     expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.COMPLETED });
     expect(linear.states).toEqual(["In Progress", "In Review", "Done"]);
     expect(linear.comments).toHaveLength(3);
+    expect(linear.comments[2]?.body).toContain("## Work location");
+    expect(linear.comments[2]?.body).toContain(`cd '${directory}'`);
+    expect(linear.comments[2]?.body).toContain("## Validation commands used");
+    expect(linear.comments[2]?.body).toContain("nub run test");
+    const acceptanceMarker = `<!-- weavekit-mastermind-acceptance:${work.id} -->`;
+    linear.comments[2]!.body = `${acceptanceMarker}\nOld acceptance comment.`;
+    await acceptMastermindWork({ selector: "WK-1", config, store, linear });
+    expect(linear.comments).toHaveLength(3);
+    expect(linear.comments[2]?.body).toContain("Canonical implementation worktree");
     store.close();
   });
 
@@ -241,16 +396,21 @@ describe("Mastermind execution coordinator", () => {
     const work = await createPlannedDirectWork(store);
     const config = executionConfig(directory);
     config.mastermind.execution!.maxAttempts = 1;
+    const linear = new FakeExecutionLinear();
     const coordinator = new MastermindExecutionCoordinator(
       config,
       store,
-      new FakeExecutionLinear(),
+      linear,
       new FakeProvisioner(directory),
-      new FakeExecutor(),
+      executorResolver(new FakeExecutor()),
       { run: vi.fn() },
     );
 
     await coordinator.process(work.id);
+    expect(linear.labelReplacements).toContainEqual({
+      remove: ["ready", "needs-input", "failed"],
+      add: [],
+    });
     const leased = (await store.acquireLease(work.id, "test-mastermind", new Date(), 60_000))!;
     const attempt = (await store.getCurrentExecutionAttempt(work.id))!;
     await store.transitionExecutionAttempt({
@@ -272,6 +432,11 @@ describe("Mastermind execution coordinator", () => {
       state: MastermindState.NEEDS_HUMAN,
       retryEligible: false,
       failureClass: "EXECUTION_RETRIES_EXHAUSTED",
+    });
+    await expect(coordinator.process(work.id)).resolves.toBeUndefined();
+    expect(linear.labelReplacements).toContainEqual({
+      remove: ["ready", "failed"],
+      add: ["needs-input"],
     });
     store.close();
   });
@@ -311,6 +476,8 @@ class FakeExecutor implements DirectExecutor {
   private statuses: ExecutorStatus["state"][] = ["working", "done"];
   private request?: DirectExecutionRequest;
 
+  constructor(private readonly kind: ExecutorKind = ExecutorKind.HERDR_COPILOT) {}
+
   async preflight(request: DirectExecutionRequest): Promise<ExecutionPreflightReport> {
     this.preflightPaths.push(request.workspace.checkoutPath);
     return { accepted: true, checkedAt: new Date().toISOString(), checks: [] };
@@ -323,7 +490,7 @@ class FakeExecutor implements DirectExecutor {
     this.startCalls += 1;
     this.request = request;
     return {
-      executor: ExecutorKind.HERDR_COPILOT,
+      executor: this.kind,
       agentName: "mm-workone-a1",
       worktreePath: request.workspace.checkoutPath,
     };
@@ -361,10 +528,15 @@ class FakeExecutor implements DirectExecutor {
   }
 }
 
+function executorResolver(executor: DirectExecutor): DirectExecutorResolver {
+  return { [ExecutorKind.HERDR_COPILOT]: executor };
+}
+
 class FakeExecutionLinear implements LinearGateway {
   comments: Array<{ id: string; body: string }> = [];
   commentCreates = 0;
   states: string[] = [];
+  labelReplacements: Array<{ remove: string[]; add: string[] }> = [];
 
   async fetchIssue(): Promise<LinearTicketSnapshot> {
     return ticket();
@@ -372,7 +544,12 @@ class FakeExecutionLinear implements LinearGateway {
 
   async updateIssueContent(): Promise<void> {}
 
-  async replaceIssueLabels(): Promise<void> {}
+  async replaceIssueLabels(
+    _issueId: string,
+    input: { remove: string[]; add: string[] },
+  ): Promise<void> {
+    this.labelReplacements.push(input);
+  }
 
   async setIssueState(_issueId: string, stateName: string): Promise<void> {
     this.states.push(stateName);
@@ -388,9 +565,18 @@ class FakeExecutionLinear implements LinearGateway {
     this.comments.push({ id, body });
     return id;
   }
+
+  async updateIssueComment(commentId: string, body: string): Promise<void> {
+    const comment = this.comments.find((candidate) => candidate.id === commentId);
+    if (!comment) throw new Error(`Comment not found: ${commentId}`);
+    comment.body = body;
+  }
 }
 
-async function createPlannedDirectWork(store: SqliteMastermindStore): Promise<MastermindWorkItem> {
+async function createPlannedDirectWork(
+  store: SqliteMastermindStore,
+  action: MastermindAction = MastermindAction.IMPLEMENT_DIRECTLY,
+): Promise<MastermindWorkItem> {
   const delivery = await store.ingestDelivery({
     deliveryId: crypto.randomUUID(),
     organizationId: "organization-one",
@@ -410,7 +596,7 @@ async function createPlannedDirectWork(store: SqliteMastermindStore): Promise<Ma
       priorState: work.state,
       nextState,
       ...(eventType === MastermindEventType.PLAN_ACTION
-        ? { metadata: { plannedAction: MastermindAction.IMPLEMENT_DIRECTLY } }
+        ? { metadata: { plannedAction: action } }
         : {}),
     });
   }
@@ -424,11 +610,14 @@ async function createPlannedDirectWork(store: SqliteMastermindStore): Promise<Ma
     { automatedVerification: ["nub run test"] } as never,
   );
   const decision = {
-    action: MastermindAction.IMPLEMENT_DIRECTLY,
-    rationale: "One bounded worker is sufficient.",
+    action,
+    rationale:
+      action === MastermindAction.IMPLEMENT_DIRECTLY
+        ? "One bounded worker is sufficient."
+        : "This work needs the recursive Submind harness.",
     prerequisites: [],
     policyEvidence: [],
-    suggestedExecutorShape: "direct",
+    suggestedExecutorShape: action === MastermindAction.IMPLEMENT_DIRECTLY ? "direct" : "delegate",
     confidence: 0.95,
   } satisfies MastermindNextActionDecision;
   await store.saveDecision(work.id, decision);
@@ -461,6 +650,17 @@ function executionConfig(directory: string): WeavekitConfig {
         promptAcceptanceTimeoutMs: 30000,
         maxAttempts: 2,
       },
+      rlmExecution: {
+        executorKind: ExecutorKind.RLM_SUBMIND,
+        profile: "general",
+        maxDepth: 3,
+        maxTotalCalls: 20,
+        enableTrellage: true,
+        pollIntervalMs: 1000,
+        unknownStatusThreshold: 3,
+        cancellationGraceMs: 5000,
+        maxAttempts: 2,
+      },
     },
     projects: {
       weavekit: {
@@ -477,7 +677,7 @@ function executionConfig(directory: string): WeavekitConfig {
         knowledgeExport: "off",
         directExecution: {
           enabled: true,
-          allowedExecutorKinds: [ExecutorKind.HERDR_COPILOT],
+          allowedExecutorKinds: [ExecutorKind.HERDR_COPILOT, ExecutorKind.RLM_SUBMIND],
           allowedPullRequestHosts: [],
         },
       },

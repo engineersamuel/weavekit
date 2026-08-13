@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { context, trace } from "@opentelemetry/api";
-import { buildCopilotClientOptions } from "../../src/telemetry/copilotSdk.js";
+import {
+  buildCopilotClientOptions,
+  buildDefaultCopilotClientOptions,
+  resolveDefaultCopilotCliPath,
+} from "../../src/telemetry/copilotSdk.js";
 
 const envKeys = [
   "OTEL_SDK_DISABLED",
@@ -12,6 +16,11 @@ const envKeys = [
   "LANGFUSE_PUBLIC_KEY",
   "LANGFUSE_SECRET_KEY",
   "LANGFUSE_BASE_URL",
+  "LANGFUSE_EXPORT_RAW",
+  "COPILOT_CLI_PATH",
+  "COPILOT_RUNTIME_URL",
+  "COPILOT_CLI_URL",
+  "PATH",
 ] as const;
 
 let envSnapshot = new Map<string, string | undefined>();
@@ -41,6 +50,7 @@ describe("copilot SDK telemetry options", () => {
       telemetry: {
         otlpEndpoint: "http://127.0.0.1:4318",
         sourceName: "weavekit",
+        captureContent: true,
       },
     });
     expect(options?.onGetTraceContext).toBeTypeOf("function");
@@ -65,6 +75,17 @@ describe("copilot SDK telemetry options", () => {
         otlpEndpoint: "http://127.0.0.1:4318/v1/traces",
         sourceName: "weavekit-test",
         captureContent: true,
+      },
+    });
+  });
+
+  it("disables Copilot content capture when Langfuse raw export is false", () => {
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:4318";
+    process.env.LANGFUSE_EXPORT_RAW = "false";
+
+    expect(buildCopilotClientOptions()).toMatchObject({
+      telemetry: {
+        captureContent: false,
       },
     });
   });
@@ -104,5 +125,34 @@ describe("copilot SDK telemetry options", () => {
     } finally {
       span.end();
     }
+  });
+
+  it("preserves SDK auto-resolution when no explicit or PATH runtime exists", async () => {
+    delete process.env.COPILOT_CLI_PATH;
+    delete process.env.COPILOT_RUNTIME_URL;
+    delete process.env.COPILOT_CLI_URL;
+    process.env.PATH = "";
+
+    expect(resolveDefaultCopilotCliPath()).toBeUndefined();
+    await expect(buildDefaultCopilotClientOptions()).resolves.not.toHaveProperty("connection");
+  });
+
+  it("honors explicit runtime URLs before CLI paths", async () => {
+    process.env.COPILOT_RUNTIME_URL = "http://127.0.0.1:4321";
+    process.env.COPILOT_CLI_PATH = "/unused/copilot";
+
+    const options = await buildDefaultCopilotClientOptions();
+
+    expect(options.connection).toBeDefined();
+    expect((options.connection as { type?: string }).type).not.toBe("stdio");
+  });
+
+  it("uses an explicit CLI path when no runtime URL is configured", async () => {
+    process.env.COPILOT_CLI_PATH = "/configured/copilot";
+
+    const options = await buildDefaultCopilotClientOptions();
+
+    expect(resolveDefaultCopilotCliPath()).toBe("/configured/copilot");
+    expect(options.connection).toBeDefined();
   });
 });

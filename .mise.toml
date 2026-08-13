@@ -3,10 +3,20 @@
 [tools]
 node = "24"
 "npm:@nubjs/nub" = "0.2.9"
+uv = "0.12.3"
 
 [tasks.doctor]
 description = "Validate workflow entity manifests, prompt references, BAML outputs, and skill capabilities."
 run = "nub src/cli.ts entity validate"
+
+[tasks.mastermind]
+description = "Review (and if opted in, execute) one Linear ticket end to end: pass an identifier like ENG-10, or omit it to pick the most recently updated unreviewed ticket."
+env = { BAML_LOG = "warn" }
+run = "nub scripts/mastermind.ts"
+
+[tasks."mastermind:setup"]
+description = "List your Linear teams and print copy-pasteable mastermind.project_mappings/projects TOML for ~/.weavekit/config.toml."
+run = "nub scripts/mastermind-setup.ts"
 
 [tasks."mastermind:live"]
 description = "Start Mastermind through a Cloudflare Quick Tunnel and review one selected Linear ticket."
@@ -34,6 +44,11 @@ run = "nub scripts/mastermind-accept.ts"
 [tasks."doctor:sdk"]
 description = "Validate configured entity skills against a live Copilot SDK session."
 run = "nub scripts/entity-sdk-doctor.ts"
+
+[tasks.rlm]
+description = "Run the recursive Submind prototype with the provided prompt."
+env = { COPILOT_HOME = "{{config_root}}/.weavekit/copilot-home" }
+run = "nub scripts/rlm-poc.ts --trellage --reuse-current-worktree -p"
 
 [tasks."pre-commit"]
 description = "Fast pre-commit gate: auto-fix/lint staged files with oxlint, auto-format staged files with oxfmt. Install locally with: mise generate git-pre-commit --write"

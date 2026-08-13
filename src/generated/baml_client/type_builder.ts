@@ -121,7 +121,7 @@ export default class TypeBuilder {
     
     ProjectBrief: ClassViewer<'ProjectBrief', "projectId" | "displayName" | "architecture" | "constraints" | "goals" | "changeSurfaces" | "validationCommands" | "risks" | "evidence">;
     
-    ProposedLinearTicketPatch: ClassViewer<'ProposedLinearTicketPatch', "proposedTitle" | "proposedDescriptionMarkdown" | "ticketKind" | "preservedIntent" | "acceptanceCriteria" | "assumptions" | "ambiguities" | "unansweredQuestions" | "openItemDispositions" | "dependencies" | "risks" | "automatedVerification" | "manualVerification" | "validationSteps" | "observability" | "rolloutPlan" | "rollbackPlan" | "outOfScope" | "evidence" | "readiness" | "blockingReasons" | "warnings" | "materialScopeChange" | "requiresHumanApproval" | "confidence">;
+    ProposedLinearTicketPatch: ClassViewer<'ProposedLinearTicketPatch', "proposedTitle" | "proposedDescriptionMarkdown" | "ticketKind" | "preservedIntent" | "acceptanceCriteria" | "assumptions" | "ambiguities" | "unansweredQuestions" | "dependencies" | "risks" | "automatedVerification" | "manualVerification" | "validationSteps" | "observability" | "rolloutPlan" | "rollbackPlan" | "outOfScope" | "evidence" | "readiness" | "blockingReasons" | "openItemDispositions" | "warnings" | "materialScopeChange" | "requiresHumanApproval" | "confidence">;
     
     RawPersonaResult: ClassViewer<'RawPersonaResult', "personaId" | "text">;
     
@@ -145,6 +145,10 @@ export default class TypeBuilder {
     
     RoutingDecision: ClassViewer<'RoutingDecision', "clientName" | "model" | "reasoningEffort" | "rationale">;
     
+    SelfImprovementFinding: ClassViewer<'SelfImprovementFinding', "severity" | "category" | "title" | "description" | "evidence" | "suggestedTicketBody">;
+    
+    SelfImprovementReport: ClassViewer<'SelfImprovementReport', "summary" | "findings">;
+    
     SourceAnalysis: ClassViewer<'SourceAnalysis', "sourceId" | "title" | "accessLevel" | "summary" | "claims" | "transferableLessons" | "evidence" | "practiceLedger">;
     
     SourcePractice: ClassViewer<'SourcePractice', "id" | "title" | "behavior" | "rationale" | "adoptionPreconditions" | "requiredBehaviors" | "proofObligations" | "behaviorIds" | "proofIds" | "evidence">;
@@ -160,6 +164,10 @@ export default class TypeBuilder {
     SourceToProjectPlanJudgment: ClassViewer<'SourceToProjectPlanJudgment', "requirementAssessments" | "criterionAssessments" | "contradictions" | "unsupportedRecommendations" | "summary">;
     
     SpecializedObligationAssessment: ClassViewer<'SpecializedObligationAssessment', "obligationId" | "status" | "evidenceQuotes" | "rationale">;
+    
+    SubmindTraceObservation: ClassViewer<'SubmindTraceObservation', "name" | "type" | "status" | "summary" | "model" | "durationMs">;
+    
+    SubmindTraceSummary: ClassViewer<'SubmindTraceSummary', "traceId" | "url" | "rootInput" | "rootOutput" | "observations">;
     
     TemplateCandidate: ClassViewer<'TemplateCandidate', "id" | "templateId" | "mode" | "summary" | "sharedInitialNodes" | "modePolicies" | "changedInitialDag" | "changedExpansionPolicy" | "requiresAutonomousPrReview" | "rationale" | "suggestedCodeTouchpoints" | "adoptionTasks">;
     
@@ -216,7 +224,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","LinearTicketInput","MastermindNextActionDecision","MastermindProjectPolicyInput","MastermindReviewDecisionContext","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PostImplementationReview","PostImplementationReviewDossier","PostImplementationReviewFinding","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","ProposedLinearTicketPatch","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","ReviewOpenItemDisposition","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","TicketReviewDossier","TicketReviewEvidence","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","LinearTicketInput","MastermindNextActionDecision","MastermindProjectPolicyInput","MastermindReviewDecisionContext","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PostImplementationReview","PostImplementationReviewDossier","PostImplementationReviewFinding","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","ProposedLinearTicketPatch","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","ReviewOpenItemDisposition","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SelfImprovementFinding","SelfImprovementReport","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","SubmindTraceObservation","SubmindTraceSummary","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","TicketReviewDossier","TicketReviewEvidence","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             "MastermindAction","PostImplementationReviewVerdict","ProjectRepositoryMode","RepositoryEvidenceType","ReviewEvidenceKind","ReviewOpenItemKind","ReviewOpenItemOwner","ReviewReadiness","RouterRoute","TicketKind",
@@ -413,7 +421,7 @@ export default class TypeBuilder {
         ]);
         
         this.ProposedLinearTicketPatch = this.tb.classViewer("ProposedLinearTicketPatch", [
-          "proposedTitle","proposedDescriptionMarkdown","ticketKind","preservedIntent","acceptanceCriteria","assumptions","ambiguities","unansweredQuestions","openItemDispositions","dependencies","risks","automatedVerification","manualVerification","validationSteps","observability","rolloutPlan","rollbackPlan","outOfScope","evidence","readiness","blockingReasons","warnings","materialScopeChange","requiresHumanApproval","confidence",
+          "proposedTitle","proposedDescriptionMarkdown","ticketKind","preservedIntent","acceptanceCriteria","assumptions","ambiguities","unansweredQuestions","dependencies","risks","automatedVerification","manualVerification","validationSteps","observability","rolloutPlan","rollbackPlan","outOfScope","evidence","readiness","blockingReasons","openItemDispositions","warnings","materialScopeChange","requiresHumanApproval","confidence",
         ]);
         
         this.RawPersonaResult = this.tb.classViewer("RawPersonaResult", [
@@ -460,6 +468,14 @@ export default class TypeBuilder {
           "clientName","model","reasoningEffort","rationale",
         ]);
         
+        this.SelfImprovementFinding = this.tb.classViewer("SelfImprovementFinding", [
+          "severity","category","title","description","evidence","suggestedTicketBody",
+        ]);
+        
+        this.SelfImprovementReport = this.tb.classViewer("SelfImprovementReport", [
+          "summary","findings",
+        ]);
+        
         this.SourceAnalysis = this.tb.classViewer("SourceAnalysis", [
           "sourceId","title","accessLevel","summary","claims","transferableLessons","evidence","practiceLedger",
         ]);
@@ -490,6 +506,14 @@ export default class TypeBuilder {
         
         this.SpecializedObligationAssessment = this.tb.classViewer("SpecializedObligationAssessment", [
           "obligationId","status","evidenceQuotes","rationale",
+        ]);
+        
+        this.SubmindTraceObservation = this.tb.classViewer("SubmindTraceObservation", [
+          "name","type","status","summary","model","durationMs",
+        ]);
+        
+        this.SubmindTraceSummary = this.tb.classViewer("SubmindTraceSummary", [
+          "traceId","url","rootInput","rootOutput","observations",
         ]);
         
         this.TemplateCandidate = this.tb.classViewer("TemplateCandidate", [

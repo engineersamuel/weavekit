@@ -26,9 +26,15 @@ export {
   buildDirectExecutionPrompt,
   directExecutionAgentName,
   HerdrDirectExecutor,
-  parseDirectExecutionResult,
-  validateResultForRequest,
 } from "./herdr.js";
+export { DefaultRlmProcessLauncher, RlmDirectExecutor, rlmAgentName } from "./rlm.js";
+export type { RlmProcessLauncher } from "./rlm.js";
+export {
+  parseDirectExecutionResult,
+  readAndValidateResultManifest,
+  validateArtifacts,
+  validateResultForRequest,
+} from "./resultManifest.js";
 export type {
   WorkspaceProvisionRequest,
   WorkspaceProvisioner,

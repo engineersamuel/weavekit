@@ -65,7 +65,9 @@ try {
     coordinator,
     postImplementationReviewEnabled: true,
     pollIntervalMs:
-      config.mastermind.execution?.pollIntervalMs ?? config.mastermind.reconcileIntervalMs,
+      config.mastermind.execution?.pollIntervalMs ??
+      config.mastermind.rlmExecution?.pollIntervalMs ??
+      config.mastermind.reconcileIntervalMs,
     onProgress: ({ work, attempt }) => {
       process.stdout.write(
         `[mastermind] work=${work.id} attempt=${attempt?.attemptNumber ?? "-"} state=${work.state}\n`,

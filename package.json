@@ -28,7 +28,8 @@
     "mastermind:build": "nub exec flue build --target node",
     "repro:visual-design": "nub scripts/source-to-project-visual-design-repro.ts",
     "smoke:pr-launch": "nub scripts/source-to-project-pr-launch-smoke.ts",
-    "smoke:pr-launch-dashboard": "nub scripts/source-to-project-pr-launch-dashboard-smoke.ts"
+    "smoke:pr-launch-dashboard": "nub scripts/source-to-project-pr-launch-dashboard-smoke.ts",
+    "prototype:agent-harness": "nub scripts/agent-harness-poc.ts"
   },
   "dependencies": {
     "@boundaryml/baml": "^0.223.0",
