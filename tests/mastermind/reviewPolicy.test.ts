@@ -12,6 +12,9 @@ import {
   type TicketReviewDossier,
 } from "../../src/generated/baml_client/index.js";
 import {
+  backfillOpenItemDispositions,
+  normalizeEmptyBlockedReadiness,
+  normalizeStandingDefaultOpenItems,
   validateTicketReviewProposal,
   type TicketReviewPolicyResult,
 } from "../../src/mastermind/review/policy.js";
@@ -116,6 +119,102 @@ function validatePatch(patch: ProposedLinearTicketPatch): TicketReviewPolicyResu
 }
 
 describe("Mastermind review policy", () => {
+  it("normalizes empty BLOCKED readiness to READY", () => {
+    const patch = createPatch();
+    patch.readiness = ReviewReadiness.BLOCKED;
+    patch.ambiguities = ["The executor can select any compatible github: model."];
+
+    const normalized = normalizeEmptyBlockedReadiness(patch);
+
+    expect(normalized.readiness).toBe(ReviewReadiness.READY);
+    expect(validatePatch(normalized)).toMatchObject({
+      accepted: true,
+      requiresHumanApproval: false,
+      reasons: [],
+    });
+  });
+
+  it("preserves BLOCKED readiness when structured blockers exist", () => {
+    const patch = createPatch();
+    patch.readiness = ReviewReadiness.BLOCKED;
+    patch.blockingReasons = ["The vendor sandbox is unavailable."];
+
+    expect(normalizeEmptyBlockedReadiness(patch)).toBe(patch);
+  });
+
+  it("keeps the Markdown Open questions section consistent with structured questions", () => {
+    const patch = createPatch();
+    patch.proposedDescriptionMarkdown = `## Goal
+
+Implement the ticket.
+
+## Open questions
+
+* Which model provider should be used?
+
+## Dependencies
+
+None.
+`;
+
+    const normalized = normalizeStandingDefaultOpenItems(patch);
+
+    expect(normalized.proposedDescriptionMarkdown).toContain("## Open questions\n\nNone.");
+    expect(normalized.proposedDescriptionMarkdown).not.toContain(
+      "Which model provider should be used?",
+    );
+  });
+
+  it("does not ask a human to confirm an unobservable Copilot PAT scope", () => {
+    const patch = createPatch();
+    const question =
+      "Confirm a PAT with Copilot Requests permission is available before deployment.";
+    patch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
+    patch.requiresHumanApproval = true;
+    patch.unansweredQuestions = [question];
+    patch.openItemDispositions = [
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: question,
+        owner: ReviewOpenItemOwner.HUMAN,
+        rationale: "The scope cannot be enumerated.",
+      },
+    ];
+    patch.proposedDescriptionMarkdown = `## Goal
+
+Deploy the sample.
+
+## Open questions
+
+* ${question}
+* Which model provider should be used?
+
+## Dependencies
+
+Authenticated GitHub CLI.
+`;
+
+    const normalized = normalizeStandingDefaultOpenItems(patch);
+
+    expect(normalized).toMatchObject({
+      readiness: ReviewReadiness.READY,
+      requiresHumanApproval: false,
+      unansweredQuestions: [],
+      blockingReasons: [],
+      openItemDispositions: [],
+      warnings: [question],
+    });
+    expect(normalized.proposedDescriptionMarkdown).toContain("## Open questions\n\nNone.");
+    expect(normalized.proposedDescriptionMarkdown).not.toContain(
+      "Which model provider should be used?",
+    );
+    expect(validatePatch(normalized)).toMatchObject({
+      accepted: true,
+      requiresHumanApproval: false,
+      reasons: [],
+    });
+  });
+
   it("accepts exact unanswered-question disposition coverage", () => {
     const patch = createPatch();
     patch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
@@ -338,6 +437,39 @@ describe("Mastermind review policy", () => {
     });
   });
 
+  it("accepts blocked human-owned questions without a separate blocking reason", () => {
+    const patch = createPatch();
+    patch.readiness = ReviewReadiness.BLOCKED;
+    patch.requiresHumanApproval = true;
+    patch.unansweredQuestions = ["What tokenizer should ground the official token numbers?"];
+    patch.openItemDispositions = [
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: "What tokenizer should ground the official token numbers?",
+        owner: ReviewOpenItemOwner.HUMAN,
+        rationale: "Only a human owner can fix the benchmark's reference tokenizer.",
+      },
+    ];
+
+    expect(validatePatch(patch)).toMatchObject({
+      accepted: true,
+      requiresHumanApproval: true,
+      reasons: [],
+    });
+  });
+
+  it("rejects blocked patches with no owned cause", () => {
+    const patch = createPatch();
+    patch.readiness = ReviewReadiness.BLOCKED;
+
+    expect(validatePatch(patch)).toMatchObject({
+      accepted: false,
+      reasons: expect.arrayContaining([
+        "BLOCKED patches require at least one blocking reason or a HUMAN/EXTERNAL_DEPENDENCY open item.",
+      ]),
+    });
+  });
+
   it("rejects blocked executor-preflight items that should be external dependencies", () => {
     const patch = createPatch();
     patch.readiness = ReviewReadiness.BLOCKED;
@@ -427,5 +559,68 @@ describe("Mastermind review policy", () => {
         "EXTERNAL_DEPENDENCY open items require BLOCKED readiness.",
       ]),
     });
+  });
+
+  it("backfillOpenItemDispositions prunes stale dispositions that no longer match an open item", () => {
+    const patch = createPatch();
+    patch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
+    // No current unansweredQuestions/blockingReasons, but the model carried forward a stale
+    // HUMAN disposition from an earlier ticket revision — this must not survive backfill.
+    patch.unansweredQuestions = [];
+    patch.openItemDispositions = [
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: "Should the reviewer/executor operate in ~/projects/prototypes rather than the weavekit worktree?",
+        owner: ReviewOpenItemOwner.HUMAN,
+        rationale: "Stale disposition left over from a prior synthesis attempt.",
+      },
+    ];
+    patch.requiresHumanApproval = true;
+
+    const backfilled = backfillOpenItemDispositions(patch);
+
+    expect(backfilled.openItemDispositions).toEqual([]);
+    expect(backfilled.requiresHumanApproval).toBe(false);
+    expect(validatePatch(backfilled)).toMatchObject({ accepted: true, reasons: [] });
+  });
+
+  it("backfillOpenItemDispositions adds missing dispositions and drops excess duplicates for the same item", () => {
+    const patch = createPatch();
+    patch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
+    patch.unansweredQuestions = [
+      "Is the proxy runtime available in this environment?",
+      "Which runtime is pinned for the executor?",
+    ];
+    patch.openItemDispositions = [
+      // Missing a disposition entirely for the first question.
+      // Duplicated (and one stale) dispositions for the second question.
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: "Which runtime is pinned for the executor?",
+        owner: ReviewOpenItemOwner.EXECUTOR_PREFLIGHT,
+        rationale: "First disposition for this question.",
+      },
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: "Which runtime is pinned for the executor?",
+        owner: ReviewOpenItemOwner.EXECUTOR_PREFLIGHT,
+        rationale: "Duplicate disposition for the same question.",
+      },
+    ];
+
+    const backfilled = backfillOpenItemDispositions(patch);
+
+    expect(backfilled.openItemDispositions).toHaveLength(2);
+    expect(
+      backfilled.openItemDispositions.filter(
+        (disposition) => disposition.text === "Which runtime is pinned for the executor?",
+      ),
+    ).toHaveLength(1);
+    expect(
+      backfilled.openItemDispositions.filter(
+        (disposition) => disposition.text === "Is the proxy runtime available in this environment?",
+      ),
+    ).toHaveLength(1);
+    expect(validatePatch(backfilled)).toMatchObject({ accepted: true, reasons: [] });
   });
 });

@@ -4,7 +4,7 @@
     "postToolUse": [
       {
         "type": "command",
-        "bash": "./scripts/hooks/post-tool-use.sh",
+        "bash": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/post-tool-use.sh\"",
         "cwd": ".",
         "timeoutSec": 30,
         "matcher": "edit|create"
@@ -13,7 +13,7 @@
     "agentStop": [
       {
         "type": "command",
-        "bash": "./scripts/hooks/stop-format-dirty.sh",
+        "bash": "bash \"$(git rev-parse --show-toplevel)/scripts/hooks/stop-format-dirty.sh\"",
         "cwd": ".",
         "timeoutSec": 30
       }

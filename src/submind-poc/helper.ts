@@ -239,7 +239,7 @@ export async function runHelper(input: {
           state.runId,
           "read",
           { agentId: payload.agentId, lines: payload.lines ?? 80 },
-          () => scoped.read(payload.agentId, payload.lines),
+          () => scoped.read(payload.agentId, { lines: payload.lines }),
         );
       }
       default:

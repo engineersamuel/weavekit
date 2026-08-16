@@ -2,6 +2,9 @@
 
 Weavekit is a TypeScript-first orchestration layer for explicit, typed agent workflows.
 
+See the [Agent Harness prototype](prototypes/agent-harness/README.md) for a runnable demonstration
+of progressive skills, permissioned CodeAct, approval gates, and background workers.
+
 It now has two runtime boundaries:
 
 - bounded in-process workflows under `src/macro-workflow/`;
@@ -193,6 +196,13 @@ cancellation_grace_ms = 30000
 prompt_acceptance_timeout_ms = 30000
 max_attempts = 2
 
+[mastermind.self_improvement]
+enabled = true
+target_team_id = "linear-team-id-for-weavekit"
+target_project_id = "optional-linear-project-id"
+min_severity = "IMPORTANT"
+ticket_label_id = "optional-label-id"
+
 [projects.weavekit]
 display_name = "Weavekit"
 working_tree = "~/projects/personal/weavekit"
@@ -212,6 +222,13 @@ repository_mode = "greenfield"
 provisioning_root = "~/projects/prototypes"
 autonomous_pr_allowed = false
 ```
+
+The configured state names project Mastermind activity into the team's Linear workflow.
+Active ticket analysis and implementation use **In Progress**. Verified implementation moves to
+**In Review** for post-implementation review and remains there while acceptance is pending.
+Only explicit acceptance moves the ticket to **Done**; a successful submind process does not
+bypass result collection, verification, review, or acceptance. Mastermind labels and comments
+continue to represent needs-input, review-failed, and changes-requested conditions.
 
 Set model runtime values in the process environment:
 
@@ -236,6 +253,12 @@ prototypes. BAML converts the dossier into a typed patch, deterministic policy v
 readiness, and open-item ownership, and only Mastermind's narrow Linear gateway can apply the
 patch.
 
+When the evidence dossier classifies a ticket as a spike, Mastermind replaces the team-level
+mapping with a durable greenfield project rooted at `~/projects/prototypes`, then reruns review
+through the greenfield trust boundary. The generated project identity and policy are stored with
+the work item, so execution after a process restart creates a named repository and Herdr worktree
+under that root instead of using the mapped weavekit checkout.
+
 Mastermind applies `mastermind-reviewed` plus `mastermind-ready` when the ticket is ready,
 `mastermind-needs-input` when a blocked or scope-changing patch requires a human, and
 `mastermind-review-failed` when review generation or policy validation fails. A human edit made
@@ -244,6 +267,28 @@ review. A stored review also gates the next action: human-owned review items rou
 `NEEDS_HUMAN`, `EXECUTOR_PREFLIGHT` gaps may stay nonblocking but must remain explicit
 implementation prerequisites, and BLOCKED reviews made only of `EXTERNAL_DEPENDENCY` items route
 to `WAIT` without being misclassified as executor preflight.
+
+When a review lands on `mastermind-needs-input`, Mastermind also posts (and, on later
+regenerations, updates in place) an idempotent clarification comment on the ticket listing every
+blocking reason/unanswered question with its owner and rationale, plus how to unblock it: reply
+with a comment, edit the ticket title/description, or remove the `mastermind-needs-input` label
+to force an immediate fresh review. Replying with a comment is picked up automatically — the next
+scheduling pass detects a genuine human reply posted after Mastermind's clarification comment (via
+`LinearGateway.listIssueComments`) and reopens the review even if the label and ticket
+title/description are otherwise unchanged. The reply text is folded into the ticket description
+seen by the review harness/BAML synthesis for that regenerated review, without perturbing the
+stored content hash used for staleness detection.
+
+That comment path applies to `NEEDS_HUMAN` only, and the distinction matters. A ticket carrying
+`mastermind-review-failed` is in `FAILED`, where the clarification-reply lookup never runs, so no
+comment reopens it — a threaded reply and a new top-level comment are equally ignored. Reopen a
+failed review by editing the ticket title or description so the content hash changes (acceptance
+criteria live in the description, so rescoping counts), or by removing the
+`mastermind-review-failed` label. On a content change Mastermind clears its own labels as part of
+reopening, so do not also remove the label by hand. Note too that the comment lookup ignores Linear
+threading entirely: any comment that is newer than Mastermind's clarification comment and does not
+carry a Mastermind marker prefix qualifies. See `src/mastermind/decision/loop.ts` and
+`src/mastermind/review/clarification.ts`.
 
 Direct execution remains disabled unless `[mastermind.execution]` and the resolved project's
 `[projects.<id>.execution.direct]` policy are both present. An opted-in `IMPLEMENT_DIRECTLY`
@@ -256,7 +301,33 @@ then writes one idempotent Linear comment and label projection. Successful imple
 the ticket to `In Review` and starts a distinct post-implementation code review against the frozen
 ticket snapshot, successful attempt, result manifest, verification evidence, and current commit.
 Review `PASS` waits for explicit human acceptance; `CHANGES_REQUIRED` stays out of `Done`.
-`DELEGATE_SUBMIND` remains unlaunched.
+`DELEGATE_SUBMIND` now launches too: an opted-in `[mastermind.rlmExecution]` policy resolves it to
+the `RlmDirectExecutor`, which spawns `rlm-poc`'s recursive Copilot SDK meta-harness ("Submind",
+see [ADR 0010](docs/adr/0010-recursive-llm-tool-rlm.md)) as a detached process rooted at the same
+provisioned worktree, with Trellage enabled by default so it may fan out into further nested Herdr
+worktrees. It shares the same result-manifest completion contract as `IMPLEMENT_DIRECTLY`, falling
+back to `NEEDS_HUMAN` with Submind's captured final output as evidence when that manifest is
+missing. See [ADR 0012](docs/adr/0012-mastermind-delegate-submind-to-rlm.md) for the full
+executor-selection and result-contract design.
+
+When a `DELEGATE_SUBMIND` attempt reaches a terminal state (success, changes requested, needs
+human, or failure) and `[mastermind.self_improvement]` is enabled, Mastermind runs a best-effort,
+non-blocking self-improvement pass: it fetches the Submind's captured Langfuse trace via the
+Public API, feeds it alongside the original ticket and the Mastermind/Submind mission-statement
+excerpts to the `AnalyzeSubmindTrace` BAML function, and files one Linear issue per finding at or
+above `min_severity` against `target_team_id` (and optional `target_project_id`/`ticket_label_id`)
+— a separate team/project from the originating ticket, so process-improvement findings don't
+pollute product backlogs. It never fails or blocks the underlying work item: any Langfuse, BAML, or
+Linear error is logged and swallowed. Idempotency is a single marker HTML comment posted on the
+originating ticket per attempt (not per finding), so re-polling an already-terminal work item never
+re-files duplicate tickets. See
+[ADR 0013](docs/adr/0013-mastermind-self-improvement-loop.md) for the full design.
+
+The skill-staging "submind controller" design described below (`.github/skills/mastermind-submind`,
+`src/submind-poc/controller.ts`) is a separate, earlier prototype for delegating into a
+Herdr-managed worktree orchestrator directly. It predates and is superseded by the RLM-based
+`DELEGATE_SUBMIND` executor above for Mastermind's production path; it remains in the repository as
+reference material and is not wired into the coordinator.
 
 Submind operating instructions have one canonical source:
 `.github/skills/mastermind-submind/SKILL.md`. The build copies that skill to
@@ -283,8 +354,45 @@ Harness profiles are independent by phase. `ticket_review` supports `copilot-sdk
 prompt. This supports custom executables and profiles such as `codx` without hardcoding a vendor
 CLI into Mastermind.
 
-To execute one already-reviewed item without starting the webhook server or daemon loop, stop
-`mastermind:live` and run:
+To pull one Linear ticket, review it, and (if the project has opted in to direct execution) run it
+through to a terminal outcome — without starting the webhook server or daemon loop — run:
+
+```bash
+mise run mastermind ENG-10
+```
+
+This requires `LINEAR_API_KEY` (root value in `~/.weavekit/config.toml`, see above) and a non-empty
+`mastermind.project_mappings` — at least one `team_id -> project_id` pairing plus a matching
+`[projects.<id>]` block. If you haven't set that up yet, run:
+
+```bash
+mise run mastermind:setup
+```
+
+which lists the teams visible to your `LINEAR_API_KEY` and prints ready-to-paste
+`[[mastermind.project_mappings]]` / `[projects.<id>]` TOML for each, defaulting `working_tree` to
+the current checkout and `execution.direct.enabled = false` (review-only) until you opt in.
+
+Pass a Linear ticket identifier (`ENG-10`) or its Linear issue UUID. Omit the argument to pick the
+most recently updated ticket across `mastermind.project_mappings`' teams that does not yet carry
+the reviewed label:
+
+```bash
+mise run mastermind
+```
+
+The command ingests the ticket into Mastermind's durable store, runs the review/decide loop to a
+terminal or `ACTION_PLANNED` state, then — if `[mastermind.execution]` and/or
+`[mastermind.rlm_execution]` are configured and the resolved project has opted in via
+`directExecution.allowedExecutorKinds` — launches the planned action (`IMPLEMENT_DIRECTLY` through
+Herdr, `DELEGATE_SUBMIND` through the RLM Submind executor per
+[ADR 0012](docs/adr/0012-mastermind-delegate-submind-to-rlm.md)), polls it, runs post-code review,
+and exits at `awaiting_acceptance`, `changes_requested`, `needs_human`, or `failed`. If review alone
+routes the ticket to `NEEDS_HUMAN`, `WAIT`, or `IGNORE`, or execution is not configured/opted in,
+the command stops after printing the reviewed state — it never silently retries or picks another
+ticket.
+
+To resume already-in-flight work instead of picking a new ticket, stop `mastermind:live` and run:
 
 ```bash
 mise run mastermind:execute-one
@@ -306,6 +414,11 @@ After reviewing the result manually, accept it and move the Linear ticket to `Do
 ```bash
 mise run mastermind:accept ENG-5
 ```
+
+For greenfield work, the acceptance command first promotes the accepted output from its temporary
+Herdr worktree into the durable project repository. It then creates or updates the final Linear
+handoff comment with that stable path, copy-paste navigation commands, documentation entry points,
+produced artifacts, and the validation commands recorded by the successful attempt.
 
 To return to an execution agent later, use its Linear ticket identifier, Mastermind work ID, Linear
 issue ID, or execution attempt ID:
@@ -376,7 +489,7 @@ stable `gpt-5.5` baseline unless you opt into another synthesis model explicitly
 
 The counterbalanced Mastermind synthesis benchmark writes a local artifact at
 `runs/mastermind-synthesis-benchmark/<timestamp>.json`. The latest rerun in this worktree kept
-`gpt-5.5` as the effective default: `gemini-3.6-flash` preserved the quality and safety gates but
+`gpt-5.5` as the effective default: `gemini-3.7-flash` preserved the quality and safety gates but
 posted a 15.8-second median versus `gpt-5.5` at 9.17 seconds, failing the strict baseline-beat
 adoption gate, the 10% relative slowdown gate, and the 12-second observed-target gate. The
 observed-target gate only says absolute latency is acceptable; default adoption also requires the
@@ -726,18 +839,18 @@ The Copilot persona worker also uses the built-in Copilot SDK telemetry path whe
 
 ### Environment variables
 
-| Variable                      | Purpose                                                                                                                                  |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `OTEL_SDK_DISABLED`           | Set to `true` to disable OpenTelemetry startup entirely.                                                                                 |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Enables OTLP trace export when set (for example `http://127.0.0.1:4318/v1/traces`).                                                      |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional OTLP auth/tenant headers consumed by the OTLP exporter environment configuration.                                               |
-| `OTEL_SERVICE_NAME`           | Optional OpenTelemetry service name override; defaults to `weavekit`.                                                                    |
-| `OTEL_GENAI_CAPTURE_CONTENT`  | Set to `true` to enable Copilot SDK content capture for persona sessions; defaults to redacted/off.                                      |
-| `LANGFUSE_PUBLIC_KEY`         | Langfuse public key. When paired with `LANGFUSE_SECRET_KEY`, enables Langfuse trace export.                                              |
-| `LANGFUSE_SECRET_KEY`         | Langfuse secret key.                                                                                                                     |
-| `LANGFUSE_BASE_URL`           | Optional Langfuse base URL override. Defaults to `https://cloud.langfuse.com`.                                                           |
-| `LANGFUSE_PROJECT_ID`         | Optional Langfuse project ID used to print a direct trace URL when a Mastermind work item starts.                                        |
-| `LANGFUSE_EXPORT_RAW`         | Set to `true` only when you intentionally want raw prompts/responses uploaded to Langfuse. By default Weavekit redacts exported content. |
+| Variable                      | Purpose                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| `OTEL_SDK_DISABLED`           | Set to `true` to disable OpenTelemetry startup entirely.                                            |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Enables OTLP trace export when set (for example `http://127.0.0.1:4318/v1/traces`).                 |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Optional OTLP auth/tenant headers consumed by the OTLP exporter environment configuration.          |
+| `OTEL_SERVICE_NAME`           | Optional OpenTelemetry service name override; defaults to `weavekit`.                               |
+| `OTEL_GENAI_CAPTURE_CONTENT`  | Set to `true` to enable Copilot SDK content capture for persona sessions; defaults to redacted/off. |
+| `LANGFUSE_PUBLIC_KEY`         | Langfuse public key. When paired with `LANGFUSE_SECRET_KEY`, enables Langfuse trace export.         |
+| `LANGFUSE_SECRET_KEY`         | Langfuse secret key.                                                                                |
+| `LANGFUSE_BASE_URL`           | Optional Langfuse base URL override. Defaults to `https://cloud.langfuse.com`.                      |
+| `LANGFUSE_PROJECT_ID`         | Optional Langfuse project ID used to print a direct trace URL when a Mastermind work item starts.   |
+| `LANGFUSE_EXPORT_RAW`         | Raw prompts/responses are exported by default. Set to `false` to redact exported content.           |
 
 ### Example: telemetry enabled (OTLP + Langfuse)
 
@@ -749,7 +862,7 @@ OTEL_SERVICE_NAME="weavekit" \
 LANGFUSE_PUBLIC_KEY="pk-lf-..." \
 LANGFUSE_SECRET_KEY="sk-lf-..." \
 LANGFUSE_BASE_URL="https://cloud.langfuse.com" \
-LANGFUSE_EXPORT_RAW="false" \
+LANGFUSE_EXPORT_RAW="true" \
 nub run council decision-council run --smoke --input examples/smoke-question.md --output runs/telemetry-enabled
 ```
 
@@ -778,11 +891,11 @@ LANGFUSE_PUBLIC_KEY = "pk-lf-..."
 LANGFUSE_SECRET_KEY = "sk-lf-..."
 LANGFUSE_BASE_URL = "http://localhost:3000"
 LANGFUSE_PROJECT_ID = "cmqwb90vu0006t307hrbgpj74"
-LANGFUSE_EXPORT_RAW = "false"
+LANGFUSE_EXPORT_RAW = "true"
 ```
 
-Keep `LANGFUSE_EXPORT_RAW` false unless ticket text, prompts, and model responses are approved for
-retention. Mastermind still records operational identifiers, states, timings, decisions, and token
+Set `LANGFUSE_EXPORT_RAW` to false when ticket text, prompts, and model responses must not be
+retained. Mastermind still records operational identifiers, states, timings, decisions, and token
 usage when raw export is disabled.
 
 ### Example: telemetry disabled

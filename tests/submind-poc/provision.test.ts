@@ -2,7 +2,11 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { canonicalRepository, provisionHerdrWorktree } from "../../src/submind-poc/provision.js";
+import {
+  canonicalRepository,
+  provisionHerdrWorktree,
+  resolveExistingHerdrWorktree,
+} from "../../src/submind-poc/provision.js";
 import type { SubmindRunState } from "../../src/submind-poc/contracts.js";
 
 const directories: string[] = [];
@@ -15,6 +19,70 @@ describe("submind Herdr provisioning", () => {
   it("rejects a missing repository", async () => {
     const runner = vi.fn().mockRejectedValue(new Error("not a repository"));
     await expect(canonicalRepository("/missing", runner)).rejects.toThrow("Not a Git repository");
+  });
+
+  it("resolves the live Herdr workspace whose checkout exactly matches the current worktree", async () => {
+    const current = await tempDirectory();
+    const other = await tempDirectory();
+    const runner = vi.fn(async (command: string, args: string[]) => {
+      const operation = args.slice(0, 2).join(" ");
+      if (command === "git" && args.join(" ") === "rev-parse --show-toplevel") return current;
+      if (operation === "workspace list") {
+        return JSON.stringify({
+          result: {
+            workspaces: [
+              { workspace_id: "other", worktree: { checkout_path: other } },
+              { workspace_id: "current", worktree: { checkout_path: current } },
+            ],
+          },
+        });
+      }
+      if (operation === "workspace get") {
+        return JSON.stringify({
+          result: { workspace_id: "current", root_pane_id: "current-pane" },
+        });
+      }
+      throw new Error(`Unexpected command: ${args.join(" ")}`);
+    });
+
+    await expect(resolveExistingHerdrWorktree(current, runner)).resolves.toMatchObject({
+      worktreePath: current,
+      workspaceId: "current",
+    });
+  });
+
+  it("resolves a current workspace without requiring a unique pane", async () => {
+    const current = await tempDirectory();
+    const runner = vi.fn(async (command: string, args: string[]) => {
+      const operation = args.slice(0, 2).join(" ");
+      if (command === "git" && args.join(" ") === "rev-parse --show-toplevel") return current;
+      if (operation === "workspace list") {
+        return JSON.stringify({
+          result: {
+            workspaces: [{ workspace_id: "current", worktree: { checkout_path: current } }],
+          },
+        });
+      }
+      if (operation === "workspace get") {
+        return JSON.stringify({ result: { workspace_id: "current", active_tab_id: "tab-one" } });
+      }
+      if (operation === "pane list") {
+        return JSON.stringify({
+          result: {
+            panes: [
+              { pane_id: "pane-one", workspace_id: "current", tab_id: "tab-one" },
+              { pane_id: "pane-two", workspace_id: "current", tab_id: "tab-one" },
+            ],
+          },
+        });
+      }
+      throw new Error(`Unexpected command: ${args.join(" ")}`);
+    });
+
+    await expect(resolveExistingHerdrWorktree(current, runner)).resolves.toMatchObject({
+      worktreePath: current,
+      workspaceId: "current",
+    });
   });
 
   it("rejects ambiguous source workspaces matched by canonical path", async () => {

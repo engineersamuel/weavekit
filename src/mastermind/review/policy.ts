@@ -107,8 +107,24 @@ export function validateTicketReviewProposal(input: {
   ) {
     reasons.push("READY_WITH_NONBLOCKING_GAPS cannot contain blocking reasons.");
   }
-  if (patch.readiness === ReviewReadiness.BLOCKED && patch.blockingReasons.length === 0) {
-    reasons.push("BLOCKED patches require at least one blocking reason.");
+  // A BLOCKED patch whose cause is already owned by a HUMAN or EXTERNAL_DEPENDENCY open item is
+  // coherent even when blockingReasons is empty: the synthesizer routinely records a human-owned
+  // decision only in unansweredQuestions. Rejecting that shape turned an ordinary needs-human
+  // review into a failed review, so require a stated, owned cause rather than the blockingReasons
+  // field specifically. validateOwnershipSemantics still rejects a BLOCKED patch with no owned
+  // cause at all.
+  if (
+    patch.readiness === ReviewReadiness.BLOCKED &&
+    patch.blockingReasons.length === 0 &&
+    !patch.openItemDispositions.some(
+      (disposition) =>
+        disposition.owner === ReviewOpenItemOwner.HUMAN ||
+        disposition.owner === ReviewOpenItemOwner.EXTERNAL_DEPENDENCY,
+    )
+  ) {
+    reasons.push(
+      "BLOCKED patches require at least one blocking reason or a HUMAN/EXTERNAL_DEPENDENCY open item.",
+    );
   }
   validateOpenItemDispositions(patch, reasons);
   validateOwnershipSemantics(patch, reasons);
@@ -214,6 +230,174 @@ export function findOpenItemDispositionCoverageIssues(
   }
 
   return reasons;
+}
+
+/**
+ * The BAML patch synthesizer sometimes writes a blockingReasons/unansweredQuestions entry
+ * without emitting the matching openItemDispositions classification it requires (a known,
+ * observed model-compliance gap even after several rounds of prompt reinforcement). The
+ * synthesizer can also do the reverse: emit a stale/extra disposition whose text no longer
+ * appears in unansweredQuestions/blockingReasons at all — e.g. leftover classifications for
+ * open items that earlier revisions of the ticket raised but the current dossier resolved,
+ * carried forward from context rather than the current patch. Rather than discarding an
+ * otherwise well-reasoned patch after bounded resynthesis retries fail to close either gap,
+ * deterministically reconcile openItemDispositions with the patch's actual open items: drop
+ * dispositions that don't reference a current open item (and any duplicate dispositions beyond
+ * the item's expected count), then backfill any item still missing a disposition with a
+ * conservative default owner — erring toward requiring human approval rather than silently
+ * proceeding.
+ */
+export function backfillOpenItemDispositions(
+  patch: ProposedLinearTicketPatch,
+): ProposedLinearTicketPatch {
+  const expectedCounts = countExpectedOpenItems(patch);
+  const coveredCounts = new Map<string, number>();
+  const reconciled: ProposedLinearTicketPatch["openItemDispositions"] = [];
+  for (const disposition of patch.openItemDispositions) {
+    const descriptor = getOpenItemSourceDescriptor(disposition.kind);
+    const key = descriptor
+      ? createOpenItemKey(descriptor.kind, normalizeOpenItemText(disposition.text))
+      : undefined;
+    const countedOpenItem = key ? expectedCounts.get(key) : undefined;
+    if (!key || !countedOpenItem) {
+      // Stale disposition: no current open item matches this text. Drop it rather than let it
+      // fail validation with a "references text not present" error.
+      continue;
+    }
+    const covered = coveredCounts.get(key) ?? 0;
+    if (covered >= countedOpenItem.count) {
+      // Excess duplicate disposition for an item that's already fully covered. Drop it.
+      continue;
+    }
+    coveredCounts.set(key, covered + 1);
+    reconciled.push(disposition);
+  }
+
+  for (const countedOpenItem of expectedCounts.values()) {
+    const key = createOpenItemKey(countedOpenItem.kind, countedOpenItem.text);
+    const covered = coveredCounts.get(key) ?? 0;
+    const missing = countedOpenItem.count - covered;
+    for (let index = 0; index < missing; index += 1) {
+      reconciled.push({
+        kind: countedOpenItem.kind,
+        text: countedOpenItem.text,
+        owner:
+          patch.readiness === ReviewReadiness.READY_WITH_NONBLOCKING_GAPS
+            ? ReviewOpenItemOwner.EXECUTOR_PREFLIGHT
+            : ReviewOpenItemOwner.HUMAN,
+        rationale:
+          "Backfilled default disposition: the harness output omitted an explicit ownership classification for this item, so Mastermind defaulted to the safest available owner.",
+      });
+    }
+  }
+  if (
+    reconciled.length === patch.openItemDispositions.length &&
+    reconciled.every((disposition, index) => disposition === patch.openItemDispositions[index])
+  ) {
+    return patch;
+  }
+  return {
+    ...patch,
+    openItemDispositions: reconciled,
+    requiresHumanApproval: patchRequiresHumanApproval({
+      ...patch,
+      openItemDispositions: reconciled,
+    }),
+  };
+}
+
+export function normalizePatchRequiresHumanApproval(
+  patch: ProposedLinearTicketPatch,
+): ProposedLinearTicketPatch {
+  const expected = patchRequiresHumanApproval(patch);
+  return patch.requiresHumanApproval === expected
+    ? patch
+    : { ...patch, requiresHumanApproval: expected };
+}
+
+/**
+ * Readiness is redundant with the structured open-item fields. If the model marks a patch
+ * BLOCKED but supplies no open items or approval requirement, treat the structured fields as
+ * authoritative instead of failing an otherwise usable review.
+ */
+export function normalizeEmptyBlockedReadiness(
+  patch: ProposedLinearTicketPatch,
+): ProposedLinearTicketPatch {
+  return patch.readiness === ReviewReadiness.BLOCKED &&
+    patch.blockingReasons.length === 0 &&
+    patch.unansweredQuestions.length === 0 &&
+    patch.openItemDispositions.length === 0 &&
+    !patch.materialScopeChange &&
+    !patch.requiresHumanApproval
+    ? { ...patch, readiness: ReviewReadiness.READY }
+    : patch;
+}
+
+const COPILOT_CREDENTIAL_SCOPE_PATTERN =
+  /(?:\bpat\b.{0,160}\bcopilot requests?\b|\bcopilot requests?\b.{0,160}\bpat\b)/iu;
+
+/**
+ * A successful gh auth probe is the standing proof for Copilot-backed execution. A model can
+ * still copy a granular PAT-scope concern from the dossier into the patch even though that scope
+ * cannot be checked read-only. Keep it as executor risk context, but never route it to a human.
+ */
+export function normalizeStandingDefaultOpenItems(
+  patch: ProposedLinearTicketPatch,
+): ProposedLinearTicketPatch {
+  const removedOpenItems = [...patch.unansweredQuestions, ...patch.blockingReasons].filter((item) =>
+    COPILOT_CREDENTIAL_SCOPE_PATTERN.test(item),
+  );
+  if (removedOpenItems.length === 0) {
+    const proposedDescriptionMarkdown = synchronizeOpenQuestionsSection(
+      patch.proposedDescriptionMarkdown,
+      patch.unansweredQuestions,
+    );
+    return proposedDescriptionMarkdown === patch.proposedDescriptionMarkdown
+      ? patch
+      : { ...patch, proposedDescriptionMarkdown };
+  }
+  const removed = new Set(removedOpenItems.map(normalizeOpenItemText));
+  const unansweredQuestions = patch.unansweredQuestions.filter(
+    (item) => !removed.has(normalizeOpenItemText(item)),
+  );
+  const blockingReasons = patch.blockingReasons.filter(
+    (item) => !removed.has(normalizeOpenItemText(item)),
+  );
+  const openItemDispositions = patch.openItemDispositions.filter(
+    (item) => !removed.has(normalizeOpenItemText(item.text)),
+  );
+  const readiness =
+    patch.readiness === ReviewReadiness.READY_WITH_NONBLOCKING_GAPS &&
+    unansweredQuestions.length === 0 &&
+    blockingReasons.length === 0 &&
+    openItemDispositions.length === 0
+      ? ReviewReadiness.READY
+      : patch.readiness;
+  const normalized = {
+    ...patch,
+    proposedDescriptionMarkdown: synchronizeOpenQuestionsSection(
+      patch.proposedDescriptionMarkdown,
+      unansweredQuestions,
+    ),
+    unansweredQuestions,
+    blockingReasons,
+    openItemDispositions,
+    readiness,
+    warnings: [...new Set([...patch.warnings, ...removedOpenItems])],
+  };
+  return {
+    ...normalized,
+    requiresHumanApproval: patchRequiresHumanApproval(normalized),
+  };
+}
+
+function synchronizeOpenQuestionsSection(markdown: string, questions: readonly string[]): string {
+  const replacement =
+    questions.length > 0 ? questions.map((question) => `* ${question}`).join("\n") : "None.";
+  return markdown.replace(
+    /(^|\n)(## Open questions[^\n]*\n)[\s\S]*?(?=\n##[ \t]+|$)/iu,
+    `$1$2\n${replacement}\n`,
+  );
 }
 
 export function getStoredReviewDispositionGapReason(

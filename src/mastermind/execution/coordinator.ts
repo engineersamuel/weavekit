@@ -7,6 +7,7 @@ import {
   ExecutorKind,
   startDirectExecutionWithApprovedPreflight,
   validateResultForRequest,
+  verificationPassed,
   type DirectExecutionRequest,
   type DirectExecutionResult,
   type DirectExecutor,
@@ -16,9 +17,11 @@ import {
 import type { ExecutionCommandRunner } from "../../submind/preflight.js";
 import type { WorkspaceProvisioner } from "../../submind/workspace.js";
 import type { PostImplementationReviewCoordinator } from "../codeReview/coordinator.js";
+import { createLeaseHeartbeat } from "../decision/loop.js";
 import { MastermindAction, MastermindEventType, MastermindState } from "../domain/events.js";
 import { transitionMastermindState } from "../domain/machine.js";
 import type { LinearGateway } from "../linear/client.js";
+import type { SelfImprovementCoordinator } from "../selfImprovement/coordinator.js";
 import type {
   ExecutionAttempt,
   MastermindEventRecord,
@@ -28,16 +31,19 @@ import type {
 import { executionTelemetryAttributes, withMastermindSpan } from "../telemetry.js";
 import { needsHuman, normalizeExecutionOutcome } from "./result.js";
 
+export type DirectExecutorResolver = Partial<Record<ExecutorKind, DirectExecutor>>;
+
 export class MastermindExecutionCoordinator {
   constructor(
     private readonly config: WeavekitConfig,
     private readonly store: MastermindStore,
     private readonly linear: LinearGateway,
     private readonly provisioner: WorkspaceProvisioner,
-    private readonly executor: DirectExecutor,
+    private readonly executors: DirectExecutorResolver,
     private readonly validationRunner: ExecutionCommandRunner,
     private readonly onProgress?: (message: string) => void,
     private readonly codeReview?: PostImplementationReviewCoordinator,
+    private readonly selfImprovement?: SelfImprovementCoordinator,
   ) {}
 
   async process(workId: string): Promise<void> {
@@ -52,7 +58,7 @@ export class MastermindExecutionCoordinator {
     try {
       const attempt = await this.store.getCurrentExecutionAttempt(workId);
       if (attempt) {
-        const project = this.config.projects[attempt.projectPolicyId];
+        const project = this.resolveProject(leased, attempt.projectPolicyId);
         const workspaceLabel = attempt.workspace?.checkoutPath
           ? basename(attempt.workspace.checkoutPath)
           : "not provisioned";
@@ -68,10 +74,24 @@ export class MastermindExecutionCoordinator {
           work: leased,
           attempt,
           repositoryMode: attempt
-            ? this.config.projects[attempt.projectPolicyId]?.repositoryMode
+            ? this.resolveProject(leased, attempt.projectPolicyId)?.repositoryMode
             : undefined,
         }),
-        async () => this.processPhase(leased, attempt, owner),
+        async (span) => {
+          const heartbeat = createLeaseHeartbeat({
+            store: this.store,
+            workId,
+            owner,
+            durationMs: this.config.mastermind.leaseDurationMs,
+            rootSpan: span,
+          });
+          try {
+            await this.processPhase(leased, attempt, owner);
+            await heartbeat.assertActive();
+          } finally {
+            await heartbeat.stop();
+          }
+        },
       );
     } finally {
       await this.store.releaseLease(workId, owner);
@@ -92,6 +112,11 @@ export class MastermindExecutionCoordinator {
     }
     if (work.currentExecutionAttemptId !== attempt.id) {
       throw new Error(`Current execution attempt fence mismatch for work ${work.id}.`);
+    }
+    if (this.selfImprovement) {
+      // Best-effort and self-idempotent (see SelfImprovementCoordinator): safe to invoke on every
+      // poll of a terminal work item, not just the transition into it.
+      await this.selfImprovement.process(work, attempt);
     }
     if (
       this.codeReview &&
@@ -135,13 +160,14 @@ export class MastermindExecutionCoordinator {
   }
 
   private async beginExecution(work: MastermindWorkItem, owner: string): Promise<void> {
-    const execution = this.config.mastermind.execution;
-    const project = work.projectPolicyId ? this.config.projects[work.projectPolicyId] : undefined;
+    const project = work.projectPolicyId
+      ? this.resolveProject(work, work.projectPolicyId)
+      : undefined;
+    const executionSelection = this.resolveExecutionSelectionForAction(work.plannedAction);
     if (
-      work.plannedAction !== MastermindAction.IMPLEMENT_DIRECTLY ||
-      !execution ||
+      !executionSelection ||
       !project?.directExecution?.enabled ||
-      !project.directExecution.allowedExecutorKinds.includes(execution.executorKind)
+      !project.directExecution.allowedExecutorKinds.includes(executionSelection.executorKind)
     ) {
       return;
     }
@@ -151,12 +177,14 @@ export class MastermindExecutionCoordinator {
       }
       await this.linear.setIssueState(work.issueId, this.config.mastermind.inProgressStateName);
     }
+    await this.clearExecutionGateLabels(work.issueId);
     await this.store.createExecutionAttempt({
       work,
       owner,
       projectPolicyId: project.id,
       projectPolicyVersion: policyVersion(project),
-      executorKind: execution.executorKind,
+      executorKind: executionSelection.executorKind,
+      action: work.plannedAction!,
     });
   }
 
@@ -165,7 +193,7 @@ export class MastermindExecutionCoordinator {
     attempt: ExecutionAttempt,
     owner: string,
   ): Promise<void> {
-    const execution = this.requireExecutionConfig();
+    const execution = this.requireExecutionConfig(attempt.executorKind);
     if (!attempt.retryEligible || attempt.attemptNumber >= execution.maxAttempts) {
       await this.toNeedsHuman(
         work,
@@ -176,12 +204,25 @@ export class MastermindExecutionCoordinator {
       );
       return;
     }
+    await this.clearExecutionGateLabels(work.issueId);
     await this.store.createExecutionAttempt({
       work,
       owner,
       projectPolicyId: attempt.projectPolicyId,
       projectPolicyVersion: attempt.projectPolicyVersion,
       executorKind: attempt.executorKind,
+      action: attempt.action,
+    });
+  }
+
+  private async clearExecutionGateLabels(issueId: string): Promise<void> {
+    await this.linear.replaceIssueLabels(issueId, {
+      remove: [
+        this.config.mastermind.readyLabelId,
+        this.config.mastermind.needsInputLabelId,
+        this.config.mastermind.reviewFailedLabelId,
+      ],
+      add: [],
     });
   }
 
@@ -190,7 +231,7 @@ export class MastermindExecutionCoordinator {
     attempt: ExecutionAttempt,
     owner: string,
   ): Promise<void> {
-    const project = this.config.projects[attempt.projectPolicyId];
+    const project = this.resolveProject(work, attempt.projectPolicyId);
     const ticket = await this.store.getLatestTicketSnapshot(work.id);
     if (!project || !ticket) {
       await this.toNeedsHuman(
@@ -203,24 +244,24 @@ export class MastermindExecutionCoordinator {
       return;
     }
     let current = attempt;
-    let workspace = current.workspace;
-    if (!workspace) {
-      workspace = await this.provisioner.describe({
-        workId: work.id,
-        workCreatedAt: work.createdAt,
-        attemptId: attempt.id,
-        ticket,
-        project,
-      });
-      current = await this.store.patchExecutionAttempt({
-        work,
-        attempt: current,
-        owner,
-        patch: { workspace },
-        eventType: "execution.workspace_intent_recorded",
-      });
-    }
     try {
+      let workspace = current.workspace;
+      if (!workspace) {
+        workspace = await this.provisioner.describe({
+          workId: work.id,
+          workCreatedAt: work.createdAt,
+          attemptId: attempt.id,
+          ticket,
+          project,
+        });
+        current = await this.store.patchExecutionAttempt({
+          work,
+          attempt: current,
+          owner,
+          patch: { workspace },
+          eventType: "execution.workspace_intent_recorded",
+        });
+      }
       const provisioned = await this.provisioner.provision(workspace, project);
       await this.transition(work, current, owner, MastermindEventType.WORKSPACE_PROVISIONED, {
         workspace: provisioned,
@@ -236,7 +277,7 @@ export class MastermindExecutionCoordinator {
     owner: string,
   ): Promise<void> {
     const { request } = await this.loadContext(work, attempt);
-    const report = await this.executor.preflight(request);
+    const report = await this.resolveExecutor(attempt.executorKind).preflight(request);
     const current = await this.requireCurrentAttempt(work.id, attempt.id);
     if (!report.accepted) {
       await this.toNeedsHuman(
@@ -262,7 +303,6 @@ export class MastermindExecutionCoordinator {
     attempt: ExecutionAttempt,
     owner: string,
   ): Promise<void> {
-    const execution = this.requireExecutionConfig();
     const { request } = await this.loadContext(work, attempt);
     const report = attempt.preflight;
     if (!report?.accepted) {
@@ -275,9 +315,15 @@ export class MastermindExecutionCoordinator {
       );
       return;
     }
+    const executor = this.resolveExecutor(attempt.executorKind);
     const intent: ExecutorHandle = {
-      executor: ExecutorKind.HERDR_COPILOT,
-      agentName: directExecutionAgentName(work.id, attempt.attemptNumber),
+      executor: attempt.executorKind,
+      // Only the Herdr executor creates a named agent. The RLM submind is a detached child
+      // process, so its handle carries pid/logPath instead. Naming it here produced a handle that
+      // looked attachable and was not: `herdr agent focus` answered agent_not_found.
+      ...(attempt.executorKind === ExecutorKind.RLM_SUBMIND
+        ? {}
+        : { agentName: directExecutionAgentName(work.id, attempt.attemptNumber) }),
       worktreePath: request.workspace.checkoutPath,
     };
     const current = attempt.executorHandle
@@ -290,11 +336,7 @@ export class MastermindExecutionCoordinator {
           eventType: "execution.launch_intent_recorded",
         });
     try {
-      const handle = await startDirectExecutionWithApprovedPreflight(
-        this.executor,
-        request,
-        report,
-      );
+      const handle = await startDirectExecutionWithApprovedPreflight(executor, request, report);
       await this.transition(work, current, owner, MastermindEventType.EXECUTOR_STARTED, {
         executorHandle: handle,
         launchedAt: new Date().toISOString(),
@@ -302,7 +344,6 @@ export class MastermindExecutionCoordinator {
     } catch (error) {
       await this.toNeedsHuman(work, current, owner, "EXECUTOR_LAUNCH", sanitizeError(error));
     }
-    void execution;
   }
 
   private async poll(
@@ -320,7 +361,7 @@ export class MastermindExecutionCoordinator {
       );
       return;
     }
-    const status = await this.executor.status(attempt.executorHandle);
+    const status = await this.resolveExecutor(attempt.executorKind).status(attempt.executorHandle);
     status.unknownCount =
       status.state === "unknown" ? (attempt.lastStatus?.unknownCount ?? 0) + 1 : 0;
     if (status.state === "blocked") {
@@ -336,7 +377,8 @@ export class MastermindExecutionCoordinator {
     }
     if (
       status.state === "unknown" &&
-      status.unknownCount >= this.requireExecutionConfig().unknownStatusThreshold
+      status.unknownCount >=
+        this.requireExecutionConfig(attempt.executorKind).unknownStatusThreshold
     ) {
       await this.toNeedsHuman(
         work,
@@ -381,7 +423,10 @@ export class MastermindExecutionCoordinator {
     }
     const { request } = await this.loadContext(work, attempt);
     try {
-      const result = await this.executor.collect(attempt.executorHandle);
+      const result = await this.resolveExecutor(attempt.executorKind).collect(
+        attempt.executorHandle,
+        request,
+      );
       validateResultForRequest(result, request);
       const verification = await this.runIndependentVerification(request, result);
       const normalized = normalizeExecutionOutcome({
@@ -389,7 +434,7 @@ export class MastermindExecutionCoordinator {
         result,
         verification,
         attemptNumber: attempt.attemptNumber,
-        maxAttempts: this.requireExecutionConfig().maxAttempts,
+        maxAttempts: this.requireExecutionConfig(attempt.executorKind).maxAttempts,
       });
       await this.transition(work, attempt, owner, normalized.eventType, {
         result,
@@ -417,9 +462,7 @@ export class MastermindExecutionCoordinator {
     if (request.validationCommands.length === 0) {
       return {
         commands: result.verification.map((entry) => ({ ...entry, durationMs: 0 })),
-        passed:
-          result.verification.length > 0 &&
-          result.verification.every((entry) => entry.exitCode === 0),
+        passed: result.verification.length > 0 && result.verification.every(verificationPassed),
       };
     }
     const commands = [];
@@ -472,17 +515,21 @@ export class MastermindExecutionCoordinator {
     }
     if (current.state === MastermindState.SUCCEEDED) {
       await this.linear.replaceIssueLabels(work.issueId, {
-        remove: [this.config.mastermind.readyLabelId],
+        remove: [
+          this.config.mastermind.readyLabelId,
+          this.config.mastermind.needsInputLabelId,
+          this.config.mastermind.reviewFailedLabelId,
+        ],
         add: [],
       });
     } else if (current.state === MastermindState.NEEDS_HUMAN) {
       await this.linear.replaceIssueLabels(work.issueId, {
-        remove: [],
+        remove: [this.config.mastermind.readyLabelId, this.config.mastermind.reviewFailedLabelId],
         add: [this.config.mastermind.needsInputLabelId],
       });
     } else if (current.state === MastermindState.FAILED) {
       await this.linear.replaceIssueLabels(work.issueId, {
-        remove: [this.config.mastermind.readyLabelId],
+        remove: [this.config.mastermind.readyLabelId, this.config.mastermind.needsInputLabelId],
         add: [this.config.mastermind.reviewFailedLabelId],
       });
     }
@@ -502,7 +549,7 @@ export class MastermindExecutionCoordinator {
     work: MastermindWorkItem,
     attempt: ExecutionAttempt,
   ): Promise<{ project: WeavekitConfig["projects"][string]; request: DirectExecutionRequest }> {
-    const project = this.config.projects[attempt.projectPolicyId];
+    const project = this.resolveProject(work, attempt.projectPolicyId);
     const ticket = await this.store.getLatestTicketSnapshot(work.id);
     const review = await this.store.getLatestReview(work.id);
     const decision = await this.store.getLatestDecision(work.id);
@@ -538,6 +585,16 @@ export class MastermindExecutionCoordinator {
     return current;
   }
 
+  private resolveProject(
+    work: MastermindWorkItem,
+    projectPolicyId: string,
+  ): WeavekitConfig["projects"][string] | undefined {
+    if (work.resolvedProject?.id === projectPolicyId) {
+      return work.resolvedProject;
+    }
+    return this.config.projects[projectPolicyId];
+  }
+
   private transition(
     work: MastermindWorkItem,
     attempt: ExecutionAttempt,
@@ -571,7 +628,36 @@ export class MastermindExecutionCoordinator {
     });
   }
 
-  private requireExecutionConfig() {
+  private resolveExecutionSelectionForAction(
+    action: MastermindWorkItem["plannedAction"],
+  ): { executorKind: ExecutorKind } | undefined {
+    if (action === MastermindAction.IMPLEMENT_DIRECTLY && this.config.mastermind.execution) {
+      return { executorKind: this.config.mastermind.execution.executorKind };
+    }
+    if (action === MastermindAction.DELEGATE_SUBMIND && this.config.mastermind.rlmExecution) {
+      return { executorKind: this.config.mastermind.rlmExecution.executorKind };
+    }
+    return undefined;
+  }
+
+  private resolveExecutor(kind: ExecutorKind): DirectExecutor {
+    const executor = this.executors[kind];
+    if (!executor) {
+      throw new Error(`No DirectExecutor is configured for executor kind "${kind}".`);
+    }
+    return executor;
+  }
+
+  private requireExecutionConfig(kind: ExecutorKind): {
+    maxAttempts: number;
+    unknownStatusThreshold: number;
+    cancellationGraceMs: number;
+  } {
+    if (kind === ExecutorKind.RLM_SUBMIND) {
+      const execution = this.config.mastermind.rlmExecution;
+      if (!execution) throw new Error("Mastermind RLM execution is not configured.");
+      return execution;
+    }
     const execution = this.config.mastermind.execution;
     if (!execution) throw new Error("Mastermind direct execution is not configured.");
     return execution;
@@ -602,21 +688,7 @@ function executionComment(
 ): string {
   const verification = attempt.verification?.commands ?? [];
   const handle = attempt.executorHandle;
-  const attachmentCommands =
-    handle?.agentName && handle.worktreePath
-      ? [
-          "",
-          "Continue in Herdr:",
-          "",
-          "```bash",
-          `mise run mastermind:attach ${shellQuote(attachmentSelector)}`,
-          `herdr agent attach ${shellQuote(handle.agentName)}`,
-          `herdr agent focus ${shellQuote(handle.agentName)}`,
-          `herdr agent read ${shellQuote(handle.agentName)} --source recent-unwrapped --lines 100`,
-          `cd ${shellQuote(handle.worktreePath)}`,
-          "```",
-        ]
-      : [];
+  const attachmentCommands = handle ? continuationCommands(handle, attachmentSelector) : [];
   return [
     marker,
     `Mastermind execution attempt ${attempt.attemptNumber}: **${attempt.state}**`,
@@ -640,6 +712,45 @@ function executionComment(
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
+
+/**
+ * Commands a human can actually run to continue this attempt, matched to how the executor runs.
+ * A Herdr agent is attachable; a detached RLM submind process is not, so it gets the worktree,
+ * the log, and the result manifest instead.
+ */
+function continuationCommands(handle: ExecutorHandle, attachmentSelector: string): string[] {
+  if (!handle.worktreePath) {
+    return [];
+  }
+  if (handle.executor === ExecutorKind.RLM_SUBMIND) {
+    return [
+      "",
+      "Inspect the submind run:",
+      "",
+      "```bash",
+      `mise run mastermind:attach ${shellQuote(attachmentSelector)}`,
+      `cd ${shellQuote(handle.worktreePath)}`,
+      ...(handle.logPath ? [`tail -n 100 ${shellQuote(handle.logPath)}`] : []),
+      "cat .weavekit/mastermind-result.json",
+      "```",
+    ];
+  }
+  if (!handle.agentName) {
+    return [];
+  }
+  return [
+    "",
+    "Continue in Herdr:",
+    "",
+    "```bash",
+    `mise run mastermind:attach ${shellQuote(attachmentSelector)}`,
+    `herdr agent attach ${shellQuote(handle.agentName)}`,
+    `herdr agent focus ${shellQuote(handle.agentName)}`,
+    `herdr agent read ${shellQuote(handle.agentName)} --source recent-unwrapped --lines 100`,
+    `cd ${shellQuote(handle.worktreePath)}`,
+    "```",
+  ];
 }
 
 function summarizeOutput(stdout: string, stderr: string): string {

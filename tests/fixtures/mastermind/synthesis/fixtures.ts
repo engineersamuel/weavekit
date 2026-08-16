@@ -203,7 +203,7 @@ export const MASTERMIND_SYNTHESIS_BENCHMARK_FIXTURES: MastermindSynthesisBenchma
       externalEvidence: [],
       assumptions: [],
       ambiguities: [],
-      unansweredQuestions: ["Is the proxy runtime advertising gemini-3.6-flash today?"],
+      unansweredQuestions: ["Is the proxy runtime advertising gemini-3.7-flash today?"],
       risks: ["The benchmark must not switch the default model without passing quality gates."],
       dependencies: [],
       suggestedAcceptanceCriteria: [
@@ -220,7 +220,7 @@ export const MASTERMIND_SYNTHESIS_BENCHMARK_FIXTURES: MastermindSynthesisBenchma
       confidence: 0.9,
     },
     requiredFacts: [
-      "Is the proxy runtime advertising gemini-3.6-flash today?",
+      "Is the proxy runtime advertising gemini-3.7-flash today?",
       "The benchmark preserves current readiness and approval semantics.",
     ],
     expected: {
@@ -230,7 +230,7 @@ export const MASTERMIND_SYNTHESIS_BENCHMARK_FIXTURES: MastermindSynthesisBenchma
         {
           kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
           owner: ReviewOpenItemOwner.EXECUTOR_PREFLIGHT,
-          text: "Is the proxy runtime advertising gemini-3.6-flash today?",
+          text: "Is the proxy runtime advertising gemini-3.7-flash today?",
         },
       ],
     },

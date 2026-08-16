@@ -28,27 +28,9 @@ Use Nub for Node.js package and script management in this repository.
 
 Nub is preferred because it provides one tool for running files and scripts, installing dependencies, and managing Node itself without adding a new runtime or vendor-specific API surface.
 
-## Workflow entity validation
+## What RLM is
 
-Run `mise run doctor` before running workflow or decision-council commands. The doctor task validates repo-local workflow entity YAML, sibling prompt Markdown references, generated BAML function references, and `capabilities.skills` availability for configured harnesses.
-
-Also run `mise run doctor` after editing `entities/**/*.yaml`, entity prompt Markdown, BAML output schemas/functions referenced by entity manifests, or skill capability wiring.
-
-Use `mise run doctor:sdk -- --entity <id>` when you need to prove a skill-backed Copilot SDK entity can load its configured skill in a live SDK session. This extended check requires a working Copilot SDK runtime, either through the installed platform package or `COPILOT_RUNTIME_URL`, `COPILOT_CLI_URL`, or `COPILOT_CLI_PATH`.
-
-Use `mise run repro:visual-design:live-trace` when iterating on the source-to-project visual design node or the `/visual-plan` Copilot SDK skill path. This task replays the captured O3 visual-design fixture against the live LLM with elapsed timing logs, so you can see when the SDK session starts, when the local Plan URL appears, and what the harness is waiting on. It runs:
-
-```sh
-nub run repro:visual-design -- --mode live --trace --bridge-ttl-ms 600000
-```
-
-The replay should produce an Agent-Native local Plan URL, not a standalone HTML artifact. The `--bridge-ttl-ms 600000` setting keeps the localhost Plan bridge alive for review for 10 minutes, then schedules cleanup so the repro can progress without leaving long-lived `plan local serve` processes behind.
-
-When working with baml read ./docs/baml/instructions.md
-
-Prefer BAML-generated types over creating new hand-authored TypeScript types when the output shape is already defined in a BAML schema. Reuse generated types as the canonical contract and only add new local types when they represent workflow-specific state or input that is not produced by BAML.
-
-If calling the Copilot SDK directly and you want the response to conform to a BAML output schema, append the `ctx.output_format` block to the end of the prompt. This is required because the SDK path does not automatically render BAML's `ctx.output_format` for you.
+RLM is a recursive language meta harness and useful when weavekit needs application-owned controls: per-hop profiles and models, skill and tool boundaries, recursive decomposition, enforced depth and breadth budgets, the root-grounded  ask_user  bridge, structured results, and a visible Langfuse recursion tree. If ordinary Copilot subagents already provide the needed fan-out, permissions, and observability, they are simpler and should be used instead. Depth greater than one should be an available capability, not a goal.
 
 ## Modern TypeScript
 
@@ -63,7 +45,9 @@ Write canonical, erasable TypeScript and avoid arcane runtime hacks. Node 22.18+
 
 ```ts
 // ❌ arcane: hand-resolve the runtime path
-connection: RuntimeConnection.forStdio({ path: require.resolve("@github/copilot/npm-loader.js") });
+connection: RuntimeConnection.forStdio({
+  path: require.resolve("@github/copilot/npm-loader.js"),
+});
 
 // ✅ canonical: let the SDK auto-resolve its bundled runtime; override only via env
 const cliPath = process.env.COPILOT_CLI_PATH;
@@ -97,21 +81,6 @@ type PreToolUseInput = Parameters<PreToolUseHandler>[0];
 }
 ```
 
-## Workflow instrumentation
-
-- When writing new workflows, consider Langfuse/OpenTelemetry observability from the start: spans, trace metadata, and useful workflow inputs/outputs should be part of the design.
-- Do not add a durable work queue (e.g. Beads) for workflow orchestration. Workflows are isolated single-machine runs that complete all work in-process; orchestrate dynamic action graphs in-process, record the execution DAG in Langfuse, and snapshot run state to disk for resume. See `CONTEXT.md` and `docs/adr/0001-no-durable-work-queue.md`.
-
-## Langfuse debugging
-
-Langfuse project traces are available at:
-
-```
-http://localhost:3000/project/cmqwb90vu0006t307hrbgpj74/traces
-```
-
-When debugging workflow execution, use the **playwright MCP** to navigate to this URL and inspect traces. Use `browser_navigate` to open the traces page, `browser_snapshot` to read the UI, and `browser_click`/`browser_fill_form` to filter or drill into specific traces.
-
 ## Model proxy
 
 By default models are hosted through the copilot-proxy-rs available at http://127.0.0.1:8080 with endpoints `/health`, `/version`, `/v1/models`, and `/v1/messages/count_tokens` routes.
@@ -127,9 +96,3 @@ curl -fsS http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: applicatio
 ```
 
 Add `"stream": true` to the payload if streaming
-
-## Baton workspace spawning
-
-When asked to spawn a Copilot session in a new Baton workspace, use an existing initialized workspace directory as the `cwd` for `baton-spawn_agent_in_new_workspace`. Do not pass the Baton project name or repository path as `cwd`; the MCP resolver expects a workspace path such as `/Users/smendenhall/.baton/worktrees/weavekit/<workspace-name>`.
-
-For this repository, the target project is usually `weavekit`. If spawning for another project, first find or ask the user to open an initialized workspace under `/Users/smendenhall/.baton/worktrees/<project-name>/...`, then pass that exact workspace directory to the Baton MCP tool along with the desired branch name and prompt.

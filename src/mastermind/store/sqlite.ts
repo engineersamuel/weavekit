@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { ProjectCatalogEntry } from "../../config.js";
 import type {
   MastermindNextActionDecision,
   ProposedLinearTicketPatch,
@@ -48,6 +49,7 @@ export class SqliteMastermindStore implements MastermindStore {
         organization_id TEXT NOT NULL,
         issue_id TEXT NOT NULL,
         project_policy_id TEXT,
+        resolved_project_json TEXT,
         state TEXT NOT NULL,
         planned_action TEXT,
         current_execution_attempt_id TEXT,
@@ -161,6 +163,7 @@ export class SqliteMastermindStore implements MastermindStore {
         ON mastermind_code_reviews(work_id, updated_at);
     `);
     ensureColumn(database, "mastermind_work_items", "current_execution_attempt_id", "TEXT");
+    ensureColumn(database, "mastermind_work_items", "resolved_project_json", "TEXT");
     ensureColumn(database, "mastermind_reviews", "original_content_hash", "TEXT");
     ensureColumn(database, "mastermind_reviews", "dossier_json", "TEXT");
     ensureColumn(database, "mastermind_reviews", "patch_json", "TEXT");
@@ -350,6 +353,7 @@ export class SqliteMastermindStore implements MastermindStore {
     projectPolicyId: string;
     projectPolicyVersion: string;
     executorKind: ExecutionAttempt["executorKind"];
+    action: MastermindAction;
   }): Promise<{ work: MastermindWorkItem; attempt: ExecutionAttempt }> {
     const database = this.getDatabase();
     database.exec("BEGIN IMMEDIATE");
@@ -366,7 +370,7 @@ export class SqliteMastermindStore implements MastermindStore {
         Number(current.row_version) !== input.work.rowVersion ||
         (current.state !== MastermindState.ACTION_PLANNED &&
           current.state !== MastermindState.RETRY_WAIT) ||
-        current.planned_action !== MastermindAction.IMPLEMENT_DIRECTLY ||
+        current.planned_action !== input.action ||
         (current.state === MastermindState.ACTION_PLANNED &&
           current.current_execution_attempt_id !== null)
       ) {
@@ -421,7 +425,7 @@ export class SqliteMastermindStore implements MastermindStore {
           attemptId,
           input.work.id,
           attemptNumber,
-          MastermindAction.IMPLEMENT_DIRECTLY,
+          input.action,
           input.projectPolicyId,
           input.projectPolicyVersion,
           input.executorKind,
@@ -447,7 +451,7 @@ export class SqliteMastermindStore implements MastermindStore {
           now,
           input.work.rowVersion,
           priorState,
-          MastermindAction.IMPLEMENT_DIRECTLY,
+          input.action,
           priorState,
           MastermindState.ACTION_PLANNED,
           priorAttemptId,
@@ -918,13 +922,14 @@ export class SqliteMastermindStore implements MastermindStore {
       .prepare(
         `SELECT id
          FROM mastermind_work_items
-         WHERE state = ? AND planned_action = ? AND current_execution_attempt_id IS NULL
+         WHERE state = ? AND planned_action IN (?, ?) AND current_execution_attempt_id IS NULL
            AND (lease_owner IS NULL OR lease_expires_at <= ?)
          ORDER BY created_at`,
       )
       .all(
         MastermindState.ACTION_PLANNED,
         MastermindAction.IMPLEMENT_DIRECTLY,
+        MastermindAction.DELEGATE_SUBMIND,
         now.toISOString(),
       ) as SqlRow[];
     return rows.map((row) => String(row.id));
@@ -1139,14 +1144,23 @@ export class SqliteMastermindStore implements MastermindStore {
       : undefined;
   }
 
-  async setProjectPolicy(workId: string, projectPolicyId: string): Promise<void> {
+  async setProjectPolicy(
+    workId: string,
+    projectPolicyId: string,
+    resolvedProject?: ProjectCatalogEntry,
+  ): Promise<void> {
     this.getDatabase()
       .prepare(
         `UPDATE mastermind_work_items
-         SET project_policy_id = ?, updated_at = ?
+         SET project_policy_id = ?, resolved_project_json = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .run(projectPolicyId, new Date().toISOString(), workId);
+      .run(
+        projectPolicyId,
+        resolvedProject ? JSON.stringify(resolvedProject) : null,
+        new Date().toISOString(),
+        workId,
+      );
   }
 
   async listRecoverableWorkIds(now: Date): Promise<string[]> {
@@ -1338,6 +1352,10 @@ function toWorkItem(row: SqlRow): MastermindWorkItem {
     organizationId: String(row.organization_id),
     issueId: String(row.issue_id),
     projectPolicyId: typeof row.project_policy_id === "string" ? row.project_policy_id : undefined,
+    resolvedProject:
+      typeof row.resolved_project_json === "string"
+        ? (JSON.parse(row.resolved_project_json) as ProjectCatalogEntry)
+        : undefined,
     state: String(row.state) as MastermindWorkItem["state"],
     plannedAction:
       typeof row.planned_action === "string" ? (row.planned_action as MastermindAction) : undefined,
@@ -1359,7 +1377,7 @@ function toExecutionAttempt(row: SqlRow): ExecutionAttempt {
     id: String(row.id),
     workId: String(row.work_id),
     attemptNumber: Number(row.attempt_number),
-    action: MastermindAction.IMPLEMENT_DIRECTLY,
+    action: String(row.action) as MastermindAction,
     projectPolicyId: String(row.project_policy_id),
     projectPolicyVersion: String(row.project_policy_version),
     executorKind: String(row.executor_kind) as ExecutionAttempt["executorKind"],

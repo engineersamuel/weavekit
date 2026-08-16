@@ -6,6 +6,12 @@ import {
   withMastermindSpan,
 } from "../telemetry.js";
 
+export type LinearIssueComment = {
+  id: string;
+  body: string;
+  createdAt: string;
+};
+
 export type LinearGateway = {
   fetchIssue(issueId: string): Promise<LinearTicketSnapshot>;
   updateIssueContent(issueId: string, input: { title: string; description: string }): Promise<void>;
@@ -13,6 +19,15 @@ export type LinearGateway = {
   setIssueState?(issueId: string, stateName: string): Promise<void>;
   findIssueCommentByMarker?(issueId: string, marker: string): Promise<string | undefined>;
   createIssueComment?(issueId: string, body: string): Promise<string>;
+  updateIssueComment?(commentId: string, body: string): Promise<void>;
+  listIssueComments?(issueId: string): Promise<LinearIssueComment[]>;
+  createIssue?(input: {
+    teamId: string;
+    title: string;
+    description: string;
+    labelIds?: string[];
+    projectId?: string;
+  }): Promise<{ id: string; identifier: string; url: string }>;
 };
 
 type GraphQlEnvelope = {
@@ -177,7 +192,7 @@ export class LinearGraphQlGateway implements LinearGateway {
     const issue = await this.fetchIssue(issueId);
     if (issue.status.toLocaleLowerCase() === stateName.toLocaleLowerCase()) return;
     const data = await this.query(
-      `query MastermindWorkflowStates($teamId: String!) {
+      `query MastermindWorkflowStates($teamId: ID!) {
         workflowStates(filter: { team: { id: { eq: $teamId } } }) {
           nodes { id name }
         }
@@ -208,12 +223,12 @@ export class LinearGraphQlGateway implements LinearGateway {
     }
   }
 
-  async findIssueCommentByMarker(issueId: string, marker: string): Promise<string | undefined> {
+  async listIssueComments(issueId: string): Promise<LinearIssueComment[]> {
     const data = await this.query(
-      `query MastermindIssueComments($id: String!) {
+      `query MastermindIssueCommentsList($id: String!) {
         issue(id: $id) {
           comments {
-            nodes { id body }
+            nodes { id body createdAt }
           }
         }
       }`,
@@ -222,19 +237,21 @@ export class LinearGraphQlGateway implements LinearGateway {
     const issue = asRecord(data.issue);
     const comments = asRecord(issue.comments);
     if (!Array.isArray(comments.nodes)) {
-      return undefined;
+      return [];
     }
-    for (const comment of comments.nodes) {
+    return comments.nodes.flatMap((comment) => {
       const record = asRecord(comment);
-      if (
-        typeof record.id === "string" &&
+      return typeof record.id === "string" &&
         typeof record.body === "string" &&
-        record.body.includes(marker)
-      ) {
-        return record.id;
-      }
-    }
-    return undefined;
+        typeof record.createdAt === "string"
+        ? [{ id: record.id, body: record.body, createdAt: record.createdAt }]
+        : [];
+    });
+  }
+
+  async findIssueCommentByMarker(issueId: string, marker: string): Promise<string | undefined> {
+    const comments = await this.listIssueComments(issueId);
+    return comments.find((comment) => comment.body.includes(marker))?.id;
   }
 
   async createIssueComment(issueId: string, body: string): Promise<string> {
@@ -253,6 +270,88 @@ export class LinearGraphQlGateway implements LinearGateway {
       throw new Error(`Linear rejected the comment for issue ${issueId}.`);
     }
     return comment.id;
+  }
+
+  async updateIssueComment(commentId: string, body: string): Promise<void> {
+    const data = await this.query(
+      `mutation MastermindUpdateIssueComment($id: String!, $body: String!) {
+        commentUpdate(id: $id, input: { body: $body }) {
+          success
+        }
+      }`,
+      { id: commentId, body },
+    );
+    const result = asRecord(data.commentUpdate);
+    if (result.success !== true) {
+      throw new Error(`Linear rejected the comment update ${commentId}.`);
+    }
+  }
+
+  async createIssue(input: {
+    teamId: string;
+    title: string;
+    description: string;
+    labelIds?: string[];
+    projectId?: string;
+  }): Promise<{ id: string; identifier: string; url: string }> {
+    return withMastermindSpan(
+      "mastermind.linear.create_issue",
+      {
+        "langfuse.observation.type": "tool",
+        "weavekit.mastermind.linear.operation": "create_issue",
+        "weavekit.mastermind.linear.team_id": input.teamId,
+      },
+      async (span) => {
+        setMastermindSpanInput(span, {
+          teamId: input.teamId,
+          title: input.title,
+          labelIds: input.labelIds,
+          projectId: input.projectId,
+        });
+        const data = await this.query(
+          `mutation MastermindCreateIssue(
+        $teamId: String!
+        $title: String!
+        $description: String!
+        $labelIds: [String!]
+        $projectId: String
+      ) {
+        issueCreate(
+          input: {
+            teamId: $teamId
+            title: $title
+            description: $description
+            labelIds: $labelIds
+            projectId: $projectId
+          }
+        ) {
+          success
+          issue { id identifier url }
+        }
+      }`,
+          {
+            teamId: input.teamId,
+            title: input.title,
+            description: input.description,
+            labelIds: input.labelIds ?? [],
+            projectId: input.projectId ?? null,
+          },
+        );
+        const result = asRecord(data.issueCreate);
+        const issue = asRecord(result.issue);
+        if (
+          result.success !== true ||
+          typeof issue.id !== "string" ||
+          typeof issue.identifier !== "string" ||
+          typeof issue.url !== "string"
+        ) {
+          throw new Error(`Linear rejected issue creation for team ${input.teamId}.`);
+        }
+        const created = { id: issue.id, identifier: issue.identifier, url: issue.url };
+        setMastermindSpanOutput(span, created);
+        return created;
+      },
+    );
   }
 
   private async query(

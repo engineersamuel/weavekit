@@ -16,6 +16,7 @@ import type {
   StoredCodeReview,
 } from "../store/store.js";
 import type { CodeReviewHarness } from "./harness.js";
+import { reviewWorktreePath } from "./harness.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -49,7 +50,18 @@ export class PostImplementationReviewCoordinator {
       return;
     }
     if (work.state !== MastermindState.CODE_REVIEWING) return;
-    let review = await this.requireFreshReview(work, attempt);
+    let review = await this.ensureReview(work, attempt);
+    if (review.status !== "running") {
+      const eventType = eventForReviewStatus(review.status);
+      if (!eventType) {
+        throw new Error(`Code review ${review.id} is not running.`);
+      }
+      if (review.review && review.projection?.disposition !== "applied") {
+        await this.project(work, attempt, review);
+      }
+      await this.transition(work, owner, eventType);
+      return;
+    }
     const ticket = await this.store.getLatestTicketSnapshot(work.id);
     const ticketReview = await this.store.getLatestReview(work.id);
     if (!ticket || !ticketReview) throw new Error("Code review context is incomplete.");
@@ -108,17 +120,6 @@ export class PostImplementationReviewCoordinator {
       executionAttemptId: attempt.id,
       ...identity,
     });
-  }
-
-  private async requireFreshReview(
-    work: MastermindWorkItem,
-    attempt: ExecutionAttempt,
-  ): Promise<StoredCodeReview> {
-    const review = await this.ensureReview(work, attempt);
-    if (review.status !== "running") {
-      throw new Error(`Code review ${review.id} is not running.`);
-    }
-    return review;
   }
 
   private async identity(
@@ -248,12 +249,30 @@ function hashJson(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+function eventForReviewStatus(status: StoredCodeReview["status"]): string | undefined {
+  switch (status) {
+    case "passed":
+      return MastermindEventType.CODE_REVIEW_PASSED;
+    case "changes_requested":
+      return MastermindEventType.CODE_CHANGES_REQUESTED;
+    case "needs_human":
+      return MastermindEventType.CODE_REVIEW_NEEDS_HUMAN;
+    default:
+      return undefined;
+  }
+}
+
 function codeReviewComment(
   review: StoredCodeReview,
   attempt: ExecutionAttempt,
   marker: string,
 ): string {
   const result = review.review!;
+  const worktree = reviewWorktreePath(attempt);
+  const manualSteps = [
+    ...(worktree ? [`Change to the review worktree root: \`cd ${worktree}\``] : []),
+    ...result.manualVerification,
+  ];
   return [
     marker,
     `Mastermind post-code review for execution attempt ${attempt.attemptNumber}: **${result.verdict}**`,
@@ -271,7 +290,9 @@ function codeReviewComment(
         )
       : ["- None."]),
     "",
-    "Manual verification:",
-    ...result.manualVerification.map((entry) => `- ${entry}`),
+    "Manual verification — run these steps in order:",
+    ...(manualSteps.length
+      ? manualSteps.map((entry, index) => `${index + 1}. ${entry}`)
+      : ["- None."]),
   ].join("\n");
 }

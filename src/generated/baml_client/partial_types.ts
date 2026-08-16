@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  LinearTicketInput,  MastermindAction,  MastermindNextActionDecision,  MastermindProjectPolicyInput,  MastermindReviewDecisionContext,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  PlanCriterionAssessment,  PlanRequirementAssessment,  PortfolioCoverageAssessment,  PortfolioCoverageAudit,  PortfolioCoverageClaim,  PortfolioPlanDraft,  PostImplementationReview,  PostImplementationReviewDossier,  PostImplementationReviewFinding,  PostImplementationReviewVerdict,  PracticeApplicabilityAssessment,  ProjectApplicabilityMatrix,  ProjectBrief,  ProjectRepositoryMode,  ProposedLinearTicketPatch,  RawPersonaResult,  RepositoryEvidenceType,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  ReviewEvidenceKind,  ReviewOpenItemDisposition,  ReviewOpenItemKind,  ReviewOpenItemOwner,  ReviewReadiness,  RoundAssessment,  RouterHandoff,  RouterRecommendation,  RouterResult,  RouterRoute,  RouterRouteScore,  RoutingDecision,  SourceAnalysis,  SourcePractice,  SourcePracticeDraft,  SourcePracticeLedger,  SourcePracticeLedgerDraft,  SourceToProjectPairwiseJudgment,  SourceToProjectPlanJudgment,  SpecializedObligationAssessment,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  TicketKind,  TicketReviewDossier,  TicketReviewEvidence,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
+import type {  AdoptionTask,  AggregateTemplateJudgment,  ClarifyingQuestion,  CorroborationReport,  CouncilReport,  CriterionScore,  DeepResearchCompiledReport,  DeepResearchConfig,  DeepResearchEvidence,  DeepResearchEvidenceMatrixEntry,  DeepResearchFinding,  DeepResearchPriorState,  DeepResearchQuestion,  DeepResearchReport,  DeepResearchReportSource,  EvidenceReference,  FinalRecommendationReview,  ImplementationReviewVerdict,  LinearTicketInput,  MastermindAction,  MastermindNextActionDecision,  MastermindProjectPolicyInput,  MastermindReviewDecisionContext,  ModeTemplatePolicy,  NonApplicableLesson,  Opportunity,  OpportunityBundle,  OpportunityCouncilReview,  OpportunityScore,  PersonaChoiceCandidate,  PersonaCritique,  PersonaCritiqueSummary,  PersonaFailure,  PersonaSelection,  PersonaSelectionRequest,  PlanArtifactSummary,  PlanCriterionAssessment,  PlanRequirementAssessment,  PortfolioCoverageAssessment,  PortfolioCoverageAudit,  PortfolioCoverageClaim,  PortfolioPlanDraft,  PostImplementationReview,  PostImplementationReviewDossier,  PostImplementationReviewFinding,  PostImplementationReviewVerdict,  PracticeApplicabilityAssessment,  ProjectApplicabilityMatrix,  ProjectBrief,  ProjectRepositoryMode,  ProposedLinearTicketPatch,  RawPersonaResult,  RepositoryEvidenceType,  ResearchIterationAssessment,  ResearchQuestionCoverage,  ResearchQuestionSet,  ReviewEvidenceKind,  ReviewOpenItemDisposition,  ReviewOpenItemKind,  ReviewOpenItemOwner,  ReviewReadiness,  RlmArtifactReference,  RlmDependencyReport,  RlmRunBrief,  RlmVerificationOutcome,  RlmVerificationResult,  RlmWorkerOutcome,  RlmWorkerReport,  RoundAssessment,  RouterHandoff,  RouterRecommendation,  RouterResult,  RouterRoute,  RouterRouteScore,  RoutingDecision,  SelfImprovementFinding,  SelfImprovementReport,  SourceAnalysis,  SourcePractice,  SourcePracticeDraft,  SourcePracticeLedger,  SourcePracticeLedgerDraft,  SourceToProjectPairwiseJudgment,  SourceToProjectPlanJudgment,  SpecializedObligationAssessment,  SubmindTraceObservation,  SubmindTraceSummary,  TemplateCandidate,  TemplateExpansionCase,  TemplateFixtureJudgment,  TemplateOptimizationFixture,  TicketKind,  TicketReviewDossier,  TicketReviewEvidence,  TrellageTurnDiagnosis,  TrellageTurnOutcome,  VerificationAudit,  VerificationOpportunity,  VerificationOpportunityResearchReport,  VerificationOpportunityReview,  VerificationOpportunityScore,  VerificationRecommendationReview,  WorkflowNode,  WorkflowPlan,  WorkflowReplanPatch } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -445,7 +445,6 @@ export namespace partial_types {
       assumptions: string[]
       ambiguities: string[]
       unansweredQuestions: string[]
-      openItemDispositions: ReviewOpenItemDisposition[]
       dependencies: string[]
       risks: string[]
       automatedVerification: string[]
@@ -458,6 +457,7 @@ export namespace partial_types {
       evidence: TicketReviewEvidence[]
       readiness?: types.ReviewReadiness | null
       blockingReasons: string[]
+      openItemDispositions: ReviewOpenItemDisposition[]
       warnings: string[]
       materialScopeChange?: boolean | null
       requiresHumanApproval?: boolean | null
@@ -491,6 +491,37 @@ export namespace partial_types {
       text?: string | null
       owner?: types.ReviewOpenItemOwner | null
       rationale?: string | null
+    }
+    export interface RlmArtifactReference {
+      locator?: string | null
+      description?: string | null
+    }
+    export interface RlmDependencyReport {
+      callId?: string | null
+      profile?: string | null
+      report?: RlmWorkerReport | null
+    }
+    export interface RlmRunBrief {
+      objective?: string | null
+      constraints: string[]
+      acceptanceCriteria: string[]
+      validationCommands: string[]
+    }
+    export interface RlmVerificationResult {
+      commandOrMethod?: string | null
+      outcome?: types.RlmVerificationOutcome | null
+      summary?: string | null
+    }
+    export interface RlmWorkerReport {
+      outcome?: types.RlmWorkerOutcome | null
+      summary?: string | null
+      evidence: EvidenceReference[]
+      artifacts: RlmArtifactReference[]
+      verification: RlmVerificationResult[]
+      decisions: string[]
+      risks: string[]
+      openQuestions: string[]
+      remainingWork: string[]
     }
     export interface RoundAssessment {
       roundNumber?: number | null
@@ -541,6 +572,18 @@ export namespace partial_types {
       model?: string | null
       reasoningEffort?: string | null
       rationale?: string | null
+    }
+    export interface SelfImprovementFinding {
+      severity?: "BLOCKING" | "IMPORTANT" | "SUGGESTION" | null
+      category?: "MISSION_DEVIATION" | "INEFFICIENT_ROUTING" | "ERROR_OR_RETRY" | "MISSED_REQUIREMENT" | "OTHER" | null
+      title?: string | null
+      description?: string | null
+      evidence: string[]
+      suggestedTicketBody?: string | null
+    }
+    export interface SelfImprovementReport {
+      summary?: string | null
+      findings: SelfImprovementFinding[]
     }
     export interface SourceAnalysis {
       sourceId?: string | null
@@ -610,6 +653,21 @@ export namespace partial_types {
       status?: "complete" | "partial" | "missing" | "not-required" | null
       evidenceQuotes: string[]
       rationale?: string | null
+    }
+    export interface SubmindTraceObservation {
+      name?: string | null
+      type?: string | null
+      status?: string | null
+      summary?: string | null
+      model?: string | null
+      durationMs?: number | null
+    }
+    export interface SubmindTraceSummary {
+      traceId?: string | null
+      url?: string | null
+      rootInput?: string | null
+      rootOutput?: string | null
+      observations: SubmindTraceObservation[]
     }
     export interface TemplateCandidate {
       id?: string | null
@@ -692,6 +750,10 @@ export namespace partial_types {
       repositoryQuery?: string | null
       claim?: string | null
       confidence?: number | null
+    }
+    export interface TrellageTurnDiagnosis {
+      outcome?: types.TrellageTurnOutcome | null
+      summary?: string | null
     }
     export interface VerificationAudit {
       projectId?: string | null

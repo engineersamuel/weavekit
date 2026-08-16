@@ -82,13 +82,13 @@ describe("mastermind synthesis benchmark", () => {
 
   it("evaluates synthetic benchmark fixtures with a fake invoker", async () => {
     const report = await runMastermindSynthesisBenchmark(
-      parseBenchmarkArgs(["--candidate", "gemini-3.6-flash", "--baseline", "gpt-5.5"]),
+      parseBenchmarkArgs(["--candidate", "gemini-3.7-flash", "--baseline", "gpt-5.5"]),
       {
         outputPath: "runs/mastermind-synthesis-benchmark/test-report.json",
         writeReport: false,
         invokePatch: async (model, fixture): Promise<SynthesisInvocationResult> => ({
           patch: buildPatchFromFixture(fixture),
-          elapsedMs: model === "gemini-3.6-flash" ? 12_000 : 40_000,
+          elapsedMs: model === "gemini-3.7-flash" ? 12_000 : 40_000,
           inputTokens: 1000,
           outputTokens: 400,
         }),
@@ -113,12 +113,12 @@ describe("mastermind synthesis benchmark", () => {
 
   it("fails the benchmark when a candidate makes a human-owned item implementation-ready", async () => {
     const report = await runMastermindSynthesisBenchmark(
-      parseBenchmarkArgs(["--candidate", "gemini-3.6-flash", "--baseline", "gpt-5.5"]),
+      parseBenchmarkArgs(["--candidate", "gemini-3.7-flash", "--baseline", "gpt-5.5"]),
       {
         outputPath: "runs/mastermind-synthesis-benchmark/test-report-failing.json",
         writeReport: false,
         invokePatch: async (model, fixture): Promise<SynthesisInvocationResult> => {
-          if (model === "gemini-3.6-flash" && fixture.id === "human-owned-acceptance-question") {
+          if (model === "gemini-3.7-flash" && fixture.id === "human-owned-acceptance-question") {
             return {
               patch: buildPatchFromFixture(fixture, {
                 readiness: ReviewReadiness.READY,
@@ -132,7 +132,7 @@ describe("mastermind synthesis benchmark", () => {
           }
           return {
             patch: buildPatchFromFixture(fixture),
-            elapsedMs: model === "gemini-3.6-flash" ? 12_000 : 40_000,
+            elapsedMs: model === "gemini-3.7-flash" ? 12_000 : 40_000,
           };
         },
       },
@@ -149,13 +149,13 @@ describe("mastermind synthesis benchmark", () => {
 
   it("does not adopt a slower candidate even when it stays under the observed target", async () => {
     const report = await runMastermindSynthesisBenchmark(
-      parseBenchmarkArgs(["--candidate", "gemini-3.6-flash", "--baseline", "gpt-5.5"]),
+      parseBenchmarkArgs(["--candidate", "gemini-3.7-flash", "--baseline", "gpt-5.5"]),
       {
         outputPath: "runs/mastermind-synthesis-benchmark/test-report-under-target-slower.json",
         writeReport: false,
         invokePatch: async (model, fixture): Promise<SynthesisInvocationResult> => ({
           patch: buildPatchFromFixture(fixture),
-          elapsedMs: model === "gemini-3.6-flash" ? 8_500 : 8_000,
+          elapsedMs: model === "gemini-3.7-flash" ? 8_500 : 8_000,
         }),
       },
     );
@@ -174,7 +174,7 @@ describe("mastermind synthesis benchmark", () => {
     const calls: string[] = [];
 
     await runMastermindSynthesisBenchmark(
-      parseBenchmarkArgs(["--candidate", "gemini-3.6-flash", "--baseline", "gpt-5.5"]),
+      parseBenchmarkArgs(["--candidate", "gemini-3.7-flash", "--baseline", "gpt-5.5"]),
       {
         outputPath: "runs/mastermind-synthesis-benchmark/test-report-order.json",
         writeReport: false,
@@ -182,37 +182,37 @@ describe("mastermind synthesis benchmark", () => {
           calls.push(`${fixture.id}:${model}`);
           return {
             patch: buildPatchFromFixture(fixture),
-            elapsedMs: model === "gemini-3.6-flash" ? 9_000 : 10_000,
+            elapsedMs: model === "gemini-3.7-flash" ? 9_000 : 10_000,
           };
         },
       },
     );
 
     expect(calls).toEqual([
-      "ready-existing-repository:gemini-3.6-flash",
+      "ready-existing-repository:gemini-3.7-flash",
       "ready-existing-repository:gpt-5.5",
       "greenfield-prototype:gpt-5.5",
-      "greenfield-prototype:gemini-3.6-flash",
-      "executor-preflight-gap:gemini-3.6-flash",
+      "greenfield-prototype:gemini-3.7-flash",
+      "executor-preflight-gap:gemini-3.7-flash",
       "executor-preflight-gap:gpt-5.5",
       "external-dependency-wait:gpt-5.5",
-      "external-dependency-wait:gemini-3.6-flash",
-      "human-owned-acceptance-question:gemini-3.6-flash",
+      "external-dependency-wait:gemini-3.7-flash",
+      "human-owned-acceptance-question:gemini-3.7-flash",
       "human-owned-acceptance-question:gpt-5.5",
       "blocked-scope-authorization-change:gpt-5.5",
-      "blocked-scope-authorization-change:gemini-3.6-flash",
+      "blocked-scope-authorization-change:gemini-3.7-flash",
     ]);
   });
 
   it("fails adoption when the candidate is materially slower than the baseline", async () => {
     const report = await runMastermindSynthesisBenchmark(
-      parseBenchmarkArgs(["--candidate", "gemini-3.6-flash", "--baseline", "gpt-5.5"]),
+      parseBenchmarkArgs(["--candidate", "gemini-3.7-flash", "--baseline", "gpt-5.5"]),
       {
         outputPath: "runs/mastermind-synthesis-benchmark/test-report-slower.json",
         writeReport: false,
         invokePatch: async (model, fixture): Promise<SynthesisInvocationResult> => ({
           patch: buildPatchFromFixture(fixture),
-          elapsedMs: model === "gemini-3.6-flash" ? 12_000 : 10_000,
+          elapsedMs: model === "gemini-3.7-flash" ? 12_000 : 10_000,
         }),
       },
     );

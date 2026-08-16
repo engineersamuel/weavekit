@@ -1,16 +1,20 @@
 import { execFile } from "node:child_process";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { createDefaultController } from "../src/submind-poc/runtime.js";
 import { runHelper } from "../src/submind-poc/helper.js";
+import { buildSubmindRunFooter } from "../src/submind-poc/output.js";
 import { SubmindStore } from "../src/submind-poc/store.js";
 import { shutdownTelemetry } from "../src/submind-poc/telemetry.js";
-import { startTelemetry } from "../src/telemetry/bootstrap.js";
+import { loadTelemetryEnvironment, startTelemetry } from "../src/telemetry/bootstrap.js";
 
 const execFileAsync = promisify(execFile);
+const tracer = trace.getTracer("weavekit");
 
-async function main(): Promise<void> {
+async function main(traceId?: string): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   const controlRoot = option(args, "--control-root") ?? (await defaultControlRoot());
   if (command === "helper") {
@@ -38,12 +42,14 @@ async function main(): Promise<void> {
       if (state.state === "completed" || state.state === "failed") {
         await printTranscript(controlRoot, state.runId);
       }
+      printRunFooter(state, traceId);
       process.exitCode = state.state === "failed" ? 1 : 0;
       break;
     }
     case "status": {
       const state = await controller.status(requiredOption(args, "--run"));
       process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
+      printRunFooter(state, traceId);
       process.exitCode = state.state === "failed" ? 1 : 0;
       break;
     }
@@ -52,6 +58,7 @@ async function main(): Promise<void> {
       const state = await controller.wait(runId);
       process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
       await printTranscript(controlRoot, runId);
+      printRunFooter(state, traceId);
       process.exitCode = state.state === "failed" ? 1 : 0;
       break;
     }
@@ -60,6 +67,13 @@ async function main(): Promise<void> {
         "Usage: nub scripts/submind-poc.ts start --cwd <repo> [--detach] | status --run <id> | wait --run <id>",
       );
   }
+}
+
+function printRunFooter(state: Awaited<ReturnType<SubmindStore["readState"]>>, traceId?: string) {
+  if (!traceId) {
+    throw new Error("Submind CLI trace ID is unavailable.");
+  }
+  process.stdout.write(buildSubmindRunFooter(state, traceId));
 }
 
 async function printTranscript(controlRoot: string, runId: string): Promise<void> {
@@ -109,9 +123,26 @@ async function defaultControlRoot(): Promise<string> {
   return result.stdout.trim();
 }
 
+loadTelemetryEnvironment(homedir());
 const telemetry = await startTelemetry("weavekit-submind-poc");
 try {
-  await main();
+  if (process.argv[2] === "helper") {
+    await main();
+  } else {
+    await tracer.startActiveSpan("submind.cli", async (span) => {
+      try {
+        await main(span.spanContext().traceId);
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        const exception = error instanceof Error ? error : new Error(String(error));
+        span.recordException(exception);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
+        throw exception;
+      } finally {
+        span.end();
+      }
+    });
+  }
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;

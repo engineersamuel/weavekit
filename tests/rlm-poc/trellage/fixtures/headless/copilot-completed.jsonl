@@ -1,0 +1,3 @@
+{"type":"session.start","data":{"sessionId":"copilot-session-1"}}
+{"type":"session.task_complete","data":{"sessionId":"copilot-session-1","summary":"Implemented the requested change.","success":true}}
+{"type":"result","sessionId":"copilot-session-1","exitCode":0,"usage":{"premiumRequests":1,"sessionDurationMs":321,"totalApiDurationMs":250,"codeChanges":{"linesAdded":4,"linesRemoved":1,"filesModified":["src/example.ts"]}}}

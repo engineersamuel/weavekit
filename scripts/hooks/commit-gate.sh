@@ -13,18 +13,33 @@ cd "$REPO_ROOT"
 
 payload="$(cat)"
 
-tool_name="$(printf '%s' "$payload" | jq -r '.tool_name // .toolName // empty' 2>/dev/null || true)"
-case "$tool_name" in
-  Bash|bash) ;;
-  *) exit 0 ;;
-esac
-
-command="$(printf '%s' "$payload" | jq -r '
-  (.tool_input.command // .toolArgs.command // empty) as $c
-  | if ($c | type) == "array" then ($c | join(" ")) else $c end
+commands="$(printf '%s' "$payload" | jq -r '
+  def command_text:
+    if type == "array" then join(" ")
+    elif type == "string" then .
+    else empty
+    end;
+  [
+    (
+      select((.tool_name // .toolName // "") | IN("Bash", "bash"))
+      | (.tool_input.command // .toolArgs.command // empty)
+      | command_text
+    ),
+    (
+      .toolCalls[]?
+      | select((.name // .toolName // "" | ascii_downcase) == "bash")
+      | (
+          (.args // .toolArgs // .arguments // {})
+          | if type == "string" then (fromjson? // {}) else . end
+          | .command // empty
+        )
+      | command_text
+    )
+  ]
+  | .[]
 ' 2>/dev/null || true)"
 
-if ! printf '%s' "$command" | grep -Eq '(^|[; &|]) *git +commit\b'; then
+if [[ -z "$commands" ]] || ! printf '%s\n' "$commands" | grep -Eq '(^|[; &|]) *git +commit\b'; then
   exit 0
 fi
 

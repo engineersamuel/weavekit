@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { ExecutorKind, type ExecutorHandle } from "../../submind/contracts.js";
 import type { ExecutionAttachmentTarget, MastermindStore } from "../store/store.js";
 
 type AttachmentStore = Pick<MastermindStore, "findExecutionAttachment">;
@@ -12,6 +14,8 @@ export async function attachMastermindExecution(input: {
   store: AttachmentStore;
   herdrEnv: string | undefined;
   run: HerdrAttachmentRunner;
+  /** Receives human-facing guidance for executors that cannot be attached to. */
+  emit?: (message: string) => void;
 }): Promise<ExecutionAttachmentTarget> {
   const selector = input.selector.trim();
   if (!selector) {
@@ -24,7 +28,16 @@ export async function attachMastermindExecution(input: {
     throw new Error(`No Mastermind execution found for: ${selector}`);
   }
   const handle = target.attempt.executorHandle;
-  if (!handle?.agentName) {
+  if (!handle) {
+    throw new Error(`Mastermind execution ${target.attempt.id} has no executor handle.`);
+  }
+  if (handle.executor === ExecutorKind.RLM_SUBMIND) {
+    // The RLM submind is a detached child process, not a Herdr agent. There is nothing to attach
+    // to, so report where its evidence lives rather than failing on agent_not_found.
+    input.emit?.(describeRlmExecution(handle));
+    return target;
+  }
+  if (!handle.agentName) {
     throw new Error(
       `Mastermind execution ${target.attempt.id} has no Herdr agent handle to attach to.`,
     );
@@ -37,4 +50,14 @@ export async function attachMastermindExecution(input: {
     );
   }
   return target;
+}
+
+function describeRlmExecution(handle: ExecutorHandle): string {
+  return [
+    "This execution ran as a detached RLM submind process, not a Herdr agent.",
+    `Worktree: ${handle.worktreePath}`,
+    ...(handle.logPath ? [`Log:      ${handle.logPath}`] : []),
+    `Result:   ${join(handle.worktreePath, ".weavekit", "mastermind-result.json")}`,
+    "",
+  ].join("\n");
 }

@@ -1,5 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, realpath, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  realpath,
+  readdir,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -19,6 +28,19 @@ afterEach(async () => {
 });
 
 describe("Herdr execution workspace provisioner", () => {
+  it("creates a missing greenfield provisioning root before resolving it", async () => {
+    const root = join(await tempDirectory(), "prototypes");
+    const provisioner = new HerdrWorkspaceProvisioner();
+
+    const descriptor = await provisioner.describe(request(greenfieldProject(root)));
+
+    expect((await stat(root)).isDirectory()).toBe(true);
+    expect(descriptor).toMatchObject({
+      kind: "greenfield-repository-worktree",
+      provisioningRoot: await realpath(root),
+    });
+  });
+
   it("matches the parent by canonical repository path and creates one dedicated worktree", async () => {
     const source = await createRepository();
     const worktree = join(await tempDirectory(), "execution-worktree");

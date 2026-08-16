@@ -7,7 +7,11 @@ import {
   type MastermindNextActionDecision,
   type MastermindReviewDecisionContext,
 } from "../../generated/baml_client/index.js";
-import { resolveMastermindProjectPolicy } from "../config.js";
+import {
+  resolveMastermindProjectPolicy,
+  resolveMastermindProjectPolicyForProject,
+  type ResolvedMastermindProjectPolicy,
+} from "../config.js";
 import { eventForRecommendedAction, transitionMastermindState } from "../domain/machine.js";
 import { resolveMastermindFailureReasons } from "../failure.js";
 import {
@@ -24,8 +28,14 @@ import {
 } from "../actions/reviewTicket.js";
 import type { MastermindDecisionProvider } from "./bamlAdapters.js";
 import type { LinearGateway } from "../linear/client.js";
+import {
+  findLatestHumanClarificationReply,
+  postClarificationComment,
+  withRecentHumanComments,
+} from "../review/clarification.js";
 import type { TicketReviewHarness } from "../review/harness.js";
 import { getStoredReviewDispositionGapReason, hashLinearTicketContent } from "../review/policy.js";
+import { resolveReviewedExecutionProject } from "../projectResolution.js";
 import type {
   LinearTicketSnapshot,
   MastermindStore,
@@ -136,6 +146,9 @@ export class MastermindDecisionLoop {
         },
         () => this.reopenReviewIfStale(normalizedWork),
       );
+      if (await this.store.getCurrentExecutionAttempt(work.id)) {
+        return;
+      }
       let decisionIterations = 0;
       const maxSteps = this.config.mastermind.maxDecisionIterations * 4 + 4;
       for (let step = 0; step < maxSteps; step += 1) {
@@ -208,6 +221,13 @@ export class MastermindDecisionLoop {
     const contentIsFresh =
       latestObservedSnapshot !== undefined &&
       hashLinearTicketContent(latestObservedSnapshot) === hashLinearTicketContent(ticket);
+    const humanClarificationReply =
+      work.state === MastermindState.NEEDS_HUMAN && this.linear.listIssueComments
+        ? findLatestHumanClarificationReply(
+            await this.linear.listIssueComments(work.issueId),
+            work.id,
+          )
+        : undefined;
     const reviewDispositionGapReason = review ? getStoredReviewDispositionGapReason(review) : null;
     if (work.state === MastermindState.FAILED && review === undefined) {
       if (latestObservedSnapshot === undefined || contentIsFresh) {
@@ -246,8 +266,14 @@ export class MastermindDecisionLoop {
       expectedLabelPresent &&
       review !== undefined &&
       contentIsFresh &&
-      !reviewDispositionGapReason
+      !reviewDispositionGapReason &&
+      !humanClarificationReply
     ) {
+      if (work.state === MastermindState.NEEDS_HUMAN && review) {
+        // Self-healing: ensure the clarification comment exists even for reviews that were
+        // resolved before this feature existed, without forcing a full review regeneration.
+        await postClarificationComment(this.linear, work.issueId, review);
+      }
       this.emitProgress(
         formatTicketFreshnessProgress({
           work,
@@ -275,6 +301,11 @@ export class MastermindDecisionLoop {
       ...(reviewDispositionGapReason ? [reviewDispositionGapReason] : []),
       ...(review && !contentIsFresh
         ? ["the Linear ticket content changed after the stored review was applied"]
+        : []),
+      ...(humanClarificationReply
+        ? [
+            `a human posted a clarification reply on ${humanClarificationReply.createdAt} after Mastermind's clarification comment`,
+          ]
         : []),
     ];
     this.emitProgress(
@@ -320,14 +351,15 @@ export class MastermindDecisionLoop {
         "weavekit.mastermind.issue_id": work.issueId,
       },
       async (span) => {
+        await this.requireInProgressState(work.issueId);
         const ticket = await this.linear.fetchIssue(work.issueId);
         await this.store.saveTicketSnapshot(work.id, ticket);
-        const policy = resolveMastermindProjectPolicy(this.config, ticket);
+        const policy = this.resolveProjectPolicy(work, ticket);
         if (!policy) {
           return this.applyTransition(work, { type: MastermindEventType.REQUIRE_HUMAN });
         }
         if (work.projectPolicyId !== policy.project.id) {
-          await this.store.setProjectPolicy(work.id, policy.project.id);
+          await this.store.setProjectPolicy(work.id, policy.project.id, work.resolvedProject);
           work = (await this.store.getWork(work.id)) ?? work;
         }
         const hasCurrentReview = hasReviewedLabel(
@@ -390,22 +422,37 @@ export class MastermindDecisionLoop {
     work: MastermindWorkItem,
     lease: LeaseHeartbeat,
   ): Promise<MastermindWorkItem> {
+    await this.requireInProgressState(work.issueId);
     const ticket = await this.linear.fetchIssue(work.issueId);
-    const policy = resolveMastermindProjectPolicy(this.config, ticket);
+    const policy = this.resolveProjectPolicy(work, ticket);
     if (!policy) {
       return this.applyTransition(work, { type: MastermindEventType.FAIL });
     }
+    const comments = this.linear.listIssueComments
+      ? await this.linear.listIssueComments(work.issueId)
+      : [];
+    const reviewTicket = withRecentHumanComments(ticket, comments);
     let review: StoredReview;
     try {
       review = await generateReviewProposal({
         workId: work.id,
         ticket,
+        reviewTicket,
         project: policy.baml,
         harness: this.reviewHarness,
         decisions: this.decisions,
         store: this.store,
         assertLease: () => lease.assertActive(),
         onProgress: (message) => this.emitProgress(message),
+        resolveProject: async (dossier) => {
+          const project = resolveReviewedExecutionProject({
+            ticket,
+            dossier,
+            mappedProject: policy.project,
+          });
+          await this.store.setProjectPolicy(work.id, project.id, project);
+          return resolveMastermindProjectPolicyForProject(this.config, project).baml;
+        },
       });
     } catch (error) {
       await lease.assertActive();
@@ -422,10 +469,11 @@ export class MastermindDecisionLoop {
         work,
         { type: MastermindEventType.FAIL },
         {
-          reviewError: error instanceof Error ? error.message : "Unknown ticket review failure.",
+          reviewError: describeReviewError(error),
         },
       );
     }
+
     return this.applyTransition(
       work,
       { type: MastermindEventType.REVIEW_GENERATED },
@@ -433,6 +481,15 @@ export class MastermindDecisionLoop {
         reviewId: review.id,
       },
     );
+  }
+
+  private resolveProjectPolicy(
+    work: MastermindWorkItem,
+    ticket: LinearTicketSnapshot,
+  ): ResolvedMastermindProjectPolicy | undefined {
+    return work.resolvedProject
+      ? resolveMastermindProjectPolicyForProject(this.config, work.resolvedProject)
+      : resolveMastermindProjectPolicy(this.config, ticket);
   }
 
   private async applyReview(
@@ -476,6 +533,10 @@ export class MastermindDecisionLoop {
     }
     if (result.requiresHumanApproval) {
       this.emitProgress("Review requires human input; ticket content was not rewritten.");
+      // Post the open items on the run that produced them. Without this the questions only reach
+      // Linear on the next run, via the self-healing call in reopenReviewIfStale, so the first run
+      // leaves the ticket labelled needs-input with no statement of what is actually being asked.
+      await postClarificationComment(this.linear, work.issueId, review);
       return this.applyTransition(work, {
         type: MastermindEventType.REQUIRE_HUMAN,
       });
@@ -522,10 +583,31 @@ export class MastermindDecisionLoop {
     );
   }
 
+  private requireInProgressState(issueId: string): Promise<void> {
+    if (!this.linear.setIssueState) {
+      throw new Error("Linear gateway does not support workflow-state projection.");
+    }
+    return this.linear.setIssueState(
+      issueId,
+      this.config.mastermind.inProgressStateName ?? "In Progress",
+    );
+  }
+
   private emitProgress(message: string): void {
     addMastermindProgressEvent(message);
     this.onProgress?.(message);
   }
+}
+
+function describeReviewError(error: unknown): string {
+  if (error instanceof AggregateError) {
+    const nested = error.errors
+      .map((inner) => (inner instanceof Error ? inner.message : String(inner)))
+      .filter((message) => message.trim().length > 0);
+    const summary = error.message?.trim() || "Ticket review failed.";
+    return nested.length > 0 ? `${summary}: ${nested.join("; ")}` : summary;
+  }
+  return error instanceof Error ? error.message : "Unknown ticket review failure.";
 }
 
 function expectedLabelNameForState(

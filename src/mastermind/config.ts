@@ -35,7 +35,9 @@ export function validateMastermindExecutionRuntimeConfig(
 ): void {
   const missing: string[] = [];
   if (!env.LINEAR_API_KEY?.trim()) missing.push("LINEAR_API_KEY");
-  if (!config.execution) missing.push("mastermind.execution");
+  if (!config.execution && !config.rlmExecution) {
+    missing.push("mastermind.execution or mastermind.rlm_execution");
+  }
   if (!config.readyLabelId.trim()) missing.push("mastermind.ready_label_id");
   if (!config.needsInputLabelId.trim()) missing.push("mastermind.needs_input_label_id");
   if (!config.reviewFailedLabelId.trim()) missing.push("mastermind.review_failed_label_id");
@@ -57,6 +59,13 @@ export function resolveMastermindProjectPolicy(
     return undefined;
   }
   const project = resolveProjectCatalogEntry(config, mapping.projectId);
+  return resolveMastermindProjectPolicyForProject(config, project);
+}
+
+export function resolveMastermindProjectPolicyForProject(
+  config: WeavekitConfig,
+  project: ProjectCatalogEntry,
+): ResolvedMastermindProjectPolicy {
   const repositoryMode = project.repositoryMode ?? ProjectRepositoryMode.EXISTING_REPOSITORY;
   return {
     project,

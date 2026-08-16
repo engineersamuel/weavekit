@@ -1,10 +1,19 @@
-import type { MastermindProjectPolicyInput } from "../../generated/baml_client/index.js";
+import type {
+  MastermindProjectPolicyInput,
+  TicketReviewDossier,
+} from "../../generated/baml_client/index.js";
 import type { MastermindDecisionProvider } from "../decision/bamlAdapters.js";
 import type { LinearGateway } from "../linear/client.js";
+import { postClarificationComment } from "../review/clarification.js";
 import type { TicketReviewHarness } from "../review/harness.js";
 import {
+  backfillOpenItemDispositions,
+  findOpenItemDispositionCoverageIssues,
   getStoredReviewDispositionGapReason,
   hashLinearTicketContent,
+  normalizeEmptyBlockedReadiness,
+  normalizePatchRequiresHumanApproval,
+  normalizeStandingDefaultOpenItems,
   validateTicketReviewPatch,
 } from "../review/policy.js";
 import type { LinearTicketSnapshot, MastermindStore, StoredReview } from "../store/store.js";
@@ -14,13 +23,28 @@ import {
   withMastermindSpan,
 } from "../telemetry.js";
 
+// Open-item disposition coverage gaps are a known, retryable model-compliance failure mode
+// (the model omits an openItemDispositions entry for a blockingReasons/unansweredQuestions
+// string it already wrote) rather than a fundamental review defect, so bound a small number of
+// resynthesis attempts before giving up and recording the failure.
+const MAX_DISPOSITION_COVERAGE_RETRIES = 2;
+
 export async function generateReviewProposal(args: {
   workId: string;
   ticket: LinearTicketSnapshot;
+  /**
+   * Optional ticket variant used only for the harness/BAML calls (e.g. augmented with recent
+   * human Linear comments for clarification context). Defaults to `ticket`. Never used for
+   * storage or content-hash/staleness comparisons — those always use `ticket` verbatim.
+   */
+  reviewTicket?: LinearTicketSnapshot;
   project: MastermindProjectPolicyInput;
   harness: TicketReviewHarness;
   decisions: MastermindDecisionProvider;
   store: MastermindStore;
+  resolveProject?: (
+    dossier: TicketReviewDossier,
+  ) => Promise<MastermindProjectPolicyInput> | MastermindProjectPolicyInput;
   assertLease?: () => Promise<void>;
   onProgress?: (message: string) => void;
 }): Promise<StoredReview> {
@@ -47,17 +71,45 @@ export async function generateReviewProposal(args: {
       return { ...pending, validation };
     }
   }
+  const bamlTicket = toBamlTicket(args.reviewTicket ?? args.ticket);
   args.onProgress?.("Frontier harness is inspecting repository evidence.");
-  const dossier = await args.harness.review({
-    ticket: toBamlTicket(args.ticket),
+  let dossier = await args.harness.review({
+    ticket: bamlTicket,
     project: args.project,
   });
+  let project = (await args.resolveProject?.(dossier)) ?? args.project;
+  if (project.id !== args.project.id) {
+    dossier = await args.harness.review({
+      ticket: bamlTicket,
+      project,
+    });
+    project = (await args.resolveProject?.(dossier)) ?? project;
+  }
   args.onProgress?.("Evidence dossier complete; BAML is synthesizing the ticket patch.");
-  const patch = await args.decisions.synthesizeTicketPatch(
-    toBamlTicket(args.ticket),
-    args.project,
-    dossier,
-  );
+  let patch = await args.decisions.synthesizeTicketPatch(bamlTicket, project, dossier);
+  for (
+    let attempt = 0;
+    attempt < MAX_DISPOSITION_COVERAGE_RETRIES &&
+    findOpenItemDispositionCoverageIssues(patch).length > 0;
+    attempt += 1
+  ) {
+    args.onProgress?.(
+      "Open-item disposition coverage gap detected; resynthesizing the ticket patch.",
+    );
+    patch = await args.decisions.synthesizeTicketPatch(bamlTicket, project, dossier);
+  }
+  if (findOpenItemDispositionCoverageIssues(patch).length > 0) {
+    args.onProgress?.(
+      "Open-item disposition coverage gap persisted after retries; backfilling default dispositions.",
+    );
+    patch = backfillOpenItemDispositions(patch);
+  }
+  patch = normalizeStandingDefaultOpenItems(patch);
+  patch = normalizeEmptyBlockedReadiness(patch);
+  // requiresHumanApproval is fully derivable from openItemDispositions/materialScopeChange, but
+  // the model doesn't always keep its self-reported value in sync — normalize it deterministically
+  // rather than retrying purely on this class of self-consistency slip.
+  patch = normalizePatchRequiresHumanApproval(patch);
   await args.assertLease?.();
   const review = await args.store.saveReviewProposal(
     args.workId,
@@ -76,13 +128,13 @@ export async function generateReviewProposal(args: {
     async (span) => {
       setMastermindSpanInput(span, {
         ticket: args.ticket,
-        project: args.project,
+        project,
         dossier,
         patch,
       });
       const result = validateTicketReviewPatch({
         ticket: args.ticket,
-        project: args.project,
+        project,
         dossier,
         patch,
       });
@@ -213,6 +265,7 @@ async function applyReviewProposalWithinSpan(args: {
         await args.linear.fetchIssue(args.issueId),
       );
     }
+    await postClarificationComment(args.linear, args.issueId, args.review);
     return {
       applied: false,
       requiresHumanApproval: true,
@@ -238,7 +291,7 @@ async function applyReviewProposalWithinSpan(args: {
       description: args.review.patch.proposedDescriptionMarkdown,
     });
     await args.store.markReviewContentApplied(args.review.id);
-    appliedSnapshot = buildAppliedContentSnapshot(current, args.review);
+    appliedSnapshot = await args.linear.fetchIssue(args.issueId);
     await args.store.saveReviewAppliedSnapshot(args.review.id, appliedSnapshot);
   }
   if (!args.review.labelApplied) {
@@ -281,17 +334,6 @@ async function applyReviewProposalWithinSpan(args: {
     requiresHumanApproval: false,
     failed: false,
     stale: false,
-  };
-}
-
-function buildAppliedContentSnapshot(
-  current: LinearTicketSnapshot,
-  review: StoredReview,
-): LinearTicketSnapshot {
-  return {
-    ...current,
-    title: review.patch.proposedTitle,
-    description: review.patch.proposedDescriptionMarkdown,
   };
 }
 

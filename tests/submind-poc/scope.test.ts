@@ -125,9 +125,24 @@ describe("ScopedHerdr", () => {
             name: "submind-run-1-copilot",
             paneId: "pane-run",
             kind: "copilot",
+            interactiveReady: true,
           },
         ],
       })
+      .mockResolvedValueOnce({
+        workspaces: [{ id: "workspace-run", cwd: "/worktree" }],
+        panes: [{ id: "pane-run", workspaceId: "workspace-run", cwd: "/worktree" }],
+        agents: [
+          {
+            id: "pane-run",
+            name: "submind-run-1-copilot",
+            paneId: "pane-run",
+            kind: "copilot",
+            interactiveReady: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ accepted: true })
       .mockResolvedValueOnce({ accepted: true });
     const scoped = new ScopedHerdr(
       { request },
@@ -135,6 +150,101 @@ describe("ScopedHerdr", () => {
     );
 
     await scoped.prompt("pane-run", "favorite color?");
+
+    expect(request.mock.calls.slice(-2).map((call) => call.slice(0, 2))).toEqual([
+      ["pane.send_input", { pane_id: "pane-run", text: "favorite color?", keys: [] }],
+      ["pane.send_input", { pane_id: "pane-run", text: "", keys: ["Enter"] }],
+    ]);
+  });
+
+  it("waits for interactive readiness before prompting Copilot", async () => {
+    vi.useFakeTimers();
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        workspaces: [{ id: "workspace-run", cwd: "/worktree" }],
+        panes: [{ id: "pane-run", workspaceId: "workspace-run", cwd: "/worktree" }],
+        agents: [
+          {
+            id: "pane-run",
+            name: "submind-run-1-copilot",
+            paneId: "pane-run",
+            kind: "copilot",
+            interactiveReady: false,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        workspaces: [{ id: "workspace-run", cwd: "/worktree" }],
+        panes: [{ id: "pane-run", workspaceId: "workspace-run", cwd: "/worktree" }],
+        agents: [
+          {
+            id: "pane-run",
+            name: "submind-run-1-copilot",
+            paneId: "pane-run",
+            kind: "copilot",
+            interactiveReady: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ accepted: true })
+      .mockResolvedValueOnce({ accepted: true });
+    const scoped = new ScopedHerdr(
+      { request },
+      { workspaceId: "workspace-run", worktreePath: "/worktree", agentPrefix: "submind-run-1-" },
+    );
+
+    try {
+      const prompting = scoped.prompt("pane-run", "favorite color?");
+      await vi.runAllTimersAsync();
+      await prompting;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(request.mock.calls.slice(-2).map((call) => call.slice(0, 2))).toEqual([
+      ["pane.send_input", { pane_id: "pane-run", text: "favorite color?", keys: [] }],
+      ["pane.send_input", { pane_id: "pane-run", text: "", keys: ["Enter"] }],
+    ]);
+  });
+
+  it("prompts Copilot on lifecycle state when Herdr never reports interactive_ready", async () => {
+    // Herdr 0.8 declares `interactive_ready` in its schema but omits it from every live snapshot,
+    // so treating the absent field as "not ready" times out every Copilot prompt. A `blocked`
+    // pane still has to wait: that is the folder-trust dialog, not the composer.
+    vi.useFakeTimers();
+    const agent = (status: string) => ({
+      workspaces: [{ id: "workspace-run", cwd: "/worktree" }],
+      panes: [{ id: "pane-run", workspaceId: "workspace-run", cwd: "/worktree" }],
+      agents: [
+        {
+          agent_id: "pane-run",
+          name: "submind-run-1-copilot",
+          pane_id: "pane-run",
+          agent: "copilot",
+          agent_status: status,
+        },
+      ],
+    });
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(agent("blocked"))
+      .mockResolvedValueOnce(agent("blocked"))
+      .mockResolvedValueOnce(agent("done"))
+      .mockResolvedValueOnce({ accepted: true })
+      .mockResolvedValueOnce({ accepted: true });
+    const scoped = new ScopedHerdr(
+      { request },
+      { workspaceId: "workspace-run", worktreePath: "/worktree", agentPrefix: "submind-run-1-" },
+    );
+
+    try {
+      const prompting = scoped.prompt("pane-run", "favorite color?");
+      await vi.runAllTimersAsync();
+      await prompting;
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(request.mock.calls.slice(-2).map((call) => call.slice(0, 2))).toEqual([
       ["pane.send_input", { pane_id: "pane-run", text: "favorite color?", keys: [] }],
@@ -210,7 +320,7 @@ describe("ScopedHerdr", () => {
       { target: "pane-run", until: ["idle", "done"], timeout_ms: 120_000 },
     ]);
 
-    await scoped.read("pane-run", 120);
+    await scoped.read("pane-run", { lines: 120 });
     expect(requestMock.mock.lastCall?.slice(0, 2)).toEqual([
       "agent.read",
       { target: "pane-run", source: "visible", lines: 120 },

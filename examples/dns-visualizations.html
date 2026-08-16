@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DNS Visualizations</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap");
+
+      :root {
+        --bg-1: #07131d;
+        --bg-2: #10273b;
+        --panel: rgba(10, 21, 31, 0.82);
+        --panel-border: rgba(145, 210, 255, 0.28);
+        --ink: #edf7ff;
+        --muted: #a9c7d8;
+        --teal: #69f0d4;
+        --blue: #6ea8ff;
+        --purple: #a995ff;
+        --amber: #ffca7a;
+        --red: #ff8fa3;
+        --shadow: rgba(5, 11, 18, 0.48);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at top left, rgba(110, 168, 255, 0.16), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(105, 240, 212, 0.12), transparent 30%),
+          linear-gradient(160deg, var(--bg-1), var(--bg-2));
+        color: var(--ink);
+        font-family: "Space Grotesk", system-ui, sans-serif;
+      }
+
+      body {
+        padding: 48px 20px 64px;
+      }
+
+      .page {
+        max-width: 1440px;
+        margin: 0 auto;
+      }
+
+      .hero {
+        margin-bottom: 28px;
+        padding: 22px 20px 8px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border: 1px solid rgba(105, 240, 212, 0.32);
+        border-radius: 999px;
+        background: rgba(105, 240, 212, 0.06);
+        color: var(--teal);
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 18px 0 12px;
+        font-size: clamp(2.8rem, 4vw, 5rem);
+        line-height: 0.95;
+        letter-spacing: -0.07em;
+      }
+
+      .subtitle {
+        max-width: 850px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 1.08rem;
+        line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(320px, 1fr));
+        gap: 22px;
+      }
+
+      .panel {
+        position: relative;
+        overflow: hidden;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 22px;
+        box-shadow: 0 22px 60px var(--shadow);
+        backdrop-filter: blur(8px);
+        padding: 18px 18px 12px;
+        transition:
+          transform 180ms ease,
+          border-color 180ms ease;
+      }
+
+      .panel:hover {
+        transform: translateY(-2px);
+        border-color: rgba(110, 168, 255, 0.52);
+      }
+
+      .panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(110, 168, 255, 0.08),
+          transparent 42%,
+          rgba(105, 240, 212, 0.08)
+        );
+        pointer-events: none;
+      }
+
+      .panel > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .panel h2 {
+        margin: 0;
+        font-size: 1.18rem;
+        letter-spacing: -0.04em;
+      }
+
+      .chip {
+        display: inline-block;
+        padding: 5px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 10px;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+
+      svg {
+        width: 100%;
+        height: 300px;
+        display: block;
+        border-radius: 16px;
+        background: rgba(6, 15, 24, 0.34);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .mono {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
+      @media (max-width: 980px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div class="eyebrow">Domain Name System</div>
+        <h1>Four ways to see how DNS works</h1>
+        <p class="subtitle">
+          DNS turns human-friendly names like <span class="mono">www.example.com</span> into
+          machine-friendly addresses and keeps the whole internet searchable, cacheable, and
+          resilient.
+        </p>
+      </header>
+
+      <main class="grid">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>1. The lookup path</h2>
+            <span class="chip">Resolution</span>
+          </div>
+          <svg viewBox="0 0 760 300" aria-label="DNS lookup path diagram">
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#8bb7ff" />
+              </marker>
+            </defs>
+
+            <g stroke="#7fa3ff" stroke-width="2.5" fill="none" marker-end="url(#arrow)">
+              <path d="M105 150 H180" />
+              <path d="M235 150 H320" />
+              <path d="M390 150 H470" />
+              <path d="M535 150 H620" />
+              <path d="M685 150 H760" />
+            </g>
+
+            <g>
+              <rect x="20" y="112" width="90" height="76" rx="16" fill="#12374e" stroke="#6ea8ff" />
+              <text
+                x="65"
+                y="143"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="18"
+                font-weight="700"
+              >
+                Browser
+              </text>
+              <text x="65" y="164" text-anchor="middle" fill="#a9c7d8" font-size="12" class="mono">
+                Query
+              </text>
+
+              <rect
+                x="185"
+                y="112"
+                width="150"
+                height="76"
+                rx="16"
+                fill="#173b4e"
+                stroke="#69f0d4"
+              />
+              <text
+                x="260"
+                y="143"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="18"
+                font-weight="700"
+              >
+                Recursive
+              </text>
+              <text x="260" y="164" text-anchor="middle" fill="#a9c7d8" font-size="12" class="mono">
+                Resolver
+              </text>
+
+              <rect
+                x="325"
+                y="112"
+                width="160"
+                height="76"
+                rx="16"
+                fill="#2f2a5d"
+                stroke="#a995ff"
+              />
+              <text
+                x="405"
+                y="143"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="18"
+                font-weight="700"
+              >
+                Root
+              </text>
+              <text x="405" y="164" text-anchor="middle" fill="#a9c7d8" font-size="12" class="mono">
+                . / NS
+              </text>
+
+              <rect
+                x="475"
+                y="112"
+                width="160"
+                height="76"
+                rx="16"
+                fill="#4a3c35"
+                stroke="#ffca7a"
+              />
+              <text
+                x="555"
+                y="143"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="18"
+                font-weight="700"
+              >
+                TLD
+              </text>
+              <text x="555" y="164" text-anchor="middle" fill="#a9c7d8" font-size="12" class="mono">
+                .com
+              </text>
+
+              <rect
+                x="625"
+                y="112"
+                width="130"
+                height="76"
+                rx="16"
+                fill="#4d2337"
+                stroke="#ff8fa3"
+              />
+              <text
+                x="690"
+                y="143"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="18"
+                font-weight="700"
+              >
+                Authoritative
+              </text>
+              <text x="690" y="164" text-anchor="middle" fill="#a9c7d8" font-size="12" class="mono">
+                example.com
+              </text>
+            </g>
+
+            <g fill="#a9c7d8" font-size="12" class="mono">
+              <text x="110" y="72">A record</text>
+              <text x="270" y="72">Check cache</text>
+              <text x="430" y="72">Referral</text>
+              <text x="570" y="72">Referral</text>
+              <text x="660" y="72">Answer</text>
+            </g>
+
+            <g fill="#69f0d4" font-size="11" class="mono">
+              <text x="124" y="210">www.example.com → 93.184.216.34</text>
+            </g>
+          </svg>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>2. The DNS hierarchy</h2>
+            <span class="chip">Tree</span>
+          </div>
+          <svg viewBox="0 0 760 300" aria-label="DNS hierarchy tree">
+            <g stroke="#7fa3ff" stroke-width="2" fill="none">
+              <path d="M380 40 V80" />
+              <path d="M380 80 H180" />
+              <path d="M380 80 H590" />
+              <path d="M180 80 V120" />
+              <path d="M590 80 V120" />
+              <path d="M180 120 H90" />
+              <path d="M180 120 H270" />
+              <path d="M590 120 H490" />
+              <path d="M590 120 H690" />
+            </g>
+
+            <g>
+              <circle cx="380" cy="40" r="30" fill="#69f0d4" />
+              <text
+                x="380"
+                y="46"
+                text-anchor="middle"
+                fill="#07131d"
+                font-size="12"
+                font-weight="700"
+              >
+                ROOT
+              </text>
+
+              <rect
+                x="330"
+                y="80"
+                width="100"
+                height="42"
+                rx="12"
+                fill="#12374e"
+                stroke="#6ea8ff"
+              />
+              <text
+                x="380"
+                y="106"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="13"
+                font-weight="700"
+              >
+                .
+              </text>
+
+              <rect
+                x="130"
+                y="120"
+                width="100"
+                height="42"
+                rx="12"
+                fill="#1a3f4b"
+                stroke="#69f0d4"
+              />
+              <text
+                x="180"
+                y="146"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="13"
+                font-weight="700"
+              >
+                .com
+              </text>
+
+              <rect
+                x="540"
+                y="120"
+                width="100"
+                height="42"
+                rx="12"
+                fill="#3d385d"
+                stroke="#a995ff"
+              />
+              <text
+                x="590"
+                y="146"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="13"
+                font-weight="700"
+              >
+                .org
+              </text>
+
+              <rect
+                x="40"
+                y="170"
+                width="120"
+                height="46"
+                rx="12"
+                fill="#3f2d2d"
+                stroke="#ff8fa3"
+              />
+              <text
+                x="100"
+                y="198"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="12"
+                font-weight="700"
+              >
+                example.com
+              </text>
+
+              <rect
+                x="180"
+                y="170"
+                width="150"
+                height="46"
+                rx="12"
+                fill="#5a3b33"
+                stroke="#ffca7a"
+              />
+              <text
+                x="255"
+                y="198"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="12"
+                font-weight="700"
+              >
+                shop.example.com
+              </text>
+
+              <rect
+                x="470"
+                y="170"
+                width="140"
+                height="46"
+                rx="12"
+                fill="#2f4a52"
+                stroke="#69f0d4"
+              />
+              <text
+                x="540"
+                y="198"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="12"
+                font-weight="700"
+              >
+                api.example.org
+              </text>
+
+              <rect
+                x="640"
+                y="170"
+                width="110"
+                height="46"
+                rx="12"
+                fill="#4a2d58"
+                stroke="#a995ff"
+              />
+              <text
+                x="695"
+                y="198"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="12"
+                font-weight="700"
+              >
+                mail.example.org
+              </text>
+            </g>
+
+            <g fill="#a9c7d8" font-size="12" class="mono">
+              <text x="150" y="245">A / AAAA / CNAME</text>
+              <text x="470" y="245">MX / TXT / NS</text>
+            </g>
+          </svg>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>3. Query and response anatomy</h2>
+            <span class="chip">Records</span>
+          </div>
+          <svg viewBox="0 0 760 300" aria-label="DNS query and response packet breakdown">
+            <defs>
+              <linearGradient id="packetLeft" x1="0" x2="1">
+                <stop offset="0%" stop-color="#12374e" />
+                <stop offset="100%" stop-color="#1d4f68" />
+              </linearGradient>
+              <linearGradient id="packetRight" x1="0" x2="1">
+                <stop offset="0%" stop-color="#2a3358" />
+                <stop offset="100%" stop-color="#413d6a" />
+              </linearGradient>
+            </defs>
+
+            <g>
+              <rect
+                x="55"
+                y="60"
+                width="250"
+                height="200"
+                rx="18"
+                fill="url(#packetLeft)"
+                stroke="#6ea8ff"
+              />
+              <text x="80" y="92" fill="#edf7ff" font-size="18" font-weight="700">DNS Query</text>
+              <text x="80" y="120" fill="#a9c7d8" font-size="12" class="mono">
+                Question: www.example.com
+              </text>
+              <text x="80" y="148" fill="#a9c7d8" font-size="12" class="mono">Type: A</text>
+              <text x="80" y="176" fill="#a9c7d8" font-size="12" class="mono">Class: IN</text>
+              <text x="80" y="204" fill="#a9c7d8" font-size="12" class="mono">
+                Flags: Recursion desired
+              </text>
+              <text x="80" y="232" fill="#a9c7d8" font-size="12" class="mono">ID: 0x42A2</text>
+
+              <rect
+                x="455"
+                y="60"
+                width="250"
+                height="200"
+                rx="18"
+                fill="url(#packetRight)"
+                stroke="#a995ff"
+              />
+              <text x="480" y="92" fill="#edf7ff" font-size="18" font-weight="700">
+                DNS Response
+              </text>
+              <text x="480" y="120" fill="#a9c7d8" font-size="12" class="mono">
+                Answer: 93.184.216.34
+              </text>
+              <text x="480" y="148" fill="#a9c7d8" font-size="12" class="mono">TTL: 300s</text>
+              <text x="480" y="176" fill="#a9c7d8" font-size="12" class="mono">Type: A</text>
+              <text x="480" y="204" fill="#a9c7d8" font-size="12" class="mono">
+                Authority: NS records
+              </text>
+              <text x="480" y="232" fill="#a9c7d8" font-size="12" class="mono">
+                Additional: glue records
+              </text>
+            </g>
+
+            <g stroke="#8bb7ff" stroke-width="2.5" marker-end="url(#arrow)">
+              <path d="M305 160 H455" />
+            </g>
+
+            <g fill="#69f0d4" font-size="12" class="mono">
+              <text x="214" y="54">client</text>
+              <text x="606" y="54">server</text>
+            </g>
+          </svg>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>4. Cache, TTL, and retries</h2>
+            <span class="chip">Caching</span>
+          </div>
+          <svg viewBox="0 0 760 300" aria-label="DNS cache and TTL timeline">
+            <g>
+              <rect
+                x="60"
+                y="120"
+                width="120"
+                height="60"
+                rx="12"
+                fill="#173b4e"
+                stroke="#69f0d4"
+              />
+              <text
+                x="120"
+                y="155"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="13"
+                font-weight="700"
+              >
+                Cache miss
+              </text>
+
+              <rect
+                x="220"
+                y="120"
+                width="120"
+                height="60"
+                rx="12"
+                fill="#2d4d67"
+                stroke="#6ea8ff"
+              />
+              <text
+                x="280"
+                y="155"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="13"
+                font-weight="700"
+              >
+                Query root
+              </text>
+
+              <rect
+                x="380"
+                y="120"
+                width="120"
+                height="60"
+                rx="12"
+                fill="#5a3b33"
+                stroke="#ffca7a"
+              />
+              <text
+                x="440"
+                y="155"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="13"
+                font-weight="700"
+              >
+                Query TLD
+              </text>
+
+              <rect
+                x="540"
+                y="120"
+                width="120"
+                height="60"
+                rx="12"
+                fill="#4d2337"
+                stroke="#ff8fa3"
+              />
+              <text
+                x="600"
+                y="155"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="13"
+                font-weight="700"
+              >
+                Answer
+              </text>
+            </g>
+
+            <g stroke="#7fa3ff" stroke-width="2.5" marker-end="url(#arrow)">
+              <path d="M180 150 H220" />
+              <path d="M340 150 H380" />
+              <path d="M500 150 H540" />
+            </g>
+
+            <g>
+              <rect
+                x="100"
+                y="30"
+                width="520"
+                height="46"
+                rx="12"
+                fill="rgba(105, 240, 212, 0.08)"
+                stroke="rgba(105, 240, 212, 0.35)"
+              />
+              <text
+                x="360"
+                y="58"
+                text-anchor="middle"
+                fill="#edf7ff"
+                font-size="15"
+                font-weight="700"
+              >
+                TTL = 300s
+              </text>
+            </g>
+
+            <g fill="#a9c7d8" font-size="12" class="mono">
+              <text x="90" y="235">Resolver stores record</text>
+              <text x="275" y="235">Subsequent requests are faster</text>
+              <text x="540" y="235">Expires after TTL</text>
+            </g>
+
+            <g stroke="#69f0d4" stroke-width="2" stroke-dasharray="6 6">
+              <path d="M105 235 H215" />
+              <path d="M290 235 H465" />
+              <path d="M545 235 H665" />
+            </g>
+          </svg>
+        </article>
+      </main>
+    </div>
+  </body>
+</html>

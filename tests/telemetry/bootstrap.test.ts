@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { NodeSDK } from "@opentelemetry/sdk-node";
 
 type NodeSDKConfig = NonNullable<ConstructorParameters<typeof NodeSDK>[0]>;
@@ -51,11 +54,17 @@ vi.mock("@opentelemetry/sdk-node", () => ({
   },
 }));
 
-import { startTelemetry, telemetryEnabled } from "../../src/telemetry/bootstrap.js";
+import {
+  loadTelemetryEnvironment,
+  startTelemetry,
+  telemetryEnabled,
+} from "../../src/telemetry/bootstrap.js";
 
 const envKeys = [
   "OTEL_SDK_DISABLED",
   "OTEL_EXPORTER_OTLP_ENDPOINT",
+  "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+  "OTEL_TRACES_EXPORTER",
   "OTEL_SERVICE_NAME",
   "LANGFUSE_PUBLIC_KEY",
   "LANGFUSE_SECRET_KEY",
@@ -65,6 +74,7 @@ const envKeys = [
 ] as const;
 
 let envSnapshot = new Map<string, string | undefined>();
+let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   envSnapshot = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -72,6 +82,9 @@ beforeEach(() => {
   batchSpanProcessorConstructors.length = 0;
   otlpExporterConstructors.length = 0;
   langfuseProcessorConstructors.length = 0;
+  // Every startTelemetry call with Langfuse keys probes the credentials; keep that off the network.
+  fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
 });
 
 afterEach(() => {
@@ -85,9 +98,42 @@ afterEach(() => {
   }
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe("telemetry bootstrap", () => {
+  it("loads only telemetry variables from a home env file without overriding the process", () => {
+    const directory = mkdtempSync(join(tmpdir(), "weavekit-telemetry-env-"));
+    const env: NodeJS.ProcessEnv = { LANGFUSE_BASE_URL: "http://already-configured" };
+    try {
+      writeFileSync(
+        join(directory, ".env"),
+        [
+          "LANGFUSE_PUBLIC_KEY=pk-home",
+          "LANGFUSE_SECRET_KEY=sk-home",
+          "LANGFUSE_BASE_URL=http://from-file",
+          "OTEL_SERVICE_NAME=weavekit-home",
+          "UNRELATED_SECRET=do-not-load",
+        ].join("\n"),
+      );
+
+      expect(loadTelemetryEnvironment(directory, env).sort()).toEqual([
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "OTEL_SERVICE_NAME",
+      ]);
+      expect(env).toMatchObject({
+        LANGFUSE_PUBLIC_KEY: "pk-home",
+        LANGFUSE_SECRET_KEY: "sk-home",
+        LANGFUSE_BASE_URL: "http://already-configured",
+        OTEL_SERVICE_NAME: "weavekit-home",
+      });
+      expect(env.UNRELATED_SECRET).toBeUndefined();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("disables telemetry when OTEL_SDK_DISABLED=true", async () => {
     process.env.OTEL_SDK_DISABLED = "true";
 
@@ -98,7 +144,43 @@ describe("telemetry bootstrap", () => {
     expect(nodeSdkConstructors).toHaveLength(0);
   });
 
-  it("passes Langfuse credentials explicitly and redacts raw exports by default", async () => {
+  it("preserves NodeSDK environment exporter fallback by default", async () => {
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    delete process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+    delete process.env.OTEL_TRACES_EXPORTER;
+    delete process.env.LANGFUSE_PUBLIC_KEY;
+    delete process.env.LANGFUSE_SECRET_KEY;
+
+    await startTelemetry("weavekit-test");
+
+    expect(nodeSdkConstructors).toHaveLength(1);
+    expect(nodeSdkConstructors[0]?.config).not.toHaveProperty("spanProcessors");
+  });
+
+  it("can skip startup for an entry point that requires explicit exporter configuration", async () => {
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    delete process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
+    delete process.env.OTEL_TRACES_EXPORTER;
+    delete process.env.LANGFUSE_PUBLIC_KEY;
+    delete process.env.LANGFUSE_SECRET_KEY;
+
+    const handle = await startTelemetry("weavekit-test", {
+      skipWhenUnconfigured: true,
+    });
+    await handle.shutdown();
+
+    expect(nodeSdkConstructors).toHaveLength(0);
+  });
+
+  it("does not skip an explicitly configured environment exporter", async () => {
+    process.env.OTEL_TRACES_EXPORTER = "console";
+
+    await startTelemetry("weavekit-test", { skipWhenUnconfigured: true });
+
+    expect(nodeSdkConstructors).toHaveLength(1);
+  });
+
+  it("redacts Langfuse exports when explicitly disabled", async () => {
     process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://127.0.0.1:4318";
     process.env.OTEL_SERVICE_NAME = "weavekit-env";
     process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
@@ -130,11 +212,9 @@ describe("telemetry bootstrap", () => {
     const mask = (
       langfuseProcessorConstructors[0] as { mask?: (params: { data: unknown }) => unknown }
     )?.mask;
-    expect(mask?.({ data: "hello" })).toBe(
-      "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>",
-    );
+    expect(mask?.({ data: "hello" })).toBe("<redacted because LANGFUSE_EXPORT_RAW=false>");
     expect(mask?.({ data: { nested: ["secret", { keep: true }] } })).toBe(
-      "<redacted; set LANGFUSE_EXPORT_RAW=true to export raw prompts and responses>",
+      "<redacted because LANGFUSE_EXPORT_RAW=false>",
     );
 
     await handle.shutdown();
@@ -142,10 +222,57 @@ describe("telemetry bootstrap", () => {
     expect(nodeSdkConstructors[0]?.shutdown).toHaveBeenCalledTimes(1);
   });
 
-  it("allows raw Langfuse export only with explicit opt-in", async () => {
+  it("warns at startup when Langfuse rejects the configured credentials", async () => {
     process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
     process.env.LANGFUSE_SECRET_KEY = "sk-test";
-    process.env.LANGFUSE_EXPORT_RAW = "true";
+    process.env.LANGFUSE_BASE_URL = "http://localhost:3000/";
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+
+    await startTelemetry("weavekit-test");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:3000/api/public/projects", {
+      headers: { authorization: `Basic ${Buffer.from("pk-test:sk-test").toString("base64")}` },
+      signal: expect.anything(),
+    });
+    const warning = String(stderr.mock.calls[0]?.[0] ?? "");
+    expect(warning).toContain("HTTP 401");
+    expect(warning).toContain("every trace for this run will be dropped");
+    expect(warning).not.toContain("sk-test");
+  });
+
+  it("warns at startup when Langfuse cannot be reached at all", async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    fetchMock.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
+
+    await expect(startTelemetry("weavekit-test")).resolves.toBeDefined();
+
+    expect(String(stderr.mock.calls[0]?.[0] ?? "")).toContain("connect ECONNREFUSED");
+  });
+
+  it("stays silent for usable credentials and never probes without them", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+
+    await startTelemetry("weavekit-test");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stderr).not.toHaveBeenCalled();
+
+    delete process.env.LANGFUSE_PUBLIC_KEY;
+    delete process.env.LANGFUSE_SECRET_KEY;
+
+    await startTelemetry("weavekit-test");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stderr).not.toHaveBeenCalled();
+  });
+
+  it("exports raw Langfuse content by default", async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+    delete process.env.LANGFUSE_EXPORT_RAW;
 
     await startTelemetry("weavekit-test");
 

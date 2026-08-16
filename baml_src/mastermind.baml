@@ -129,7 +129,6 @@ class ProposedLinearTicketPatch {
   assumptions string[]
   ambiguities string[]
   unansweredQuestions string[]
-  openItemDispositions ReviewOpenItemDisposition[]
   dependencies string[]
   risks string[]
   automatedVerification string[]
@@ -142,6 +141,7 @@ class ProposedLinearTicketPatch {
   evidence TicketReviewEvidence[]
   readiness ReviewReadiness
   blockingReasons string[]
+  openItemDispositions ReviewOpenItemDisposition[]
   warnings string[]
   materialScopeChange bool
   requiresHumanApproval bool
@@ -212,6 +212,18 @@ function SynthesizeLinearTicketPatch(
 
     Rules:
     - Preserve the user's factual intent.
+    - Copy dossier.preservedIntent verbatim into this patch's preservedIntent field; do not
+      paraphrase, summarize, or edit it in any way.
+    - Copy every concrete value the ticket states — identifiers, versions, model ids, URLs,
+      ports, paths, file modes, flags, and command strings — verbatim into the description.
+      Never replace one with a generic phrase such as "the required settings" or "the defined
+      URL". If the ticket gives a value, the description must still give that same value.
+    - Preserve every qualifier the ticket attaches to an acceptance criterion, especially one
+      stating that a named failure, warning, or non-zero exit is expected and does not fail
+      that criterion. Never restate a qualified criterion as an unqualified one; dropping the
+      qualifier can make the criterion impossible to satisfy.
+    - Never write an acceptance criterion that the ticket's own Scope and Out of scope sections
+      make unsatisfiable.
     - Use repository or external claims only when the dossier provides evidence.
     - Keep unanswered product decisions as questions or blocking reasons. Never silently decide.
     - Keep the existing string arrays. openItemDispositions classifies unansweredQuestions and
@@ -221,13 +233,57 @@ function SynthesizeLinearTicketPatch(
     - For every blockingReasons entry, emit exactly one openItemDispositions entry with kind
       BLOCKING_REASON and the exact same text after trimming.
     - Do not emit openItemDispositions entries for any other text.
+    - Before returning, double-check: openItemDispositions.length must equal
+      unansweredQuestions.length + blockingReasons.length, and every unansweredQuestions/
+      blockingReasons string must appear verbatim (after trimming) as exactly one
+      openItemDispositions.text value with the matching kind. If any blockingReasons entry is
+      missing its disposition, add it rather than omitting it.
     - Use HUMAN for product behavior, acceptance intent, authorization, scope approval, account
-      choice, or another decision the executor must not make.
+      choice, or another decision the executor must not make. On a SPIKE, apply the SPIKE rule
+      below before assigning HUMAN: a choice the spike is chartered to evaluate is not a HUMAN
+      decision even when it sounds like product behavior or organization policy.
     - Use EXECUTOR_PREFLIGHT for tool or package availability, credentials or auth state, selected
       tenant or account context, runtime version, or another environment fact that can be proven
       fail-closed immediately before implementation starts.
+    - Standing Mastermind platform defaults: GitHub CLI (`gh`) and Azure CLI (`az`) authentication
+      state are always EXECUTOR_PREFLIGHT (never HUMAN) open items — the executor can verify auth
+      itself before starting; only keep them as open items at all if the dossier's own evidence
+      shows the CLI is not authenticated. A dossier finding that `gh auth status` succeeded fully
+      satisfies any GitHub-auth precondition, including a PAT's Copilot Requests permission —
+      fine-grained PAT scopes are not enumerable via `gh auth status` or any other read-only
+      command, so never keep a separate unansweredQuestions/blockingReasons entry asking to
+      further confirm a specific PAT permission when `gh auth status` already showed the CLI is
+      authenticated; drop it instead. Model/inference provider selection (Mastermind always
+      uses the user's GitHub Copilot subscription, natively or proxied through copilot-proxy-rs),
+      prototype/spike workspace location (always a new dedicated worktree under
+      ~/projects/prototypes/<name>, never this project's own repository), and the target Azure
+      subscription/tenant/region (always whatever the executor's authenticated `az account show`
+      reports, with `eastus2` as the default region/location for any new resource, per the
+      executor's `az configure --defaults location=eastus2`) are standing platform defaults, not
+      open questions at all — do not add them to unansweredQuestions or blockingReasons, and do
+      not emit an openItemDispositions entry for them, unless the ticket text itself explicitly
+      disputes one of these defaults or the dossier's own `az account show` evidence shows the CLI
+      is not authenticated. If the dossier nonetheless lists a gh/az auth check as an
+      unansweredQuestions entry (never as a blockingReasons entry — these are executor-preflight
+      facts, not blockers), emit its required openItemDispositions entry with owner
+      EXECUTOR_PREFLIGHT and readiness READY_WITH_NONBLOCKING_GAPS, never BLOCKED.
     - Use IMPLEMENTATION_DISCOVERY for bounded repository or code investigation that is part of
       implementation and does not change product intent.
+    - A SPIKE exists to answer its own open design questions. When dossier.ticketKind is SPIKE,
+      any choice the ticket's own scope or acceptance criteria ask the spike to evaluate,
+      recommend, benchmark, or compare — a tool ruleset, configuration, corpus, threshold, or
+      integration variant — is IMPLEMENTATION_DISCOVERY, never HUMAN and never a blocking reason.
+      Deciding it is the spike's deliverable, not a prerequisite: the executor picks a defensible
+      option, records it as an assumption, and reports the trade-off, so this case is an exception
+      to "never silently decide". Reserve HUMAN on a SPIKE for a decision outside its stated
+      deliverable, such as authorization, spend, production rollout, or a scope change the ticket
+      does not already request. A linked attachment the harness could not read is a risk entry,
+      not a blocking reason, when the ticket body already states the objective. This holds even
+      when the question is phrased as organization policy, an authoritative standard, or product
+      behavior — "which ruleset is authoritative", "should the hook block or only warn" — because
+      naming the recommended option is the spike's output. Before returning a SPIKE patch, re-read
+      every HUMAN disposition and reclassify it to IMPLEMENTATION_DISCOVERY if any scope line or
+      acceptance criterion already asks the spike to determine, recommend, or compare it.
     - Use EXTERNAL_DEPENDENCY for a known blocker outside executor control, such as an upstream
       outage, pending vendor access, or an external system that must become available before work
       can start. Do not use EXECUTOR_PREFLIGHT for external waiting.
@@ -239,8 +295,12 @@ function SynthesizeLinearTicketPatch(
     - READY requires no blocking reasons, unanswered questions, or openItemDispositions.
     - READY_WITH_NONBLOCKING_GAPS may have warnings and EXECUTOR_PREFLIGHT or
       IMPLEMENTATION_DISCOVERY open items, but no blocking reasons, no HUMAN open items, and no
-      EXTERNAL_DEPENDENCY open items.
-    - BLOCKED requires at least one blocking reason.
+      EXTERNAL_DEPENDENCY open items. If any open item requires HUMAN or EXTERNAL_DEPENDENCY
+      ownership, you must choose BLOCKED instead and add the corresponding text to
+      blockingReasons, not just unansweredQuestions.
+    - BLOCKED requires at least one non-empty blockingReasons entry. If you cannot articulate a
+      concrete blocking reason as a string in blockingReasons, do not choose BLOCKED — choose
+      READY_WITH_NONBLOCKING_GAPS (put open concerns in unansweredQuestions or warnings) instead.
     - requiresHumanApproval must be true when any openItemDispositions owner is HUMAN or when
       materialScopeChange is true.
     - A BLOCKED patch may set requiresHumanApproval false only when every openItemDispositions
@@ -253,6 +313,12 @@ function SynthesizeLinearTicketPatch(
     - Do not claim work is complete or prescribe commands not supported by available evidence.
     - Keep the title concise.
     - confidence is between 0 and 1.
+    - unansweredQuestions and blockingReasons are posted verbatim as a Linear comment. Whenever
+      one of these strings (or any openItemDispositions rationale) includes a shell command,
+      terminal output, code snippet, or diff, always format it with proper Markdown: a fenced
+      ```bash or ```<language> code block for multi-line or command content, and single backticks
+      for a short inline identifier or one-word command. Never paste a command or code snippet as
+      bare unformatted text.
 
     {{ _.role("user") }}
     Ticket:
@@ -524,11 +590,11 @@ test DecideNextAction_ExecutorPreflightGap {
       requiresHumanApproval false
       blockingReasons []
       warnings ["Verify the local proxy runtime before synthesis benchmarking."]
-      unansweredQuestions ["Is the local proxy advertising gemini-3.6-flash in this environment?"]
+      unansweredQuestions ["Is the local proxy advertising gemini-3.7-flash in this environment?"]
       openItemDispositions [
         {
           kind UNANSWERED_QUESTION
-          text "Is the local proxy advertising gemini-3.6-flash in this environment?"
+          text "Is the local proxy advertising gemini-3.7-flash in this environment?"
           owner EXECUTOR_PREFLIGHT
           rationale "The executor can prove the runtime model inventory immediately before work."
         }

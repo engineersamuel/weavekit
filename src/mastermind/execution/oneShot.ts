@@ -82,6 +82,11 @@ export async function executeOneReadyWork(input: {
           : `Mastermind work ${workId} did not start direct execution. Verify global execution configuration and project opt-in.`,
       );
     }
+    if (!attempt && TERMINAL_EXECUTION_STATES.has(work.state)) {
+      throw new Error(
+        `Mastermind work ${workId} ended in ${work.state} before an execution attempt started.`,
+      );
+    }
 
     const madeProgress =
       beforeWork?.rowVersion !== work.rowVersion ||

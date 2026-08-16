@@ -97,6 +97,18 @@ export enum ReviewReadiness {
   BLOCKED = "BLOCKED",
 }
 
+export enum RlmVerificationOutcome {
+  PASSED = "PASSED",
+  FAILED = "FAILED",
+  NOT_RUN = "NOT_RUN",
+}
+
+export enum RlmWorkerOutcome {
+  COMPLETED = "COMPLETED",
+  NEEDS_HUMAN = "NEEDS_HUMAN",
+  FAILED = "FAILED",
+}
+
 export enum RouterRoute {
   DirectAnswer = "DirectAnswer",
   RefinePrompt = "RefinePrompt",
@@ -118,6 +130,13 @@ export enum TicketKind {
   TECHNICAL_TASK = "TECHNICAL_TASK",
   SPIKE = "SPIKE",
   OPERATIONAL = "OPERATIONAL",
+}
+
+export enum TrellageTurnOutcome {
+  ACHIEVED = "ACHIEVED",
+  NEEDS_INFORMATION = "NEEDS_INFORMATION",
+  BLOCKED = "BLOCKED",
+  REFUSED = "REFUSED",
 }
 
 export interface AdoptionTask {
@@ -623,7 +642,6 @@ export interface ProposedLinearTicketPatch {
   assumptions: string[]
   ambiguities: string[]
   unansweredQuestions: string[]
-  openItemDispositions: ReviewOpenItemDisposition[]
   dependencies: string[]
   risks: string[]
   automatedVerification: string[]
@@ -636,6 +654,7 @@ export interface ProposedLinearTicketPatch {
   evidence: TicketReviewEvidence[]
   readiness: ReviewReadiness
   blockingReasons: string[]
+  openItemDispositions: ReviewOpenItemDisposition[]
   warnings: string[]
   materialScopeChange: boolean
   requiresHumanApproval: boolean
@@ -679,6 +698,47 @@ export interface ReviewOpenItemDisposition {
   text: string
   owner: ReviewOpenItemOwner
   rationale: string
+  
+}
+
+export interface RlmArtifactReference {
+  locator: string
+  description: string
+  
+}
+
+export interface RlmDependencyReport {
+  callId: string
+  profile: string
+  report: RlmWorkerReport
+  
+}
+
+export interface RlmRunBrief {
+  objective: string
+  constraints: string[]
+  acceptanceCriteria: string[]
+  validationCommands: string[]
+  
+}
+
+export interface RlmVerificationResult {
+  commandOrMethod: string
+  outcome: RlmVerificationOutcome
+  summary: string
+  
+}
+
+export interface RlmWorkerReport {
+  outcome: RlmWorkerOutcome
+  summary: string
+  evidence: EvidenceReference[]
+  artifacts: RlmArtifactReference[]
+  verification: RlmVerificationResult[]
+  decisions: string[]
+  risks: string[]
+  openQuestions: string[]
+  remainingWork: string[]
   
 }
 
@@ -741,6 +801,22 @@ export interface RoutingDecision {
   model: string
   reasoningEffort?: string | null
   rationale: string
+  
+}
+
+export interface SelfImprovementFinding {
+  severity: "BLOCKING" | "IMPORTANT" | "SUGGESTION"
+  category: "MISSION_DEVIATION" | "INEFFICIENT_ROUTING" | "ERROR_OR_RETRY" | "MISSED_REQUIREMENT" | "OTHER"
+  title: string
+  description: string
+  evidence: string[]
+  suggestedTicketBody: string
+  
+}
+
+export interface SelfImprovementReport {
+  summary: string
+  findings: SelfImprovementFinding[]
   
 }
 
@@ -826,6 +902,25 @@ export interface SpecializedObligationAssessment {
   status: "complete" | "partial" | "missing" | "not-required"
   evidenceQuotes: string[]
   rationale: string
+  
+}
+
+export interface SubmindTraceObservation {
+  name: string
+  type: string
+  status: string
+  summary: string
+  model?: string | null
+  durationMs?: number | null
+  
+}
+
+export interface SubmindTraceSummary {
+  traceId: string
+  url?: string | null
+  rootInput?: string | null
+  rootOutput?: string | null
+  observations: SubmindTraceObservation[]
   
 }
 
@@ -920,6 +1015,12 @@ export interface TicketReviewEvidence {
   repositoryQuery?: string | null
   claim: string
   confidence: number
+  
+}
+
+export interface TrellageTurnDiagnosis {
+  outcome: TrellageTurnOutcome
+  summary: string
   
 }
 

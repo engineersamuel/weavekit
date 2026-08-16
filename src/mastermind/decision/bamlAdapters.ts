@@ -8,6 +8,8 @@ import type {
   PostImplementationReview,
   PostImplementationReviewDossier,
   ProposedLinearTicketPatch,
+  SelfImprovementReport,
+  SubmindTraceSummary,
   TicketReviewDossier,
 } from "../../generated/baml_client/index.js";
 import {
@@ -44,6 +46,11 @@ export type MastermindDecisionProvider = {
     ticket: LinearTicketInput,
     dossier: PostImplementationReviewDossier,
   ): Promise<PostImplementationReview>;
+  analyzeSubmindTrace?(
+    ticket: LinearTicketInput,
+    missionStatements: string[],
+    trace: SubmindTraceSummary,
+  ): Promise<SelfImprovementReport>;
 };
 
 export type MastermindBamlClient = {
@@ -64,6 +71,12 @@ export type MastermindBamlClient = {
     dossier: PostImplementationReviewDossier,
     options?: MastermindBamlCallOptions,
   ): Promise<PostImplementationReview>;
+  AnalyzeSubmindTrace?(
+    ticket: LinearTicketInput,
+    missionStatements: string[],
+    trace: SubmindTraceSummary,
+    options?: MastermindBamlCallOptions,
+  ): Promise<SelfImprovementReport>;
 };
 
 export function createMastermindSynthesisClientRegistry(
@@ -186,6 +199,40 @@ export class GeneratedMastermindDecisionProvider implements MastermindDecisionPr
             throw new Error("BAML client does not support post-implementation review.");
           }
           const result = await this.client.AssessPostImplementationReview(ticket, dossier, {
+            collector,
+            clientRegistry: this.synthesisClientRegistry,
+          });
+          setMastermindSpanOutput(span, result);
+          return result;
+        } finally {
+          setMastermindBamlUsage(span, collector);
+        }
+      },
+    );
+  }
+
+  analyzeSubmindTrace(
+    ticket: LinearTicketInput,
+    missionStatements: string[],
+    trace: SubmindTraceSummary,
+  ): Promise<SelfImprovementReport> {
+    return withMastermindSpan(
+      "mastermind.baml.analyze_submind_trace",
+      {
+        "langfuse.observation.type": "generation",
+        "gen_ai.system": "baml",
+        "gen_ai.operation.name": "AnalyzeSubmindTrace",
+        "gen_ai.request.model": this.synthesisModel,
+        "weavekit.mastermind.self_improvement.trace_id": trace.traceId,
+      },
+      async (span) => {
+        const collector = new Collector("mastermind.analyze-submind-trace");
+        setMastermindSpanInput(span, { ticket, missionStatements, trace });
+        try {
+          if (!this.client.AnalyzeSubmindTrace) {
+            throw new Error("BAML client does not support Submind trace analysis.");
+          }
+          const result = await this.client.AnalyzeSubmindTrace(ticket, missionStatements, trace, {
             collector,
             clientRegistry: this.synthesisClientRegistry,
           });

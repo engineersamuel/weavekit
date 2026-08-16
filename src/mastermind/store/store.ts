@@ -15,6 +15,7 @@ import type {
   VerificationEvidence,
 } from "../../submind/contracts.js";
 import type { ExecutionPreflightReport } from "../../submind/preflight.js";
+import type { ProjectCatalogEntry } from "../../config.js";
 
 export type LinearTicketSnapshot = {
   id: string;
@@ -34,6 +35,7 @@ export type MastermindWorkItem = {
   organizationId: string;
   issueId: string;
   projectPolicyId?: string;
+  resolvedProject?: ProjectCatalogEntry;
   state: MastermindState;
   plannedAction?: MastermindAction;
   currentExecutionAttemptId?: string;
@@ -49,7 +51,7 @@ export type ExecutionAttempt = {
   id: string;
   workId: string;
   attemptNumber: number;
-  action: typeof MastermindAction.IMPLEMENT_DIRECTLY;
+  action: MastermindAction;
   projectPolicyId: string;
   projectPolicyVersion: string;
   executorKind: ExecutorKind;
@@ -193,6 +195,7 @@ export type MastermindStore = {
     projectPolicyId: string;
     projectPolicyVersion: string;
     executorKind: ExecutorKind;
+    action: MastermindAction;
   }): Promise<{ work: MastermindWorkItem; attempt: ExecutionAttempt }>;
   getExecutionAttempt(attemptId: string): Promise<ExecutionAttempt | undefined>;
   getCurrentExecutionAttempt(workId: string): Promise<ExecutionAttempt | undefined>;
@@ -247,7 +250,11 @@ export type MastermindStore = {
   invalidateReview(reviewId: string, reason: string): Promise<void>;
   saveDecision(workId: string, decision: MastermindNextActionDecision): Promise<void>;
   getLatestDecision(workId: string): Promise<MastermindNextActionDecision | undefined>;
-  setProjectPolicy(workId: string, projectPolicyId: string): Promise<void>;
+  setProjectPolicy(
+    workId: string,
+    projectPolicyId: string,
+    resolvedProject?: ProjectCatalogEntry,
+  ): Promise<void>;
   listRecoverableWorkIds(now: Date): Promise<string[]>;
   listTerminalWorkIdsForFreshnessScan(
     now: Date,

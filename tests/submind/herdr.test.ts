@@ -333,11 +333,14 @@ describe("Herdr direct executor", () => {
     const executor = new HerdrDirectExecutor(executionConfig(), {
       run: vi.fn(),
     });
-    const result = await executor.collect({
-      executor: ExecutorKind.HERDR_COPILOT,
-      agentName: "mm-workone-a1",
-      worktreePath,
-    });
+    const result = await executor.collect(
+      {
+        executor: ExecutorKind.HERDR_COPILOT,
+        agentName: "mm-workone-a1",
+        worktreePath,
+      },
+      executionRequest(worktreePath),
+    );
 
     expect(result).toEqual(manifest);
     expect(() => validateResultForRequest(result, executionRequest(worktreePath))).not.toThrow();
@@ -353,6 +356,29 @@ describe("Herdr direct executor", () => {
         verification: [],
       }),
     ).toThrow("passing verification");
+    // A command whose successful finding is a non-zero exit, such as `git check-ignore`, passes
+    // only when the manifest declares that code.
+    expect(() =>
+      parseDirectExecutionResult({
+        ...manifest,
+        verification: [{ command: "git check-ignore a b", exitCode: 1, summary: "not ignored" }],
+      }),
+    ).toThrow("passing verification");
+    expect(
+      parseDirectExecutionResult({
+        ...manifest,
+        verification: [
+          {
+            command: "git check-ignore a b",
+            exitCode: 1,
+            expectedExitCode: 1,
+            summary: "not ignored",
+          },
+        ],
+      }).verification,
+    ).toEqual([
+      { command: "git check-ignore a b", exitCode: 1, expectedExitCode: 1, summary: "not ignored" },
+    ]);
   });
 
   it("requires a final work summary and specific manual verification guidance", async () => {
@@ -366,6 +392,28 @@ describe("Herdr direct executor", () => {
       "Give the user concrete, step-by-step instructions to manually verify the completed work.",
     );
     expect(prompt).toContain("including commands, paths, or expected behavior where useful.");
+  });
+
+  it("tells greenfield executors to populate the already provisioned worktree", async () => {
+    const worktreePath = await tempDirectory();
+    const request = executionRequest(worktreePath);
+    request.workspace = {
+      kind: "greenfield-repository-worktree",
+      provisioningRoot: worktreePath,
+      workId: request.workId,
+      sourceRepositoryPath: worktreePath,
+      checkoutPath: worktreePath,
+      branchName: "mastermind/test",
+      parentWorkspaceLookupPath: worktreePath,
+      creatorAttemptId: request.attemptId,
+    };
+
+    const prompt = buildDirectExecutionPrompt(request);
+
+    expect(prompt).toContain("This current worktree is the dedicated greenfield prototype");
+    expect(prompt).toContain("An empty seeded repository is expected.");
+    expect(prompt).toContain("A successful `gh auth status` is sufficient proof");
+    expect(prompt).toContain("permission is not enumerable there");
   });
 
   it("creates deterministic Herdr-valid names", () => {

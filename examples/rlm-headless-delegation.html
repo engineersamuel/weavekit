@@ -1,0 +1,1596 @@
+<title>Drop the Pane</title>
+
+<style>
+  /* ============================================================
+     Palette — cool, cyan-biased neutrals. Colour carries epistemic
+     status, not decoration: teal = verified, amber = unverified,
+     rose = refuted or removed.
+     ============================================================ */
+  :root {
+    --ground: #edf1f2;
+    --surface: #fbfcfc;
+    --surface-2: #e3e9eb;
+    --ink: #121a1d;
+    --ink-soft: #4a585d;
+    --ink-faint: #7c8a8f;
+    --rule: #cbd5d8;
+    --rule-soft: #dee5e7;
+
+    --verified: #0c6a6e;
+    --verified-bg: #dcecec;
+    --unverified: #8a5a00;
+    --unverified-bg: #f2e7d2;
+    --refuted: #9c2338;
+    --refuted-bg: #f2dde1;
+
+    --shadow: 0 1px 2px rgba(18, 26, 29, 0.06), 0 8px 24px -16px rgba(18, 26, 29, 0.22);
+
+    --serif:
+      "Iowan Old Style", "Charter", "Source Serif 4", "Palatino Linotype", Palatino, Georgia, serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+
+    --measure: 66ch;
+    --pad: clamp(1.25rem, 4vw, 3.5rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0c1214;
+      --surface: #131c1f;
+      --surface-2: #1c282c;
+      --ink: #e4edee;
+      --ink-soft: #a2b2b6;
+      --ink-faint: #6e8085;
+      --rule: #2a3a3e;
+      --rule-soft: #1f2c30;
+
+      --verified: #58d2cc;
+      --verified-bg: #11302f;
+      --unverified: #dfaa44;
+      --unverified-bg: #2e2513;
+      --refuted: #f0798e;
+      --refuted-bg: #33161c;
+
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -18px rgba(0, 0, 0, 0.9);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0c1214;
+    --surface: #131c1f;
+    --surface-2: #1c282c;
+    --ink: #e4edee;
+    --ink-soft: #a2b2b6;
+    --ink-faint: #6e8085;
+    --rule: #2a3a3e;
+    --rule-soft: #1f2c30;
+
+    --verified: #58d2cc;
+    --verified-bg: #11302f;
+    --unverified: #dfaa44;
+    --unverified-bg: #2e2513;
+    --refuted: #f0798e;
+    --refuted-bg: #33161c;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -18px rgba(0, 0, 0, 0.9);
+  }
+
+  /* ============================================================ */
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .page {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: var(--pad) var(--pad) 6rem;
+  }
+
+  /* ---- shared type roles ---- */
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--serif);
+    text-wrap: balance;
+    line-height: 1.12;
+    font-weight: 600;
+  }
+
+  p,
+  li {
+    max-width: var(--measure);
+  }
+
+  a {
+    color: var(--verified);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+  a:focus-visible,
+  .step:focus-visible {
+    outline: 2px solid var(--verified);
+    outline-offset: 3px;
+  }
+
+  code,
+  kbd,
+  samp {
+    font-family: var(--mono);
+    font-size: 0.86em;
+  }
+
+  /* ---- masthead ---- */
+
+  .masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-bottom: 2.5rem;
+    border-bottom: 2px solid var(--ink);
+  }
+  .stamp {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+  }
+  .masthead h1 {
+    font-size: clamp(3rem, 8.5vw, 6.5rem);
+    letter-spacing: -0.035em;
+    margin: 0;
+  }
+  .standfirst {
+    font-size: clamp(1.15rem, 2.2vw, 1.45rem);
+    line-height: 1.45;
+    color: var(--ink-soft);
+    max-width: 46ch;
+    margin: 0;
+  }
+
+  .verdict {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    margin-top: 2.5rem;
+    padding: 1.5rem 1.75rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--verified);
+    box-shadow: var(--shadow);
+  }
+  .verdict p {
+    margin: 0;
+    font-size: 1.08rem;
+    max-width: 62ch;
+  }
+  .verdict strong {
+    font-weight: 600;
+  }
+
+  .ledger {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px;
+    margin-top: 2.5rem;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .ledger div {
+    flex: 1 1 9rem;
+    background: var(--surface);
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .ledger b {
+    font-family: var(--mono);
+    font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .ledger span {
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .ledger .cut b {
+    color: var(--refuted);
+  }
+  .ledger .keep b {
+    color: var(--verified);
+  }
+
+  /* ---- sections ---- */
+
+  section {
+    margin-top: 5rem;
+  }
+
+  .sec-head {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 2rem;
+  }
+  .sec-head .num {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+    padding-top: 0.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .sec-head h2 {
+    font-size: clamp(1.6rem, 3.4vw, 2.3rem);
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .sec-head .sub {
+    grid-column: 2;
+    color: var(--ink-soft);
+    margin: 0.6rem 0 0;
+  }
+
+  .body-col {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 1.5rem;
+  }
+  .body-col > :first-child {
+    grid-column: 2;
+  }
+  .body-col > * {
+    grid-column: 2;
+  }
+
+  .prose > * + * {
+    margin-top: 1.1rem;
+  }
+  .prose h3 {
+    font-size: 1.18rem;
+    margin-top: 2.5rem;
+    letter-spacing: -0.01em;
+  }
+  .prose ul {
+    padding-left: 1.1rem;
+  }
+  .prose li + li {
+    margin-top: 0.4rem;
+  }
+
+  /* ---- status marks ---- */
+
+  .mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.22rem 0.5rem;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .mark::before {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+  }
+  .m-ok {
+    color: var(--verified);
+    border-color: var(--verified);
+    background: var(--verified-bg);
+  }
+  .m-ok::before {
+    background: var(--verified);
+  }
+  .m-un {
+    color: var(--unverified);
+    border-color: var(--unverified);
+    background: var(--unverified-bg);
+  }
+  .m-un::before {
+    background: none;
+    border: 1px solid var(--unverified);
+  }
+  .m-no {
+    color: var(--refuted);
+    border-color: var(--refuted);
+    background: var(--refuted-bg);
+  }
+  .m-no::before {
+    background: var(--refuted);
+    transform: rotate(45deg);
+  }
+
+  /* ---- the thesis graphic: ten steps against one ---- */
+
+  .collapse {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: clamp(1rem, 3vw, 2.5rem);
+    align-items: stretch;
+  }
+  @media (max-width: 760px) {
+    .collapse {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .lane {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .lane-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .lane-title em {
+    font-style: normal;
+    color: var(--ink);
+  }
+
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    flex: 1;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+    gap: 0.7rem;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    border-left: 3px solid var(--rule);
+    padding: 0.55rem 0.7rem;
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+  .step .i {
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .step .t {
+    color: var(--ink-soft);
+    min-width: 0;
+  }
+  .step.bad {
+    border-left-color: var(--refuted);
+  }
+  .fail {
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    color: var(--refuted);
+    background: var(--refuted-bg);
+    border: 1px solid var(--refuted);
+    padding: 0.05rem 0.3rem;
+    white-space: nowrap;
+  }
+
+  .one {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--verified);
+    border-left: 3px solid var(--verified);
+    padding: 1.25rem;
+  }
+  .one pre {
+    margin: 0;
+  }
+  .one .note {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+    line-height: 1.5;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .step,
+    .one {
+      animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+    }
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+    }
+  }
+
+  /* ---- code + evidence ---- */
+
+  pre {
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    line-height: 1.55;
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+    margin: 0;
+    tab-size: 2;
+  }
+  .prose pre {
+    margin-top: 1.1rem;
+  }
+
+  .ev {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    box-shadow: var(--shadow);
+    margin-top: 1.25rem;
+  }
+  .ev-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ev-head h3 {
+    font-size: 1rem;
+    margin: 0;
+    flex: 1 1 14rem;
+  }
+  .ev-body {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .ev-body p {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+  }
+  .ev-body p.said {
+    font-size: 1.02rem;
+    color: var(--ink);
+    border-left: 2px solid var(--verified);
+    padding-left: 0.9rem;
+  }
+
+  /* ---- tables ---- */
+
+  .scroll {
+    overflow-x: auto;
+    margin-top: 1.5rem;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.82rem;
+  }
+  th,
+  td {
+    text-align: left;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  thead th {
+    font-family: var(--mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+  td.m {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    font-variant-numeric: tabular-nums;
+  }
+  td.n {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+  td em {
+    font-style: normal;
+    color: var(--ink-faint);
+  }
+  .gone {
+    color: var(--refuted);
+  }
+  .kept {
+    color: var(--verified);
+  }
+
+  /* ---- callouts ---- */
+
+  .flag {
+    margin-top: 1.5rem;
+    padding: 1.25rem 1.5rem;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--refuted);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .flag.warn {
+    border-left-color: var(--unverified);
+  }
+  .flag h3 {
+    margin: 0;
+    font-size: 1.1rem;
+  }
+  .flag p {
+    margin: 0;
+    color: var(--ink-soft);
+  }
+  .flag p.pin {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* ---- the resume loop ---- */
+
+  .loop {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 1px;
+    margin-top: 1.5rem;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .loop > div {
+    background: var(--surface);
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .loop h3 {
+    margin: 0;
+    font-size: 0.98rem;
+  }
+  .loop p {
+    margin: 0;
+    font-size: 0.86rem;
+    color: var(--ink-soft);
+  }
+  .loop .lbl {
+    font-family: var(--mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ---- footer ---- */
+
+  footer {
+    margin-top: 6rem;
+    padding-top: 2rem;
+    border-top: 2px solid var(--ink);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  footer p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+  }
+  footer code {
+    color: var(--ink);
+  }
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <div class="stamp">
+      <span class="eyebrow">Handoff · 14 Aug 2026</span>
+      <span class="eyebrow">Owner · src/rlm-poc/trellage</span>
+      <span class="eyebrow">Status · proposed, not implemented</span>
+    </div>
+    <h1>Drop the Pane</h1>
+    <p class="standfirst">
+      The RLM orchestrator types tasks into a terminal and reads the screen back. It does not have
+      to. Every harness it drives runs headless and returns structured JSON.
+    </p>
+  </header>
+
+  <div class="verdict">
+    <p>
+      <strong>Decision.</strong> Stop driving delegated harnesses through a Herdr-owned PTY. Run
+      them with <code>execFile</code> and <code>-p</code>, and read the result event. Delete the
+      drive loop, the screen classifier, and the Herdr backend. Keep the worktree isolation, the
+      catalog, the budget accounting, and the Langfuse spans.
+    </p>
+  </div>
+
+  <div class="ledger">
+    <div class="cut"><b>1,986</b><span>Lines deleted</span></div>
+    <div class="cut"><b>6 / 7</b><span>Failure classes gone</span></div>
+    <div class="cut"><b>10 → 1</b><span>Steps to first prompt</span></div>
+    <div class="keep"><b>8</b><span>New telemetry fields</span></div>
+    <div class="keep"><b>0</b><span>Herdr dependencies left</span></div>
+  </div>
+
+  <!-- ===================== 1 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">01</div>
+      <h2>Ten steps, or one</h2>
+      <p class="sub">
+        Everything on the left runs before the delegated agent sees a single word of the task.
+        Failure tags are the classes observed in the 22-profile sweep.
+      </p>
+    </div>
+
+    <div class="collapse">
+      <div class="lane">
+        <div class="lane-title"><span>Today · driven through a PTY</span><em>27% pass</em></div>
+        <div class="steps">
+          <div class="step" style="animation-delay: 0.02s">
+            <span class="i">01</span><span class="t">Herdr creates a pane</span><span></span>
+          </div>
+          <div class="step" style="animation-delay: 0.05s">
+            <span class="i">02</span><span class="t">Command is <em>typed</em> as keystrokes</span
+            ><span></span>
+          </div>
+          <div class="step bad" style="animation-delay: 0.08s">
+            <span class="i">03</span><span class="t">Poll 300 s for agent adoption</span
+            ><span class="fail">A</span>
+          </div>
+          <div class="step" style="animation-delay: 0.11s">
+            <span class="i">04</span><span class="t">Rename the agent, 10 retries</span
+            ><span></span>
+          </div>
+          <div class="step bad" style="animation-delay: 0.14s">
+            <span class="i">05</span><span class="t">Send empty keys until ready</span
+            ><span class="fail">E</span>
+          </div>
+          <div class="step bad" style="animation-delay: 0.17s">
+            <span class="i">06</span><span class="t">Clear startup dialogs by arrow key</span
+            ><span class="fail">B G</span>
+          </div>
+          <div class="step bad" style="animation-delay: 0.2s">
+            <span class="i">07</span><span class="t">Write task.md, prompt a pointer line</span
+            ><span class="fail">D</span>
+          </div>
+          <div class="step bad" style="animation-delay: 0.23s">
+            <span class="i">08</span><span class="t">Sample 3 identical 500 ms frames</span
+            ><span class="fail">D</span>
+          </div>
+          <div class="step bad" style="animation-delay: 0.26s">
+            <span class="i">09</span><span class="t">Regex-classify the TUI</span
+            ><span class="fail">C G</span>
+          </div>
+          <div class="step" style="animation-delay: 0.29s">
+            <span class="i">10</span><span class="t">Poll for result.md as proof of done</span
+            ><span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="lane">
+        <div class="lane-title"><span>Headless</span><em>one call</em></div>
+        <div class="one" style="animation-delay: 0.34s">
+          <pre>
+const { stdout } = await execFileAsync(
+  "cldx",
+  ["default", "-p", task,
+   "--output-format", "json",
+   "--permission-mode", "bypassPermissions",
+   "--session-id", sessionId],
+  { cwd: worktreePath,
+    timeout: timeoutMs,
+    maxBuffer: 64 * 1024 * 1024 },
+);
+const result = JSON.parse(stdout);</pre>
+          <p class="note">
+            Container mode is the same shape:<br />
+            <code>trellage --profile X --prompt "…"</code>
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 2 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">02</div>
+      <h2>The claim this overturns</h2>
+    </div>
+
+    <div class="body-col">
+      <div class="prose">
+        <p><span class="mark m-no">Refuted</span></p>
+        <p>
+          ADR 0011 states that container mode <em>cannot</em> be driven by pipes or
+          <code>execFile</code> at all, and that only the non-interactive subcommands run headless.
+          That is the premise the whole PTY design rests on.
+        </p>
+        <p>
+          The launcher itself disagrees. <code>/Users/smendenh/.local/bin/trellage</code>, lines
+          722-725, exempts prompt mode from its own TTY assert:
+        </p>
+        <pre>
+if [[ "$mode" != prompt &amp;&amp; "$mode" != stop &amp;&amp; "$mode" != doctor &amp;&amp; "$mode" != destroy \
+  &amp;&amp; "$mode" != memory-status &amp;&amp; "$mode" != memory-sync ]]; then
+  [[ -t 0 &amp;&amp; -t 1 ]] || fail 'an interactive terminal is required'
+fi</pre>
+        <p>
+          <code>trellage --profile X --prompt</code> is headless-legal. So is every native launcher.
+          ADR 0010's original judgement — Trellage is headless-feasible in one-shot
+          <code>-p</code> mode — was correct. ADR 0011 overturned it on a false premise.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 3 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">03</div>
+      <h2>Evidence log</h2>
+      <p class="sub">
+        Run on this machine, 14 August 2026. Commands and outputs verbatim. Everything set in
+        monospace came from a machine; everything in serif is a claim about it.
+      </p>
+    </div>
+
+    <div class="body-col">
+      <div>
+        <div class="ev">
+          <div class="ev-head">
+            <h3>Claude Code runs headless and streams</h3>
+            <span class="mark m-ok">Verified</span>
+          </div>
+          <div class="ev-body">
+            <pre>cldx -p "Reply with exactly: A" --output-format stream-json --verbose</pre>
+            <pre>
+{"is_error":false,"subtype":"success","result":"A",
+ "session_id":"cd2b91f5-8484-4cf2-9454-2b258b73de28",
+ "num_turns":1,"duration_ms":2204,"duration_api_ms":1405,"ttft_ms":1451,
+ "total_cost_usd":0.27919374999999996,
+ "usage":{"input_tokens":1240,"output_tokens":3,"cache_creation_input_tokens":43667},
+ "permission_denials":[],"terminal_reason":"completed","type":"result"}</pre>
+            <p>
+              One terminal <code>result</code> event closes the stream. The opening
+              <code>system/init</code> event carries <code>cwd</code>, <code>tools[]</code>,
+              <code>mcp_servers[]</code>, <code>model</code>, <code>permissionMode</code>,
+              <code>skills[]</code> and the harness version.
+            </p>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-head">
+            <h3>Claude Code has no ask-user channel headless</h3>
+            <span class="mark m-ok">Verified</span>
+          </div>
+          <div class="ev-body">
+            <p>
+              The <code>tools[]</code> array from that same init event lists 31 tools.
+              <strong>AskUserQuestion is not one of them.</strong> Claude Code cannot ask a question
+              in <code>-p</code> mode.
+            </p>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-head">
+            <h3>Copilot CLI says the same thing, in its own words</h3>
+            <span class="mark m-ok">Verified</span>
+          </div>
+          <div class="ev-body">
+            <pre>
+cpx awesome -p "Use the ask_user tool to ask me: what is my favorite color?
+Then reply with the answer." --allow-all-tools --output-format json</pre>
+            <p class="said">
+              “I don't have an <code>ask_user</code> tool available, and since I'm running
+              non-interactively, I can't pause to ask you a question and wait for a reply. There's
+              no way for me to learn your favorite color through this session.”
+            </p>
+            <p>It then called <code>task_complete</code> and exited <code>0</code>.</p>
+            <pre>
+{"type":"session.task_complete","data":{"summary":"…","success":true}}
+{"type":"result","sessionId":"538549e0-…","exitCode":0,
+ "usage":{"premiumRequests":1,"totalApiDurationMs":3570,"sessionDurationMs":4556,
+ "codeChanges":{"linesAdded":0,"linesRemoved":0,"filesModified":[]}}}</pre>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-head">
+            <h3>Both harnesses resume headless</h3>
+            <span class="mark m-ok">Verified</span>
+          </div>
+          <div class="ev-body">
+            <pre>
+cldx -p "What letter did you just reply with?" --resume cd2b91f5-… --output-format json
+  → "result": "A"
+
+cpx awesome --resume 538549e0-… -p "My favorite color is teal. Now reply with only my
+  favorite color." --allow-all-tools --output-format json
+  → "summary": "Teal",  premiumRequests: 2</pre>
+            <p>
+              The conversation carries across processes.
+              <strong>Headless is multi-turn.</strong> This is the mechanism the whole question
+              design in section 5 rests on.
+            </p>
+          </div>
+        </div>
+
+        <div class="ev">
+          <div class="ev-head">
+            <h3>Container mode is blocked by a Trellage defect, not by headless mode</h3>
+            <span class="mark m-no">Trellage-owned</span>
+          </div>
+          <div class="ev-body">
+            <p>
+              A successful image build is immediately followed by
+              <code>trellage: profile image remains missing or stale after automatic build</code>
+              (launcher line 2293). Reproduced twice. The check is mode-independent, so interactive
+              launches hit it too. Headless neither fixes nor causes it.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 4 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">04</div>
+      <h2>Mechanism for mechanism</h2>
+      <p class="sub">
+        Nothing in the left column is replaced by something equally fiddly. Most of it is replaced
+        by nothing at all.
+      </p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Today</th>
+            <th>Headless</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>result.md file contract</td>
+            <td class="m">the result event's <code>result</code> / <code>summary</code></td>
+          </tr>
+          <tr>
+            <td>task.md pointer, to dodge composer collapse</td>
+            <td class="m">-p "&lt;full task&gt;" — argv has no composer</td>
+          </tr>
+          <tr>
+            <td>Enter nudge, up to 3 presses</td>
+            <td class="gone">deleted — no composer exists</td>
+          </tr>
+          <tr>
+            <td>Quiescence, 3 frames of 500 ms</td>
+            <td class="gone">deleted — process exit is the signal</td>
+          </tr>
+          <tr>
+            <td>classifyScreen + keysToChoose on trust dialogs</td>
+            <td class="m">--permission-mode bypassPermissions</td>
+          </tr>
+          <tr>
+            <td>isLikelyQuestion regex</td>
+            <td class="gone">deleted — see section 05</td>
+          </tr>
+          <tr>
+            <td>pollForAdoption, up to 300 s</td>
+            <td class="gone">deleted — you hold the PID</td>
+          </tr>
+          <tr>
+            <td>Close a Herdr tab to kill</td>
+            <td class="m">child.kill() / AbortSignal</td>
+          </tr>
+          <tr>
+            <td>Wall-clock deadline inside the loop</td>
+            <td class="m">execFile's own timeout option</td>
+          </tr>
+          <tr>
+            <td>Herdr lifecycle states</td>
+            <td class="m">process exit code</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="body-col" style="margin-top: 2.5rem">
+      <div class="prose">
+        <h3>Telemetry the PTY path cannot produce at all</h3>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Claude</th>
+            <th>Copilot</th>
+            <th>Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Cost</td>
+            <td class="m">total_cost_usd</td>
+            <td class="m">usage.premiumRequests</td>
+            <td>Per-call cost on the span</td>
+          </tr>
+          <tr>
+            <td>Outcome</td>
+            <td class="m">is_error, subtype</td>
+            <td class="m">task_complete.success</td>
+            <td>Real success signal</td>
+          </tr>
+          <tr>
+            <td>Blocked tools</td>
+            <td class="m">permission_denials[]</td>
+            <td><em>—</em></td>
+            <td>Names the exact tool</td>
+          </tr>
+          <tr>
+            <td>Turns</td>
+            <td class="m">num_turns</td>
+            <td class="m">turnId</td>
+            <td>Span attribute</td>
+          </tr>
+          <tr>
+            <td>Duration</td>
+            <td class="m">duration_ms, ttft_ms</td>
+            <td class="m">sessionDurationMs</td>
+            <td>Span attribute</td>
+          </tr>
+          <tr>
+            <td>Tokens</td>
+            <td class="m">usage, modelUsage</td>
+            <td class="m">outputTokens</td>
+            <td>Cost attribution</td>
+          </tr>
+          <tr>
+            <td><strong>Files changed</strong></td>
+            <td><em>—</em></td>
+            <td class="m">codeChanges.filesModified[]</td>
+            <td>Verify what it actually touched</td>
+          </tr>
+          <tr>
+            <td>Session</td>
+            <td class="m">session_id</td>
+            <td class="m">sessionId</td>
+            <td>Resume handle</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== 5 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">05</div>
+      <h2>How the orchestrator answers questions</h2>
+      <p class="sub">
+        The part that needs the most care. It is simpler than expected, because of one finding.
+      </p>
+    </div>
+
+    <div class="body-col">
+      <div class="prose">
+        <p>
+          <strong>Neither harness can ask a question in headless mode.</strong> Claude has no
+          <code>AskUserQuestion</code>; Copilot has no <code>ask_user</code>. Both verified above.
+        </p>
+        <p>
+          So the design problem is not “detect a question and answer it”. There is no question to
+          detect. The correct framing is:
+        </p>
+        <p style="font-size: 1.15rem; border-left: 2px solid var(--verified); padding-left: 1rem">
+          The run ends. Work out whether it achieved the goal. If it did not, work out what it
+          lacked, supply that, and resume the same session.
+        </p>
+        <p>
+          This is a better problem than the one we have today. The signal is a structured field, not
+          a terminal screen.
+        </p>
+      </div>
+    </div>
+
+    <div class="flag">
+      <span class="mark m-no" style="align-self: flex-start">Highest risk</span>
+      <h3>“success: true” does not mean the goal was met</h3>
+      <p class="pin">The harness reports “I completed my turn”, not “I achieved your goal”.</p>
+      <p>
+        The Copilot run in section 03 returned <code>success: true</code> alongside a summary saying
+        it could not do the thing. Claude behaves the same way: <code>subtype: "success"</code> with
+        <code>is_error: false</code> on a turn that gave up.
+        <strong>Any classifier that trusts the boolean alone is wrong.</strong> Test this first, and
+        test it hardest.
+      </p>
+    </div>
+
+    <div class="body-col" style="margin-top: 2.5rem">
+      <div class="prose"><h3>Three tiers</h3></div>
+    </div>
+
+    <div class="loop">
+      <div>
+        <span class="lbl">Tier 1 · always</span>
+        <h3>Front-load the brief</h3>
+        <p>
+          Put everything the delegate could need into the task before launch, and add one rule:
+          <em
+            >you cannot ask questions; if you lack something, say so in your summary prefixed
+            <code>NEEDS:</code> and finish your turn.</em
+          >
+          This turns an implicit failure into a greppable one. It costs nothing.
+        </p>
+      </div>
+      <div>
+        <span class="lbl">Tier 2 · build this</span>
+        <h3>Classify, answer, resume</h3>
+        <p>
+          Terminate → read the structured outcome → diagnose what it lacked → the orchestrator
+          answers → resume the same <code>sessionId</code>. Each attempt spends one unit of the
+          <strong>existing shared call budget</strong>, so the loop is bounded by the same budget
+          that bounds recursion.
+        </p>
+      </div>
+      <div>
+        <span class="lbl">Tier 3 · defer</span>
+        <h3>Bidirectional control</h3>
+        <p>
+          Claude has <code>--input-format stream-json</code> — a real in-turn channel over stdin, no
+          PTY. <span class="mark m-un">Unverified</span> Copilot has no equivalent. Build it only if
+          Tier 2 proves insufficient in practice.
+        </p>
+      </div>
+    </div>
+
+    <div class="body-col" style="margin-top: 2.5rem">
+      <div class="prose">
+        <h3>The Tier 2 loop</h3>
+        <pre>
+delegate(profile, brief, budget):
+  sessionId = uuid();  attempt = 1;  history = []
+
+  loop:
+    budget.consume()                    # a resume costs the same as a call
+    raw     = run(profile, prompt, sessionId, resume = attempt > 1)
+    outcome = classifyStructured(raw)   # exit code + terminal event ONLY — pure
+
+    if outcome is COMPLETED_CLEAN:   return success(raw)
+    if outcome is PROCESS_FAILURE:   return failure(outcome, raw)
+    if attempt >= maxAttempts:       return failure(TURN_LIMIT, history)
+
+    need = diagnose(raw)                # reads NEEDS:, then the summary text
+    if need is NONE:                 return failure(UNCLASSIFIABLE, history)
+
+    prompt  = orchestratorAnswer(need)  # reuse createTrellageAnswerer unchanged
+    attempt += 1</pre>
+        <p>
+          <code>classifyStructured</code> is pure and fully unit-testable against recorded JSONL.
+          <code>diagnose</code> is the only place a model is involved, and it reads a structured
+          summary paragraph — never a terminal screen. When the summary carries a
+          <code>NEEDS:</code> prefix, <code>diagnose</code> makes <strong>zero</strong> model calls.
+        </p>
+
+        <h3>What we give up, honestly</h3>
+        <p>
+          Today <code>handleBlocked</code> catches a TUI question and answers it mid-run. But look
+          at what that answerer is: it spins a <em>fresh Copilot session</em> grounded in a snapshot
+          of the root conversation and answers on the root's behalf. It is a model answering a
+          model. It was never the operator.
+        </p>
+        <p>
+          So we lose an in-turn model round trip. We do not lose a human decision. And
+          <code>--resume</code> recovers the capability across turns instead of within one.
+        </p>
+      </div>
+    </div>
+
+    <div class="body-col" style="margin-top: 2.5rem">
+      <div class="prose"><h3>Classification contract</h3></div>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Harness</th>
+            <th>Condition</th>
+            <th>Outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="m">claude</td>
+            <td class="m">exit 0, is_error false, subtype "success"</td>
+            <td>COMPLETED_CLEAN → then diagnose</td>
+          </tr>
+          <tr>
+            <td class="m">claude</td>
+            <td class="m">subtype "error_max_turns"</td>
+            <td>TURN_LIMIT</td>
+          </tr>
+          <tr>
+            <td class="m">claude</td>
+            <td class="m">subtype "error_during_execution"</td>
+            <td>HARNESS_ERROR</td>
+          </tr>
+          <tr>
+            <td class="m">claude</td>
+            <td class="m">permission_denials.length &gt; 0</td>
+            <td>BLOCKED_ON_PERMISSION — names the tool</td>
+          </tr>
+          <tr>
+            <td class="m">copilot</td>
+            <td class="m">exit 0, task_complete.success true</td>
+            <td>COMPLETED_CLEAN → then diagnose</td>
+          </tr>
+          <tr>
+            <td class="m">copilot</td>
+            <td class="m">exit 0, task_complete.success false</td>
+            <td>SELF_REPORTED_FAILURE — summary says why</td>
+          </tr>
+          <tr>
+            <td class="m">copilot</td>
+            <td class="m">no task_complete before result</td>
+            <td>ABNORMAL_END</td>
+          </tr>
+          <tr>
+            <td class="m">both</td>
+            <td class="m">exit non-zero</td>
+            <td>PROCESS_FAILURE</td>
+          </tr>
+          <tr>
+            <td class="m">both</td>
+            <td class="m">execFile timeout fired</td>
+            <td>TIMEOUT</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== 6 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">06</div>
+      <h2>Test plan</h2>
+      <p class="sub">
+        The headless path is far more testable than the PTY path, because the input is a recorded
+        JSON stream instead of a live terminal.
+      </p>
+    </div>
+
+    <div class="body-col">
+      <div class="prose">
+        <h3>Fixtures first</h3>
+        <p>
+          Capture real JSONL from every reachable launcher into
+          <code>tests/rlm-poc/trellage/fixtures/headless/</code>, one file per scenario per harness.
+          These replace the recorded-screen fixtures that <code>screen.test.ts</code> uses today.
+        </p>
+
+        <h3>The priority test</h3>
+        <p>
+          Feed <code>diagnose</code> the verbatim Copilot fixture from section 03 —
+          <code>success: true</code> with a summary saying the goal was not achieved. Assert the
+          diagnosis is <code>needs-information</code>, <strong>not</strong> <code>achieved</code>.
+          If that test does not exist, the migration is not done.
+        </p>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Fixture</th>
+            <th>Expected diagnosis</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="m">NEEDS: the database connection string</td>
+            <td>needs-information, need extracted, <strong>zero model calls</strong></td>
+          </tr>
+          <tr>
+            <td class="m">success true, summary says goal met</td>
+            <td>achieved</td>
+          </tr>
+          <tr>
+            <td class="m">success true, summary says "I could not find X"</td>
+            <td>needs-information</td>
+          </tr>
+          <tr>
+            <td class="m">success true, summary says "I chose not to, because Y"</td>
+            <td>refused</td>
+          </tr>
+          <tr>
+            <td class="m">success false, with a summary</td>
+            <td>blocked</td>
+          </tr>
+          <tr>
+            <td class="m">empty summary</td>
+            <td>blocked — obstacle "no summary produced"</td>
+          </tr>
+          <tr>
+            <td class="m">summary is only a file path</td>
+            <td>achieved if the file exists in the worktree, else blocked</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="body-col" style="margin-top: 2.5rem">
+      <div class="prose">
+        <h3>Beyond that</h3>
+        <ul>
+          <li>
+            <strong>classifyStructured</strong> — one test per contract row, plus malformed JSON on
+            one line, no output at all, truncated stream, and interleaved stderr. None may throw.
+          </li>
+          <li>
+            <strong>Resume loop</strong> — same sessionId across attempts; no
+            <code>--resume</code> on attempt 1; exactly one budget unit per attempt; stops at
+            maxAttempts; never resumes after PROCESS_FAILURE; the repeated-question guard still
+            fires.
+          </li>
+          <li>
+            <strong>Contract tests, live</strong> — one per launcher, run on demand. They catch
+            harness upgrades. <code>cldx</code> and <code>cpx</code> pass today; five others are
+            unverified.
+          </li>
+          <li>
+            <strong>Integration</strong> — a delegation that lacks information resumes once then
+            completes; timeout kills the child; abort leaves no orphan process.
+          </li>
+          <li>
+            <strong>The real check</strong> — re-run the 22-profile sweep. Classes A, B, C, D, E and
+            G should disappear; class F is a prompt problem and stays. If the pass rate does not
+            move well above 27%, this migration has not delivered, and the result must be reported
+            as such.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 7 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">07</div>
+      <h2>What goes, what stays</h2>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Lines</th>
+            <th>Disposition</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="m">trellage/driveLoop.ts</td>
+            <td class="n">465</td>
+            <td class="gone">delete</td>
+          </tr>
+          <tr>
+            <td class="m">trellage/herdrBackend.ts</td>
+            <td class="n">236</td>
+            <td class="gone">delete</td>
+          </tr>
+          <tr>
+            <td class="m">trellage/screen.ts</td>
+            <td class="n">165</td>
+            <td class="gone">delete</td>
+          </tr>
+          <tr>
+            <td class="m">their three test files</td>
+            <td class="n">1,120</td>
+            <td class="gone">delete</td>
+          </tr>
+          <tr>
+            <td class="m">trellage/backend.ts</td>
+            <td class="n">55</td>
+            <td>shrink — keep the seam, swap PTY for process</td>
+          </tr>
+          <tr>
+            <td class="m">trellage/result.ts</td>
+            <td class="n">118</td>
+            <td>shrink — result event replaces result.md</td>
+          </tr>
+          <tr>
+            <td class="m">trellage/tool.ts</td>
+            <td class="n">360</td>
+            <td>drops the Herdr import; logic stays</td>
+          </tr>
+          <tr>
+            <td class="m">trellage/integration.ts</td>
+            <td class="n">330</td>
+            <td>drops the isHerdrEnvironment gate; answerer stays</td>
+          </tr>
+          <tr>
+            <td class="m">trellage/catalog.ts</td>
+            <td class="n">251</td>
+            <td class="kept">untouched — already uses execFile</td>
+          </tr>
+          <tr>
+            <td class="m">trellage/worktrees.ts</td>
+            <td class="n">228</td>
+            <td class="kept">untouched — isolation is orthogonal</td>
+          </tr>
+          <tr>
+            <td class="m">herdr/scope.ts, socket.ts, client.ts</td>
+            <td class="n">949</td>
+            <td class="kept">kept — submind-poc still uses them</td>
+          </tr>
+          <tr>
+            <td class="m">+ per-harness result adapter</td>
+            <td class="n">new</td>
+            <td>pure parsing of a versioned JSON contract</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="body-col" style="margin-top: 2rem">
+      <div class="prose">
+        <p>
+          <strong>Keep the backend seam.</strong> It is what makes the swap contained and the new
+          path testable without spawning real harnesses. Herdr keeps the job ADR 0010 scoped for it:
+          human-attachable, multi-turn <code>mastermind-submind</code> sessions.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 8 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">08</div>
+      <h2>Migration, in order</h2>
+      <p class="sub">
+        Each phase leaves the tree green and shippable. Do not delete before phase 5 — the old path
+        is the control group.
+      </p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Phase</th>
+            <th>Gate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="n">1</td>
+            <td>Add the execFile runner behind the seam, flagged off</td>
+            <td>Nothing deleted</td>
+          </tr>
+          <tr>
+            <td class="n">2</td>
+            <td>Fixtures, then classifyStructured, then diagnose</td>
+            <td>All unit-tested, nothing wired</td>
+          </tr>
+          <tr>
+            <td class="n">3</td>
+            <td>Wire the resume loop</td>
+            <td>Budget accounting from the start</td>
+          </tr>
+          <tr>
+            <td class="n">4</td>
+            <td>Switch the default to the headless runner</td>
+            <td>Suite ≥ 219/220 baseline</td>
+          </tr>
+          <tr>
+            <td class="n">5</td>
+            <td>Re-run the 22-profile sweep</td>
+            <td><strong>Report the real number</strong></td>
+          </tr>
+          <tr>
+            <td class="n">6</td>
+            <td>Delete driveLoop, screen, herdrBackend + tests</td>
+            <td>Only after phase 5 shows the gain</td>
+          </tr>
+          <tr>
+            <td class="n">7</td>
+            <td>Amend ADR 0011</td>
+            <td>Correct the false premise</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== 9 ===================== -->
+  <section>
+    <div class="sec-head">
+      <div class="num">09</div>
+      <h2>What is not verified</h2>
+      <p class="sub">Stated plainly, because the argument above is only as good as its evidence.</p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Impact if wrong</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="m">cdx, grx, jcx, prx, omp headless behaviour</td>
+            <td>Those profiles stay broken. Five contract tests will tell you.</td>
+          </tr>
+          <tr>
+            <td class="m">trellage --profile X --prompt, end to end</td>
+            <td>Container profiles stay blocked — by the image defect, not by this change.</td>
+          </tr>
+          <tr>
+            <td class="m">Claude --input-format stream-json</td>
+            <td>Only affects Tier 3, which is deferred.</td>
+          </tr>
+          <tr>
+            <td class="m">Claude --json-schema structured output</td>
+            <td>
+              Would let a delegate return a typed RlmWorkerReport directly. Worth one experiment.
+            </td>
+          </tr>
+          <tr>
+            <td class="m">Claude --max-budget-usd</td>
+            <td>Would give a hard dollar cap per delegated call. Worth one experiment.</td>
+          </tr>
+          <tr>
+            <td class="m">ARG_MAX on a very long brief</td>
+            <td>
+              Two candidate fixes, both untested: pipe on stdin, or keep task.md for oversized
+              briefs.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flag warn">
+      <span class="mark m-un" style="align-self: flex-start">Accepted loss</span>
+      <h3>One capability goes: typing into a running turn</h3>
+      <p>
+        <em>Watching</em> is not lost — <code>--output-format stream-json</code> emits every
+        assistant message and tool call as it happens. Tail the file. What goes is steering a turn
+        that is already in flight. When you genuinely need that, launch that one profile in a
+        terminal by hand. The orchestrator does not need to own a PTY so that you can occasionally
+        rescue a run.
+      </p>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>PTY</th>
+            <th>Headless + stream-json</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>See progress live</td>
+            <td>yes</td>
+            <td class="kept">yes</td>
+          </tr>
+          <tr>
+            <td>Read the final result</td>
+            <td>scrape a screen</td>
+            <td class="kept">structured field</td>
+          </tr>
+          <tr>
+            <td>Know if it failed</td>
+            <td>guess</td>
+            <td class="kept">is_error / success</td>
+          </tr>
+          <tr>
+            <td>Know the cost</td>
+            <td class="gone">no</td>
+            <td class="kept">total_cost_usd</td>
+          </tr>
+          <tr>
+            <td>Know which files changed</td>
+            <td class="gone">no</td>
+            <td class="kept">codeChanges.filesModified</td>
+          </tr>
+          <tr>
+            <td>Send a follow-up turn</td>
+            <td>type in the pane</td>
+            <td class="kept">--resume</td>
+          </tr>
+          <tr>
+            <td><strong>Type into a running turn</strong></td>
+            <td class="kept"><strong>yes</strong></td>
+            <td class="gone"><strong>no</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <span class="eyebrow">Companion documents</span>
+    <p>
+      <code>RLM_HEADLESS_DELEGATION_HANDOFF.md</code> — the full handoff, including the complete
+      test plan, every acceptance criterion, and the failure-class mapping.
+    </p>
+    <p>
+      <code>RLM_D0_CAPABILITY_HANDOFF.md</code> — the separate proposal to give the d0 root Submind
+      read-only <code>view</code> and <code>glob</code>, while keeping the repository write ban.
+    </p>
+    <p>
+      <code>examples/orchestration-comparison.html</code> — the RLM against Claude workflows and
+      Copilot fleet.
+    </p>
+  </footer>
+</div>
