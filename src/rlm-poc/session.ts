@@ -6,6 +6,11 @@ import type {
   SessionEvent,
 } from "@github/copilot-sdk";
 import { isAbsolute, relative, resolve } from "node:path";
+import type {
+  RlmDependencyReport,
+  RlmRunBrief,
+  RlmWorkerReport,
+} from "../generated/baml_client/types.js";
 import {
   DEFAULT_RLM_MAX_TOTAL_CALLS,
   claimRlmExecutionBudget,
@@ -34,6 +39,7 @@ import {
   type PreparedRlmProfileSkills,
 } from "./profileSkills.js";
 import { withRlmSpan } from "./telemetry.js";
+import type { RlmWorkerContract } from "./workerContract.js";
 
 export const DEFAULT_RLM_SEND_TIMEOUT_MS = 5 * 60_000;
 
@@ -104,12 +110,14 @@ export type RlmSessionReference = {
   current?: RlmSession;
   /** Explicit application/profile instructions, excluding the SDK's internal harness prompt. */
   instructions?: string;
+  /** Original root user request, retained even while the active turn is not yet persisted. */
+  initialPrompt?: string;
 };
 
 export type RlmToolFactory = (
   depthRemaining: number,
-  ownerSessionReference: RlmSessionReference,
   allowedProfiles?: readonly string[],
+  parentCallId?: string,
 ) => unknown;
 
 /** SDK permission handler, wrapped for profiles with prepared non-repository filesystem access. */
@@ -133,6 +141,15 @@ export type ExecuteRlmOptions = {
   workingDirectory?: string;
   /** Canonical model decision already validated against the run's immutable catalog snapshot. */
   modelDecision?: RlmModelDecision;
+  /** Run-owned identity and selected context for typed general Submind calls. */
+  runId?: string;
+  callId?: string;
+  callNumber?: number;
+  stateRevision?: number;
+  parentCallId?: string;
+  runBrief?: RlmRunBrief;
+  dependencies?: readonly RlmDependencyReport[];
+  workerContract?: RlmWorkerContract;
   /** Builds the `rlm` tool to register on the nested session, at the given remaining depth. */
   buildNestedTool: RlmToolFactory;
   /**
@@ -203,6 +220,14 @@ export async function executeRlm(options: ExecuteRlmOptions): Promise<RlmCallRes
       model: modelDecision.model,
       prompt: args.prompt,
       ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
+      ...(options.runId ? { runId: options.runId } : {}),
+      ...(options.callId ? { callId: options.callId } : {}),
+      ...(options.callNumber ? { callNumber: options.callNumber } : {}),
+      ...(options.stateRevision !== undefined ? { stateRevision: options.stateRevision } : {}),
+      ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
+      ...(options.dependencies?.length
+        ? { dependencyCallIds: options.dependencies.map(({ callId }) => callId) }
+        : {}),
       depthRemaining,
       maxDepth,
       budget: snapshotRlmExecutionBudget(executionBudget),
@@ -237,9 +262,6 @@ export async function executeRlm(options: ExecuteRlmOptions): Promise<RlmCallRes
       let unsubscribe: (() => void) | undefined;
       let unsubscribeSkillTracking: (() => void) | undefined;
       const invokedSkillNames = new Set<string>();
-      const childSessionReference: RlmSessionReference = {
-        instructions: profile.systemMessagePrompt,
-      };
       try {
         const skillDirectories = collectSkillDirectories(profile, preparedSkills);
         const skillPolicy = await prepareRlmSkillPolicy(client, {
@@ -259,13 +281,11 @@ export async function executeRlm(options: ExecuteRlmOptions): Promise<RlmCallRes
             profile,
             options,
             childDepthRemaining,
-            childSessionReference,
             preparedSkills,
             skillPolicy,
             claimedBudget,
           ),
         );
-        childSessionReference.current = session;
         await assertRlmSessionSkillPolicy(session, skillPolicy);
         unsubscribeSkillTracking = session.on?.((event) => {
           if (event.type === "skill.invoked") {
@@ -279,19 +299,42 @@ export async function executeRlm(options: ExecuteRlmOptions): Promise<RlmCallRes
             profile: profile.name,
             model: modelDecision.model,
           }) ?? undefined;
-        const response = await session.sendAndWait({ prompt: args.prompt }, sendTimeoutMs);
+        const workerPrompt =
+          options.workerContract && options.runBrief
+            ? await options.workerContract.renderPrompt({
+                brief: options.runBrief,
+                delegatedTask: args.prompt,
+                dependencies: [...(options.dependencies ?? [])],
+              })
+            : args.prompt;
+        const response = await session.sendAndWait({ prompt: workerPrompt }, sendTimeoutMs);
         assertRequiredSkillInvoked(profile, invokedSkillNames);
-        const text = response?.data?.content ?? "";
+        const rawText = response?.data?.content ?? "";
+        const report: RlmWorkerReport | undefined = options.workerContract
+          ? options.workerContract.parseResponse(rawText)
+          : undefined;
+        const text = report ? report.summary.trim() : rawText;
         const result: RlmCallResult = {
           text,
           depthUsed,
           model: modelDecision.model,
           modelRationale: modelDecision.rationale,
           budget: snapshotRlmExecutionBudget(executionBudget),
+          ...(options.runId ? { runId: options.runId } : {}),
+          ...(options.callId ? { callId: options.callId } : {}),
+          ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
+          ...(options.dependencies?.length
+            ? { dependencyCallIds: options.dependencies.map(({ callId }) => callId) }
+            : {}),
+          ...(report ? { report } : {}),
           ...(options.userInputExchanges?.length
             ? { userInputs: [...options.userInputExchanges] }
             : {}),
         };
+        span.setAttribute("weavekit.rlm.execution_status", "succeeded");
+        if (report) {
+          span.setAttribute("weavekit.rlm.worker_outcome", report.outcome);
+        }
         recordOutput(span, result);
         return result;
       } catch (error) {
@@ -345,7 +388,6 @@ function buildSessionConfig(
   profile: RlmProfile,
   options: ExecuteRlmOptions,
   childDepthRemaining: number,
-  childSessionReference: RlmSessionReference,
   preparedSkills: PreparedRlmProfileSkills | undefined,
   skillPolicy: RlmSkillPolicy,
   budget: RlmExecutionBudgetSnapshot,
@@ -355,6 +397,10 @@ function buildSessionConfig(
   const workerEnvelope = buildRlmWorkerExecutionEnvelope(profile, {
     remainingDepth: childDepthRemaining,
     budget,
+    ...(options.runId ? { runId: options.runId } : {}),
+    ...(options.callId ? { callId: options.callId } : {}),
+    ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
+    dependencyCallIds: options.dependencies?.map(({ callId }) => callId) ?? [],
   });
   return {
     model: options.modelDecision?.model ?? profile.model,
@@ -365,6 +411,7 @@ function buildSessionConfig(
       : {}),
     enableConfigDiscovery: true,
     enableSkills: skillDirectories.length > 0,
+    memory: { enabled: false },
     systemMessage: {
       mode: "append",
       content: `${profile.systemMessagePrompt}\n\n${workerEnvelope}`,
@@ -377,13 +424,13 @@ function buildSessionConfig(
       : {}),
     ...(workingDirectory ? { workingDirectory } : {}),
     tools: [
-      ...(profile.allowedChildProfiles?.length === 0
+      ...(childDepthRemaining <= 0 || profile.allowedChildProfiles?.length === 0
         ? []
         : [
             options.buildNestedTool(
               childDepthRemaining,
-              childSessionReference,
               profile.allowedChildProfiles,
+              options.callId,
             ),
           ]),
       ...(options.additionalTools ?? []),
@@ -392,6 +439,7 @@ function buildSessionConfig(
       profile,
       preparedSkills,
       options.onPermissionRequest,
+      options.workingDirectory ?? process.cwd(),
     ),
     ...(options.onUserInputRequest ? { onUserInputRequest: options.onUserInputRequest } : {}),
     streaming: options.enableStreaming ?? true,
@@ -402,8 +450,13 @@ export function createRlmProfilePermissionHandler(
   profile: RlmProfile,
   preparedSkills: PreparedRlmProfileSkills | undefined,
   fallback: PermissionHandler,
+  repositoryRoot?: string,
 ): PermissionHandler {
-  if (!profile.preparedFilesystemAccess) return fallback;
+  if (!profile.preparedFilesystemAccess) {
+    return profile.writableSubpaths?.length
+      ? createDestinationScopedPermissionHandler(profile, fallback, repositoryRoot ?? process.cwd())
+      : fallback;
+  }
   if (!preparedSkills?.workingDirectory) {
     throw new RlmSkillPolicyError(
       `RLM profile "${profile.name}" requires a prepared working directory for filesystem access.`,
@@ -447,6 +500,65 @@ export function createRlmProfilePermissionHandler(
   };
 }
 
+/**
+ * Permission handler for a profile that must read the repository to do its job but must not change
+ * it. Reads stay unrestricted; writes are confined to the profile's own output directories, so a
+ * reviewer cannot modify the evidence it judges. Shell obeys the same rule, otherwise `bash` would
+ * be a bypass around it.
+ */
+function createDestinationScopedPermissionHandler(
+  profile: RlmProfile,
+  fallback: PermissionHandler,
+  repositoryRoot: string,
+): PermissionHandler {
+  const subpaths = profile.writableSubpaths ?? [];
+  const writableRoots = subpaths.map((subpath) => resolve(repositoryRoot, subpath));
+  const destinations = subpaths.join(", ");
+  const reject = (feedback: string): PermissionRequestResult => ({ kind: "reject", feedback });
+
+  return (request, invocation) => {
+    switch (request.kind) {
+      case "write":
+        return pathWithinRoots(request.fileName, writableRoots)
+          ? { kind: "approve-once" }
+          : reject(`This profile may write only inside ${destinations}; write your output there.`);
+      case "shell":
+        return approveDestinationScopedShell(request, writableRoots, destinations, reject);
+      case "mcp":
+        return request.readOnly
+          ? fallback(request, invocation)
+          : reject("This profile may invoke only read-only MCP tools.");
+      case "hook":
+      case "extension-management":
+      case "extension-permission-access":
+        return reject("This profile cannot approve capability-changing operations.");
+      case "read":
+      case "url":
+      case "memory":
+      case "custom-tool":
+        return fallback(request, invocation);
+    }
+  };
+}
+
+function approveDestinationScopedShell(
+  request: Extract<PermissionRequest, { kind: "shell" }>,
+  writableRoots: readonly string[],
+  destinations: string,
+  reject: (feedback: string) => PermissionRequestResult,
+): PermissionRequestResult {
+  if (request.requestSandboxBypass || request.commands.length === 0) {
+    return reject("Sandbox bypass and unparsed shell commands are prohibited.");
+  }
+  if (!request.hasWriteFileRedirection && request.commands.every((command) => command.readOnly)) {
+    return { kind: "approve-once" };
+  }
+  return request.possiblePaths.length > 0 &&
+    request.possiblePaths.every((path) => pathWithinRoots(path, writableRoots))
+    ? { kind: "approve-once" }
+    : reject(`Shell commands that write must target ${destinations}; reads are unrestricted.`);
+}
+
 function approvePreparedShell(
   request: Extract<PermissionRequest, { kind: "shell" }>,
   profile: RlmProfile,
@@ -487,6 +599,7 @@ function assertNoWriteProfileWorkspace(
   if (
     !profile.repositoryWritePermission &&
     profile.availableTools?.includes("bash") &&
+    !profile.writableSubpaths?.length &&
     (!preparedSkills?.workingDirectory || !profile.preparedFilesystemAccess)
   ) {
     throw new RlmSkillPolicyError(
@@ -507,6 +620,10 @@ export function buildRlmWorkerExecutionEnvelope(
   context: {
     remainingDepth: number;
     budget: RlmExecutionBudgetSnapshot;
+    runId?: string;
+    callId?: string;
+    parentCallId?: string;
+    dependencyCallIds?: readonly string[];
   },
 ): string {
   const allowedChildren = profile.allowedChildProfiles?.length
@@ -523,6 +640,10 @@ export function buildRlmWorkerExecutionEnvelope(
     `Remaining recursion depth: ${context.remainingDepth}`,
     `Remaining call budget: ${context.budget.remainingCalls}/${context.budget.maxCalls}`,
     `Allowed child profiles: ${allowedChildren}`,
+    ...(context.runId ? [`Run ID: ${context.runId}`] : []),
+    ...(context.callId ? [`Call ID: ${context.callId}`] : []),
+    ...(context.parentCallId ? [`Parent call ID: ${context.parentCallId}`] : []),
+    `Dependency call IDs: ${context.dependencyCallIds?.join(", ") || "none"}`,
     "",
     "Own and complete the bounded task according to this authority. You may recursively delegate " +
       "only narrower work to the allowed child profiles, but you remain accountable for the " +

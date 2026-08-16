@@ -34,7 +34,7 @@ describe("Mastermind execution attachment", () => {
     expect(run).toHaveBeenCalledWith("herdr", ["agent", "attach", "mm-43806f78fe214f81b2-a4"]);
   });
 
-  it("fails clearly when no execution or agent handle exists", async () => {
+  it("fails clearly when no execution or handle exists", async () => {
     await expect(
       attachMastermindExecution({
         selector: "UNKNOWN-1",
@@ -50,7 +50,51 @@ describe("Mastermind execution attachment", () => {
         herdrEnv: "1",
         run: vi.fn(),
       }),
+    ).rejects.toThrow("has no executor handle");
+    await expect(
+      attachMastermindExecution({
+        selector: "ENG-5",
+        store: attachmentStore({
+          executorKind: ExecutorKind.HERDR_COPILOT,
+          executorHandle: {
+            executor: ExecutorKind.HERDR_COPILOT,
+            worktreePath: "/tmp/eng-5",
+          },
+        }),
+        herdrEnv: "1",
+        run: vi.fn(),
+      }),
     ).rejects.toThrow("has no Herdr agent handle");
+  });
+
+  it("reports the worktree and log for an RLM submind instead of calling herdr", async () => {
+    // The RLM submind is a detached child process with no Herdr agent. Calling `herdr agent focus`
+    // for it answered agent_not_found and failed the whole task.
+    const run = vi.fn();
+    const emitted: string[] = [];
+
+    const result = await attachMastermindExecution({
+      selector: "ENG-5",
+      store: attachmentStore({
+        executorKind: ExecutorKind.RLM_SUBMIND,
+        executorHandle: {
+          executor: ExecutorKind.RLM_SUBMIND,
+          worktreePath: "/tmp/eng-5",
+          pid: 55179,
+          logPath: "/tmp/eng-5/.weavekit/mastermind-rlm.log",
+        },
+      }),
+      herdrEnv: "1",
+      run,
+      emit: (message) => emitted.push(message),
+    });
+
+    expect(run).not.toHaveBeenCalled();
+    expect(result.ticketIdentifier).toBe("ENG-5");
+    const [message] = emitted;
+    expect(message).toContain("detached RLM submind process, not a Herdr agent");
+    expect(message).toContain("/tmp/eng-5/.weavekit/mastermind-rlm.log");
+    expect(message).toContain("/tmp/eng-5/.weavekit/mastermind-result.json");
   });
 });
 

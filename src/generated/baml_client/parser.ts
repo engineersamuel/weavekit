@@ -23,7 +23,7 @@ import { toBamlError } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
 import type { partial_types } from "./partial_types.js"
 import type * as types from "./types.js"
-import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, LinearTicketInput, MastermindAction, MastermindNextActionDecision, MastermindProjectPolicyInput, MastermindReviewDecisionContext, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PostImplementationReview, PostImplementationReviewDossier, PostImplementationReviewFinding, PostImplementationReviewVerdict, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, ProjectRepositoryMode, ProposedLinearTicketPatch, RawPersonaResult, RepositoryEvidenceType, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, ReviewEvidenceKind, ReviewOpenItemDisposition, ReviewOpenItemKind, ReviewOpenItemOwner, ReviewReadiness, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SelfImprovementFinding, SelfImprovementReport, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, SubmindTraceObservation, SubmindTraceSummary, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, TicketKind, TicketReviewDossier, TicketReviewEvidence, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
+import type {AdoptionTask, AggregateTemplateJudgment, ClarifyingQuestion, CorroborationReport, CouncilReport, CriterionScore, DeepResearchCompiledReport, DeepResearchConfig, DeepResearchEvidence, DeepResearchEvidenceMatrixEntry, DeepResearchFinding, DeepResearchPriorState, DeepResearchQuestion, DeepResearchReport, DeepResearchReportSource, EvidenceReference, FinalRecommendationReview, ImplementationReviewVerdict, LinearTicketInput, MastermindAction, MastermindNextActionDecision, MastermindProjectPolicyInput, MastermindReviewDecisionContext, ModeTemplatePolicy, NonApplicableLesson, Opportunity, OpportunityBundle, OpportunityCouncilReview, OpportunityScore, PersonaChoiceCandidate, PersonaCritique, PersonaCritiqueSummary, PersonaFailure, PersonaSelection, PersonaSelectionRequest, PlanArtifactSummary, PlanCriterionAssessment, PlanRequirementAssessment, PortfolioCoverageAssessment, PortfolioCoverageAudit, PortfolioCoverageClaim, PortfolioPlanDraft, PostImplementationReview, PostImplementationReviewDossier, PostImplementationReviewFinding, PostImplementationReviewVerdict, PracticeApplicabilityAssessment, ProjectApplicabilityMatrix, ProjectBrief, ProjectRepositoryMode, ProposedLinearTicketPatch, RawPersonaResult, RepositoryEvidenceType, ResearchIterationAssessment, ResearchQuestionCoverage, ResearchQuestionSet, ReviewEvidenceKind, ReviewOpenItemDisposition, ReviewOpenItemKind, ReviewOpenItemOwner, ReviewReadiness, RlmArtifactReference, RlmDependencyReport, RlmRunBrief, RlmVerificationOutcome, RlmVerificationResult, RlmWorkerOutcome, RlmWorkerReport, RoundAssessment, RouterHandoff, RouterRecommendation, RouterResult, RouterRoute, RouterRouteScore, RoutingDecision, SelfImprovementFinding, SelfImprovementReport, SourceAnalysis, SourcePractice, SourcePracticeDraft, SourcePracticeLedger, SourcePracticeLedgerDraft, SourceToProjectPairwiseJudgment, SourceToProjectPlanJudgment, SpecializedObligationAssessment, SubmindTraceObservation, SubmindTraceSummary, TemplateCandidate, TemplateExpansionCase, TemplateFixtureJudgment, TemplateOptimizationFixture, TicketKind, TicketReviewDossier, TicketReviewEvidence, TrellageTurnDiagnosis, TrellageTurnOutcome, VerificationAudit, VerificationOpportunity, VerificationOpportunityResearchReport, VerificationOpportunityReview, VerificationOpportunityScore, VerificationRecommendationReview, WorkflowNode, WorkflowPlan, WorkflowReplanPatch} from "./types.js"
 import type TypeBuilder from "./type_builder.js"
 
 export class LlmResponseParser {
@@ -278,6 +278,29 @@ export class LlmResponseParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as types.MastermindNextActionDecision
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  DiagnoseTrellageTurn(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.TrellageTurnDiagnosis {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "DiagnoseTrellageTurn",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.TrellageTurnDiagnosis
     } catch (error) {
       throw toBamlError(error);
     }
@@ -669,6 +692,29 @@ export class LlmResponseParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as types.VerificationOpportunityReview
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  RenderRlmWorkerTask(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): types.RlmWorkerReport {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RenderRlmWorkerTask",
+        llmResponse,
+        false,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as types.RlmWorkerReport
     } catch (error) {
       throw toBamlError(error);
     }
@@ -1117,6 +1163,29 @@ export class LlmStreamParser {
     }
   }
   
+  DiagnoseTrellageTurn(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.TrellageTurnDiagnosis {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "DiagnoseTrellageTurn",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.TrellageTurnDiagnosis
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
   DistillCorroboration(
       llmResponse: string,
       __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
@@ -1503,6 +1572,29 @@ export class LlmStreamParser {
         __baml_options__?.clientRegistry,
         __env__,
       ) as partial_types.VerificationOpportunityReview
+    } catch (error) {
+      throw toBamlError(error);
+    }
+  }
+  
+  RenderRlmWorkerTask(
+      llmResponse: string,
+      __baml_options__?: { tb?: TypeBuilder, clientRegistry?: ClientRegistry, env?: Record<string, string | undefined> }
+  ): partial_types.RlmWorkerReport {
+    try {
+      const __rawEnv__ = __baml_options__?.env ? { ...process.env, ...__baml_options__.env } : { ...process.env };
+      const __env__: Record<string, string> = Object.fromEntries(
+        Object.entries(__rawEnv__).filter(([_, value]) => value !== undefined) as [string, string][]
+      );
+      return this.runtime.parseLlmResponse(
+        "RenderRlmWorkerTask",
+        llmResponse,
+        true,
+        this.ctxManager.cloneContext(),
+        __baml_options__?.tb?.__tb(),
+        __baml_options__?.clientRegistry,
+        __env__,
+      ) as partial_types.RlmWorkerReport
     } catch (error) {
       throw toBamlError(error);
     }

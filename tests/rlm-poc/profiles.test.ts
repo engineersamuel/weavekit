@@ -30,7 +30,7 @@ describe("rlm profile registry", () => {
     expect(validation.authority).toBe(RlmProfileAuthority.Validation);
     expect(validation.repositoryWritePermission).toBe(false);
     expect(validation.allowedChildProfiles).toEqual(["validation"]);
-    expect(validation.model).toBe("gemini-3.6-flash");
+    expect(validation.model).toBe("gemini-3.7-flash");
     expect(general.availableTools).toBeUndefined();
     expect(general.skillBundle).toBeUndefined();
     expect(general.authority).toBe(RlmProfileAuthority.Implementation);
@@ -94,15 +94,19 @@ describe("rlm profile registry", () => {
     expect(media.allowedChildProfiles).toContain("research");
     expect(media.allowedChildProfiles).not.toContain("design");
     expect(media.model).toBe("claude-opus-5");
-    expect(review.availableTools).toEqual(["builtin:ask_user", "custom:rlm", "skill"]);
+    expect(review.availableTools).toContain("read_file");
+    expect(review.availableTools).toContain("bash");
+    expect(review.availableTools).toContain("create");
     expect(review.authority).toBe(RlmProfileAuthority.Review);
     expect(review.repositoryWritePermission).toBe(false);
-    expect(review.allowedChildProfiles).toEqual(["review"]);
+    expect(review.writableSubpaths).toEqual([".weavekit/reviews"]);
+    expect(review.allowedChildProfiles).toEqual(["review", "research"]);
     expect(review.purpose).toBe(RlmProfilePurpose.Review);
     expect(review.model).toBe("claude-opus-5");
     expect(review.reasoningEffort).toBe("medium");
-    expect(DEFAULT_RLM_PROFILE_MODEL).toBe("mai-code-1.1-flash");
+    expect(DEFAULT_RLM_PROFILE_MODEL).toBe("gpt-5.6-sol");
     expect(general.model).toBe(DEFAULT_RLM_PROFILE_MODEL);
+    expect(general.reasoningEffort).toBe("medium");
     for (const profile of defaultRlmProfileRegistry.list()) {
       expect(profile.systemMessagePrompt).toContain(
         "Native `ask_user` is available and encouraged",
@@ -123,11 +127,37 @@ describe("rlm profile registry", () => {
     ]);
   });
 
-  it("keeps the d0 root routing-only while retaining discovered MCP access", () => {
+  it("gives the d0 root read-only verification tools while retaining write restrictions", () => {
     expect(RLM_ROOT_CAPABILITY_MANIFEST.repositoryWritePermission).toBe(false);
     expect(RLM_ROOT_CAPABILITY_MANIFEST.allowedSkillNames).toEqual([]);
-    expect(createRlmRootAvailableTools(false)).toEqual(["custom:rlm", "mcp:*"]);
-    expect(createRlmRootAvailableTools(true)).toContain("custom:invoke_trellage");
+    expect(RLM_ROOT_CAPABILITY_MANIFEST.authority).toBe("routing-synthesis-verification");
+    expect(createRlmRootAvailableTools(false)).toEqual([
+      "custom:rlm",
+      "mcp:*",
+      "view",
+      "glob",
+      "grep",
+    ]);
+    expect(createRlmRootAvailableTools(true)).toEqual([
+      "custom:rlm",
+      "mcp:*",
+      "view",
+      "glob",
+      "grep",
+      "custom:invoke_trellage",
+    ]);
+    for (const deniedTool of [
+      "bash",
+      "write",
+      "create",
+      "str_replace_editor",
+      "shell",
+      "web_search",
+      "web_fetch",
+      "skill",
+    ]) {
+      expect(createRlmRootAvailableTools(true)).not.toContain(deniedTool);
+    }
   });
 
   it("throws RlmUnknownProfileError for an unresolvable profile name", () => {
@@ -142,12 +172,12 @@ describe("rlm profile registry", () => {
         "frontier-current": [],
         "balanced-workhorse": [],
         "coding-specialist": [],
-        "fast-efficient": ["gemini-3.6-flash"],
+        "fast-efficient": ["gemini-3.7-flash"],
       },
       models: [
         {
-          id: "gemini-3.6-flash",
-          name: "Gemini 3.6 Flash",
+          id: "gemini-3.7-flash",
+          name: "Gemini 3.7 Flash",
           description: "Fast tool model.",
           preview: false,
           capabilities: {
@@ -165,8 +195,8 @@ describe("rlm profile registry", () => {
         ({ profile }) => profile === RlmProfileName.Validation,
       ),
     ).toMatchObject({
-      fallbackModel: "gemini-3.6-flash",
-      candidates: [{ id: "gemini-3.6-flash", group: "fast-efficient" }],
+      fallbackModel: "gemini-3.7-flash",
+      candidates: [{ id: "gemini-3.7-flash", group: "fast-efficient" }],
     });
   });
 

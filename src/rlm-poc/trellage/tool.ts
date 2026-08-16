@@ -8,11 +8,12 @@ import {
 } from "../budget.js";
 import { RlmCallBudgetExceededError } from "../contracts.js";
 import type { CopilotModelCatalog } from "../modelCatalog.js";
-import { buildTrellageCommand, type TrellageCatalog } from "./catalog.js";
+import { buildTrellageCommand, supportsHeadlessTrellage, type TrellageCatalog } from "./catalog.js";
 import {
   TrellageOutcome,
   TrellageHarness,
   TrellageMode,
+  TrellageAutopilotOverrideError,
   TrellageEffortOverrideError,
   TrellageModelOverrideError,
   TrellageUnavailableError,
@@ -23,9 +24,12 @@ import {
   type TrellageInvokeResult,
 } from "./contracts.js";
 import { runTrellageDriveLoop, type TrellageAnswerer } from "./driveLoop.js";
+import { bamlTrellageTurnDiagnoser, type TrellageTurnDiagnoser } from "./diagnosis.js";
+import { runTrellageHeadlessLoop } from "./headlessLoop.js";
+import { nativeTrellageProcessRunner, type TrellageProcessRunner } from "./headlessRunner.js";
 import { createHerdrTrellageBackend } from "./herdrBackend.js";
 import { prepareResultLocation, resolveResultLocation, writeTaskDocument } from "./result.js";
-import { withTrellageSpan } from "./telemetry.js";
+import { withTrellageAttemptSpan, withTrellageSpan } from "./telemetry.js";
 import type { TrellageWorktreeRegistry } from "./worktrees.js";
 import type { TrellageBackend } from "./backend.js";
 
@@ -35,6 +39,8 @@ const UNHEALTHY_READINESS = new Set(["unhealthy", "broken", "error", "failed"]);
 export const DEFAULT_TRELLAGE_TIMEOUT_MS = 45 * 60_000;
 export const DEFAULT_TRELLAGE_MAX_TURNS = 12;
 export const DEFAULT_TRELLAGE_MAX_CONCURRENT = 2;
+/** Applied when `autopilot: true` is requested without an explicit `maxAutopilotContinues`. */
+export const DEFAULT_TRELLAGE_MAX_AUTOPILOT_CONTINUES = 25;
 
 export type CreateTrellageToolOptions = {
   runId: string;
@@ -58,6 +64,12 @@ export type CreateTrellageToolOptions = {
     worktreePath: string;
     agentPrefix: string;
   }) => Promise<{ backend: TrellageBackend; close: () => void }>;
+  /** Native process seam used only by verified headless launcher adapters. */
+  headlessRunner?: TrellageProcessRunner;
+  /** Injectable semantic diagnosis seam; production uses the BAML implementation. */
+  diagnose?: TrellageTurnDiagnoser;
+  /** Enables structured native headless execution while retaining the PTY path for comparison. */
+  headlessEnabled?: boolean;
 };
 
 /**
@@ -72,6 +84,7 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
   const profiles = options.catalog.list();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TRELLAGE_TIMEOUT_MS;
   const maxTurns = options.maxTurns ?? DEFAULT_TRELLAGE_MAX_TURNS;
+  const headlessEnabled = options.headlessEnabled ?? true;
   const gate = createConcurrencyGate(options.maxConcurrent ?? DEFAULT_TRELLAGE_MAX_CONCURRENT);
   const copilotModelNames = options.modelCatalog
     ? [
@@ -93,15 +106,20 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
       "Copilot session. Choose by capability first; among equally suitable profiles prefer a " +
       "sandboxed native launcher, then a container, then an unsandboxed native launcher. An " +
       "unsandboxed profile remains valid when its harness capability materially fits better. " +
-      "Every profile runs through a Herdr-owned interactive PTY, allowing this call to read its " +
-      "screen and answer questions until the result contract is complete. The delegated harness " +
+      "Native `cldx`, `cpx`, and `omp`/`copilot` profiles and Claude container profiles use " +
+      "RLM-owned headless JSONL adapters with resumable structured clarification. Every listed " +
+      "profile runs as a direct child process, with no PTY and no interactive terminal. The delegated harness " +
       "starts with no conversation context and works inside a dedicated git worktree, so include " +
       "everything it needs in the prompt. It cannot delegate further, and this call blocks until " +
       "it finishes. A model override is supported for native Copilot (`cpx`) profiles (validated " +
       "against the run's model catalog) and for native Claude (`cldx`) profiles (the harness's " +
       "own model IDs, e.g. `claude-opus-5`); other profiles own their model configuration. " +
       "An `effort` override (e.g. `xhigh`) is supported only for native Claude (`cldx`) " +
-      "profiles.\n\nAvailable profiles (safety-preferred order):\n" +
+      "profiles. Native Copilot (`cpx`) profiles also support `autopilot: true` (launches with " +
+      "`--autopilot --allow-all`, optionally bounded by `maxAutopilotContinues`) and " +
+      "`fleet: true` (prefixes the prompt with `/fleet` so the session decomposes the task into " +
+      "parallel subagents); use these for a complex, genuinely parallelizable task, and leave " +
+      "them unset for every other harness.\n\nAvailable profiles (safety-preferred order):\n" +
       profiles
         .map(
           (profile) =>
@@ -140,15 +158,36 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
             "Effort overrides are supported only for native Claude (`cldx`) profiles.",
           );
         }
+        if ((args.autopilot || args.maxAutopilotContinues !== undefined) && !isNativeCopilot) {
+          throw new TrellageAutopilotOverrideError(
+            "Autopilot overrides are supported only for native Copilot (`cpx`) profiles.",
+          );
+        }
+        if (args.fleet && !isNativeCopilot) {
+          throw new TrellageAutopilotOverrideError(
+            "Fleet mode is supported only for native Copilot (`cpx`) profiles.",
+          );
+        }
+        const maxAutopilotContinues = args.autopilot
+          ? (args.maxAutopilotContinues ?? DEFAULT_TRELLAGE_MAX_AUTOPILOT_CONTINUES)
+          : args.maxAutopilotContinues;
         const readiness = await options.catalog.readiness(profile);
         if (readiness && UNHEALTHY_READINESS.has(readiness.toLowerCase())) {
           throw new TrellageUnhealthyProfileError(profile.name, readiness);
         }
-        const budget = claimRlmExecutionBudget(options.executionBudget);
         callNumber += 1;
         const callId = `${invocation.toolCallId ?? `call-${callNumber}`}`;
         const worktree = await options.worktrees.acquire(options.repositoryPath);
-        const command = buildTrellageCommand(profile, args.model, args.effort).join(" ");
+        const useHeadless = headlessEnabled && supportsHeadlessTrellage(profile);
+        const command = useHeadless
+          ? `${profile.launcher} ${profile.name} [RLM headless JSONL]`
+          : buildTrellageCommand(
+              profile,
+              args.model,
+              args.effort,
+              args.autopilot,
+              maxAutopilotContinues,
+            ).join(" ");
 
         const invoke = async (): Promise<TrellageInvokeResult> =>
           gate.run(() =>
@@ -164,13 +203,81 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
                 callNumber,
               },
               async (span) => {
+                if (useHeadless) {
+                  const processRunner = options.headlessRunner ?? nativeTrellageProcessRunner;
+                  const loop = await runTrellageHeadlessLoop({
+                    profile,
+                    prompt: args.fleet ? `/fleet ${args.prompt}` : args.prompt,
+                    cwd: worktree.worktreePath,
+                    timeoutMs,
+                    maxAttempts: maxTurns,
+                    executionBudget: options.executionBudget,
+                    answer: options.answer,
+                    diagnose: options.diagnose ?? bamlTrellageTurnDiagnoser,
+                    ...(args.model ? { model: args.model } : {}),
+                    ...(args.effort ? { effort: args.effort } : {}),
+                    ...(args.autopilot ? { autopilot: args.autopilot } : {}),
+                    ...(maxAutopilotContinues !== undefined ? { maxAutopilotContinues } : {}),
+                    runProcess: (processInput, attempt) =>
+                      withTrellageAttemptSpan(
+                        { profile, attempt, argv: processInput.argv },
+                        async (attemptSpan) => {
+                          const process = await processRunner.run(processInput);
+                          attemptSpan.setAttributes({
+                            "weavekit.trellage.exit_code": process.exitCode ?? -1,
+                            "weavekit.trellage.timed_out": process.timedOut,
+                            "weavekit.trellage.cancelled": process.cancelled,
+                          });
+                          return process;
+                        },
+                      ),
+                  });
+                  span.setAttribute(
+                    "langfuse.observation.output",
+                    JSON.stringify({
+                      outcome: loop.outcome,
+                      turns: loop.turns,
+                      questionCount: loop.questionCount,
+                      resumeCount: loop.resumeCount,
+                      sessionId: loop.lastResult?.sessionId,
+                      durationMs: loop.lastResult?.durationMs,
+                      usage: loop.lastResult?.usage,
+                      costUsd: loop.lastResult?.costUsd,
+                      premiumRequests: loop.lastResult?.premiumRequests,
+                      changedFiles: loop.lastResult?.changedFiles,
+                      permissionDenials: loop.lastResult?.permissionDenials,
+                    }),
+                  );
+                  return {
+                    text: loop.text,
+                    outcome: loop.outcome,
+                    harness: args.harness,
+                    profile: profile.name,
+                    ...(args.model ? { model: args.model } : {}),
+                    ...(args.effort ? { effort: args.effort } : {}),
+                    ...(args.autopilot ? { autopilot: args.autopilot } : {}),
+                    ...(maxAutopilotContinues !== undefined ? { maxAutopilotContinues } : {}),
+                    ...(args.fleet ? { fleet: args.fleet } : {}),
+                    mode: profile.mode,
+                    sandbox: profile.sandbox,
+                    worktreePath: worktree.worktreePath,
+                    branchName: worktree.branchName,
+                    turns: loop.turns,
+                    ...(loop.userInputs.length ? { userInputs: loop.userInputs } : {}),
+                    attempts: loop.attempts,
+                    ...(loop.evidence ? { evidence: loop.evidence } : {}),
+                  };
+                }
+
+                claimRlmExecutionBudget(options.executionBudget);
                 const location = resolveResultLocation(
                   worktree.worktreePath,
                   options.runId,
                   callId,
                 );
                 await prepareResultLocation(location);
-                const launchPrompt = await writeTaskDocument(location, args.prompt);
+                const taskPointer = await writeTaskDocument(location, args.prompt);
+                const launchPrompt = args.fleet ? `/fleet ${taskPointer}` : taskPointer;
                 const agentPrefix = `rlm-t-${options.runId}`;
                 const factory = options.createBackend ?? defaultBackendFactory;
                 const { backend, close } = await factory({
@@ -183,6 +290,8 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
                     profile,
                     ...(args.model ? { model: args.model } : {}),
                     ...(args.effort ? { effort: args.effort } : {}),
+                    ...(args.autopilot ? { autopilot: args.autopilot } : {}),
+                    ...(maxAutopilotContinues !== undefined ? { maxAutopilotContinues } : {}),
                     cwd: worktree.worktreePath,
                     label: `${agentPrefix}-${callNumber}`,
                   });
@@ -212,6 +321,9 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
                       profile: profile.name,
                       ...(args.model ? { model: args.model } : {}),
                       ...(args.effort ? { effort: args.effort } : {}),
+                      ...(args.autopilot ? { autopilot: args.autopilot } : {}),
+                      ...(maxAutopilotContinues !== undefined ? { maxAutopilotContinues } : {}),
+                      ...(args.fleet ? { fleet: args.fleet } : {}),
                       mode: profile.mode,
                       sandbox: profile.sandbox,
                       worktreePath: worktree.worktreePath,
@@ -248,11 +360,14 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
               profile: profile.name,
               ...(args.model ? { model: args.model } : {}),
               ...(args.effort ? { effort: args.effort } : {}),
+              ...(args.autopilot ? { autopilot: args.autopilot } : {}),
+              ...(maxAutopilotContinues !== undefined ? { maxAutopilotContinues } : {}),
+              ...(args.fleet ? { fleet: args.fleet } : {}),
               mode: profile.mode,
               sandbox: profile.sandbox,
               outcome: result.outcome,
               turns: result.turns,
-              budget,
+              budget: snapshotRlmExecutionBudget(options.executionBudget),
             },
           },
         };
@@ -285,6 +400,7 @@ function isUsageError(error: unknown): boolean {
     error instanceof TrellageUnavailableError ||
     error instanceof TrellageModelOverrideError ||
     error instanceof TrellageEffortOverrideError ||
+    error instanceof TrellageAutopilotOverrideError ||
     error instanceof RlmCallBudgetExceededError
   );
 }

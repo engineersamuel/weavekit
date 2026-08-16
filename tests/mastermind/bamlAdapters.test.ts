@@ -184,7 +184,7 @@ describe("GeneratedMastermindDecisionProvider", () => {
           },
         },
         {
-          synthesisModel: "gemini-3.6-flash",
+          synthesisModel: "gemini-3.7-flash",
           synthesisClientEnv: {
             baseUrl: "http://proxy.test/v1",
             apiKey: "test-key",
@@ -225,7 +225,7 @@ describe("GeneratedMastermindDecisionProvider", () => {
       const decideSpan = telemetry.spans.find(
         (span) => span.name === "mastermind.baml.decide_next_action",
       );
-      expect(synthesisSpan?.attributes["gen_ai.request.model"]).toBe("gemini-3.6-flash");
+      expect(synthesisSpan?.attributes["gen_ai.request.model"]).toBe("gemini-3.7-flash");
       expect(decideSpan?.attributes["gen_ai.request.model"]).toBeUndefined();
     } finally {
       if (originalModel === undefined) {
@@ -254,7 +254,7 @@ describe("GeneratedMastermindDecisionProvider", () => {
         },
       },
       {
-        synthesisModel: "gemini-3.6-flash",
+        synthesisModel: "gemini-3.7-flash",
         synthesisClientEnv: {
           baseUrl: "http://proxy.test/v1",
           apiKey: "test-key",
@@ -269,7 +269,7 @@ describe("GeneratedMastermindDecisionProvider", () => {
         expect.objectContaining({
           name: "mastermind.baml.synthesize_ticket_patch",
           attributes: expect.objectContaining({
-            "gen_ai.request.model": "gemini-3.6-flash",
+            "gen_ai.request.model": "gemini-3.7-flash",
             "weavekit.mastermind.baml.operation": "synthesis",
           }),
         }),

@@ -16,6 +16,10 @@ export type TrellageLaunchInput = {
   model?: string;
   /** Native Claude (`cldx`) reasoning-effort override validated by the tool layer. */
   effort?: string;
+  /** Native Copilot (`cpx`) autopilot launch, validated by the tool layer. */
+  autopilot?: boolean;
+  /** Native Copilot (`cpx`) autopilot continuation bound, validated by the tool layer. */
+  maxAutopilotContinues?: number;
   /** Host directory the harness runs in; for container mode this becomes the bind-mounted root. */
   cwd: string;
   label: string;

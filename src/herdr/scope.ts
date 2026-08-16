@@ -1,6 +1,9 @@
 import { z, type ZodType } from "zod";
 import { setTimeout as delay } from "node:timers/promises";
-import { HerdrSnapshotSchema, type HerdrSnapshot } from "./contracts.js";
+import { HerdrAgentStatus, HerdrSnapshotSchema, type HerdrSnapshot } from "./contracts.js";
+
+const INTERACTIVE_READY_TIMEOUT_MS = 30_000;
+const INTERACTIVE_READY_POLL_MS = 200;
 
 const AcceptedSchema = z.unknown();
 const PaneIdSchema = z.unknown().transform((value, context) => {
@@ -165,6 +168,7 @@ export class ScopedHerdr {
   async prompt(agentId: string, prompt: string): Promise<unknown> {
     const agent = await this.assertAgent(agentId);
     if (agent.kind === "copilot") {
+      await this.waitForInteractiveReady(agentId, INTERACTIVE_READY_TIMEOUT_MS);
       await this.client.request(
         "pane.send_input",
         { pane_id: agent.paneId, text: prompt, keys: [] },
@@ -273,6 +277,26 @@ export class ScopedHerdr {
       throw new Error(`Agent name is outside run scope: ${name}`);
     }
   }
+
+  private async waitForInteractiveReady(agentId: string, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const agent = await this.assertAgent(agentId);
+      if (agent.interactiveReady === true) return;
+      // Herdr 0.8 declares `interactive_ready` in its schema but never emits it for Copilot panes,
+      // so an absent field means "unreported", not "not ready" — gating on it alone would time out
+      // every Copilot prompt. Fall back to lifecycle state, which still excludes the two cases the
+      // wait exists to prevent: a harness still booting (`working`/`unknown`) and one sitting on a
+      // startup dialog (`blocked`), both of which would swallow the prompt.
+      if (agent.interactiveReady === undefined && isAtPrompt(agent.status)) return;
+      await delay(INTERACTIVE_READY_POLL_MS);
+    }
+    throw new Error(`Copilot agent did not become interactive within ${timeoutMs}ms: ${agentId}`);
+  }
+}
+
+function isAtPrompt(status: string | undefined): boolean {
+  return status === HerdrAgentStatus.Idle || status === HerdrAgentStatus.Done;
 }
 
 function shellCommand(command: string, args: string[]): string {
@@ -330,7 +354,7 @@ function normalizeSnapshot(value: unknown): unknown {
           paneId,
           kind: readString(record, "kind", "agent_kind", "agentKind", "agent"),
           status: readString(record, "status", "agent_status", "agentStatus"),
-          interactiveReady: record.interactiveReady === true || record.interactive_ready === true,
+          interactiveReady: readBoolean(record, "interactiveReady", "interactive_ready"),
         };
       })
       .filter((record) => record.id && record.name && record.paneId),
@@ -397,6 +421,14 @@ function readString(record: Record<string, unknown>, ...keys: string[]): string 
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) return value;
+  }
+  return undefined;
+}
+
+function readBoolean(record: Record<string, unknown>, ...keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") return value;
   }
   return undefined;
 }

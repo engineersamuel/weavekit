@@ -5,6 +5,7 @@ import {
   TrellageHarness,
   TrellageMode,
   TrellageUnknownProfileError,
+  type TrellageHeadlessCapabilities,
   type TrellageProfile,
 } from "./contracts.js";
 
@@ -186,6 +187,8 @@ export function buildTrellageCommand(
   profile: TrellageProfile,
   model?: string,
   effort?: string,
+  autopilot?: boolean,
+  maxAutopilotContinues?: number,
 ): string[] {
   if (profile.mode === TrellageMode.Container) {
     return ["trellage", "--profile", profile.name];
@@ -193,6 +196,192 @@ export function buildTrellageCommand(
   const command = [profile.launcher, profile.name];
   if (model) command.push("--model", model);
   if (effort) command.push("--effort", effort);
+  if (autopilot) {
+    command.push("--autopilot", "--allow-all");
+    if (maxAutopilotContinues) {
+      command.push("--max-autopilot-continues", String(maxAutopilotContinues));
+    }
+  }
+  return command;
+}
+
+const NATIVE_HEADLESS_CAPABILITIES: Readonly<
+  Record<string, TrellageHeadlessCapabilities | undefined>
+> = {
+  cldx: {
+    structuredEvents: true,
+    resume: true,
+    denyQuestionTool: true,
+    changedFiles: false,
+    cost: true,
+  },
+  cpx: {
+    structuredEvents: true,
+    resume: true,
+    denyQuestionTool: true,
+    changedFiles: true,
+    cost: true,
+  },
+  "omp:copilot": {
+    structuredEvents: true,
+    resume: true,
+    denyQuestionTool: true,
+    changedFiles: false,
+    cost: false,
+  },
+};
+
+/**
+ * Container harness runtimes with a verified headless JSONL contract.
+ *
+ * Only the Claude container runtime implements the `TRELLAGE_OUTPUT_FORMAT=jsonl` branch, where it
+ * appends `--output-format stream-json --verbose` to Claude Code's own args. The emitted events are
+ * therefore identical to native `cldx`, so they reuse the same adapter. `denyQuestionTool` holds
+ * without passing `--disallowedTools`: Claude Code's non-interactive `-p` mode does not expose
+ * `AskUserQuestion` at all. `changedFiles` matches `cldx` — Claude's stream-json does not report
+ * them.
+ *
+ * Trellage names each container profile `<harness kind>-<suite>` and derives the container name
+ * from the same kind, so the prefix identifies the runtime. A wrong guess fails closed: a runtime
+ * without the JSONL branch emits text, which the adapter reports as malformed.
+ */
+const CONTAINER_HEADLESS_RUNTIMES: Readonly<
+  Record<string, TrellageHeadlessCapabilities | undefined>
+> = {
+  claude: {
+    structuredEvents: true,
+    resume: true,
+    denyQuestionTool: true,
+    changedFiles: false,
+    cost: true,
+  },
+};
+
+/**
+ * Launchers blocked from RLM selection even if an adapter is added.
+ *
+ * `grx` remains excluded until upstream Grok OAuth/profile compatibility is fixed and its normal
+ * wrapper path passes live contract tests without a model override.
+ */
+const RLM_DISABLED_LAUNCHERS = new Set(["grx"]);
+
+/** Resolves the container harness runtime that owns a container profile. */
+export function containerRuntimeFor(profile: TrellageProfile): string | undefined {
+  const [runtime] = profile.name.split("-");
+  return runtime || undefined;
+}
+
+/**
+ * Returns capabilities only for launchers and container runtimes with a verified headless adapter.
+ */
+export function headlessCapabilitiesFor(
+  profile: TrellageProfile,
+): TrellageHeadlessCapabilities | undefined {
+  if (profile.mode === TrellageMode.Container) {
+    const runtime = containerRuntimeFor(profile);
+    return runtime ? CONTAINER_HEADLESS_RUNTIMES[runtime] : undefined;
+  }
+  return (
+    NATIVE_HEADLESS_CAPABILITIES[`${profile.launcher}:${profile.name}`] ??
+    NATIVE_HEADLESS_CAPABILITIES[profile.launcher]
+  );
+}
+
+export function supportsHeadlessTrellage(profile: TrellageProfile): boolean {
+  const capabilities = headlessCapabilitiesFor(profile);
+  return Boolean(
+    capabilities?.structuredEvents && capabilities.resume && capabilities.denyQuestionTool,
+  );
+}
+
+/**
+ * Profiles exposed to `invoke_trellage`.
+ *
+ * Discovery still reads the complete Trellage/TRX inventory, but the RLM can select only launchers
+ * and container runtimes with a verified structured adapter. Keep this restriction until the
+ * remaining launchers and container runtimes pass their fixture, contract, and profile-sweep gates.
+ */
+export function selectRlmTrellageProfiles(profiles: readonly TrellageProfile[]): TrellageProfile[] {
+  return profiles.filter(
+    (profile) => !RLM_DISABLED_LAUNCHERS.has(profile.launcher) && supportsHeadlessTrellage(profile),
+  );
+}
+
+export type TrellageHeadlessCommandOptions = {
+  prompt: string;
+  model?: string;
+  effort?: string;
+  autopilot?: boolean;
+  maxAutopilotContinues?: number;
+  resumeSessionId?: string;
+};
+
+/**
+ * Builds RLM-only non-interactive argv for verified native launchers.
+ *
+ * The interactive `buildTrellageCommand` remains unchanged for manual use and for the retained
+ * PTY path. In particular, question-tool denial belongs only to this RLM-owned invocation.
+ */
+export function buildHeadlessTrellageCommand(
+  profile: TrellageProfile,
+  options: TrellageHeadlessCommandOptions,
+): string[] {
+  if (!supportsHeadlessTrellage(profile)) {
+    throw new Error(
+      `Headless Trellage is not available for ${profile.mode}/${profile.launcher}/${profile.name}.`,
+    );
+  }
+
+  if (profile.mode === TrellageMode.Container) {
+    // `trellage` exempts `--prompt`, `resume … --prompt`, and `--output-format jsonl` from its
+    // interactive-terminal assertion, and drops `--interactive --tty` from `docker container exec`
+    // for JSONL. The harness's own flags come from the profile definition and cannot be passed
+    // here, so the runtime entry supplies them from `TRELLAGE_OUTPUT_FORMAT`. Model and effort
+    // overrides are rejected for containers before reaching this point.
+    const container = ["trellage"];
+    if (options.resumeSessionId) {
+      container.push("resume", "--profile", profile.name, options.resumeSessionId);
+    } else {
+      container.push("--profile", profile.name);
+    }
+    container.push("--output-format", "jsonl", "--prompt", options.prompt);
+    return container;
+  }
+
+  const command = [profile.launcher, profile.name];
+  if (options.model) command.push("--model", options.model);
+  if (options.effort) command.push("--effort", options.effort);
+
+  if (profile.launcher === "cldx") {
+    if (options.resumeSessionId) command.push("--resume", options.resumeSessionId);
+    command.push(
+      "-p",
+      options.prompt,
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--permission-mode",
+      "bypassPermissions",
+      "--disallowedTools",
+      "AskUserQuestion",
+    );
+    return command;
+  }
+
+  if (profile.launcher === "omp" && profile.name === "copilot") {
+    if (options.resumeSessionId) command.push(`--resume=${options.resumeSessionId}`);
+    command.push("-p", options.prompt, "--mode=json", "--approval-mode=yolo");
+    return command;
+  }
+
+  if (options.resumeSessionId) command.push("--resume", options.resumeSessionId);
+  if (options.autopilot) {
+    command.push("--autopilot");
+    if (options.maxAutopilotContinues) {
+      command.push("--max-autopilot-continues", String(options.maxAutopilotContinues));
+    }
+  }
+  command.push("-p", options.prompt, "--output-format", "json", "--allow-all", "--no-ask-user");
   return command;
 }
 

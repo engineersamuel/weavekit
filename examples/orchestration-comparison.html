@@ -1,0 +1,1259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Side-by-side comparison of weavekit's recursive RLM POC, Claude Code Workflows, and GitHub Copilot Fleet mode: topology, control model, budgets, isolation, and tradeoffs."
+    />
+    <title>Three Orchestrators — RLM vs Claude Workflows vs Copilot Fleet</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@500;600;700;800&display=swap");
+
+      :root {
+        --ink: #181713;
+        --paper: #eee9dc;
+        --paper-deep: #d8d0be;
+        --card: #f7f4ec;
+        --oxide: #d34d2f;
+        --acid: #d6ef4f;
+        --cyan: #75d8d0;
+        --blue: #315cf5;
+        --violet: #9065d8;
+        --green: #2f7a5c;
+        --line: rgba(24, 23, 19, 0.2);
+        --muted: #656157;
+        --shadow: 6px 6px 0 var(--ink);
+        --shadow-sm: 4px 4px 0 var(--ink);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(rgba(24, 23, 19, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(24, 23, 19, 0.045) 1px, transparent 1px), var(--paper);
+        background-size: 24px 24px;
+        color: var(--ink);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .shell {
+        width: min(1480px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 28px 0 96px;
+      }
+
+      h1,
+      h2,
+      h3,
+      .display {
+        font-family: "Syne", sans-serif;
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+
+      /* ---------- masthead ---------- */
+
+      .masthead {
+        border: 3px solid var(--ink);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        padding: 30px 34px 26px;
+      }
+
+      .eyebrow {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.22em;
+        color: var(--muted);
+      }
+
+      .masthead h1 {
+        font-size: clamp(34px, 5.4vw, 62px);
+        line-height: 0.98;
+        font-weight: 800;
+        margin: 10px 0 14px;
+        max-width: 20ch;
+      }
+
+      .masthead h1 em {
+        font-style: normal;
+        color: var(--oxide);
+      }
+
+      .lede {
+        max-width: 92ch;
+        color: var(--muted);
+        margin: 0;
+      }
+
+      .keyrow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 22px;
+        padding-top: 20px;
+        border-top: 2px dashed var(--line);
+      }
+
+      .key {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border: 2px solid var(--ink);
+        background: var(--paper);
+        padding: 7px 13px;
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+
+      .dot {
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--ink);
+        flex: none;
+      }
+
+      .dot.rlm {
+        background: var(--oxide);
+      }
+      .dot.wf {
+        background: var(--blue);
+      }
+      .dot.fleet {
+        background: var(--green);
+      }
+
+      /* ---------- section chrome ---------- */
+
+      section {
+        margin-top: 54px;
+      }
+
+      .sec-head {
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+
+      .sec-num {
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: 15px;
+        border: 2px solid var(--ink);
+        background: var(--acid);
+        padding: 2px 10px;
+      }
+
+      .sec-head h2 {
+        font-size: clamp(23px, 2.7vw, 33px);
+        font-weight: 700;
+      }
+
+      .sec-note {
+        color: var(--muted);
+        font-size: 13px;
+        max-width: 58ch;
+      }
+
+      /* ---------- topology cards ---------- */
+
+      .triptych {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      .card {
+        border: 3px solid var(--ink);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .card-head {
+        border-bottom: 3px solid var(--ink);
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .card-head h3 {
+        font-size: 19px;
+        font-weight: 700;
+      }
+
+      .card-head .tag {
+        margin-left: auto;
+        font-size: 10.5px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        border: 2px solid var(--ink);
+        padding: 2px 7px;
+        background: var(--paper);
+        font-weight: 600;
+      }
+
+      .card.rlm .card-head {
+        background: var(--oxide);
+        color: var(--paper);
+      }
+      .card.wf .card-head {
+        background: var(--blue);
+        color: var(--paper);
+      }
+      .card.fleet .card-head {
+        background: var(--green);
+        color: var(--paper);
+      }
+
+      .card.rlm .card-head .tag,
+      .card.wf .card-head .tag,
+      .card.fleet .card-head .tag {
+        color: var(--ink);
+      }
+
+      .diagram {
+        padding: 16px 14px 6px;
+      }
+
+      .diagram svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .caption {
+        padding: 4px 18px 20px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .caption b {
+        color: var(--ink);
+      }
+
+      .oneliner {
+        margin: 0 18px 14px;
+        border-left: 4px solid var(--ink);
+        padding: 6px 0 6px 12px;
+        font-size: 13.5px;
+        font-weight: 600;
+      }
+
+      /* ---------- matrix ---------- */
+
+      .matrix-wrap {
+        border: 3px solid var(--ink);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        overflow-x: auto;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 13px;
+        min-width: 900px;
+      }
+
+      thead th {
+        font-family: "Syne", sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        text-align: left;
+        padding: 13px 16px;
+        border-bottom: 3px solid var(--ink);
+        color: var(--paper);
+        vertical-align: bottom;
+      }
+
+      thead th.axis {
+        background: var(--ink);
+        width: 190px;
+      }
+      thead th.c-rlm {
+        background: var(--oxide);
+      }
+      thead th.c-wf {
+        background: var(--blue);
+      }
+      thead th.c-fleet {
+        background: var(--green);
+      }
+
+      tbody th {
+        text-align: left;
+        font-family: "IBM Plex Mono", monospace;
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 12px 16px;
+        background: var(--paper-deep);
+        border-right: 2px solid var(--ink);
+        vertical-align: top;
+      }
+
+      tbody td {
+        padding: 12px 16px;
+        vertical-align: top;
+        border-right: 1px solid var(--line);
+      }
+
+      tbody tr + tr th,
+      tbody tr + tr td {
+        border-top: 1px solid var(--line);
+      }
+
+      tbody tr:hover td {
+        background: rgba(214, 239, 79, 0.28);
+      }
+
+      code {
+        font-size: 0.92em;
+        background: var(--paper-deep);
+        border: 1px solid var(--line);
+        padding: 0 4px;
+      }
+
+      /* ---------- pros / cons ---------- */
+
+      .pc {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      .pc-body {
+        padding: 4px 18px 20px;
+      }
+
+      .pc-body h4 {
+        font-family: "Syne", sans-serif;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin: 18px 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .pc-body h4::before {
+        content: "";
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--ink);
+      }
+
+      .pc-body h4.pro::before {
+        background: var(--acid);
+      }
+      .pc-body h4.con::before {
+        background: var(--oxide);
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      li {
+        margin-bottom: 7px;
+        font-size: 13px;
+      }
+
+      li b {
+        font-weight: 600;
+      }
+
+      /* ---------- decision strip ---------- */
+
+      .decide {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      .pick {
+        border: 3px solid var(--ink);
+        background: var(--card);
+        box-shadow: var(--shadow-sm);
+        padding: 18px 20px 20px;
+      }
+
+      .pick h3 {
+        font-size: 17px;
+        margin-bottom: 10px;
+      }
+
+      .pick .bar {
+        height: 10px;
+        border: 2px solid var(--ink);
+        margin-bottom: 14px;
+      }
+
+      .pick.rlm .bar {
+        background: var(--oxide);
+      }
+      .pick.wf .bar {
+        background: var(--blue);
+      }
+      .pick.fleet .bar {
+        background: var(--green);
+      }
+
+      .verdict {
+        margin-top: 30px;
+        border: 3px solid var(--ink);
+        background: var(--ink);
+        color: var(--paper);
+        box-shadow: var(--shadow);
+        padding: 26px 30px;
+      }
+
+      .verdict h3 {
+        font-size: 21px;
+        color: var(--acid);
+        margin-bottom: 12px;
+      }
+
+      .verdict p {
+        margin: 0 0 10px;
+        max-width: 100ch;
+        font-size: 14px;
+      }
+
+      .verdict p:last-child {
+        margin-bottom: 0;
+      }
+
+      .verdict b {
+        color: var(--acid);
+      }
+
+      footer {
+        margin-top: 44px;
+        border-top: 2px dashed var(--line);
+        padding-top: 16px;
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      /* ---------- svg primitives ---------- */
+
+      .n-box {
+        stroke: #181713;
+        stroke-width: 2.5;
+      }
+      .n-label {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 10px;
+        font-weight: 600;
+        fill: #181713;
+      }
+      .n-label.inv {
+        fill: #eee9dc;
+      }
+      .n-sub {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 8.5px;
+        fill: #656157;
+      }
+      .edge {
+        stroke: #181713;
+        stroke-width: 2;
+        fill: none;
+      }
+      .edge.dash {
+        stroke-dasharray: 5 4;
+      }
+      .lane {
+        font-family: "Syne", sans-serif;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        fill: #656157;
+      }
+      .rail {
+        stroke: rgba(24, 23, 19, 0.22);
+        stroke-width: 1.5;
+        stroke-dasharray: 3 5;
+      }
+
+      @media (max-width: 1080px) {
+        .triptych,
+        .pc,
+        .decide {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <div class="eyebrow">weavekit · orchestration survey</div>
+        <h1>Three ways to make <em>one agent</em> become many</h1>
+        <p class="lede">
+          The <b>RLM POC</b>, <b>Claude Code Workflows</b>, and <b>Copilot Fleet</b> all fan work
+          out across agents. They disagree about one thing:
+          <b>who decides the shape of the fan-out</b>. RLM lets the model decide, recursively, at
+          run time. Workflows freeze the shape into a JavaScript program before any agent starts.
+          Fleet lets the model decide once, flat, inside a single session. Everything else below
+          follows from that.
+        </p>
+        <div class="keyrow">
+          <div class="key"><span class="dot rlm"></span>RLM POC · <code>src/rlm-poc/</code></div>
+          <div class="key">
+            <span class="dot wf"></span>Claude Code · <code>Workflow</code> tool
+          </div>
+          <div class="key">
+            <span class="dot fleet"></span>Copilot CLI · <code>fleet.start</code>
+          </div>
+        </div>
+      </header>
+
+      <!-- ================= 1. TOPOLOGY ================= -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">01</span>
+          <h2>The shape of the fan-out</h2>
+          <span class="sec-note"
+            >Same job, three topologies. Depth, symmetry, and who draws the arrows.</span
+          >
+        </div>
+
+        <div class="triptych">
+          <!-- ---------- RLM ---------- -->
+          <article class="card rlm">
+            <div class="card-head">
+              <h3>RLM POC</h3>
+              <span class="tag">recursive tree</span>
+            </div>
+            <div class="diagram">
+              <svg viewBox="0 0 380 300" role="img" aria-label="RLM recursive tree topology">
+                <line class="rail" x1="14" y1="46" x2="366" y2="46" />
+                <line class="rail" x1="14" y1="128" x2="366" y2="128" />
+                <line class="rail" x1="14" y1="200" x2="366" y2="200" />
+                <text class="lane" x="14" y="24">d0 ROUTER</text>
+                <text class="lane" x="14" y="106">d1 WORKERS</text>
+                <text class="lane" x="14" y="178">d2 …</text>
+
+                <!-- edges -->
+                <path class="edge" d="M190 62 C190 84 96 82 96 108" />
+                <path class="edge" d="M190 62 C190 84 196 82 196 108" />
+                <path class="edge" d="M190 62 C190 84 300 82 300 108" />
+                <path class="edge" d="M96 148 C96 168 70 172 70 182" />
+                <path class="edge" d="M96 148 C96 168 148 172 148 182" />
+                <path class="edge dash" d="M300 148 C300 176 300 186 300 200" />
+
+                <!-- d0 -->
+                <rect class="n-box" x="130" y="32" width="120" height="30" fill="#d34d2f" rx="2" />
+                <text class="n-label inv" x="145" y="47">Submind d0</text>
+                <text class="n-label inv" x="145" y="57" style="font-size: 8px; opacity: 0.85">
+                  routes · never edits
+                </text>
+
+                <!-- d1 -->
+                <rect class="n-box" x="52" y="108" width="88" height="40" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="60" y="124">research</text>
+                <text class="n-sub" x="60" y="137">skills: fail-closed</text>
+
+                <rect class="n-box" x="152" y="108" width="88" height="40" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="160" y="124">general</text>
+                <text class="n-sub" x="160" y="137">writes to worktree</text>
+
+                <rect class="n-box" x="256" y="108" width="98" height="40" fill="#d6ef4f" rx="2" />
+                <text class="n-label" x="264" y="124">invoke_trellage</text>
+                <text class="n-sub" x="264" y="137">foreign harness</text>
+
+                <!-- d2 -->
+                <rect class="n-box" x="32" y="182" width="76" height="34" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="40" y="196">council</text>
+                <text class="n-sub" x="40" y="208">read-only</text>
+
+                <rect class="n-box" x="118" y="182" width="76" height="34" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="126" y="196">design</text>
+                <text class="n-sub" x="126" y="208">visual out</text>
+
+                <rect class="n-box" x="248" y="200" width="114" height="46" fill="#181713" rx="2" />
+                <text class="n-label inv" x="256" y="216">Claude Code</text>
+                <text class="n-label inv" x="256" y="228" style="font-size: 8px; opacity: 0.8">
+                  Codex · Grok · container
+                </text>
+                <text class="n-label inv" x="256" y="240" style="font-size: 8px; opacity: 0.8">
+                  leaf · real PTY
+                </text>
+
+                <!-- budget bar -->
+                <rect class="n-box" x="14" y="262" width="352" height="26" fill="#d8d0be" rx="2" />
+                <text class="n-label" x="24" y="279">
+                  shared budget: depth ≤ 3 · total rlm calls ≤ 12 · one worktree per repo
+                </text>
+              </svg>
+            </div>
+            <p class="oneliner">The model draws the tree while it runs.</p>
+            <p class="caption">
+              Every <b>rlm</b> call opens a <b>fresh in-process Copilot SDK session</b> with
+              <code>rlm</code> re-registered — so it can recurse again. Each child gets a clean
+              slate, a profile (model policy + tool allowlist + skill bundle), and a written
+              authority envelope. <b>invoke_trellage</b> is the escape hatch to a real terminal
+              harness; that branch is always a leaf.
+            </p>
+          </article>
+
+          <!-- ---------- WORKFLOWS ---------- -->
+          <article class="card wf">
+            <div class="card-head">
+              <h3>Claude Workflows</h3>
+              <span class="tag">scripted DAG</span>
+            </div>
+            <div class="diagram">
+              <svg viewBox="0 0 380 300" role="img" aria-label="Claude Workflow scripted pipeline">
+                <!-- script spine -->
+                <rect class="n-box" x="14" y="16" width="352" height="30" fill="#315cf5" rx="2" />
+                <text class="n-label inv" x="24" y="35">
+                  workflow.js — deterministic control flow (loops · ifs · barriers)
+                </text>
+
+                <line class="rail" x1="14" y1="70" x2="366" y2="70" />
+                <text class="lane" x="14" y="64">PHASE: FIND</text>
+
+                <path class="edge" d="M190 46 C190 60 68 62 68 78" />
+                <path class="edge" d="M190 46 C190 60 160 62 160 78" />
+                <path class="edge" d="M190 46 C190 60 252 62 252 78" />
+                <path class="edge" d="M190 46 C190 60 330 62 330 78" />
+
+                <rect class="n-box" x="34" y="78" width="68" height="32" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="42" y="98">bugs</text>
+                <rect class="n-box" x="126" y="78" width="68" height="32" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="134" y="98">perf</text>
+                <rect class="n-box" x="218" y="78" width="68" height="32" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="226" y="98">types</text>
+                <rect class="n-box" x="296" y="78" width="68" height="32" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="304" y="98">tests</text>
+
+                <!-- schema gate -->
+                <rect class="n-box" x="14" y="126" width="352" height="24" fill="#d6ef4f" rx="2" />
+                <text class="n-label" x="24" y="142">
+                  schema-validated return → plain JS: dedupe, filter, count
+                </text>
+
+                <line class="rail" x1="14" y1="176" x2="366" y2="176" />
+                <text class="lane" x="14" y="170">
+                  PHASE: VERIFY (no barrier — streams per item)
+                </text>
+
+                <path class="edge" d="M68 150 L68 184" />
+                <path class="edge" d="M160 150 L160 184" />
+                <path class="edge" d="M252 150 L252 184" />
+                <path class="edge" d="M330 150 L330 184" />
+
+                <rect class="n-box" x="34" y="184" width="68" height="32" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="42" y="204">refute</text>
+                <rect class="n-box" x="126" y="184" width="68" height="32" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="134" y="204">refute</text>
+                <rect class="n-box" x="218" y="184" width="68" height="32" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="226" y="204">refute</text>
+                <rect class="n-box" x="296" y="184" width="68" height="32" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="304" y="204">refute</text>
+
+                <path class="edge" d="M68 216 C68 236 176 232 190 240" />
+                <path class="edge" d="M160 216 C160 236 180 234 190 240" />
+                <path class="edge" d="M252 216 C252 236 200 234 190 240" />
+                <path class="edge" d="M330 216 C330 236 208 232 190 240" />
+
+                <rect class="n-box" x="110" y="240" width="160" height="26" fill="#181713" rx="2" />
+                <text class="n-label inv" x="120" y="257">return { confirmed }</text>
+
+                <rect class="n-box" x="14" y="274" width="352" height="16" fill="#d8d0be" rx="2" />
+                <text class="n-label" x="24" y="286" style="font-size: 8.5px">
+                  journal.jsonl → resumeFromRunId replays the unchanged prefix from cache
+                </text>
+              </svg>
+            </div>
+            <p class="oneliner">You draw the tree before it runs.</p>
+            <p class="caption">
+              The topology is a <b>JavaScript program</b>, not a prompt.
+              <code>pipeline()</code> runs each item through all stages with <b>no barrier</b>;
+              <code>parallel()</code> is the barrier when you truly need every result at once.
+              Agents return <b>schema-validated objects</b>, so dedupe/count/branch is ordinary
+              code. Nesting is one level.
+            </p>
+          </article>
+
+          <!-- ---------- FLEET ---------- -->
+          <article class="card fleet">
+            <div class="card-head">
+              <h3>Copilot Fleet</h3>
+              <span class="tag">flat swarm</span>
+            </div>
+            <div class="diagram">
+              <svg viewBox="0 0 380 300" role="img" aria-label="Copilot Fleet flat subagent swarm">
+                <rect
+                  x="14"
+                  y="14"
+                  width="352"
+                  height="238"
+                  fill="none"
+                  stroke="#181713"
+                  stroke-width="2"
+                  stroke-dasharray="6 5"
+                  rx="3"
+                />
+                <text class="lane" x="24" y="32">ONE SESSION · ONE MODEL · ONE WORKING TREE</text>
+
+                <rect class="n-box" x="106" y="44" width="168" height="34" fill="#2f7a5c" rx="2" />
+                <text class="n-label inv" x="116" y="60">main agent (autopilot)</text>
+                <text class="n-label inv" x="116" y="71" style="font-size: 8px; opacity: 0.85">
+                  fleet.start injects orchestration prompt
+                </text>
+
+                <path class="edge" d="M190 78 C190 98 62 96 62 112" />
+                <path class="edge" d="M190 78 C190 98 126 96 126 112" />
+                <path class="edge" d="M190 78 C190 98 190 96 190 112" />
+                <path class="edge" d="M190 78 C190 98 254 96 254 112" />
+                <path class="edge" d="M190 78 C190 98 318 96 318 112" />
+
+                <rect class="n-box" x="30" y="112" width="64" height="44" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="37" y="128">agent A</text>
+                <text class="n-sub" x="37" y="141">.agents/</text>
+                <text class="n-sub" x="37" y="151">skills</text>
+
+                <rect class="n-box" x="94" y="112" width="64" height="44" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="101" y="128">agent B</text>
+                <text class="n-sub" x="101" y="141">.agents/</text>
+
+                <rect class="n-box" x="158" y="112" width="64" height="44" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="165" y="128">agent C</text>
+                <text class="n-sub" x="165" y="141">.agents/</text>
+
+                <rect class="n-box" x="222" y="112" width="64" height="44" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="229" y="128">agent D</text>
+                <text class="n-sub" x="229" y="141">.agents/</text>
+
+                <rect class="n-box" x="286" y="112" width="64" height="44" fill="#f7f4ec" rx="2" />
+                <text class="n-label" x="293" y="128">agent E</text>
+                <text class="n-sub" x="293" y="141">.agents/</text>
+
+                <path class="edge" d="M62 156 C62 178 176 176 190 186" />
+                <path class="edge" d="M126 156 C126 178 182 178 190 186" />
+                <path class="edge" d="M190 156 L190 186" />
+                <path class="edge" d="M254 156 C254 178 198 178 190 186" />
+                <path class="edge" d="M318 156 C318 178 204 176 190 186" />
+
+                <rect class="n-box" x="106" y="186" width="168" height="28" fill="#181713" rx="2" />
+                <text class="n-label inv" x="116" y="204">main agent integrates</text>
+
+                <rect class="n-box" x="30" y="224" width="320" height="20" fill="#d6ef4f" rx="2" />
+                <text class="n-label" x="40" y="238" style="font-size: 8.5px">
+                  subagent.started / .completed / .failed → live TUI · human can interrupt
+                </text>
+
+                <text class="n-sub" x="14" y="270">
+                  no depth: subagents are workers, not orchestrators
+                </text>
+                <text class="n-sub" x="14" y="284">
+                  no worktree split: all agents share the same checkout
+                </text>
+              </svg>
+            </div>
+            <p class="oneliner">The model draws one flat row, once.</p>
+            <p class="caption">
+              <code>fleet.start</code> does not build a graph — it
+              <b>injects an orchestration prompt</b> into a live session and flips it into parallel
+              subagent execution (also reachable as the <code>autopilot_fleet</code> exit from plan
+              mode). Subagent types come from <code>.agents/</code>. It is the
+              <b>lowest-ceremony option by a wide margin</b>, and the only one a human watches in
+              real time.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ================= 2. MATRIX ================= -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">02</span>
+          <h2>Where they actually differ</h2>
+          <span class="sec-note"
+            >Rows are ordered by how much the difference will hurt you if you pick wrong.</span
+          >
+        </div>
+
+        <div class="matrix-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="axis">Axis</th>
+                <th class="c-rlm">RLM POC</th>
+                <th class="c-wf">Claude Workflows</th>
+                <th class="c-fleet">Copilot Fleet</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>Who decides shape</th>
+                <td>
+                  <b>Model, at run time.</b> The d0 Submind picks profiles and depth per call.
+                  Non-deterministic by design.
+                </td>
+                <td>
+                  <b>You, before run time.</b> JS control flow. Same script + same args = same
+                  graph.
+                </td>
+                <td>
+                  <b>Model, once.</b> Orchestration prompt decides how many subagents and what each
+                  does.
+                </td>
+              </tr>
+              <tr>
+                <th>Depth</th>
+                <td>
+                  <b>True recursion.</b> Children get <code>rlm</code> re-registered. Bounded by a
+                  depth limit + shared call budget.
+                </td>
+                <td>
+                  <b>Two levels.</b> <code>workflow()</code> nests one deep; agents cannot spawn
+                  agents.
+                </td>
+                <td><b>One level.</b> Subagents are workers, not orchestrators.</td>
+              </tr>
+              <tr>
+                <th>Process model</th>
+                <td>
+                  In-process Copilot SDK client+session per call — no subprocess, no pane. Except
+                  <code>invoke_trellage</code>, which is a real PTY in a Herdr tab.
+                </td>
+                <td>In-harness subagents managed by the Claude Code runtime.</td>
+                <td>Subagents inside one CLI session.</td>
+              </tr>
+              <tr>
+                <th>Cross-vendor</th>
+                <td>
+                  <b>Yes — the differentiator.</b> <code>invoke_trellage</code> drives Claude Code,
+                  Codex, Grok, Prime, or a container profile and returns its answer.
+                </td>
+                <td>No. Claude models only (<code>opus/sonnet/haiku/fable</code>).</td>
+                <td>No. Copilot session models only.</td>
+              </tr>
+              <tr>
+                <th>Model routing</th>
+                <td>
+                  Per-profile <b>policy over a live catalog snapshot</b> (preferred/fallback groups,
+                  capability + modality requirements, dry-run inspection).
+                </td>
+                <td>
+                  Per-agent <code>model</code> + <code>effort</code> override; inherit by default.
+                </td>
+                <td>Session model; per-subagent context tier.</td>
+              </tr>
+              <tr>
+                <th>Result contract</th>
+                <td>Free text. Parent reads prose.</td>
+                <td>
+                  <b>JSON Schema enforced at the tool layer</b> — the child retries on mismatch, and
+                  the parent gets a typed object.
+                </td>
+                <td>Free text back into the main agent's context.</td>
+              </tr>
+              <tr>
+                <th>Capability isolation</th>
+                <td>
+                  <b>Strictest.</b> Per-profile tool allowlist, allowed child profiles, and
+                  fail-closed skill boundary — the session refuses to start if any enabled skill
+                  falls outside the manifest. Read-only vs write authority is written into each
+                  worker's envelope.
+                </td>
+                <td>Per-agent <code>agentType</code> from the registry; tools per definition.</td>
+                <td>Agent types in <code>.agents/</code>; disabled-subagent list.</td>
+              </tr>
+              <tr>
+                <th>Write isolation</th>
+                <td>
+                  Herdr-managed worktree on <code>rlm/&lt;runId&gt;</code>, per-worktree mutex,
+                  read-only calls run concurrently, clean worktrees reclaimed with their branch.
+                  <b>Never the user's checkout.</b>
+                </td>
+                <td>
+                  Opt-in <code>isolation: 'worktree'</code> per agent; auto-removed if unchanged.
+                </td>
+                <td><b>None.</b> All subagents share one checkout.</td>
+              </tr>
+              <tr>
+                <th>Budget / limits</th>
+                <td>
+                  Depth limit + one shared total-call budget across all siblings and descendants.
+                </td>
+                <td>
+                  Token budget with a hard ceiling, concurrency cap ~16, 1000-agent lifetime cap,
+                  4096 items per fan-out.
+                </td>
+                <td>Session-level; no explicit fan-out budget surfaced.</td>
+              </tr>
+              <tr>
+                <th>Human in the loop</th>
+                <td>
+                  <b>Deliberately removed.</b> <code>ask_user</code> is answered by an isolated
+                  answerer grounded in the root's conversation snapshot; permission dialogs
+                  auto-approve when unambiguous. Blocking questions go to <b>Telegram</b>.
+                </td>
+                <td>None mid-run. You review between workflows.</td>
+                <td><b>Highest.</b> Live TUI, real approvals, interruptible.</td>
+              </tr>
+              <tr>
+                <th>Resume</th>
+                <td>
+                  SDK session store is canonical. <code>--resume &lt;uuid&gt;</code> is single-turn
+                  and headless, with a <b>fresh budget</b>. Missing IDs fail loudly.
+                </td>
+                <td>
+                  <b>Prefix-cached replay.</b> <code>resumeFromRunId</code> re-runs only from the
+                  first changed <code>agent()</code> call — edit a late stage, keep the early work.
+                </td>
+                <td>Ordinary session resume.</td>
+              </tr>
+              <tr>
+                <th>Observability</th>
+                <td>
+                  <b>Langfuse recursion spine</b> — custom spans nested by depth, carrying profile,
+                  ordinal, budget, routing rationale, and SDK tool-call IDs. Redacted by default.
+                </td>
+                <td>
+                  Live progress tree + <code>journal.jsonl</code> of every agent return value.
+                </td>
+                <td>Subagent lifecycle events rendered in the TUI.</td>
+              </tr>
+              <tr>
+                <th>Cost of authoring</th>
+                <td><b>High.</b> Profiles, skill bundles, envelopes, routing policy.</td>
+                <td><b>Medium.</b> One script per orchestration, but it is real code.</td>
+                <td><b>Near zero.</b> One call, or one keystroke out of plan mode.</td>
+              </tr>
+              <tr>
+                <th>Maturity</th>
+                <td>Prototype (ADR 0010 / 0011), explicitly POC-scoped, ~4.7k LOC + tests.</td>
+                <td>Shipped harness feature, gated on explicit user opt-in.</td>
+                <td>Experimental SDK surface in the Copilot CLI.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= 3. PROS / CONS ================= -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">03</span>
+          <h2>Pros and cons</h2>
+          <span class="sec-note">Each system's cons are the direct price of its pros.</span>
+        </div>
+
+        <div class="pc">
+          <article class="card rlm">
+            <div class="card-head">
+              <h3>RLM POC</h3>
+              <span class="tag">weavekit</span>
+            </div>
+            <div class="pc-body">
+              <h4 class="pro">Pros</h4>
+              <ul>
+                <li>
+                  <b>Only one that crosses vendors.</b> A single run can use Copilot routing, a
+                  Claude Code agent loop, and a Codex launcher. Neither competitor can leave its own
+                  house.
+                </li>
+                <li>
+                  <b>Unbounded shape.</b> Adaptive depth handles work whose decomposition is unknown
+                  until you are inside it.
+                </li>
+                <li>
+                  <b>Capability governance is real,</b> not advisory: fail-closed skill boundaries,
+                  per-profile tool allowlists, explicit read-only vs write authority, mandatory
+                  specialization (a research child that skipped its skill is rejected).
+                </li>
+                <li>
+                  <b>Best isolation.</b> Managed worktrees, per-repo mutex, automatic reclamation —
+                  the user's checkout is never touched.
+                </li>
+                <li>
+                  <b>Best model routing.</b> Live catalog, capability/modality requirements,
+                  fallbacks, dry-run inspection, plus per-profile model preference.
+                </li>
+                <li>
+                  <b>Genuinely unattended.</b> Questions are answered from root context; hard blocks
+                  escalate over Telegram instead of stalling.
+                </li>
+                <li>
+                  <b>Deepest tracing.</b> The Langfuse span tree <i>is</i> the recursion tree.
+                </li>
+              </ul>
+
+              <h4 class="con">Cons</h4>
+              <ul>
+                <li>
+                  <b>Non-deterministic and unreproducible.</b> Two runs of the same prompt can
+                  produce different trees. No prefix-cached resume — a resume starts a fresh budget.
+                </li>
+                <li>
+                  <b>Cost is hard to predict.</b> Depth × branching under a shared budget; the
+                  ceiling is a call count, not a token count.
+                </li>
+                <li>
+                  <b>No typed results.</b> Parents parse prose, so failures degrade quietly rather
+                  than being caught at a schema boundary.
+                </li>
+                <li>
+                  <b>The <code>invoke_trellage</code> leg is heuristic.</b> It needs a PTY
+                  (untestable headless), pays ~40 s container boot, and detects completion from a
+                  result file plus three identical screen frames. A harness that never writes the
+                  file times out.
+                </li>
+                <li>
+                  <b>Large operational surface.</b> Herdr, Trellage, worktrees, skill caches keyed
+                  to upstream HEAD, a loopback proxy, Langfuse, Telegram — many things that can be
+                  down.
+                </li>
+                <li>
+                  <b>Answered-for-you questions can be confidently wrong.</b> The answerer sees the
+                  root snapshot, not the truth.
+                </li>
+                <li><b>POC.</b> Not a supported product surface.</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="card wf">
+            <div class="card-head">
+              <h3>Claude Workflows</h3>
+              <span class="tag">claude code</span>
+            </div>
+            <div class="pc-body">
+              <h4 class="pro">Pros</h4>
+              <ul>
+                <li>
+                  <b>Deterministic and reviewable.</b> The orchestration is source code — diffable,
+                  testable, re-runnable, explainable to someone else.
+                </li>
+                <li>
+                  <b>Prefix-cached resume is the standout feature.</b> Edit stage 3 and stages 1–2
+                  return instantly from the journal. Nothing else here has this.
+                </li>
+                <li>
+                  <b>Typed hand-offs.</b> Schema validation at the tool layer means the child
+                  retries itself, and cross-agent logic (dedupe, vote counting, early exit) is plain
+                  JS with no parsing.
+                </li>
+                <li>
+                  <b>Latency-aware primitives.</b> <code>pipeline()</code> avoids the barrier stall
+                  that naive fan-out/fan-in designs pay on every stage.
+                </li>
+                <li>
+                  <b>Real budget control.</b> Hard token ceiling that scripts can query and loop
+                  against (<code>budget.remaining()</code>).
+                </li>
+                <li>
+                  <b>Quality patterns compose:</b> adversarial refutation, judge panels,
+                  loop-until-dry, completeness critics — all expressible because control flow is
+                  code.
+                </li>
+              </ul>
+
+              <h4 class="con">Cons</h4>
+              <ul>
+                <li>
+                  <b>You must know the shape first.</b> Unknown decompositions force a
+                  scout-then-run hybrid across turns.
+                </li>
+                <li>
+                  <b>Single vendor, single harness.</b> No path to Codex, Copilot, or a container
+                  profile.
+                </li>
+                <li>
+                  <b>Depth capped at two.</b> Nested <code>workflow()</code> cannot nest again.
+                </li>
+                <li>
+                  <b>Authoring friction.</b> Plain JS, no TypeScript, no filesystem, and
+                  <code>Date.now()</code>/<code>Math.random()</code> throw — small rules that bite
+                  when you forget them.
+                </li>
+                <li>
+                  <b>Weak write isolation by default.</b> Parallel mutating agents collide unless
+                  you opt into per-agent worktrees, which cost setup time and disk.
+                </li>
+                <li>
+                  <b>Failures are silent nulls.</b> A dead agent becomes <code>null</code> in the
+                  result array; forget <code>.filter(Boolean)</code> and you get a wrong answer, not
+                  an error.
+                </li>
+                <li>
+                  <b>Can burn a lot of tokens fast</b>, which is why it needs explicit opt-in.
+                </li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="card fleet">
+            <div class="card-head">
+              <h3>Copilot Fleet</h3>
+              <span class="tag">copilot cli</span>
+            </div>
+            <div class="pc-body">
+              <h4 class="pro">Pros</h4>
+              <ul>
+                <li>
+                  <b>Lowest friction that exists.</b> One RPC call, or one selection when leaving
+                  plan mode. No script, no profile, no worktree plumbing.
+                </li>
+                <li>
+                  <b>Human stays in control.</b> Live TUI, structured lifecycle events, real
+                  approvals, interrupt at any point.
+                </li>
+                <li>
+                  <b>Plan-mode continuity.</b> The plan the model just wrote becomes the fan-out —
+                  no translation step where intent gets lost.
+                </li>
+                <li>
+                  <b>Cheap coordination.</b> One session, one context, one working tree: no
+                  cross-process state to reconcile.
+                </li>
+                <li>
+                  <b>Uses existing <code>.agents/</code> definitions</b> — the same subagents you
+                  already invoke by hand.
+                </li>
+                <li><b>First-class in the product,</b> not a bolt-on.</li>
+              </ul>
+
+              <h4 class="con">Cons</h4>
+              <ul>
+                <li>
+                  <b>Flat only.</b> No recursion, no depth, no sub-decomposition — hierarchical work
+                  has to be flattened by hand.
+                </li>
+                <li>
+                  <b>No write isolation.</b> Parallel subagents editing one checkout is the obvious
+                  failure mode, and nothing structurally prevents it.
+                </li>
+                <li>
+                  <b>Not reproducible and not resumable as a graph.</b> The fan-out lives in a
+                  prompt, so you cannot diff it, replay it, or partially re-run it.
+                </li>
+                <li>
+                  <b>No typed results</b> and no cross-agent logic layer — the main agent reconciles
+                  everything in natural language, in its own context window.
+                </li>
+                <li><b>Weakest budget story.</b> No surfaced fan-out cap or token ceiling.</li>
+                <li>
+                  <b>Single vendor</b>, and orchestration quality depends entirely on the injected
+                  prompt.
+                </li>
+                <li><b>Experimental,</b> and interactive-only in practice.</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ================= 4. PICK ================= -->
+      <section>
+        <div class="sec-head">
+          <span class="sec-num">04</span>
+          <h2>Which to reach for</h2>
+          <span class="sec-note">These are complements, not competitors.</span>
+        </div>
+
+        <div class="decide">
+          <div class="pick rlm">
+            <div class="bar"></div>
+            <h3>Pick RLM when…</h3>
+            <ul>
+              <li>the job needs a capability that <b>only another vendor's harness</b> has</li>
+              <li>the decomposition is <b>unknown until you are inside it</b></li>
+              <li>
+                you need <b>capability containment</b> — read-only workers, forced specialization
+              </li>
+              <li>it must run <b>unattended</b> and reach you only when truly blocked</li>
+              <li>parallel work <b>must not touch your checkout</b></li>
+            </ul>
+          </div>
+          <div class="pick wf">
+            <div class="bar"></div>
+            <h3>Pick Workflows when…</h3>
+            <ul>
+              <li>you already <b>know the shape</b>: N dimensions, M verifiers, one synthesis</li>
+              <li>
+                you will <b>run it more than once</b> and want to iterate on the orchestration
+              </li>
+              <li>
+                you need <b>typed results</b> and real cross-agent logic (voting, dedupe, exit)
+              </li>
+              <li>the token budget must be <b>enforced, not hoped for</b></li>
+              <li>a stage will change and you want the <b>earlier stages back for free</b></li>
+            </ul>
+          </div>
+          <div class="pick fleet">
+            <div class="bar"></div>
+            <h3>Pick Fleet when…</h3>
+            <ul>
+              <li>you are <b>already in the session</b> and just planned the work</li>
+              <li>the work is <b>obviously parallel and shallow</b></li>
+              <li>you want to <b>watch and interrupt</b> rather than review afterwards</li>
+              <li>writing an orchestration script would <b>cost more than the task</b></li>
+              <li>subagents mostly <b>read</b>, so a shared checkout is safe</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="verdict">
+          <h3>The short version</h3>
+          <p>
+            <b>Fleet</b> is the cheapest way to go parallel and the only one a human supervises live
+            — but it is flat, unisolated, and unrepeatable. <b>Workflows</b> is the only one where
+            the orchestration is an artifact you can diff, test, budget, and partially re-run — at
+            the cost of having to know the shape in advance and staying inside one vendor.
+            <b>RLM</b> is the only one that can recurse to arbitrary depth <i>and</i> reach outside
+            its own vendor, with the strongest containment and isolation of the three — at the cost
+            of determinism, predictable spend, and a large operational surface that is still a
+            prototype.
+          </p>
+          <p>
+            They stack cleanly: <b>Fleet inside a session</b>,
+            <b>Workflows for repeatable structure</b>,
+            <b>RLM when the work must leave the harness</b>. The interesting gap RLM has not closed
+            is the one Workflows solved — a typed, resumable, deterministic record of what the tree
+            actually did.
+          </p>
+        </div>
+      </section>
+
+      <footer>
+        <span>weavekit · examples/orchestration-comparison.html</span>
+        <span
+          >sources: src/rlm-poc/ · ADR 0010 &amp; 0011 · Workflow tool spec · @github/copilot-sdk
+          fleet RPC</span
+        >
+      </footer>
+    </div>
+  </body>
+</html>

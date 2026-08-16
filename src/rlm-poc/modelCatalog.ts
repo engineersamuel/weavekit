@@ -253,8 +253,8 @@ export function createEmergencyModelCatalog(
       classification: RlmModelGroup.CodingSpecialist,
     },
     {
-      id: "gemini-3.6-flash",
-      name: "Gemini 3.6 Flash",
+      id: "gemini-3.7-flash",
+      name: "Gemini 3.7 Flash",
       vendor: "google",
       family: "gemini-flash",
       description: "Emergency fast tool-capable fallback.",
@@ -278,7 +278,7 @@ export function createEmergencyModelCatalog(
       [RlmModelGroup.FrontierCurrent]: ["claude-opus-5", "gpt-5.6-sol"],
       [RlmModelGroup.BalancedWorkhorse]: ["claude-sonnet-5"],
       [RlmModelGroup.CodingSpecialist]: ["gpt-5.3-codex"],
-      [RlmModelGroup.FastEfficient]: ["gemini-3.6-flash"],
+      [RlmModelGroup.FastEfficient]: ["gemini-3.7-flash"],
     },
   };
 }

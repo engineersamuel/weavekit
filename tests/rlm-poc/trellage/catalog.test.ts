@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTrellageCommand,
+  buildHeadlessTrellageCommand,
   createTrellageCatalog,
   discoverTrellageProfiles,
+  selectRlmTrellageProfiles,
+  supportsHeadlessTrellage,
   type TrellageCommandRunner,
 } from "../../../src/rlm-poc/trellage/catalog.js";
 import {
@@ -10,6 +13,8 @@ import {
   TrellageMode,
   TrellageUnknownProfileError,
 } from "../../../src/rlm-poc/trellage/contracts.js";
+import { headlessAdapterFor } from "../../../src/rlm-poc/trellage/adapters/index.js";
+import { claudeHeadlessAdapter } from "../../../src/rlm-poc/trellage/adapters/claude.js";
 
 /** Recorded from the installed launchers, so parsing is tested against the real payload shapes. */
 const CONTAINER_LIST = JSON.stringify({
@@ -49,6 +54,13 @@ const TRX_LIST = JSON.stringify({
       harness: "oh-my-pi",
       name: "copilot",
       description: "OMP with Copilot models.",
+      sandbox: false,
+    },
+    {
+      launcher: "omp",
+      harness: "oh-my-pi",
+      name: "local",
+      description: "OMP with local models.",
       sandbox: false,
     },
   ],
@@ -112,7 +124,7 @@ describe("discoverTrellageProfiles", () => {
       createRunner({ "trx list --json": TRX_LIST, "trellage list --json": "not json" }),
     );
 
-    expect(profiles).toHaveLength(4);
+    expect(profiles).toHaveLength(5);
     expect(profiles.every((profile) => profile.mode === TrellageMode.Native)).toBe(true);
   });
 
@@ -161,6 +173,20 @@ describe("buildTrellageCommand", () => {
       "--model",
       "gpt-5.6-sol",
     ]);
+    expect(buildTrellageCommand(profile!, undefined, undefined, true, 25)).toEqual([
+      "cpx",
+      "hve",
+      "--autopilot",
+      "--allow-all",
+      "--max-autopilot-continues",
+      "25",
+    ]);
+    expect(buildTrellageCommand(profile!, undefined, undefined, true)).toEqual([
+      "cpx",
+      "hve",
+      "--autopilot",
+      "--allow-all",
+    ]);
   });
 
   it("passes default profiles positionally under the TRX launcher contract", async () => {
@@ -176,6 +202,140 @@ describe("buildTrellageCommand", () => {
       "--effort",
       "xhigh",
     ]);
+  });
+
+  it("adds question-tool denial only to RLM headless native commands", async () => {
+    const profiles = await discoverTrellageProfiles(createRunner({ "trx list --json": TRX_LIST }));
+    const copilot = profiles.find((profile) => profile.launcher === "cpx")!;
+    const claude = profiles.find((profile) => profile.launcher === "cldx")!;
+    const ompCopilot = profiles.find(
+      (profile) => profile.launcher === "omp" && profile.name === "copilot",
+    )!;
+    const ompLocal = profiles.find(
+      (profile) => profile.launcher === "omp" && profile.name === "local",
+    )!;
+
+    expect(supportsHeadlessTrellage(copilot)).toBe(true);
+    expect(supportsHeadlessTrellage(claude)).toBe(true);
+    expect(supportsHeadlessTrellage(ompCopilot)).toBe(true);
+    expect(supportsHeadlessTrellage(ompLocal)).toBe(false);
+    expect(buildTrellageCommand(copilot)).not.toContain("--no-ask-user");
+    expect(buildTrellageCommand(claude)).not.toContain("--disallowedTools");
+    expect(buildTrellageCommand(ompCopilot)).toEqual(["omp", "copilot"]);
+    expect(buildTrellageCommand(ompCopilot)).not.toContain("--exclude-tools=ask_question");
+    expect(buildHeadlessTrellageCommand(copilot, { prompt: "do it" })).toEqual(
+      expect.arrayContaining(["--output-format", "json", "--allow-all", "--no-ask-user"]),
+    );
+    expect(buildHeadlessTrellageCommand(claude, { prompt: "do it" })).toEqual(
+      expect.arrayContaining([
+        "--output-format",
+        "stream-json",
+        "--disallowedTools",
+        "AskUserQuestion",
+      ]),
+    );
+    expect(buildHeadlessTrellageCommand(ompCopilot, { prompt: "do it" })).toEqual([
+      "omp",
+      "copilot",
+      "-p",
+      "do it",
+      "--mode=json",
+      "--approval-mode=yolo",
+    ]);
+    expect(
+      buildHeadlessTrellageCommand(ompCopilot, {
+        prompt: "resume it",
+        resumeSessionId: "omp-copilot-session-1",
+      }),
+    ).toEqual([
+      "omp",
+      "copilot",
+      "--resume=omp-copilot-session-1",
+      "-p",
+      "resume it",
+      "--mode=json",
+      "--approval-mode=yolo",
+    ]);
+    expect(() => buildHeadlessTrellageCommand(ompLocal, { prompt: "do it" })).toThrow(
+      "Headless Trellage is not available for native/omp/local.",
+    );
+  });
+
+  it("exposes verified native and Claude container profiles while omitting grx, omp/local, and non-Claude containers", async () => {
+    const profiles = await discoverTrellageProfiles(
+      createRunner({
+        "trellage list --json": CONTAINER_LIST,
+        "trx list --json": TRX_LIST,
+      }),
+    );
+
+    expect(
+      selectRlmTrellageProfiles(profiles).map((profile) => [profile.launcher, profile.name]),
+    ).toEqual([
+      ["trellage", "claude-council"],
+      ["cpx", "hve"],
+      ["cldx", "default"],
+      ["omp", "copilot"],
+    ]);
+  });
+
+  it("drives a Claude container through the exec-only JSONL contract", async () => {
+    // Verified live: `trellage --profile claude-council --output-format jsonl --prompt ...` and its
+    // `resume` form both exit 0 with Claude stream-json and a stable session ID, with stdin closed
+    // and no TTY. Only the Claude container runtime implements the JSONL branch.
+    const profiles = await discoverTrellageProfiles(
+      createRunner({ "trellage list --json": CONTAINER_LIST }),
+    );
+    const claudeContainer = profiles.find((profile) => profile.name === "claude-council")!;
+    const codexContainer = profiles.find((profile) => profile.name === "codex-superpowers")!;
+
+    expect(supportsHeadlessTrellage(claudeContainer)).toBe(true);
+    expect(supportsHeadlessTrellage(codexContainer)).toBe(false);
+    expect(buildHeadlessTrellageCommand(claudeContainer, { prompt: "do it" })).toEqual([
+      "trellage",
+      "--profile",
+      "claude-council",
+      "--output-format",
+      "jsonl",
+      "--prompt",
+      "do it",
+    ]);
+    expect(
+      buildHeadlessTrellageCommand(claudeContainer, {
+        prompt: "resume it",
+        resumeSessionId: "12e4f707-dc7e-44c7-b576-2b57e468d6a4",
+      }),
+    ).toEqual([
+      "trellage",
+      "resume",
+      "--profile",
+      "claude-council",
+      "12e4f707-dc7e-44c7-b576-2b57e468d6a4",
+      "--output-format",
+      "jsonl",
+      "--prompt",
+      "resume it",
+    ]);
+    // The container's own harness flags come from its profile definition, so no `--model`,
+    // `--effort`, or question-tool flag can be injected here.
+    expect(buildHeadlessTrellageCommand(claudeContainer, { prompt: "do it" })).not.toContain(
+      "--disallowedTools",
+    );
+    expect(() => buildHeadlessTrellageCommand(codexContainer, { prompt: "do it" })).toThrow(
+      "Headless Trellage is not available for container/trellage/codex-superpowers.",
+    );
+  });
+
+  it("parses Claude container output with the native Claude adapter", async () => {
+    const profiles = await discoverTrellageProfiles(
+      createRunner({ "trellage list --json": CONTAINER_LIST }),
+    );
+    const claudeContainer = profiles.find((profile) => profile.name === "claude-council")!;
+
+    expect(headlessAdapterFor(claudeContainer)).toBe(claudeHeadlessAdapter);
+    expect(() =>
+      headlessAdapterFor(profiles.find((profile) => profile.name === "codex-superpowers")!),
+    ).toThrow('No headless adapter is registered for container profile "codex-superpowers".');
   });
 
   it("orders equally suitable choices by sandboxed native, container, unsandboxed native", async () => {
@@ -194,6 +354,7 @@ describe("buildTrellageCommand", () => {
       "container:true:trellage",
       "native:false:cpx",
       "native:false:cldx",
+      "native:false:omp",
       "native:false:omp",
     ]);
   });

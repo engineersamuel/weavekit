@@ -133,6 +133,16 @@ export default class TypeBuilder {
     
     ReviewOpenItemDisposition: ClassViewer<'ReviewOpenItemDisposition', "kind" | "text" | "owner" | "rationale">;
     
+    RlmArtifactReference: ClassViewer<'RlmArtifactReference', "locator" | "description">;
+    
+    RlmDependencyReport: ClassViewer<'RlmDependencyReport', "callId" | "profile" | "report">;
+    
+    RlmRunBrief: ClassViewer<'RlmRunBrief', "objective" | "constraints" | "acceptanceCriteria" | "validationCommands">;
+    
+    RlmVerificationResult: ClassViewer<'RlmVerificationResult', "commandOrMethod" | "outcome" | "summary">;
+    
+    RlmWorkerReport: ClassViewer<'RlmWorkerReport', "outcome" | "summary" | "evidence" | "artifacts" | "verification" | "decisions" | "risks" | "openQuestions" | "remainingWork">;
+    
     RoundAssessment: ClassViewer<'RoundAssessment', "roundNumber" | "consensus" | "disagreements" | "confidence" | "convergence" | "shouldContinue" | "diminishingReturns" | "needsHumanInput" | "clarifyingQuestions" | "nextRoundBrief">;
     
     RouterHandoff: ClassViewer<'RouterHandoff', "provider" | "targetProjectId" | "branchOrWorktreeName" | "harnessOrAgent" | "createWorktreeEligible" | "missingRequirements">;
@@ -181,6 +191,8 @@ export default class TypeBuilder {
     
     TicketReviewEvidence: ClassViewer<'TicketReviewEvidence', "id" | "kind" | "locator" | "repositoryEvidenceType" | "repositoryPath" | "repositoryLine" | "repositorySymbol" | "repositoryQuery" | "claim" | "confidence">;
     
+    TrellageTurnDiagnosis: ClassViewer<'TrellageTurnDiagnosis', "outcome" | "summary">;
+    
     VerificationAudit: ClassViewer<'VerificationAudit', "projectId" | "summary" | "verificationCommands" | "verificationSurfaces" | "gaps" | "evidence">;
     
     VerificationOpportunity: ClassViewer<'VerificationOpportunity', "id" | "title" | "currentVerificationGap" | "targetChange" | "allowedChangeKind" | "score" | "evidence" | "proofCommands" | "speculative">;
@@ -216,18 +228,24 @@ export default class TypeBuilder {
     
     ReviewReadiness: EnumViewer<'ReviewReadiness', "READY" | "READY_WITH_NONBLOCKING_GAPS" | "BLOCKED">;
     
+    RlmVerificationOutcome: EnumViewer<'RlmVerificationOutcome', "PASSED" | "FAILED" | "NOT_RUN">;
+    
+    RlmWorkerOutcome: EnumViewer<'RlmWorkerOutcome', "COMPLETED" | "NEEDS_HUMAN" | "FAILED">;
+    
     RouterRoute: EnumViewer<'RouterRoute', "DirectAnswer" | "RefinePrompt" | "GoalPrompt" | "Plan" | "GrillWithDocs" | "Research" | "LocalCodeChange" | "FleetParallel" | "RemoteDelegatePr" | "DecisionCouncil" | "SourceToProject" | "ManualHerdrWorktree">;
     
     TicketKind: EnumViewer<'TicketKind', "USER_STORY" | "BUG" | "TECHNICAL_TASK" | "SPIKE" | "OPERATIONAL">;
+    
+    TrellageTurnOutcome: EnumViewer<'TrellageTurnOutcome', "ACHIEVED" | "NEEDS_INFORMATION" | "BLOCKED" | "REFUSED">;
     
 
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","LinearTicketInput","MastermindNextActionDecision","MastermindProjectPolicyInput","MastermindReviewDecisionContext","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PostImplementationReview","PostImplementationReviewDossier","PostImplementationReviewFinding","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","ProposedLinearTicketPatch","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","ReviewOpenItemDisposition","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SelfImprovementFinding","SelfImprovementReport","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","SubmindTraceObservation","SubmindTraceSummary","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","TicketReviewDossier","TicketReviewEvidence","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","LinearTicketInput","MastermindNextActionDecision","MastermindProjectPolicyInput","MastermindReviewDecisionContext","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PostImplementationReview","PostImplementationReviewDossier","PostImplementationReviewFinding","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","ProposedLinearTicketPatch","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","ReviewOpenItemDisposition","RlmArtifactReference","RlmDependencyReport","RlmRunBrief","RlmVerificationResult","RlmWorkerReport","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SelfImprovementFinding","SelfImprovementReport","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","SubmindTraceObservation","SubmindTraceSummary","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","TicketReviewDossier","TicketReviewEvidence","TrellageTurnDiagnosis","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
-            "MastermindAction","PostImplementationReviewVerdict","ProjectRepositoryMode","RepositoryEvidenceType","ReviewEvidenceKind","ReviewOpenItemKind","ReviewOpenItemOwner","ReviewReadiness","RouterRoute","TicketKind",
+            "MastermindAction","PostImplementationReviewVerdict","ProjectRepositoryMode","RepositoryEvidenceType","ReviewEvidenceKind","ReviewOpenItemKind","ReviewOpenItemOwner","ReviewReadiness","RlmVerificationOutcome","RlmWorkerOutcome","RouterRoute","TicketKind","TrellageTurnOutcome",
           ]),
           runtime: DO_NOT_USE_DIRECTLY_UNLESS_YOU_KNOW_WHAT_YOURE_DOING_RUNTIME
         });
@@ -444,6 +462,26 @@ export default class TypeBuilder {
           "kind","text","owner","rationale",
         ]);
         
+        this.RlmArtifactReference = this.tb.classViewer("RlmArtifactReference", [
+          "locator","description",
+        ]);
+        
+        this.RlmDependencyReport = this.tb.classViewer("RlmDependencyReport", [
+          "callId","profile","report",
+        ]);
+        
+        this.RlmRunBrief = this.tb.classViewer("RlmRunBrief", [
+          "objective","constraints","acceptanceCriteria","validationCommands",
+        ]);
+        
+        this.RlmVerificationResult = this.tb.classViewer("RlmVerificationResult", [
+          "commandOrMethod","outcome","summary",
+        ]);
+        
+        this.RlmWorkerReport = this.tb.classViewer("RlmWorkerReport", [
+          "outcome","summary","evidence","artifacts","verification","decisions","risks","openQuestions","remainingWork",
+        ]);
+        
         this.RoundAssessment = this.tb.classViewer("RoundAssessment", [
           "roundNumber","consensus","disagreements","confidence","convergence","shouldContinue","diminishingReturns","needsHumanInput","clarifyingQuestions","nextRoundBrief",
         ]);
@@ -540,6 +578,10 @@ export default class TypeBuilder {
           "id","kind","locator","repositoryEvidenceType","repositoryPath","repositoryLine","repositorySymbol","repositoryQuery","claim","confidence",
         ]);
         
+        this.TrellageTurnDiagnosis = this.tb.classViewer("TrellageTurnDiagnosis", [
+          "outcome","summary",
+        ]);
+        
         this.VerificationAudit = this.tb.classViewer("VerificationAudit", [
           "projectId","summary","verificationCommands","verificationSurfaces","gaps","evidence",
         ]);
@@ -609,12 +651,24 @@ export default class TypeBuilder {
           "READY","READY_WITH_NONBLOCKING_GAPS","BLOCKED",
         ]);
         
+        this.RlmVerificationOutcome = this.tb.enumViewer("RlmVerificationOutcome", [
+          "PASSED","FAILED","NOT_RUN",
+        ]);
+        
+        this.RlmWorkerOutcome = this.tb.enumViewer("RlmWorkerOutcome", [
+          "COMPLETED","NEEDS_HUMAN","FAILED",
+        ]);
+        
         this.RouterRoute = this.tb.enumViewer("RouterRoute", [
           "DirectAnswer","RefinePrompt","GoalPrompt","Plan","GrillWithDocs","Research","LocalCodeChange","FleetParallel","RemoteDelegatePr","DecisionCouncil","SourceToProject","ManualHerdrWorktree",
         ]);
         
         this.TicketKind = this.tb.enumViewer("TicketKind", [
           "USER_STORY","BUG","TECHNICAL_TASK","SPIKE","OPERATIONAL",
+        ]);
+        
+        this.TrellageTurnOutcome = this.tb.enumViewer("TrellageTurnOutcome", [
+          "ACHIEVED","NEEDS_INFORMATION","BLOCKED","REFUSED",
         ]);
         
     }

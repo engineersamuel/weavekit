@@ -223,6 +223,13 @@ provisioning_root = "~/projects/prototypes"
 autonomous_pr_allowed = false
 ```
 
+The configured state names project Mastermind activity into the team's Linear workflow.
+Active ticket analysis and implementation use **In Progress**. Verified implementation moves to
+**In Review** for post-implementation review and remains there while acceptance is pending.
+Only explicit acceptance moves the ticket to **Done**; a successful submind process does not
+bypass result collection, verification, review, or acceptance. Mastermind labels and comments
+continue to represent needs-input, review-failed, and changes-requested conditions.
+
 Set model runtime values in the process environment:
 
 ```bash
@@ -271,6 +278,17 @@ scheduling pass detects a genuine human reply posted after Mastermind's clarific
 title/description are otherwise unchanged. The reply text is folded into the ticket description
 seen by the review harness/BAML synthesis for that regenerated review, without perturbing the
 stored content hash used for staleness detection.
+
+That comment path applies to `NEEDS_HUMAN` only, and the distinction matters. A ticket carrying
+`mastermind-review-failed` is in `FAILED`, where the clarification-reply lookup never runs, so no
+comment reopens it — a threaded reply and a new top-level comment are equally ignored. Reopen a
+failed review by editing the ticket title or description so the content hash changes (acceptance
+criteria live in the description, so rescoping counts), or by removing the
+`mastermind-review-failed` label. On a content change Mastermind clears its own labels as part of
+reopening, so do not also remove the label by hand. Note too that the comment lookup ignores Linear
+threading entirely: any comment that is newer than Mastermind's clarification comment and does not
+carry a Mastermind marker prefix qualifies. See `src/mastermind/decision/loop.ts` and
+`src/mastermind/review/clarification.ts`.
 
 Direct execution remains disabled unless `[mastermind.execution]` and the resolved project's
 `[projects.<id>.execution.direct]` policy are both present. An opted-in `IMPLEMENT_DIRECTLY`
@@ -471,7 +489,7 @@ stable `gpt-5.5` baseline unless you opt into another synthesis model explicitly
 
 The counterbalanced Mastermind synthesis benchmark writes a local artifact at
 `runs/mastermind-synthesis-benchmark/<timestamp>.json`. The latest rerun in this worktree kept
-`gpt-5.5` as the effective default: `gemini-3.6-flash` preserved the quality and safety gates but
+`gpt-5.5` as the effective default: `gemini-3.7-flash` preserved the quality and safety gates but
 posted a 15.8-second median versus `gpt-5.5` at 9.17 seconds, failing the strict baseline-beat
 adoption gate, the 10% relative slowdown gate, and the 12-second observed-target gate. The
 observed-target gate only says absolute latency is acceptable; default adoption also requires the

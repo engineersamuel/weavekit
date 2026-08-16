@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Tool, ToolResultObject } from "@github/copilot-sdk";
+import type { SessionEvent, Tool, ToolResultObject } from "@github/copilot-sdk";
 import type { RlmToolArgs } from "../../src/rlm-poc/contracts.js";
 import {
   RLM_VALIDATION_SCENARIO_PROMPT,
@@ -8,7 +8,18 @@ import {
   runRlmSubmind,
 } from "../../src/rlm-poc/runtime.js";
 import type { RlmClient } from "../../src/rlm-poc/session.js";
+import {
+  beginRlmCall,
+  createRlmRunState,
+  snapshotRlmRunState,
+  succeedRlmCall,
+} from "../../src/rlm-poc/runState.js";
 import { RLM_SUBMIND_SYSTEM_PROMPT } from "../../src/rlm-poc/submindPrompt.js";
+import { RlmWorkerOutcome, type RlmWorkerReport } from "../../src/generated/baml_client/types.js";
+import type {
+  RlmWorkerContract,
+  RlmWorkerContractInput,
+} from "../../src/rlm-poc/workerContract.js";
 
 const capturedClientOptions: Record<string, unknown>[] = [];
 
@@ -34,6 +45,29 @@ vi.mock("@github/copilot-sdk", async (importOriginal) => {
 });
 
 const noRootSkills = async () => undefined;
+
+function workerReport(summary: string): RlmWorkerReport {
+  return {
+    outcome: RlmWorkerOutcome.COMPLETED,
+    summary,
+    evidence: [],
+    artifacts: [],
+    verification: [],
+    decisions: [],
+    risks: [],
+    openQuestions: [],
+    remainingWork: [],
+  };
+}
+
+const summaryWorkerContract: RlmWorkerContract = {
+  async renderPrompt({ delegatedTask }) {
+    return delegatedTask;
+  },
+  parseResponse(raw) {
+    return workerReport(raw);
+  },
+};
 
 describe("RLM runtime prompts", () => {
   it("keeps the prototype validation prompt narrow and profile-specific", () => {
@@ -80,11 +114,12 @@ describe("RLM runtime prompts", () => {
     if (!sessionConfig) {
       throw new Error("Expected validation session config.");
     }
-    expect(sessionConfig.model).toBe("mai-code-1.1-flash");
+    expect(sessionConfig.model).toBe("gpt-5.6-sol");
     expect(sessionConfig.reasoningEffort).toBe("medium");
     expect(sessionConfig.availableTools).toEqual(["custom:rlm"]);
     expect(sessionConfig.enableConfigDiscovery).toBe(true);
     expect(sessionConfig.enableSkills).toBe(false);
+    expect(sessionConfig.memory).toEqual({ enabled: false });
     expect(rootTimeout).toBe(35 * 60_000);
     expect(sessionConfig.systemMessage).toEqual({
       mode: "append",
@@ -97,6 +132,69 @@ describe("RLM runtime prompts", () => {
     expect(
       (tool.parameters as { properties: { profile: { enum: string[] } } }).properties.profile.enum,
     ).toEqual(["validation"]);
+  });
+
+  it("keeps validation worker prompts and responses raw when a worker adapter is supplied", async () => {
+    const renderPrompt = vi.fn(summaryWorkerContract.renderPrompt);
+    const parseResponse = vi.fn(summaryWorkerContract.parseResponse);
+    let factoryCall = 0;
+    const clientFactory = (): RlmClient => {
+      factoryCall += 1;
+      if (factoryCall === 1) {
+        return {
+          async start() {},
+          async createSession(config) {
+            return {
+              async sendAndWait() {
+                const [tool] = config.tools as Tool<RlmToolArgs>[];
+                if (!tool?.handler) throw new Error("Expected validation RLM tool.");
+                const result = (await tool.handler(
+                  { prompt: "Return this text unchanged.", profile: "validation" },
+                  {
+                    sessionId: "validation-root",
+                    toolCallId: "validation-call",
+                    toolName: "rlm",
+                    arguments: {
+                      prompt: "Return this text unchanged.",
+                      profile: "validation",
+                    },
+                  },
+                )) as ToolResultObject;
+                const payload = JSON.parse(result.textResultForLlm) as { text: string };
+                return { data: { content: payload.text } };
+              },
+              async disconnect() {},
+            };
+          },
+          async stop() {},
+        };
+      }
+      return {
+        async start() {},
+        async createSession() {
+          return {
+            async sendAndWait({ prompt }) {
+              expect(prompt).toBe("Return this text unchanged.");
+              return { data: { content: "RAW_VALIDATION_RESULT" } };
+            },
+            async disconnect() {},
+          };
+        },
+        async stop() {},
+      };
+    };
+
+    const result = await runRlmPrototype({
+      clientFactory,
+      consoleStreaming: false,
+      prepareProfileSkills: noRootSkills,
+      prepareRootSkills: noRootSkills,
+      workerContract: { renderPrompt, parseResponse },
+    });
+
+    expect(result.finalText).toBe("RAW_VALIDATION_RESULT");
+    expect(renderPrompt).not.toHaveBeenCalled();
+    expect(parseResponse).not.toHaveBeenCalled();
   });
 
   it("runs the general Submind with generated orchestration instructions", async () => {
@@ -213,6 +311,7 @@ describe("RLM runtime prompts", () => {
       clientFactory,
       consoleStreaming: false,
       maxTotalCalls: 6,
+      workerContract: summaryWorkerContract,
       prepareProfileSkills: noRootSkills,
       prepareRootSkills: async () => ({
         skillDirectories: ["/cache/handoff/skills/productivity"],
@@ -226,9 +325,10 @@ describe("RLM runtime prompts", () => {
     expect(rootTimeout).toBe(200 * 60_000);
     expect(sessionConfig?.enableConfigDiscovery).toBe(true);
     expect(sessionConfig?.enableSkills).toBe(false);
+    expect(sessionConfig?.memory).toEqual({ enabled: false });
     expect(sessionConfig?.skillDirectories).toBeUndefined();
     expect(sessionConfig?.disabledSkills).toBeUndefined();
-    expect(sessionConfig?.availableTools).toEqual(["custom:rlm", "mcp:*"]);
+    expect(sessionConfig?.availableTools).toEqual(["custom:rlm", "mcp:*", "view", "glob", "grep"]);
     const systemMessage = sessionConfig?.systemMessage as { content: string };
     expect(systemMessage.content).toContain("enforces at most 6 total `rlm` calls");
     expect(systemMessage.content).toContain("`review` (review):");
@@ -236,9 +336,10 @@ describe("RLM runtime prompts", () => {
       throw new Error("Expected root-grounded answerer session config.");
     }
     expect(answererConfig).toMatchObject({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.7-flash",
       enableConfigDiscovery: false,
       enableSkills: false,
+      memory: { enabled: false },
       availableTools: [],
     });
     expect((answererConfig.systemMessage as { content: string }).content).toContain(
@@ -295,6 +396,17 @@ describe("RLM runtime prompts", () => {
           async sendAndWait({ prompt }) {
             return { data: { content: `continued: ${prompt}` } };
           },
+          async getEvents() {
+            return [
+              {
+                type: "user.message",
+                id: "original-user",
+                parentId: null,
+                timestamp: new Date().toISOString(),
+                data: { content: "Original objective." },
+              } as SessionEvent,
+            ];
+          },
           async disconnect() {},
         };
       },
@@ -315,6 +427,7 @@ describe("RLM runtime prompts", () => {
     expect(result).toMatchObject({
       finalText: "continued: Use the prior turn.",
       conversationId,
+      runId: conversationId,
     });
     if (!resumedConfig) {
       throw new Error("Expected resumeSession configuration.");
@@ -322,11 +435,226 @@ describe("RLM runtime prompts", () => {
     expect(resumedConfig.enableConfigDiscovery).toBe(true);
     expect(resumedConfig.enableSkills).toBe(false);
     expect(resumedConfig.disabledSkills).toBeUndefined();
-    expect(resumedConfig.availableTools).toEqual(["custom:rlm", "mcp:*"]);
+    expect(resumedConfig.availableTools).toEqual(["custom:rlm", "mcp:*", "view", "glob", "grep"]);
     expect(resumedConfig.tools).toHaveLength(1);
     expect((resumedConfig.systemMessage as { content: string }).content).toContain(
       "Recursive RLM Submind",
     );
+  });
+
+  it("hydrates completed calls on resume and makes them available as explicit dependencies", async () => {
+    const conversationId = "f13c1665-bc2c-4d97-9c37-8f31d5c87d17";
+    const originalBrief = {
+      objective: "Establish the prerequisite.",
+      constraints: ["Keep evidence explicit."],
+      acceptanceCriteria: ["A later call can select the report."],
+      validationCommands: [],
+    };
+    const priorReport = workerReport("Prior verified evidence.");
+    const priorState = createRlmRunState(originalBrief, { runId: conversationId });
+    const priorCall = beginRlmCall(priorState, {
+      profile: "general",
+      depthUsed: 1,
+    });
+    succeedRlmCall(priorState, priorCall.callId, {
+      model: "test-model",
+      report: priorReport,
+    });
+    const checkpoint = snapshotRlmRunState(priorState);
+    const renderedInputs: RlmWorkerContractInput[] = [];
+    const workerContract: RlmWorkerContract = {
+      async renderPrompt(input) {
+        renderedInputs.push(structuredClone(input));
+        return input.delegatedTask;
+      },
+      parseResponse(raw) {
+        return raw === JSON.stringify(priorReport) ? priorReport : workerReport(raw);
+      },
+    };
+    let factoryCall = 0;
+    let currentPayload: Record<string, unknown> | undefined;
+    let workerConfig: Record<string, unknown> | undefined;
+    const clientFactory = (): RlmClient => {
+      factoryCall += 1;
+      if (factoryCall === 1) {
+        return {
+          async start() {},
+          rpc: {
+            skills: {
+              async discover() {
+                return { skills: [] };
+              },
+            },
+          },
+          async createSession() {
+            throw new Error("Fresh root session must not be created during resume.");
+          },
+          async resumeSession(sessionId, config) {
+            return {
+              sessionId,
+              rpc: {
+                skills: {
+                  async ensureLoaded() {},
+                  async list() {
+                    return { skills: [] };
+                  },
+                },
+              },
+              async getEvents() {
+                return [
+                  {
+                    type: "tool.execution_complete",
+                    id: "prior-tool-result",
+                    parentId: null,
+                    timestamp: new Date().toISOString(),
+                    data: {
+                      toolCallId: "prior-sdk-tool-call",
+                      success: true,
+                      result: { content: JSON.stringify({ state: checkpoint }) },
+                    },
+                  } as SessionEvent,
+                ];
+              },
+              async sendAndWait() {
+                const [tool] = config.tools as Tool<RlmToolArgs>[];
+                if (!tool) throw new Error("Expected resumed RLM tool.");
+                const result = await tool.handler?.(
+                  {
+                    prompt: "Use the prior verified evidence.",
+                    profile: "general",
+                    dependsOn: [priorCall.callId],
+                  },
+                  {
+                    sessionId,
+                    toolCallId: "current-sdk-tool-call",
+                    toolName: "rlm",
+                    arguments: {
+                      prompt: "Use the prior verified evidence.",
+                      profile: "general",
+                      dependsOn: [priorCall.callId],
+                    },
+                  },
+                );
+                const payload = JSON.parse((result as ToolResultObject).textResultForLlm) as Record<
+                  string,
+                  unknown
+                >;
+                currentPayload = payload;
+                return { data: { content: payload.text as string } };
+              },
+              async disconnect() {},
+            };
+          },
+          async stop() {},
+        };
+      }
+      return {
+        async start() {},
+        async createSession(config) {
+          workerConfig = config;
+          return {
+            async sendAndWait() {
+              return { data: { content: "Current completed work." } };
+            },
+            async disconnect() {},
+          };
+        },
+        async stop() {},
+      };
+    };
+
+    const result = await runRlmSubmind("Continue from the prerequisite.", {
+      conversationId,
+      clientFactory,
+      consoleStreaming: false,
+      prepareProfileSkills: noRootSkills,
+      prepareRootSkills: noRootSkills,
+      workerContract,
+    });
+
+    expect(result).toMatchObject({
+      finalText: "Current completed work.",
+      conversationId,
+      runId: conversationId,
+    });
+    expect(renderedInputs).toEqual([
+      {
+        brief: originalBrief,
+        delegatedTask: "Use the prior verified evidence.",
+        dependencies: [
+          {
+            callId: priorCall.callId,
+            profile: "general",
+            report: priorReport,
+          },
+        ],
+      },
+    ]);
+    expect(currentPayload).toMatchObject({
+      callId: `${conversationId}:call-2`,
+      dependencyCallIds: [priorCall.callId],
+      state: {
+        runId: conversationId,
+        revision: 4,
+        nextCallNumber: 3,
+      },
+    });
+    expect(workerConfig?.memory).toEqual({ enabled: false });
+  });
+
+  it("fails closed before a resumed prompt when a versioned state checkpoint is malformed", async () => {
+    let promptSent = false;
+    const conversationId = "f13c1665-bc2c-4d97-9c37-8f31d5c87d17";
+    const client: RlmClient = {
+      async start() {},
+      rpc: {
+        skills: {
+          async discover() {
+            return { skills: [] };
+          },
+        },
+      },
+      async createSession() {
+        throw new Error("Fresh root session must not be created during resume.");
+      },
+      async resumeSession(sessionId) {
+        return {
+          sessionId,
+          async getEvents() {
+            return [
+              {
+                type: "tool.execution_complete",
+                id: "malformed-tool-result",
+                parentId: null,
+                timestamp: new Date().toISOString(),
+                data: {
+                  toolCallId: "malformed-tool-call",
+                  success: true,
+                  result: { content: JSON.stringify({ state: { schemaVersion: 1 } }) },
+                },
+              } as SessionEvent,
+            ];
+          },
+          async sendAndWait() {
+            promptSent = true;
+            return { data: { content: "must not run" } };
+          },
+          async disconnect() {},
+        };
+      },
+      async stop() {},
+    };
+
+    await expect(
+      runRlmSubmind("Do not send.", {
+        conversationId,
+        clientFactory: () => client,
+        consoleStreaming: false,
+        prepareRootSkills: noRootSkills,
+        workerContract: summaryWorkerContract,
+      }),
+    ).rejects.toThrow("Invalid RLM run-state checkpoint");
+    expect(promptSent).toBe(false);
   });
 
   it.each(["fresh", "resumed"] as const)(
@@ -356,6 +684,17 @@ describe("RLM runtime prompts", () => {
         async sendAndWait() {
           promptSent = true;
           return { data: { content: "must not run" } };
+        },
+        async getEvents() {
+          return [
+            {
+              type: "user.message",
+              id: "original-user",
+              parentId: null,
+              timestamp: new Date().toISOString(),
+              data: { content: "Original objective." },
+            } as SessionEvent,
+          ];
         },
         async disconnect() {},
       };
@@ -428,6 +767,17 @@ describe("RLM runtime prompts", () => {
         async sendAndWait() {
           promptSent = true;
           return { data: { content: "must not run" } };
+        },
+        async getEvents() {
+          return [
+            {
+              type: "user.message",
+              id: "original-user",
+              parentId: null,
+              timestamp: new Date().toISOString(),
+              data: { content: "Original objective." },
+            } as SessionEvent,
+          ];
         },
         async disconnect() {
           disconnected = true;

@@ -214,6 +214,16 @@ function SynthesizeLinearTicketPatch(
     - Preserve the user's factual intent.
     - Copy dossier.preservedIntent verbatim into this patch's preservedIntent field; do not
       paraphrase, summarize, or edit it in any way.
+    - Copy every concrete value the ticket states — identifiers, versions, model ids, URLs,
+      ports, paths, file modes, flags, and command strings — verbatim into the description.
+      Never replace one with a generic phrase such as "the required settings" or "the defined
+      URL". If the ticket gives a value, the description must still give that same value.
+    - Preserve every qualifier the ticket attaches to an acceptance criterion, especially one
+      stating that a named failure, warning, or non-zero exit is expected and does not fail
+      that criterion. Never restate a qualified criterion as an unqualified one; dropping the
+      qualifier can make the criterion impossible to satisfy.
+    - Never write an acceptance criterion that the ticket's own Scope and Out of scope sections
+      make unsatisfiable.
     - Use repository or external claims only when the dossier provides evidence.
     - Keep unanswered product decisions as questions or blocking reasons. Never silently decide.
     - Keep the existing string arrays. openItemDispositions classifies unansweredQuestions and
@@ -557,11 +567,11 @@ test DecideNextAction_ExecutorPreflightGap {
       requiresHumanApproval false
       blockingReasons []
       warnings ["Verify the local proxy runtime before synthesis benchmarking."]
-      unansweredQuestions ["Is the local proxy advertising gemini-3.6-flash in this environment?"]
+      unansweredQuestions ["Is the local proxy advertising gemini-3.7-flash in this environment?"]
       openItemDispositions [
         {
           kind UNANSWERED_QUESTION
-          text "Is the local proxy advertising gemini-3.6-flash in this environment?"
+          text "Is the local proxy advertising gemini-3.7-flash in this environment?"
           owner EXECUTOR_PREFLIGHT
           rationale "The executor can prove the runtime model inventory immediately before work."
         }

@@ -12,6 +12,8 @@ import { buildTrellageCommand } from "./catalog.js";
 
 const ADOPTION_POLL_INTERVAL_MS = 500;
 const RENAME_ATTEMPTS = 10;
+/** Consecutive accepted probes required before the harness is believed to be live. */
+const READY_SAMPLES = 3;
 
 export type HerdrTrellageBackendOptions = {
   /**
@@ -42,7 +44,13 @@ export function createHerdrTrellageBackend(
     async launch(input: TrellageLaunchInput): Promise<TrellageSession> {
       const tab = await scoped.createTab(input.label);
       try {
-        const [command, ...args] = buildTrellageCommand(input.profile, input.model, input.effort);
+        const [command, ...args] = buildTrellageCommand(
+          input.profile,
+          input.model,
+          input.effort,
+          input.autopilot,
+          input.maxAutopilotContinues,
+        );
         try {
           await scoped.launch({
             paneId: tab.id,
@@ -58,7 +66,8 @@ export function createHerdrTrellageBackend(
         }
 
         const agent = await pollForAdoption(scoped, tab.id, adoptionTimeoutMs, sleep);
-        await renameToScopedName(scoped, agent.id, input.label);
+        await renameToScopedName(scoped, agent.id, input.label, sleep);
+        await waitForActiveAgent(scoped, agent.id, adoptionTimeoutMs, sleep);
         return { agentId: agent.id, paneId: tab.id, tabId: tab.tabId, kind: agent.kind };
       } catch (error) {
         await closeQuietly(scoped, tab.tabId);
@@ -125,6 +134,51 @@ async function pollForAdoption(
 }
 
 /**
+ * Waits until Herdr will accept agent-targeted input for the adopted agent.
+ *
+ * Adoption is not the same as readiness: Herdr reports a `copilot`/`idle` agent as soon as a known
+ * launcher command starts, but a Trellage launcher can run for seconds before the harness itself
+ * does — `cpx` imports memory first. Prompting inside that window types the task into the launcher.
+ * An empty `agent.send_keys` is the probe that separates the two: Herdr rejects it with
+ * `agent_not_ready` until the harness is live, and it presses nothing once accepted.
+ *
+ * Readiness is not monotonic, so a single accepted probe is not proof. Renaming the agent makes it
+ * momentarily pass the "active named agent" check, and Herdr's next detection sweep — around 200ms
+ * later — takes it back until the harness really starts. A probe landing in that window would
+ * certify a launcher as ready. Consecutive accepted probes span far more than the window, so only a
+ * sustained run of them is believed.
+ */
+async function waitForActiveAgent(
+  scoped: ScopedHerdr,
+  agentId: string,
+  timeoutMs: number,
+  sleep: (ms: number) => Promise<void>,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+  let accepted = 0;
+  while (Date.now() < deadline) {
+    try {
+      await scoped.sendKeys(agentId, []);
+      accepted += 1;
+      if (accepted >= READY_SAMPLES) return;
+    } catch (error) {
+      if (!isAgentNotReady(error)) throw error;
+      lastError = error;
+      accepted = 0;
+    }
+    await sleep(ADOPTION_POLL_INTERVAL_MS);
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for Trellage agent ${agentId} to accept input: ${String(lastError)}`,
+  );
+}
+
+function isAgentNotReady(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("agent_not_ready:");
+}
+
+/**
  * Gives the adopted agent a run-scoped name.
  *
  * This is not cosmetic: every `ScopedHerdr` guard checks the agent's name prefix, so a session
@@ -135,25 +189,41 @@ async function renameToScopedName(
   scoped: ScopedHerdr,
   agentId: string,
   name: string,
+  sleep: (ms: number) => Promise<void>,
 ): Promise<void> {
   let lastError: unknown;
   for (let attempt = 0; attempt < RENAME_ATTEMPTS; attempt += 1) {
     try {
       await scoped.rename(agentId, name);
-      return;
+      if (await waitForScopedRename(scoped, agentId, name, sleep)) return;
     } catch (error) {
-      // An ambiguous rename may have landed; confirm from the snapshot rather than retrying.
       if (isAmbiguousHerdrMutation(error)) {
-        const snapshot = await scoped.snapshot();
-        if (snapshot.agents.some((agent) => agent.id === agentId && agent.name === name)) return;
+        if (await waitForScopedRename(scoped, agentId, name, sleep)) return;
       }
       lastError = error;
-      await delay(200);
+      await sleep(200);
+      continue;
     }
+    lastError = new Error(`Herdr has not exposed renamed agent ${agentId} as ${name} yet.`);
+    await sleep(200);
   }
   throw new Error(
     `Failed to assign the run-scoped name "${name}" to Trellage agent ${agentId}: ${String(lastError)}`,
   );
+}
+
+async function waitForScopedRename(
+  scoped: ScopedHerdr,
+  agentId: string,
+  name: string,
+  sleep: (ms: number) => Promise<void>,
+): Promise<boolean> {
+  for (let attempt = 0; attempt < RENAME_ATTEMPTS; attempt += 1) {
+    const snapshot = await scoped.snapshot();
+    if (snapshot.agents.some((agent) => agent.id === agentId && agent.name === name)) return true;
+    await sleep(200);
+  }
+  return false;
 }
 
 async function closeQuietly(scoped: ScopedHerdr, tabId: string): Promise<void> {

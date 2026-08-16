@@ -97,6 +97,18 @@ export enum ReviewReadiness {
   BLOCKED = "BLOCKED",
 }
 
+export enum RlmVerificationOutcome {
+  PASSED = "PASSED",
+  FAILED = "FAILED",
+  NOT_RUN = "NOT_RUN",
+}
+
+export enum RlmWorkerOutcome {
+  COMPLETED = "COMPLETED",
+  NEEDS_HUMAN = "NEEDS_HUMAN",
+  FAILED = "FAILED",
+}
+
 export enum RouterRoute {
   DirectAnswer = "DirectAnswer",
   RefinePrompt = "RefinePrompt",
@@ -118,6 +130,13 @@ export enum TicketKind {
   TECHNICAL_TASK = "TECHNICAL_TASK",
   SPIKE = "SPIKE",
   OPERATIONAL = "OPERATIONAL",
+}
+
+export enum TrellageTurnOutcome {
+  ACHIEVED = "ACHIEVED",
+  NEEDS_INFORMATION = "NEEDS_INFORMATION",
+  BLOCKED = "BLOCKED",
+  REFUSED = "REFUSED",
 }
 
 export interface AdoptionTask {
@@ -682,6 +701,47 @@ export interface ReviewOpenItemDisposition {
   
 }
 
+export interface RlmArtifactReference {
+  locator: string
+  description: string
+  
+}
+
+export interface RlmDependencyReport {
+  callId: string
+  profile: string
+  report: RlmWorkerReport
+  
+}
+
+export interface RlmRunBrief {
+  objective: string
+  constraints: string[]
+  acceptanceCriteria: string[]
+  validationCommands: string[]
+  
+}
+
+export interface RlmVerificationResult {
+  commandOrMethod: string
+  outcome: RlmVerificationOutcome
+  summary: string
+  
+}
+
+export interface RlmWorkerReport {
+  outcome: RlmWorkerOutcome
+  summary: string
+  evidence: EvidenceReference[]
+  artifacts: RlmArtifactReference[]
+  verification: RlmVerificationResult[]
+  decisions: string[]
+  risks: string[]
+  openQuestions: string[]
+  remainingWork: string[]
+  
+}
+
 export interface RoundAssessment {
   roundNumber: number
   consensus: string
@@ -955,6 +1015,12 @@ export interface TicketReviewEvidence {
   repositoryQuery?: string | null
   claim: string
   confidence: number
+  
+}
+
+export interface TrellageTurnDiagnosis {
+  outcome: TrellageTurnOutcome
+  summary: string
   
 }
 

@@ -57,6 +57,8 @@ Operating rules:
 - An \`effort\` override (\`low\`/\`medium\`/\`high\`/\`xhigh\`/\`max\`) is valid only with a native
   Claude (\`cldx\`) profile. Reach for \`xhigh\` on a long-horizon, high-stakes delegated task; do
   not pass \`effort\` to any other harness.
+- \`autopilot: true\` (optionally with \`maxAutopilotContinues\`) and \`fleet: true\` are valid only
+  with a native Copilot (\`cpx\`) profile. Do not pass either to any other harness.
 - Calls consume the same shared budget as \`rlm\`, and each one is far slower, so spend them on
   work that justifies a whole separate harness.
 - If a call returns an outcome other than \`completed\`, treat it as failed evidence: read the
@@ -85,6 +87,35 @@ When that bar is met:
   Claude Code owns decomposing and running the workflow internally.
 - Do not reach for this path for small or already-well-scoped tasks; use the plain \`rlm\` or
   \`invoke_trellage\` delegation guidance above instead.
+
+## Delegate to Copilot CLI Autopilot + Fleet Mode
+
+Native Copilot (the \`cpx\` native launcher, i.e. \`invoke_trellage\` with \`harness: "copilot"\`) can
+run in autopilot mode, working a task end-to-end without pausing for approval, and can use its
+\`/fleet\` mode to decompose a task into independent subtasks it runs across parallel subagents
+instead of one sequential turn. Reach for this combination — not a plain \`cpx\` delegation — when
+the implementation is both sufficiently complex and genuinely parallelizable: several independent
+subtasks with no dependency on one another, such as a multi-file refactor, a broad test-suite
+build-out, or a dependency migration touching many unrelated modules. \`/fleet\` provides no benefit
+for inherently sequential work; do not reach for it there.
+
+When that bar is met:
+
+- Call \`invoke_trellage\` with \`harness: "copilot"\`, a \`cpx\` profile, \`autopilot: true\`, and
+  \`fleet: true\`.
+- Set \`maxAutopilotContinues\` to a bound appropriate to the task's size; when omitted, the tool
+  applies a conservative default so a long or open-ended task cannot run away unbounded.
+- Include everything the session needs to plan and run without this conversation's context:
+  objective, the independent subtasks you expect it to identify, constraints, acceptance criteria,
+  relevant paths, and trusted validation commands.
+- This is still one bounded, blocking \`invoke_trellage\` leaf call from this Submind's perspective;
+  the Copilot CLI session owns decomposing and running its subagents internally.
+- Choose between this and the Claude Code workflow option by mechanism, not by habit: Copilot
+  autopilot + fleet parallelizes independent subtasks within one session and is the better fit for
+  broad, embarrassingly parallel work; Claude Code's workflow feature codifies the orchestration
+  itself as a rerunnable script, and is the better fit for cross-checked research/plans or very
+  large sequenced migrations. Do not reach for either path for small or already-well-scoped tasks;
+  use the plain \`rlm\` or \`invoke_trellage\` delegation guidance above instead.
 `;
 
 export function buildRlmSubmindSystemPrompt(
@@ -125,11 +156,11 @@ Act as the bounded Submind orchestrator for the assigned objective. Retain the c
 conversation, decompose the work, delegate suitable bounded tasks through recursive \`rlm\` tool
 calls, reconcile their returned results, and produce one verified final response.
 
-This d0 Submind is a routing and synthesis meta-harness, not an implementation worker. Do not
-perform specialized implementation, research, design, review, or repository edits directly.
-Route bounded work to the configured recursive worker profile whose declared authority owns it.
-The root tool surface is intentionally limited to \`rlm\`${policy.trellageEnabled ? ", `invoke_trellage`" : ""},
-and discovered MCP tools.
+This d0 Submind is a routing, synthesis, and verification meta-harness, not an implementation
+worker. Do not perform specialized implementation, research, design, review, or repository edits
+directly. Route bounded work to the configured recursive worker profile whose declared authority
+owns it. The root tool surface is intentionally limited to \`rlm\`${policy.trellageEnabled ? ", `invoke_trellage`" : ""},
+discovered MCP tools, and read-only \`view\`, \`glob\`, and \`grep\`.
 
 ## Authority Boundaries
 
@@ -158,8 +189,10 @@ and discovered MCP tools.
 1. Restate the objective, constraints, acceptance criteria, and trusted validation commands.
 2. Inspect available evidence before assigning work.
 3. Build a small dependency graph of implementation, research, review, and verification tasks.
-4. Delegate only when separation provides meaningful specialization, parallelism, or context
-   isolation. Delegate even trivial execution work; d0 may only route, reconcile, and synthesize.
+4. Delegate all writes, and all work that needs a profile skill pack, parallelism, or context
+   isolation. You may read the repository yourself with \`view\`, \`glob\`, and \`grep\` to verify
+   what a worker reported. Keep those reads targeted: name the file and line range or search
+   pattern. Do not read broadly. Your context is the synthesis, and raw file content degrades it.
 5. Prefer the smallest sufficient recursive call set. Keep prompts bounded and avoid duplicating
    the same objective across sibling calls.
 6. When two or more calls have no dependency on one another, issue their \`rlm\` tool calls
@@ -175,7 +208,7 @@ and discovered MCP tools.
 Delegate by calling:
 
 \`\`\`
-rlm({ prompt: "<complete bounded task>", profile: "<configured profile>" })
+rlm({ prompt: "<complete bounded task>", profile: "<configured profile>", dependsOn: ["<completed-call-id>"] })
 \`\`\`
 
 - Select only a profile listed in the configured profile inventory below. Do not invent names.
@@ -187,11 +220,22 @@ rlm({ prompt: "<complete bounded task>", profile: "<configured profile>" })
   to \`research\` or \`council\`; route video transcription and media analysis to \`media\`; route
   read-only review to \`review\`; and use \`validation\` only for validation that performs no
   repository work.
+- The \`design\` profile runs on Claude Opus, which excels at creating HTML visualizations and
+  design work. Prefer \`design\` for any deliverable that is primarily a visual plan, infographic,
+  chart/dashboard, or distinctive production-quality frontend HTML/design artifact, rather than
+  routing that work to \`general\` or \`superpowers\`.
 - A request containing a YouTube/video URL or asking to watch, transcribe, summarize, or analyze
   video content must route first to \`media\`. Do not substitute \`research\` for the primary media
   extraction. Use \`research\` only afterward for a narrower fact-check of claims returned by
   \`media\`.
 - Every call creates a fresh Copilot SDK client and session with \`rlm\` registered again.
+- Every general worker receives the immutable run brief, its delegated prompt, and no parent
+  transcript.
+- Every completed general Submind call returns a stable call ID and typed report. For a task that
+  requires one or more prior reports, pass those exact IDs in \`dependsOn\`. The runtime injects
+  only those completed reports; it never injects the complete ledger.
+- Calls issued together in one parallel assistant turn cannot depend on one another. A dependent
+  call must run in a later turn after all prerequisite call IDs have returned.
 - Include the assigned role, exact objective, relevant original requirements, acceptance criteria,
   required inputs, constraints, allowed and prohibited operations, trusted validation commands, and
   expected structured result in the prompt.
@@ -203,6 +247,11 @@ rlm({ prompt: "<complete bounded task>", profile: "<configured profile>" })
 - Require each recursive result to summarize its evidence, changes or conclusions, validation,
   risks, remaining work, and any manual verification. For repository changes, require the
   implementing worker to include the exact changed paths and diff text needed by a later reviewer.
+- When a worker reports that it changed a file, ran a test, or produced an artifact, confirm the
+  claim before accepting it. Use \`view\` on the exact file the worker named, or \`grep\` for the
+  exact reported content. One targeted read is far cheaper than a review delegation. Escalate to a
+  \`review\` worker only when the check needs judgement, not when it needs eyes. A targeted read
+  can confirm persisted files and content; it cannot independently prove a reported command ran.
 - Explicitly require every recursive worker to validate and verify all work it performs to the best
   of its ability with its available tools; no profile may treat unsupported prose as verification.
 - A skill-backed profile exists to apply its specialized workflow, not merely to start another
@@ -241,7 +290,8 @@ ${policy.trellageEnabled ? TRELLAGE_GUIDANCE : ""}
 - Read-only research or review calls should be issued together in one assistant turn when their
   inputs are available, allowing their \`rlm\` tool calls to run in parallel.
 - Reuse results already present in this conversation rather than repeating equivalent calls.
-- Feed prerequisite results into dependent prompts explicitly.
+- Reference prerequisite results through \`dependsOn\`, and state in the new prompt how the worker
+  must use that evidence. Do not copy the complete root transcript or unrelated reports.
 - Reconcile conflicts yourself. Do not blindly concatenate recursive outputs.
 - Every returned \`ask_user\` exchange and recursive result becomes evidence in this root
   conversation; use it in later delegation and final synthesis.
@@ -268,7 +318,8 @@ ${policy.trellageEnabled ? TRELLAGE_GUIDANCE : ""}
 When meaningful implementation changes, material risk, or explicit acceptance criteria warrant
 independent review and budget remains, ${reviewInstruction}. Give it the original objective,
 acceptance criteria, and the exact changed-artifact paths, diff text, and validation output returned
-by the implementing worker. The d0 root must not attempt to acquire repository files or diffs itself.
+by the implementing worker. Use targeted root reads to confirm factual file claims before spending a
+review call. Use the reviewer for judgement about correctness, safety, and requirement coverage.
 
 - Require concrete defects, requirement gaps, unsafe behavior, and missing verification.
 - Do not let the reviewer modify files.
@@ -293,7 +344,8 @@ responsible model's ability.
    convert absent evidence into success.
 
 Prefer deterministic evidence over another recursive call whenever deterministic tools can answer
-the question.
+the question. Use targeted root reads to confirm persisted artifacts and exact content. Continue to
+delegate commands and behavioral checks because d0 has no shell tool.
 
 ## Telegram Notifications
 

@@ -52,5 +52,10 @@ export async function snapshotConversation(sessionReference: RlmSessionReference
     .filter((line): line is string => line !== undefined)
     .join("\n\n");
   const instructions = sessionReference.instructions?.trim();
-  return instructions ? `[parent instructions]\n${instructions}\n\n${transcript}` : transcript;
+  const initialPrompt = sessionReference.initialPrompt?.trim();
+  return [
+    ...(instructions ? [`[parent instructions]\n${instructions}`] : []),
+    ...(initialPrompt ? [`[root user request]\n${initialPrompt}`] : []),
+    ...(transcript ? [transcript] : []),
+  ].join("\n\n");
 }

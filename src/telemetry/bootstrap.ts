@@ -10,6 +10,8 @@ export type TelemetryHandle = { shutdown(): Promise<void> };
 const noopHandle: TelemetryHandle = { async shutdown() {} };
 const defaultLangfuseBaseUrl = "https://cloud.langfuse.com";
 const rawContentRedactionMessage = "<redacted because LANGFUSE_EXPORT_RAW=false>";
+/** Short enough that a hung Langfuse cannot stall a CLI start; localhost answers in milliseconds. */
+const langfuseCredentialProbeTimeoutMs = 2_000;
 
 export function loadTelemetryEnvironment(
   directory: string,
@@ -166,6 +168,37 @@ function hasExplicitTelemetryExporter(): boolean {
   );
 }
 
+/**
+ * Checks the Langfuse credentials once, at startup. Without this a rejected key pair stays
+ * invisible until a single swallowed stderr line at shutdown - which looks the same as a
+ * successful export, while every span of the run was silently dropped. Never throws and never
+ * prints the keys: telemetry must not stop or leak into the actual work.
+ */
+async function warnOnUnusableLangfuseCredentials(config: LangfuseConfig): Promise<void> {
+  const baseUrl = config.baseUrl.replace(/\/+$/u, "");
+  const authorization = `Basic ${Buffer.from(`${config.publicKey}:${config.secretKey}`).toString("base64")}`;
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/public/projects`, {
+      headers: { authorization },
+      signal: AbortSignal.timeout(langfuseCredentialProbeTimeoutMs),
+    });
+  } catch (error) {
+    process.stderr.write(
+      `[telemetry] Langfuse at ${baseUrl} did not answer; traces for this run will be dropped: ` +
+        `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return;
+  }
+  if (response.ok) return;
+  process.stderr.write(
+    `[telemetry] Langfuse rejected LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY with HTTP ` +
+      `${response.status}; every trace for this run will be dropped. Create a new key pair in the ` +
+      `Langfuse instance at ${baseUrl} and update your config. Note that LANGFUSE_PROJECT_ID only ` +
+      "builds the printed trace URL - it does not authenticate.\n",
+  );
+}
+
 export async function startTelemetry(
   serviceName: string,
   options: { skipWhenUnconfigured?: boolean } = {},
@@ -175,6 +208,10 @@ export async function startTelemetry(
 
   const sdk = new NodeSDK(createSdkConfig(serviceName));
   sdk.start();
+  const langfuseConfig = readLangfuseConfig();
+  if (langfuseConfig) {
+    await warnOnUnusableLangfuseCredentials(langfuseConfig);
+  }
   return {
     async shutdown() {
       // Best-effort: telemetry export failures (e.g. misconfigured/expired Langfuse

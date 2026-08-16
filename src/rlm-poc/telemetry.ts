@@ -15,11 +15,17 @@ export type RlmSpanAttributes = {
   requestedModel?: string;
   modelFallback?: boolean;
   modelCandidates?: readonly string[];
+  runId?: string;
+  callId?: string;
+  parentCallId?: string;
+  dependencyCallIds?: readonly string[];
+  callNumber?: number;
+  stateRevision?: number;
 };
 
 export function buildRlmCallSpanName(attributes: RlmSpanAttributes): string {
   const depthUsed = attributes.maxDepth - attributes.depthRemaining + 1;
-  const callNumber = attributes.budget.usedCalls + 1;
+  const callNumber = attributes.callNumber ?? attributes.budget.usedCalls + 1;
   return `RLM #${callNumber} d${depthUsed}/${attributes.maxDepth} · ${attributes.profile}`;
 }
 
@@ -38,7 +44,7 @@ export async function withRlmSpan<T>(
   operation: (span: Span) => Promise<T>,
 ): Promise<T> {
   const depthUsed = attributes.maxDepth - attributes.depthRemaining + 1;
-  const callNumber = attributes.budget.usedCalls + 1;
+  const callNumber = attributes.callNumber ?? attributes.budget.usedCalls + 1;
   return tracer.startActiveSpan(
     buildRlmCallSpanName(attributes),
     {
@@ -74,7 +80,21 @@ export async function withRlmSpan<T>(
               "weavekit.rlm.tool_call_id": attributes.toolCallId,
             }
           : {}),
+        ...(attributes.runId ? { "weavekit.rlm.run_id": attributes.runId } : {}),
+        ...(attributes.callId ? { "weavekit.rlm.call_id": attributes.callId } : {}),
+        ...(attributes.parentCallId
+          ? { "weavekit.rlm.parent_call_id": attributes.parentCallId }
+          : {}),
+        ...(attributes.dependencyCallIds?.length
+          ? {
+              "weavekit.rlm.dependency_call_ids": JSON.stringify(attributes.dependencyCallIds),
+            }
+          : {}),
+        ...(attributes.stateRevision !== undefined
+          ? { "weavekit.rlm.state.revision": attributes.stateRevision }
+          : {}),
         "weavekit.rlm.profile": attributes.profile,
+        "weavekit.rlm.execution_status": "running",
         "weavekit.rlm.depth_used": depthUsed,
         "weavekit.rlm.depth_remaining": attributes.depthRemaining,
         "weavekit.rlm.max_depth": attributes.maxDepth,
@@ -91,6 +111,7 @@ export async function withRlmSpan<T>(
         return result;
       } catch (error) {
         const exception = error instanceof Error ? error : new Error(String(error));
+        span.setAttribute("weavekit.rlm.execution_status", "failed");
         span.setAttribute(
           "langfuse.observation.output",
           JSON.stringify({ status: "failed", error: exception.message }),

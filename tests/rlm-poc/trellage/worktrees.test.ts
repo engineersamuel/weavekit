@@ -11,6 +11,7 @@ function createRegistry(
     onRun?: (call: RunCall) => void;
     removeFails?: boolean;
     provision?: () => Promise<ProvisionedRun>;
+    direct?: boolean;
   } = {},
 ) {
   const calls: RunCall[] = [];
@@ -36,6 +37,7 @@ function createRegistry(
       if (args[0] === "worktree" && overrides.removeFails) throw new Error("worktree busy");
       return "";
     },
+    ...(overrides.direct ? { direct: true } : {}),
   });
   return { registry, calls, provision };
 }
@@ -51,6 +53,27 @@ describe("TrellageWorktreeRegistry", () => {
     expect(first).toBe(second);
     expect(first.branchName).toBe("rlm/run-1");
     expect(first.baseSha).toBe("base-sha");
+  });
+
+  it("uses only Git commands when direct headless provisioning is enabled", async () => {
+    const { registry, calls, provision } = createRegistry({ direct: true });
+
+    const worktree = await registry.acquire("/repo");
+    await registry.finalize();
+
+    expect(provision).not.toHaveBeenCalled();
+    expect(worktree.native).toBe(true);
+    expect(calls.some((call) => call.command === "herdr")).toBe(false);
+    expect(
+      calls.some(
+        (call) => call.command === "git" && call.args.slice(0, 2).join(" ") === "worktree add",
+      ),
+    ).toBe(true);
+    expect(
+      calls.some(
+        (call) => call.command === "git" && call.args.slice(0, 2).join(" ") === "worktree remove",
+      ),
+    ).toBe(true);
   });
 
   it("borrows the opted-in current worktree instead of provisioning another one", async () => {

@@ -356,6 +356,29 @@ describe("Herdr direct executor", () => {
         verification: [],
       }),
     ).toThrow("passing verification");
+    // A command whose successful finding is a non-zero exit, such as `git check-ignore`, passes
+    // only when the manifest declares that code.
+    expect(() =>
+      parseDirectExecutionResult({
+        ...manifest,
+        verification: [{ command: "git check-ignore a b", exitCode: 1, summary: "not ignored" }],
+      }),
+    ).toThrow("passing verification");
+    expect(
+      parseDirectExecutionResult({
+        ...manifest,
+        verification: [
+          {
+            command: "git check-ignore a b",
+            exitCode: 1,
+            expectedExitCode: 1,
+            summary: "not ignored",
+          },
+        ],
+      }).verification,
+    ).toEqual([
+      { command: "git check-ignore a b", exitCode: 1, expectedExitCode: 1, summary: "not ignored" },
+    ]);
   });
 
   it("requires a final work summary and specific manual verification guidance", async () => {

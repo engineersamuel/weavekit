@@ -33,6 +33,31 @@ afterEach(async () => {
 });
 
 describe("weavekit config loader", () => {
+  it("accepts any recursion depth an operator configures, bounded only by the call budget", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    const rlmExecution = (maxDepth: number) =>
+      [
+        "[mastermind.rlm_execution]",
+        'executor_kind = "rlm-submind"',
+        `max_depth = ${maxDepth}`,
+        "max_total_calls = 500",
+        "poll_interval_ms = 1000",
+        "unknown_status_threshold = 3",
+        "cancellation_grace_ms = 5000",
+        "max_attempts = 4",
+      ].join("\n");
+
+    await writeFile(configPath, rlmExecution(64), "utf8");
+    expect(loadTypedWeavekitConfig(configPath, {}).mastermind.rlmExecution?.maxDepth).toBe(64);
+
+    await writeFile(configPath, rlmExecution(0), "utf8");
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      "mastermind.rlm_execution.max_depth must be an integer of at least 1",
+    );
+  });
+
   it("keeps direct execution disabled until global and project policy explicitly opt in", async () => {
     expect(
       loadTypedWeavekitConfig("/path/that/does/not/exist", {}).mastermind.execution,
@@ -321,7 +346,7 @@ synthesis_model = "claude-sonnet-5"
 
     expect(
       loadTypedWeavekitConfig(configPath, {
-        MASTERMIND_SYNTHESIS_MODEL: "gemini-3.6-flash",
+        MASTERMIND_SYNTHESIS_MODEL: "gemini-3.7-flash",
       }).mastermind.synthesisModel,
     ).toBe("claude-sonnet-5");
   });
@@ -329,9 +354,9 @@ synthesis_model = "claude-sonnet-5"
   it("loads the Mastermind synthesis model from the environment when TOML omits it", () => {
     expect(
       loadTypedWeavekitConfig("/path/that/does/not/exist", {
-        MASTERMIND_SYNTHESIS_MODEL: "gemini-3.6-flash",
+        MASTERMIND_SYNTHESIS_MODEL: "gemini-3.7-flash",
       }).mastermind.synthesisModel,
-    ).toBe("gemini-3.6-flash");
+    ).toBe("gemini-3.7-flash");
   });
 
   it("falls back to BAML_MODEL when Mastermind-specific synthesis config is absent", () => {
@@ -362,7 +387,7 @@ synthesis_model = "claude-sonnet-5"
       loadVarlock: async () => {
         expect(env.LINEAR_API_KEY).toBe("lin_api_test");
         expect(env.LINEAR_WEBHOOK_SECRET).toBe("webhook_secret_test");
-        env.MASTERMIND_SYNTHESIS_MODEL = "gemini-3.6-flash";
+        env.MASTERMIND_SYNTHESIS_MODEL = "gemini-3.7-flash";
       },
     });
 
@@ -388,10 +413,10 @@ synthesis_model = "claude-sonnet-5"
     );
     const envOnlyConfig = await loadMastermindRuntimeConfig(envOnlyConfigPath, env, {
       loadVarlock: async () => {
-        env.MASTERMIND_SYNTHESIS_MODEL = "gemini-3.6-flash";
+        env.MASTERMIND_SYNTHESIS_MODEL = "gemini-3.7-flash";
       },
     });
-    expect(envOnlyConfig.mastermind.synthesisModel).toBe("gemini-3.6-flash");
+    expect(envOnlyConfig.mastermind.synthesisModel).toBe("gemini-3.7-flash");
   });
 
   it("preserves configured proxy, key, and model when Mastermind live applies local defaults", async () => {
@@ -447,14 +472,14 @@ synthesis_model = "claude-sonnet-5"
     const config = await loadMastermindRuntimeConfig(configPath, env, {
       loadVarlock: async () => {
         env.COPILOT_PROXY_API_KEY = "varlock-key";
-        env.BAML_MODEL = "gemini-3.6-flash";
+        env.BAML_MODEL = "gemini-3.7-flash";
       },
     });
     applyMastermindLiveEnvironmentDefaults(config, env);
 
     expect(env.COPILOT_PROXY_BASE_URL).toBe("https://caller.example/v1");
     expect(env.COPILOT_PROXY_API_KEY).toBe("varlock-key");
-    expect(env.BAML_MODEL).toBe("gemini-3.6-flash");
+    expect(env.BAML_MODEL).toBe("gemini-3.7-flash");
   });
 
   it("fills missing Mastermind live proxy values without deriving BAML_MODEL from synthesis_model", async () => {
@@ -468,7 +493,7 @@ synthesis_model = "claude-sonnet-5"
         'LINEAR_API_KEY = "lin_api_test"',
         'LINEAR_WEBHOOK_SECRET = "webhook_secret_test"',
         "[mastermind]",
-        'synthesis_model = "gemini-3.6-flash"',
+        'synthesis_model = "gemini-3.7-flash"',
       ].join("\n"),
       "utf8",
     );

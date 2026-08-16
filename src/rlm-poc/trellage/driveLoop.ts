@@ -33,6 +33,8 @@ const QUIESCENCE_POLL_MS = 500;
 const QUIESCENCE_SAMPLES = 3;
 /** Upper bound on quiescence sampling, so a screen with a permanent animation cannot hang the loop. */
 const QUIESCENCE_MAX_SAMPLES = 40;
+/** Maximum Enter nudges to submit one visibly stuck prompt before treating the screen as a question. */
+const PROMPT_NUDGE_LIMIT = 3;
 
 export type TrellageAnswerer = (question: string, choices?: string[]) => Promise<string>;
 
@@ -106,9 +108,9 @@ export async function runTrellageDriveLoop(options: DriveLoopOptions): Promise<D
 
   await settleStartup({ backend, session, location, answer, userInputs, record, deadline, sleep });
 
-  // Reset whenever text is submitted: each submission gets at most one Enter nudge, so a harness
-  // that ignores the nudge cannot spin here.
-  let nudged = false;
+  // Reset whenever text is submitted. Some harnesses need one follow-up Enter after their prompt
+  // visibly lands in the composer, so allow a bounded retry while that prompt is still shown.
+  let promptNudges = 0;
   await backend.prompt(session, options.prompt);
   turns += 1;
   record("prompted");
@@ -130,17 +132,22 @@ export async function runTrellageDriveLoop(options: DriveLoopOptions): Promise<D
     }
 
     if (status === HerdrAgentStatus.Blocked) {
-      if (turns >= maxTurns) {
-        return finish(TrellageOutcome.TurnLimit, `The harness exceeded ${maxTurns} turns.`);
-      }
       const handled = await handleBlocked({ backend, session, answer, userInputs, record });
-      if (!handled) {
+      if (handled === BlockedHandling.NotAQuestion) {
+        record(HerdrAgentStatus.Working, "blocked screen did not contain a question");
+        await sleep(SETTLE_GRACE_MS);
+        continue;
+      }
+      if (handled === BlockedHandling.Unhandled) {
         return finish(
           TrellageOutcome.Unclassifiable,
           "The harness is blocked on a prompt that could not be answered.",
         );
       }
-      nudged = false;
+      if (turns >= maxTurns) {
+        return finish(TrellageOutcome.TurnLimit, `The harness exceeded ${maxTurns} turns.`);
+      }
+      promptNudges = 0;
       turns += 1;
       continue;
     }
@@ -175,14 +182,19 @@ export async function runTrellageDriveLoop(options: DriveLoopOptions): Promise<D
       );
     }
 
-    if (!nudged) {
-      // Some harnesses hold a multi-line paste in their composer and need a second Enter to submit
-      // it, so the turn never starts and the still screen looks exactly like a prose question.
-      // Press Enter once before concluding the harness is waiting on us; on a harness that really
-      // is idle with an empty composer this does nothing.
-      nudged = true;
+    const screen = await backend.read(session, { source: HerdrReadSource.Visible, lines: 120 });
+    if (shouldNudgePrompt(promptNudges, screen, options.prompt)) {
+      // Some harnesses keep a fully composed prompt in the composer even after the first Enter.
+      // Retry only while that prompt is still visibly pending, so genuine prose questions are not
+      // masked by repeated blank submissions.
+      promptNudges += 1;
       await backend.sendKeys(session, ["enter"]);
-      record("nudged", "re-submitted a prompt the harness had not accepted");
+      record(
+        "nudged",
+        promptNudges === 1
+          ? "re-submitted a prompt the harness had not accepted"
+          : "re-submitted a prompt that was still visibly stuck in the composer",
+      );
       continue;
     }
 
@@ -192,7 +204,6 @@ export async function runTrellageDriveLoop(options: DriveLoopOptions): Promise<D
 
     // Settled with no result file: the harness is asking something in prose, which Herdr cannot
     // distinguish from completion.
-    const screen = await backend.read(session, { source: HerdrReadSource.Visible, lines: 120 });
     const question = extractQuestion(screen);
     if (!isLikelyQuestion(question)) {
       record(HerdrAgentStatus.Working, "settled screen did not contain a question");
@@ -203,7 +214,7 @@ export async function runTrellageDriveLoop(options: DriveLoopOptions): Promise<D
     userInputs.push({ question, answer: reply });
     record("answered", "prose question");
     await backend.prompt(session, toSingleLine(reply));
-    nudged = false;
+    promptNudges = 0;
     turns += 1;
   }
 }
@@ -223,29 +234,29 @@ async function awaitQuiescence(input: {
   location: TrellageResultLocation;
   deadline: number;
   sleep: (ms: number) => Promise<void>;
-}): Promise<{ stable: boolean; result?: string }> {
+}): Promise<{ stable: boolean; result?: string; screen: string }> {
   const { backend, session, location, deadline, sleep } = input;
   let previous = normalizeScreen(await readScreen(backend, session));
   let unchanged = 0;
 
   for (let sample = 0; sample < QUIESCENCE_MAX_SAMPLES; sample += 1) {
     const result = await readResult(location);
-    if (result) return { stable: true, result };
-    if (Date.now() >= deadline) return { stable: true };
+    if (result) return { stable: true, result, screen: previous };
+    if (Date.now() >= deadline) return { stable: true, screen: previous };
 
     await sleep(QUIESCENCE_POLL_MS);
     const current = normalizeScreen(await readScreen(backend, session));
     unchanged = current === previous ? unchanged + 1 : 0;
     previous = current;
-    if (unchanged >= QUIESCENCE_SAMPLES) return { stable: true };
+    if (unchanged >= QUIESCENCE_SAMPLES) return { stable: true, screen: current };
 
     const status = await backend.status(session).catch(() => HerdrAgentStatus.Unknown as string);
     // A move out of the settled set is meaningful on its own; let the main loop re-classify it.
-    if (!SETTLED.includes(status)) return { stable: false };
+    if (!SETTLED.includes(status)) return { stable: false, screen: current };
   }
   // The screen never settled, but the harness may still be waiting behind a permanent animation,
   // so fall through and let the caller treat it as a question rather than stalling until timeout.
-  return { stable: true };
+  return { stable: true, screen: previous };
 }
 
 async function readScreen(backend: TrellageBackend, session: TrellageSession): Promise<string> {
@@ -261,6 +272,25 @@ function normalizeScreen(screen: string): string {
     .join("\n");
 }
 
+function shouldNudgePrompt(nudges: number, screen: string, prompt: string): boolean {
+  if (nudges === 0) return true;
+  if (nudges >= PROMPT_NUDGE_LIMIT) return false;
+  return screenShowsSubmittedPrompt(screen, prompt) || !isLikelyQuestion(extractQuestion(screen));
+}
+
+function screenShowsSubmittedPrompt(screen: string, prompt: string): boolean {
+  const flattenedScreen = flattenForMatch(screen);
+  const promptLines = prompt
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 24);
+  return promptLines.some((line) => flattenedScreen.includes(flattenForMatch(line)));
+}
+
+function flattenForMatch(text: string): string {
+  return text.replace(/\s+/gu, " ").trim().toLowerCase();
+}
+
 type BlockedHandlerInput = {
   backend: TrellageBackend;
   session: TrellageSession;
@@ -268,6 +298,13 @@ type BlockedHandlerInput = {
   userInputs: TrellageUserInputExchange[];
   record: (status: string, note?: string) => void;
 };
+
+const BlockedHandling = {
+  Handled: "handled",
+  NotAQuestion: "not-a-question",
+  Unhandled: "unhandled",
+} as const;
+type BlockedHandling = (typeof BlockedHandling)[keyof typeof BlockedHandling];
 
 /**
  * Waits out the harness's boot sequence and clears any gate it presents before the first prompt.
@@ -308,16 +345,46 @@ async function settleStartup(input: {
         deadline,
         sleep,
       });
-      if (quiescence.stable) return;
+      if (!quiescence.stable) continue;
+      // A startup gate can paint *after* the harness first reports a settled state: Copilot's
+      // folder-trust dialog arrives seconds behind its first `idle`, so the screen that finally
+      // goes quiet is the dialog itself. Typing the task there answers the dialog with the task
+      // text, so clear the gate and re-settle instead of returning.
+      if (!isStartupGate(quiescence.screen)) return;
+      record("startup-gate");
+      const cleared = await handleBlocked(input);
+      if (cleared === BlockedHandling.Unhandled) {
+        throw new Error("The harness opened with a prompt that could not be answered.");
+      }
+      await sleep(SETTLE_GRACE_MS);
       continue;
     }
     record("startup-blocked");
-    if (!(await handleBlocked(input))) {
+    const handled = await handleBlocked(input);
+    if (handled === BlockedHandling.NotAQuestion) {
+      record(HerdrAgentStatus.Working, "startup blocked screen did not contain a question");
+      await sleep(SETTLE_GRACE_MS);
+      continue;
+    }
+    if (handled === BlockedHandling.Unhandled) {
       throw new Error("The harness opened with a prompt that could not be answered.");
     }
     await sleep(SETTLE_GRACE_MS);
   }
   throw new Error("Timed out waiting for the harness to become ready to accept a prompt.");
+}
+
+/**
+ * True when a quiescent startup screen is a structured gate the harness is waiting on.
+ *
+ * A numbered list alone is not enough — harnesses list tips and recent sessions at their prompt —
+ * so the screen must also be asking something before the loop answers it with keystrokes.
+ */
+function isStartupGate(screen: string): boolean {
+  return (
+    classifyScreen(screen).kind === TrellageScreenKind.Menu &&
+    isLikelyQuestion(extractQuestion(screen))
+  );
 }
 
 /**
@@ -338,7 +405,7 @@ async function observeSettledStatus(
   }
 }
 
-async function handleBlocked(input: BlockedHandlerInput): Promise<boolean> {
+async function handleBlocked(input: BlockedHandlerInput): Promise<BlockedHandling> {
   const { backend, session, answer, userInputs, record } = input;
   const detection = await backend
     .read(session, { source: HerdrReadSource.Detection, lines: 120 })
@@ -351,11 +418,12 @@ async function handleBlocked(input: BlockedHandlerInput): Promise<boolean> {
 
   if (screen.kind === TrellageScreenKind.Prose) {
     const question = extractQuestion(visible);
+    if (!isLikelyQuestion(question)) return BlockedHandling.NotAQuestion;
     const reply = await answer(question);
     userInputs.push({ question, answer: reply });
     record("answered", "blocked prose prompt");
     await backend.prompt(session, toSingleLine(reply));
-    return true;
+    return BlockedHandling.Handled;
   }
 
   const approval = findApprovalOption(screen.options);
@@ -364,7 +432,7 @@ async function handleBlocked(input: BlockedHandlerInput): Promise<boolean> {
     // the prototype: an unambiguous permission prompt is approved without consulting the Submind.
     await backend.sendKeys(session, keysToChoose(screen.options, approval));
     record("approved", `option ${approval.number}: ${approval.label}`);
-    return true;
+    return BlockedHandling.Handled;
   }
 
   // No option is unambiguously affirmative, so the choice is a judgement call. Hand it to the
@@ -377,11 +445,11 @@ async function handleBlocked(input: BlockedHandlerInput): Promise<boolean> {
   const choices = screen.options.map((option) => String(option.number));
   const reply = await answer(question, choices);
   const chosen = findOptionByNumber(screen.options, Number.parseInt(reply.trim(), 10));
-  if (!chosen) return false;
+  if (!chosen) return BlockedHandling.Unhandled;
   userInputs.push({ question, answer: `${chosen.number}. ${chosen.label}` });
   await backend.sendKeys(session, keysToChoose(screen.options, chosen));
   record("answered", `chose option ${chosen.number}`);
-  return true;
+  return BlockedHandling.Handled;
 }
 
 async function readEvidence(

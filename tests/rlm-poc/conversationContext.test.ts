@@ -88,6 +88,25 @@ describe("snapshotConversation", () => {
     expect(snapshot).not.toContain("internal Copilot CLI harness prompt");
   });
 
+  it("retains the root request before the active user turn is persisted", async () => {
+    const session: RlmSession = {
+      async sendAndWait() {
+        return undefined;
+      },
+      async getEvents() {
+        return [];
+      },
+      async disconnect() {},
+    };
+
+    const snapshot = await snapshotConversation({
+      current: session,
+      initialPrompt: "The deployment color is teal.",
+    });
+
+    expect(snapshot).toBe("[root user request]\nThe deployment color is teal.");
+  });
+
   it("fails explicitly when the root session cannot provide its conversation", async () => {
     await expect(snapshotConversation({})).rejects.toThrow(/conversation is unavailable/iu);
   });

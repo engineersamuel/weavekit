@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { SessionConfig } from "@github/copilot-sdk";
+import type { RlmWorkerReport } from "../generated/baml_client/types.js";
 import type { RlmExecutionBudgetSnapshot } from "./budget.js";
 import type { RlmModelPolicy } from "./modelCatalog.js";
 
@@ -23,6 +24,12 @@ export type RlmProfile = {
    * prepared working directory.
    */
   preparedFilesystemAccess?: RlmPreparedFilesystemAccess;
+  /**
+   * Repository-relative directories a non-write profile may write its own output into. Reads stay
+   * unrestricted, so a reviewer can inspect the whole repository but cannot modify the evidence it
+   * judges. Ignored when `preparedFilesystemAccess` installs the non-repository sandbox instead.
+   */
+  writableSubpaths?: string[];
   model: string;
   /** Dynamic candidate policy. `model` remains the emergency/fixed fallback for custom profiles. */
   modelPolicy?: RlmModelPolicy;
@@ -96,6 +103,16 @@ export const RlmToolArgsSchema = z.object({
     .min(1)
     .optional()
     .describe("Optional model ID selected from the profile's current validated candidates."),
+  dependsOn: z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((callIds) => new Set(callIds).size === callIds.length, {
+      message: "RLM dependency call IDs must be unique.",
+    })
+    .optional()
+    .describe(
+      "Completed RLM call IDs whose typed reports are required by this task. Omit for independent work.",
+    ),
 });
 export type RlmToolArgs = z.infer<typeof RlmToolArgsSchema>;
 
@@ -129,6 +146,14 @@ export function createRlmToolJsonSchema(
           "Optional current model ID. It must be eligible for the selected profile; omit it to " +
           "use that profile's highest-ranked policy candidate.",
       },
+      dependsOn: {
+        type: "array",
+        minItems: 1,
+        uniqueItems: true,
+        items: { type: "string", minLength: 1 },
+        description:
+          "Completed RLM call IDs whose typed reports are required by this task. Omit for independent work.",
+      },
     },
     required: ["prompt", "profile"],
     additionalProperties: false,
@@ -141,6 +166,12 @@ export type RlmCallResult = {
   model: string;
   modelRationale?: string;
   budget: RlmExecutionBudgetSnapshot;
+  runId?: string;
+  callId?: string;
+  parentCallId?: string;
+  dependencyCallIds?: string[];
+  /** Canonical typed result for general Submind calls. Validation calls remain raw text. */
+  report?: RlmWorkerReport;
   /** Explicit ask_user exchanges captured during this call, returned to the parent tool context. */
   userInputs?: RlmUserInputExchange[];
 };

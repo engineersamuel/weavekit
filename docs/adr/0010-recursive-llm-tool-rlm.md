@@ -36,14 +36,15 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
 - Calling `rlm` creates a brand-new `CopilotClient` + session in the same Node process. No
   subprocess, no Herdr, no pane. This is a deliberate contrast with `submind-poc`, which is
   necessarily subprocess/pane-based because it drives genuinely separate harness processes.
-- Each nested session starts from a **clean conversation slate** — only the given prompt and the
-  resolved profile's configuration are passed in. The child does not inherit the parent's history as
-  its working conversation. When any descendant explicitly calls `ask_user`, however, an isolated
-  answerer receives a point-in-time snapshot of the root Submind's application instructions and complete
-  persisted conversation. Its answer is returned to the child, while the question/answer exchange is
-  also included structurally in the `rlm` result returned to every ancestor. This preserves clean
-  delegation while allowing the root Submind to answer context-dependent questions and synthesize
-  all recursive results.
+- Each nested session starts from a **clean conversation slate**. A general worker receives the
+  immutable run brief, its delegated task, and only the completed typed reports explicitly named
+  in `dependsOn`. It does not inherit the parent transcript or the complete run ledger. The narrow
+  validation scenario keeps its existing raw prompt/result path. When any descendant explicitly
+  calls `ask_user`, an isolated answerer receives a point-in-time snapshot of the root Submind's
+  application instructions and complete persisted conversation. Its answer is returned to the
+  child, while the question/answer exchange is also included structurally in the `rlm` result
+  returned to every ancestor. This preserves clean delegation while allowing the root Submind to
+  answer context-dependent questions and synthesize all recursive results.
 - Nested sessions use unattended permission handling. Implementation profiles retain the existing
   `approveAll` behavior, while skill-backed no-repository-write profiles wrap it with structural
   filesystem and shell checks: Research and Media may write only under their prepared cache
@@ -52,13 +53,18 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
 - `rlm`'s signature is minimal:
 
   ```ts
-  rlm({ prompt: string; profile: string; model?: string })
+  rlm({ prompt: string; profile: string; model?: string; dependsOn?: string[] })
     => {
       text: string;
       depthUsed: number;
       model: string;
       modelRationale: string;
       budget: { maxCalls: number; usedCalls: number; remainingCalls: number };
+      runId?: string;
+      callId?: string;
+      parentCallId?: string;
+      dependencyCallIds?: string[];
+      report?: RlmWorkerReport;
       userInputs?: Array<{ question: string; answer: string }>;
     }
   ```
@@ -93,12 +99,14 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
     current frontier reasoning/tool-capable models.
     Restricted profiles also constrain the profiles their recursively registered `rlm` tool may
     invoke, preventing a validation/review session from escalating into a full-tool profile.
-    The root Submind is the application orchestrator, not a selectable profile. It is routing and
-    synthesis only: its tools are `rlm`, optional `invoke_trellage`, discovered MCP, and the
-    no root-local skills. The headless root does not advertise native `ask_user` without a
-    live callback; recursive worker questions still use the isolated root-conversation answerer. It
-    does not directly implement, research, design, or review. Every recursive profile also loads
-    Matt Pocock's upstream `handoff` skill;
+    The root Submind is the application orchestrator, not a selectable profile. It performs routing,
+    synthesis, and verification: its tools are `rlm`, optional `invoke_trellage`, discovered MCP,
+    read-only `view`/`glob`/`grep`, and no root-local skills. It reads targeted files and search
+    results to verify worker reports. It never writes, runs shell commands, or loads a skill pack.
+    The headless root does not advertise native `ask_user` without a live callback; recursive worker
+    questions still use the isolated root-conversation answerer. It does not directly implement,
+    research, design, or review. Every recursive profile also loads Matt Pocock's upstream
+    `handoff` skill;
     profile-specific bundles are added alongside it. Upstream repositories resolve their latest default-branch `HEAD`, cache
     that immutable commit under `.weavekit/rlm-profile-skills`, and pass only the applicable
     directories to the session. Each later use checks `HEAD` again and installs a new cache entry
@@ -139,6 +147,25 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
   entry/step pipeline plus `last30days`; Design names concrete `critique-*`, infographic companion,
   and referenced design-system skills rather than category directory names.
 
+- Copilot Memory is disabled explicitly with `memory: { enabled: false }` on the root session,
+  recursive workers, isolated `ask_user` answerers, and Trellage answerers. This is separate from
+  SDK conversation persistence. Repository instructions and working-tree files remain intentional
+  context through config discovery and the inherited working directory.
+
+- One host-owned in-memory ledger is shared by the complete recursive tree. It owns the immutable
+  `RlmRunBrief`, stable `<run-id>:call-<number>` IDs, parent links, dependency IDs, and running,
+  succeeded, or failed lifecycle transitions. Mutations are synchronous, so parallel siblings
+  cannot allocate the same ID or consume incomplete sibling output. Only succeeded calls whose
+  typed report outcome is `COMPLETED` can be resolved through `dependsOn`; missing, duplicate,
+  running, failed, and non-completed dependencies fail before client creation or call-budget use.
+  Failed attempts remain visible as failed ledger records.
+
+- General workers use BAML as the typed boundary. Weavekit renders the brief, delegated task,
+  selected dependency reports, and `ctx.output_format`, sends that prompt through the Copilot SDK,
+  and parses the same response as `RlmWorkerReport`. It does not make a second normalization model
+  call. Invalid output fails the call; there is no success-shaped freeform fallback. Shared
+  `vision.md`, `goals.md`, and `progress.md` memory files are not used.
+
 - Every recursive worker receives a generated execution envelope distinct from the d0 Submind
   prompt. It states profile, authority, repository write permission, remaining recursion depth and
   shared call budget, allowed child profiles, and the worker's accountability for integrated,
@@ -147,15 +174,18 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
 
 - `remainingDepth` is threaded and decremented by the `rlm` tool implementation itself on every
   recursive hop, never by the LLM. It defaults to a configured maximum on the first, top-level
-  call. Exceeding the max fails closed: `rlm` returns a structured failure to the calling session
-  rather than silently truncating or looping.
+  call. A worker at the last permitted depth does not receive another `rlm` tool. Exceeding the
+  max fails closed: `rlm` returns a structured failure to the calling session rather than silently
+  truncating or looping.
 - One shared total-call budget is also created at the root and synchronously consumed by every
   sibling and descendant invocation. Depth bounds path length; the shared budget bounds breadth and
   recursive `rlm` session cost. Neither is exposed as an LLM-controlled tool argument.
 - Every `rlm` invocation gets one Langfuse span named
-  `RLM #<ordinal> d<depth>/<max> · <profile>` with structured input/output, model, call-budget
-  state, and SDK tool-call correlation. These nest beneath `SUBMIND d0 · <mode>`, forming a
-  directly readable visual recursion spine independent of the lower-level SDK-generated spans.
+  `RLM #<call-number> d<depth>/<max> · <profile>` with structured input/output, run/call/parent
+  IDs, selected dependency IDs, state revision, execution status, worker outcome, model,
+  call-budget state, and SDK tool-call correlation. These nest beneath `SUBMIND d0 · <mode>`,
+  forming a directly readable visual recursion spine independent of the lower-level SDK-generated
+  spans.
 
 ### Prototype validation scenario
 
@@ -184,9 +214,14 @@ The headless CLI can continue that conversation with
 Langfuse trace. Resume delegates persistence to the SDK's durable on-disk session store and calls
 `resumeSession`; weavekit does not mirror or replay conversation events through a separate JSONL.
 Current tools, permissions, and RLM profile configuration are registered again on resume, while
-recursion depth and total-call budgets are fresh for each CLI invocation. Unknown or deleted IDs
-fail closed instead of silently creating a new conversation. The no-argument validation scenario
-is not advertised as resumable.
+the runtime scans persisted top-level `rlm` tool-result events for the latest versioned state
+checkpoint. It validates and hydrates the immutable brief, stable run ID, completed reports, and
+next call sequence before sending the follow-up prompt. Calls that were running in the checkpoint
+are marked as interrupted failures. If an older conversation has no checkpoint, its first
+persisted user prompt becomes the original objective. Recursion depth and total-call budgets are
+fresh for each CLI invocation. Unknown conversations and malformed versioned checkpoints fail
+closed instead of silently creating a new conversation. The no-argument validation scenario is
+not advertised as resumable.
 
 The root prompt also exposes the loopback `copilot-proxy-rs` service as an optional compatibility
 bridge when a third-party dependency requires conventional OpenAI Chat Completions/Responses or
@@ -212,6 +247,9 @@ cannot be used to bypass RLM depth or call budgets.
 
 These are real, considered directions — not rejected, just deferred until `rlm` itself is proven:
 
+- **A weavekit-owned durable RLM state file.** The SDK root conversation is the canonical resume
+  source. Add a separate file or event log only if recovery must work without that conversation
+  store or must preserve in-flight work.
 - **`invoke_harness`** — a second tool for delegating to other harnesses' own SDKs
   (`@anthropic-ai/claude-agent-sdk`, `@earendil-works/pi-coding-agent`; explicitly not
   `@openai/codex-sdk`, which lacks mid-session question/answer and custom tool registration and was

@@ -39,7 +39,11 @@ import {
   validateMastermindRuntimeConfig,
 } from "../../src/mastermind/config.js";
 import { mountLinearWebhook, verifyLinearSignature } from "../../src/mastermind/linear/channel.js";
-import { LinearGraphQlGateway, type LinearGateway } from "../../src/mastermind/linear/client.js";
+import {
+  LinearGraphQlGateway,
+  type LinearGateway,
+  type LinearIssueComment,
+} from "../../src/mastermind/linear/client.js";
 import type {
   TicketReviewHarness,
   TicketReviewRequest,
@@ -215,6 +219,7 @@ function createIssue(): LinearTicketSnapshot {
 class FakeLinearGateway implements LinearGateway {
   readonly issue = createIssue();
   fetchCalls = 0;
+  readonly states: string[] = [];
   onFetch?: () => void;
   private failLabel = false;
 
@@ -238,6 +243,12 @@ class FakeLinearGateway implements LinearGateway {
     this.issue.description = input.description;
   }
 
+  async setIssueState(_issueId: string, stateName: string): Promise<void> {
+    if (this.issue.status.toLocaleLowerCase() === stateName.toLocaleLowerCase()) return;
+    this.issue.status = stateName;
+    this.states.push(stateName);
+  }
+
   async replaceIssueLabels(
     issueId: string,
     input: { remove: string[]; add: string[] },
@@ -259,6 +270,36 @@ class FakeLinearGateway implements LinearGateway {
       if (!this.issue.labels.some((label) => label.id === labelId)) {
         this.issue.labels.push({ id: labelId, name: namesById[labelId] ?? labelId });
       }
+    }
+  }
+}
+
+/** FakeLinearGateway plus the optional comment surface the clarification flow depends on. */
+class CommentRecordingLinearGateway extends FakeLinearGateway {
+  readonly comments: LinearIssueComment[] = [];
+
+  async listIssueComments(): Promise<LinearIssueComment[]> {
+    return structuredClone(this.comments);
+  }
+
+  async findIssueCommentByMarker(_issueId: string, marker: string): Promise<string | undefined> {
+    return this.comments.find((comment) => comment.body.includes(marker))?.id;
+  }
+
+  async createIssueComment(_issueId: string, body: string): Promise<string> {
+    const id = `comment-${this.comments.length + 1}`;
+    this.comments.push({
+      id,
+      body,
+      createdAt: new Date(Date.now() + this.comments.length).toISOString(),
+    });
+    return id;
+  }
+
+  async updateIssueComment(commentId: string, body: string): Promise<void> {
+    const comment = this.comments.find((candidate) => candidate.id === commentId);
+    if (comment) {
+      comment.body = body;
     }
   }
 }
@@ -726,16 +767,18 @@ describe("Mastermind durable control plane", () => {
     const config = createConfig(path);
     config.mastermind.leaseDurationMs = 600;
     const harness = new BlockingReviewHarness();
+    const linear = new FakeLinearGateway();
     const loop = new MastermindDecisionLoop(
       config,
       store,
-      new FakeLinearGateway(),
+      linear,
       new FakeDecisionProvider(),
       harness,
     );
 
     const processing = loop.process(delivery.workId);
     await harness.started;
+    expect(linear.states).toEqual(["In Progress"]);
     await delay(1_300);
     const activeWork = await store.getWork(delivery.workId);
     expect(Date.parse(activeWork?.leaseExpiresAt ?? "")).toBeGreaterThan(Date.now());
@@ -746,6 +789,38 @@ describe("Mastermind durable control plane", () => {
       state: MastermindState.ACTION_PLANNED,
       leaseOwner: undefined,
       leaseExpiresAt: undefined,
+    });
+    store.close();
+  });
+
+  it("fails closed when active work cannot project its Linear workflow state", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174021",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const backing = new FakeLinearGateway();
+    const linear: LinearGateway = {
+      fetchIssue: (issueId) => backing.fetchIssue(issueId),
+      updateIssueContent: (issueId, input) => backing.updateIssueContent(issueId, input),
+      replaceIssueLabels: (issueId, input) => backing.replaceIssueLabels(issueId, input),
+    };
+    const loop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      new FakeReviewHarness(),
+    );
+
+    await expect(loop.process(delivery.workId)).rejects.toThrow(
+      "Linear gateway does not support workflow-state projection.",
+    );
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.DECIDING,
     });
     store.close();
   });
@@ -1297,6 +1372,7 @@ describe("Mastermind durable control plane", () => {
     expect(linear.fetchCalls).toBeGreaterThan(0);
     expect(restartHarness.reviewCalls).toBe(0);
     expect(restartDecisions.nextActionCalls).toBe(0);
+    expect(linear.states).toEqual(["In Progress"]);
     expect(
       (await restartedStore.listEvents(delivery.workId)).map((event) => event.eventType),
     ).not.toContain(MastermindEventType.REOPEN_REVIEW);
@@ -2043,6 +2119,43 @@ describe("Mastermind durable control plane", () => {
     });
     expect(linear.issue.title).toBe("rough title");
     expect(linear.issue.labels.map((label) => label.name)).toContain("Mastermind Needs Input");
+    store.close();
+  });
+
+  it("posts the clarification comment on the same run that routes a review to human input", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174045",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new CommentRecordingLinearGateway();
+    const loop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new BlockedDecisionProvider(),
+      new FakeReviewHarness(),
+    );
+
+    await loop.process(delivery.workId);
+
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.NEEDS_HUMAN,
+    });
+    // The open items must reach Linear on this run, not only on a later self-healing run.
+    expect(linear.comments).toHaveLength(1);
+    const [comment] = linear.comments;
+    expect(comment.body).toContain(`<!-- weavekit-mastermind-clarification:${delivery.workId} -->`);
+    expect(comment.body).toContain("Which compatibility policy is required?");
+    expect(comment.body).toContain("Product owner must choose the compatibility policy.");
+
+    // Re-processing the same needs-human work item updates the existing comment instead of
+    // posting a duplicate.
+    await loop.process(delivery.workId);
+    expect(linear.comments).toHaveLength(1);
     store.close();
   });
 

@@ -143,12 +143,19 @@ ${JSON.stringify(request.attempt.result, null, 2)}
 Independent verification:
 ${JSON.stringify(request.attempt.verification, null, 2)}
 
+Every manualVerification entry must be a self-contained step a human can paste into a terminal with
+no prior context. Give the absolute path of every script, file, and directory the step names — the
+canonical worktree path above is the root — plus the exact command and the output and exit code that
+prove the step passed. Never write "from the worktree root", "in the project directory", or another
+relative reference without also giving the absolute path. Order the entries so that following them
+from top to bottom reproduces the verification.
+
 Return JSON only:
 {
   "summary": "string",
   "acceptanceCriteriaCoverage": ["criterion plus concrete evidence"],
   "verificationAssessment": ["string"],
-  "manualVerification": ["specific step"],
+  "manualVerification": ["self-contained step: absolute paths, exact command, expected output and exit code"],
   "findings": [
     {
       "severity": "BLOCKING | IMPORTANT | SUGGESTION",
@@ -181,8 +188,12 @@ function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export function reviewWorktreePath(attempt: ExecutionAttempt): string | undefined {
+  return attempt.executorHandle?.worktreePath ?? attempt.workspace?.checkoutPath;
+}
+
 function requireWorktree(attempt: ExecutionAttempt): string {
-  const path = attempt.executorHandle?.worktreePath ?? attempt.workspace?.checkoutPath;
+  const path = reviewWorktreePath(attempt);
   if (!path) throw new Error("Successful execution has no reviewable worktree.");
   return path;
 }

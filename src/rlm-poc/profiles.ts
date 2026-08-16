@@ -36,6 +36,28 @@ const SCOPED_INVESTIGATION_TOOLS = [
   "web_fetch",
   "mcp:*",
 ];
+/**
+ * Repository-reading review tools. The read set mirrors the proven allowlist in
+ * `src/mastermind/review/harness.ts`; `create`/`str_replace_editor` let the reviewer write its
+ * report, and the destination-scoped permission handler confines those writes to
+ * `writableSubpaths`. Note "bash", not "shell" - "shell" is only the permission-request kind.
+ */
+const REPOSITORY_REVIEW_TOOLS = [
+  "builtin:ask_user",
+  "custom:rlm",
+  "skill",
+  "bash",
+  "read_file",
+  "list_dir",
+  "view",
+  "glob",
+  "grep",
+  "create",
+  "str_replace_editor",
+  "web_search",
+  "web_fetch",
+  "mcp:*",
+];
 const SUPERPOWERS_SKILLS = [
   "using-superpowers",
   "brainstorming",
@@ -111,10 +133,10 @@ export const HYPERRESEARCH_SKILLS = [
 ];
 
 export const RLM_ROOT_CAPABILITY_MANIFEST = {
-  authority: "routing-synthesis",
+  authority: "routing-synthesis-verification",
   repositoryWritePermission: false,
   allowedSkillNames: [],
-  availableTools: ["custom:rlm", "mcp:*"],
+  availableTools: ["custom:rlm", "mcp:*", "view", "glob", "grep"],
 } as const;
 
 export function createRlmRootAvailableTools(trellageEnabled: boolean): string[] {
@@ -134,7 +156,8 @@ const HANDOFF_GUIDANCE =
 const BETTER_GITHUB_GUIDANCE =
   " The loaded `better-github-skill` is available for GitHub work. Invoke it when inspecting pull " +
   "requests, review conversations, CI failures, repository state, or non-trivial `gh` commands.";
-export const DEFAULT_RLM_PROFILE_MODEL = "mai-code-1.1-flash";
+export const DEFAULT_RLM_PROFILE_MODEL = "gpt-5.6-sol";
+export const DEFAULT_RLM_PROFILE_REASONING_EFFORT = "medium";
 const TOOL_MODEL_REQUIREMENTS = { toolCall: true } as const;
 const REASONING_TOOL_MODEL_REQUIREMENTS = { reasoning: true, toolCall: true } as const;
 
@@ -151,7 +174,7 @@ const VALIDATION_PROFILE: RlmProfile = {
   purpose: RlmProfilePurpose.Validation,
   authority: RlmProfileAuthority.Validation,
   repositoryWritePermission: false,
-  model: "gemini-3.6-flash",
+  model: "gemini-3.7-flash",
   modelPolicy: modelPolicy([RlmModelGroup.FastEfficient], {
     fallbackGroups: [RlmModelGroup.BalancedWorkhorse],
     requiredCapabilities: TOOL_MODEL_REQUIREMENTS,
@@ -175,9 +198,11 @@ const GENERAL_PROFILE: RlmProfile = {
   authority: RlmProfileAuthority.Implementation,
   repositoryWritePermission: true,
   model: DEFAULT_RLM_PROFILE_MODEL,
+  reasoningEffort: DEFAULT_RLM_PROFILE_REASONING_EFFORT,
   modelPolicy: modelPolicy([RlmModelGroup.CodingSpecialist], {
     fallbackGroups: [RlmModelGroup.BalancedWorkhorse],
-    requiredCapabilities: TOOL_MODEL_REQUIREMENTS,
+    requiredCapabilities: REASONING_TOOL_MODEL_REQUIREMENTS,
+    defaultReasoningEffort: DEFAULT_RLM_PROFILE_REASONING_EFFORT,
   }),
   systemMessagePrompt:
     "You are a general execution worker in a fresh Copilot SDK session. Complete only the " +
@@ -425,10 +450,12 @@ const MEDIA_PROFILE: RlmProfile = {
 const REVIEW_PROFILE: RlmProfile = {
   name: RlmProfileName.Review,
   description:
-    "Read-only reviewer of supplied diffs, artifacts, requirements, and validation evidence.",
+    "Reviewer that reads the repository to verify diffs, artifacts, requirements, and validation " +
+    "evidence, and writes its report only under .weavekit/reviews.",
   purpose: RlmProfilePurpose.Review,
   authority: RlmProfileAuthority.Review,
   repositoryWritePermission: false,
+  writableSubpaths: [".weavekit/reviews"],
   model: "claude-opus-5",
   reasoningEffort: "medium",
   modelPolicy: modelPolicy([RlmModelGroup.FrontierCurrent], {
@@ -436,15 +463,17 @@ const REVIEW_PROFILE: RlmProfile = {
     defaultReasoningEffort: "medium",
   }),
   systemMessagePrompt:
-    "You are a bounded read-only reviewer in a fresh Copilot SDK session. Review only the " +
-    "requirements, diffs, artifacts, and validation evidence supplied in the delegated prompt. " +
-    "Identify concrete defects, requirement gaps, risks, and missing verification. Do not modify " +
-    "files or claim to inspect evidence that was not supplied." +
+    "You are a bounded reviewer in a fresh Copilot SDK session. Read the repository directly to " +
+    "check the requirements, diffs, artifacts, and validation evidence named in the delegated " +
+    "prompt, and re-run verification commands read-only when the supplied evidence is thin. " +
+    "Identify concrete defects, requirement gaps, risks, and missing verification. You must not " +
+    "change the work you review: write your report and any supporting notes under " +
+    ".weavekit/reviews/, and never edit the files, documents, or artifacts under review." +
     ROOT_QUESTION_GUIDANCE +
     HANDOFF_GUIDANCE +
     BETTER_GITHUB_GUIDANCE,
-  availableTools: SCOPED_RECURSIVE_TOOLS,
-  allowedChildProfiles: [RlmProfileName.Review],
+  availableTools: REPOSITORY_REVIEW_TOOLS,
+  allowedChildProfiles: [RlmProfileName.Review, RlmProfileName.Research],
 };
 
 const BUILT_IN_PROFILES: Record<string, RlmProfile> = {

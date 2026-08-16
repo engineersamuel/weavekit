@@ -149,6 +149,7 @@ export function createSubmindUserInputHandler(
         },
         enableConfigDiscovery: false,
         enableSkills: false,
+        memory: { enabled: false },
         availableTools: [],
         onPermissionRequest: approveAll,
       });

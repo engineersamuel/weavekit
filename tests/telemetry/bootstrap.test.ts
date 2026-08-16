@@ -74,6 +74,7 @@ const envKeys = [
 ] as const;
 
 let envSnapshot = new Map<string, string | undefined>();
+let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   envSnapshot = new Map(envKeys.map((key) => [key, process.env[key]]));
@@ -81,6 +82,9 @@ beforeEach(() => {
   batchSpanProcessorConstructors.length = 0;
   otlpExporterConstructors.length = 0;
   langfuseProcessorConstructors.length = 0;
+  // Every startTelemetry call with Langfuse keys probes the credentials; keep that off the network.
+  fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
 });
 
 afterEach(() => {
@@ -94,6 +98,7 @@ afterEach(() => {
   }
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe("telemetry bootstrap", () => {
@@ -215,6 +220,53 @@ describe("telemetry bootstrap", () => {
     await handle.shutdown();
     expect(nodeSdkConstructors[0]?.start).toHaveBeenCalledTimes(1);
     expect(nodeSdkConstructors[0]?.shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("warns at startup when Langfuse rejects the configured credentials", async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+    process.env.LANGFUSE_BASE_URL = "http://localhost:3000/";
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 401 }));
+
+    await startTelemetry("weavekit-test");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://localhost:3000/api/public/projects", {
+      headers: { authorization: `Basic ${Buffer.from("pk-test:sk-test").toString("base64")}` },
+      signal: expect.anything(),
+    });
+    const warning = String(stderr.mock.calls[0]?.[0] ?? "");
+    expect(warning).toContain("HTTP 401");
+    expect(warning).toContain("every trace for this run will be dropped");
+    expect(warning).not.toContain("sk-test");
+  });
+
+  it("warns at startup when Langfuse cannot be reached at all", async () => {
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    fetchMock.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
+
+    await expect(startTelemetry("weavekit-test")).resolves.toBeDefined();
+
+    expect(String(stderr.mock.calls[0]?.[0] ?? "")).toContain("connect ECONNREFUSED");
+  });
+
+  it("stays silent for usable credentials and never probes without them", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    process.env.LANGFUSE_PUBLIC_KEY = "pk-test";
+    process.env.LANGFUSE_SECRET_KEY = "sk-test";
+
+    await startTelemetry("weavekit-test");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stderr).not.toHaveBeenCalled();
+
+    delete process.env.LANGFUSE_PUBLIC_KEY;
+    delete process.env.LANGFUSE_SECRET_KEY;
+
+    await startTelemetry("weavekit-test");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stderr).not.toHaveBeenCalled();
   });
 
   it("exports raw Langfuse content by default", async () => {

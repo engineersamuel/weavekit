@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SessionEvent, Tool, ToolResultObject } from "@github/copilot-sdk";
+import { createRlmExecutionBudget, snapshotRlmExecutionBudget } from "../../src/rlm-poc/budget.js";
+import {
+  RlmCallExecutionStatus,
+  createRlmRunState,
+  snapshotRlmRunState,
+} from "../../src/rlm-poc/runState.js";
 import {
   RlmProfileName,
   createRlmProfileRegistry,
@@ -16,6 +22,15 @@ import {
   type RlmToolArgs,
 } from "../../src/rlm-poc/contracts.js";
 import { RlmModelGroup, parseCopilotModelCatalog } from "../../src/rlm-poc/modelCatalog.js";
+import {
+  RlmWorkerOutcome,
+  type RlmRunBrief,
+  type RlmWorkerReport,
+} from "../../src/generated/baml_client/types.js";
+import type {
+  RlmWorkerContract,
+  RlmWorkerContractInput,
+} from "../../src/rlm-poc/workerContract.js";
 
 const profiles = createRlmProfileRegistry({
   default: {
@@ -28,6 +43,39 @@ const profiles = createRlmProfileRegistry({
     systemMessagePrompt: "Answer directly.",
   },
 });
+
+const runBrief: RlmRunBrief = {
+  objective: "Complete the root objective.",
+  constraints: ["Use only selected dependency reports."],
+  acceptanceCriteria: ["Return a typed report."],
+  validationCommands: ["nub run test -- tests/rlm-poc/tool.test.ts"],
+};
+
+function workerReport(summary: string): RlmWorkerReport {
+  return {
+    outcome: RlmWorkerOutcome.COMPLETED,
+    summary,
+    evidence: [],
+    artifacts: [],
+    verification: [],
+    decisions: [],
+    risks: [],
+    openQuestions: [],
+    remainingWork: [],
+  };
+}
+
+function createWorkerContract(renderedInputs: RlmWorkerContractInput[] = []): RlmWorkerContract {
+  return {
+    async renderPrompt(input) {
+      renderedInputs.push(structuredClone(input));
+      return input.delegatedTask;
+    },
+    parseResponse(raw) {
+      return workerReport(raw);
+    },
+  };
+}
 
 function createRlmTool(options: CreateRlmToolOptions) {
   return createProductionRlmTool({
@@ -71,6 +119,13 @@ describe("createRlmTool", () => {
     expect(
       (tool.parameters as { properties: { profile: { enum: string[] } } }).properties.profile.enum,
     ).toContain("default");
+    expect(
+      (
+        tool.parameters as {
+          properties: { dependsOn: { minItems: number; uniqueItems: boolean } };
+        }
+      ).properties.dependsOn,
+    ).toMatchObject({ minItems: 1, uniqueItems: true });
   });
 
   it("does not emit an invalid empty profile enum", () => {
@@ -103,6 +158,217 @@ describe("createRlmTool", () => {
       modelRationale: "Profile uses fixed model test-model.",
       budget: { maxCalls: 12, usedCalls: 1, remainingCalls: 11 },
     });
+  });
+
+  it("injects only the explicitly selected completed dependency reports", async () => {
+    const runState = createRlmRunState(runBrief, { runId: "run-one" });
+    const renderedInputs: RlmWorkerContractInput[] = [];
+    const responses = ["first report", "unrelated report", "dependent report"];
+    const tool = createRlmTool({
+      depthRemaining: 3,
+      maxDepth: 3,
+      profiles,
+      runState,
+      workerContract: createWorkerContract(renderedInputs),
+      clientFactory: () => ({
+        async start() {},
+        async createSession() {
+          return {
+            async sendAndWait() {
+              return { data: { content: responses.shift() ?? "unexpected" } };
+            },
+            async disconnect() {},
+          };
+        },
+        async stop() {},
+      }),
+    });
+
+    const first = JSON.parse(
+      (await invoke(tool, { prompt: "Produce prerequisite evidence.", profile: "default" }))
+        .textResultForLlm,
+    );
+    await invoke(tool, { prompt: "Produce unrelated evidence.", profile: "default" });
+    const dependent = JSON.parse(
+      (
+        await invoke(tool, {
+          prompt: "Use the prerequisite evidence.",
+          profile: "default",
+          dependsOn: [first.callId],
+        })
+      ).textResultForLlm,
+    );
+
+    expect(renderedInputs).toHaveLength(3);
+    expect(renderedInputs[0]?.dependencies).toEqual([]);
+    expect(renderedInputs[1]?.dependencies).toEqual([]);
+    expect(renderedInputs[2]?.dependencies).toEqual([
+      {
+        callId: "run-one:call-1",
+        profile: "default",
+        report: workerReport("first report"),
+      },
+    ]);
+    expect(renderedInputs[2]?.brief).toEqual(runBrief);
+    expect(dependent).toMatchObject({
+      runId: "run-one",
+      callId: "run-one:call-3",
+      dependencyCallIds: ["run-one:call-1"],
+      text: "dependent report",
+      report: workerReport("dependent report"),
+    });
+    expect(dependent.state.calls).toHaveLength(3);
+  });
+
+  it("shares one ledger with nested calls and records explicit parent IDs", async () => {
+    const runState = createRlmRunState(runBrief, { runId: "run-nested" });
+    const workerContract = createWorkerContract();
+    let factoryCall = 0;
+    let nestedPayload: Record<string, unknown> | undefined;
+    const tool = createRlmTool({
+      depthRemaining: 3,
+      maxDepth: 3,
+      profiles,
+      runState,
+      workerContract,
+      clientFactory: () => {
+        factoryCall += 1;
+        const currentCall = factoryCall;
+        return {
+          async start() {},
+          async createSession(config) {
+            return {
+              async sendAndWait() {
+                if (currentCall === 1) {
+                  const [nestedTool] = config.tools as Tool<RlmToolArgs>[];
+                  if (!nestedTool) throw new Error("Expected nested RLM tool.");
+                  nestedPayload = JSON.parse(
+                    (
+                      await invoke(nestedTool, {
+                        prompt: "Complete nested work.",
+                        profile: "default",
+                      })
+                    ).textResultForLlm,
+                  );
+                  return { data: { content: "outer report" } };
+                }
+                return { data: { content: "nested report" } };
+              },
+              async disconnect() {},
+            };
+          },
+          async stop() {},
+        };
+      },
+    });
+
+    const result = await invoke(tool, {
+      prompt: "Delegate nested work.",
+      profile: "default",
+    });
+    const payload = JSON.parse(result.textResultForLlm);
+
+    expect(nestedPayload).toMatchObject({
+      runId: "run-nested",
+      callId: "run-nested:call-2",
+      parentCallId: "run-nested:call-1",
+      text: "nested report",
+    });
+    expect(nestedPayload).not.toHaveProperty("state");
+    expect(payload.state.calls).toMatchObject([
+      {
+        callId: "run-nested:call-1",
+        status: RlmCallExecutionStatus.Succeeded,
+      },
+      {
+        callId: "run-nested:call-2",
+        parentCallId: "run-nested:call-1",
+        status: RlmCallExecutionStatus.Succeeded,
+      },
+    ]);
+    expect(snapshotRlmRunState(runState).nextCallNumber).toBe(3);
+  });
+
+  it("rejects invalid dependencies before starting a client or consuming call budget", async () => {
+    const runState = createRlmRunState(runBrief, { runId: "run-invalid" });
+    const executionBudget = createRlmExecutionBudget(3);
+    const clientFactory = vi.fn(fakeClientFactory("unused"));
+    const tool = createRlmTool({
+      depthRemaining: 3,
+      maxDepth: 3,
+      profiles,
+      runState,
+      workerContract: createWorkerContract(),
+      executionBudget,
+      clientFactory,
+    });
+
+    const result = await invoke(tool, {
+      prompt: "Use missing evidence.",
+      profile: "default",
+      dependsOn: ["run-invalid:call-99"],
+    });
+    const payload = JSON.parse(result.textResultForLlm);
+
+    expect(result).toMatchObject({
+      resultType: "failure",
+      error: expect.stringMatching(/does not exist/iu),
+    });
+    expect(clientFactory).not.toHaveBeenCalled();
+    expect(snapshotRlmExecutionBudget(executionBudget)).toEqual({
+      maxCalls: 3,
+      usedCalls: 0,
+      remainingCalls: 3,
+    });
+    expect(payload.state.calls).toMatchObject([
+      {
+        callId: "run-invalid:call-1",
+        dependencyCallIds: ["run-invalid:call-99"],
+        status: RlmCallExecutionStatus.Failed,
+        error: expect.stringMatching(/does not exist/iu),
+      },
+    ]);
+  });
+
+  it("records typed report parse failures as failed calls", async () => {
+    const runState = createRlmRunState(runBrief, { runId: "run-parse" });
+    const executionBudget = createRlmExecutionBudget(3);
+    const workerContract: RlmWorkerContract = {
+      async renderPrompt({ delegatedTask }) {
+        return delegatedTask;
+      },
+      parseResponse() {
+        throw new Error("invalid typed worker report");
+      },
+    };
+    const tool = createRlmTool({
+      depthRemaining: 3,
+      maxDepth: 3,
+      profiles,
+      runState,
+      workerContract,
+      executionBudget,
+      clientFactory: fakeClientFactory("not structured"),
+    });
+
+    const result = await invoke(tool, {
+      prompt: "Return invalid output.",
+      profile: "default",
+    });
+    const payload = JSON.parse(result.textResultForLlm);
+
+    expect(result).toMatchObject({
+      resultType: "failure",
+      error: "invalid typed worker report",
+    });
+    expect(payload.state.calls).toMatchObject([
+      {
+        callId: "run-parse:call-1",
+        status: RlmCallExecutionStatus.Failed,
+        error: "invalid typed worker report",
+      },
+    ]);
+    expect(snapshotRlmExecutionBudget(executionBudget).usedCalls).toBe(1);
   });
 
   it("uses only validated dynamic candidates and falls back from an invalid request", async () => {
@@ -381,7 +647,7 @@ describe("createRlmTool", () => {
       profiles,
       clientFactory,
       consoleStreaming: false,
-      ownerSessionReference: {
+      rootSessionReference: {
         current: ownerSession,
         instructions: "Use all prior interview context.",
       },
@@ -498,7 +764,7 @@ describe("createRlmTool", () => {
       profiles,
       clientFactory,
       consoleStreaming: false,
-      ownerSessionReference: { current: ownerSession, instructions: "Use prior context." },
+      rootSessionReference: { current: ownerSession, instructions: "Use prior context." },
     });
 
     const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -593,7 +859,7 @@ describe("createRlmTool", () => {
       profiles,
       clientFactory,
       consoleStreaming: false,
-      ownerSessionReference: { current: ownerSession },
+      rootSessionReference: { current: ownerSession },
     });
 
     const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);

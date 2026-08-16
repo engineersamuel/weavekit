@@ -158,7 +158,7 @@ export class HerdrDirectExecutor implements DirectExecutor {
   async status(handle: ExecutorHandle): Promise<ExecutorStatus> {
     try {
       const result = parseHerdrEnvelope(
-        await this.shell.run("herdr", ["agent", "get", handle.agentName], {
+        await this.shell.run("herdr", ["agent", "get", requireAgentName(handle)], {
           cwd: handle.worktreePath,
         }),
         "herdr agent get",
@@ -181,7 +181,8 @@ export class HerdrDirectExecutor implements DirectExecutor {
   }
 
   async cancel(handle: ExecutorHandle): Promise<{ confirmed: boolean; status: ExecutorStatus }> {
-    await this.shell.run("herdr", ["agent", "send-keys", handle.agentName, "ctrl-c"], {
+    const agentName = requireAgentName(handle);
+    await this.shell.run("herdr", ["agent", "send-keys", agentName, "ctrl-c"], {
       cwd: handle.worktreePath,
     });
     try {
@@ -190,7 +191,7 @@ export class HerdrDirectExecutor implements DirectExecutor {
         [
           "agent",
           "wait",
-          handle.agentName,
+          agentName,
           "--until",
           "idle",
           "--until",
@@ -324,7 +325,15 @@ export class HerdrDirectExecutor implements DirectExecutor {
     try {
       const output = await this.shell.run(
         "herdr",
-        ["agent", "read", handle.agentName, "--source", "recent-unwrapped", "--lines", "20"],
+        [
+          "agent",
+          "read",
+          requireAgentName(handle),
+          "--source",
+          "recent-unwrapped",
+          "--lines",
+          "20",
+        ],
         { cwd: handle.worktreePath },
       );
       return output.replace(/\s+/gu, " ").trim().slice(0, 500) || undefined;
@@ -332,6 +341,19 @@ export class HerdrDirectExecutor implements DirectExecutor {
       return undefined;
     }
   }
+}
+
+/**
+ * `ExecutorHandle.agentName` is optional because {@link ExecutorKind.RLM_SUBMIND} has no Herdr
+ * agent. This executor always names one, so an absent name means the handle came from elsewhere.
+ */
+function requireAgentName(handle: ExecutorHandle): string {
+  if (!handle.agentName) {
+    throw new Error(
+      `Herdr executor handle for ${handle.worktreePath} has no agent name to operate on.`,
+    );
+  }
+  return handle.agentName;
 }
 
 export function directExecutionAgentName(workId: string, attemptNumber: number): string {
@@ -391,6 +413,7 @@ export function buildDirectExecutionPrompt(request: DirectExecutionRequest): str
     "- artifactPaths: relative existing paths inside this worktree",
     "- optional HTTPS pullRequestUrl",
     "- verification entries with command, exitCode, and concise summary",
+    "- set expectedExitCode on a verification entry only when its passing code is not 0 (for example `git check-ignore`, which exits 1 exactly when the paths are not ignored)",
     "- knownRisks and remainingWork arrays",
     "",
     "Final response requirements:",

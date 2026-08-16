@@ -15,6 +15,7 @@ try {
     selector,
     store,
     herdrEnv: process.env.HERDR_ENV,
+    emit: (message) => process.stdout.write(message),
     run: (command, args) =>
       new Promise((resolve, reject) => {
         const child = spawn(command, args, { stdio: "inherit" });

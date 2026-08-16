@@ -1,6 +1,7 @@
 import { approveAll, CopilotClient } from "@github/copilot-sdk";
 import type { SessionConfig } from "@github/copilot-sdk";
 import { SpanStatusCode, trace } from "@opentelemetry/api";
+import type { RlmRunBrief } from "../generated/baml_client/types.js";
 import { buildDefaultCopilotClientOptions } from "../telemetry/copilotSdk.js";
 import {
   DEFAULT_RLM_MAX_TOTAL_CALLS,
@@ -32,6 +33,17 @@ import {
 import { buildRlmSubmindSystemPrompt } from "./submindPrompt.js";
 import { snapshotConversation } from "./conversationContext.js";
 import {
+  createRlmRunState,
+  hydrateRlmRunState,
+  interruptRunningRlmCalls,
+  parseRlmRunStateSnapshot,
+  setRlmRunBrief,
+  setRlmRunIdentity,
+  snapshotRlmRunState,
+  type RlmRunState,
+  type RlmRunStateSnapshot,
+} from "./runState.js";
+import {
   createTrellageAnswerer,
   setupTrellageIntegration,
   type TrellageIntegration,
@@ -45,9 +57,10 @@ import {
   resolveRlmModelDecision,
   type CopilotModelCatalog,
 } from "./modelCatalog.js";
+import { bamlRlmWorkerContract, type RlmWorkerContract } from "./workerContract.js";
 
 export const DEFAULT_RLM_MAX_DEPTH = 3;
-export const DEFAULT_RLM_MODEL = "mai-code-1.1-flash";
+export const DEFAULT_RLM_MODEL = "gpt-5.6-sol";
 type ReasoningEffort = NonNullable<SessionConfig["reasoningEffort"]>;
 export const DEFAULT_RLM_REASONING_EFFORT: ReasoningEffort = "medium";
 
@@ -69,6 +82,7 @@ export const RLM_VALIDATION_SCENARIO_PROMPT =
 
 export type RlmPrototypeResult = {
   finalText: string;
+  runId: string;
   conversationId?: string;
   traceId: string;
   /** Disposition of every Herdr worktree `invoke_trellage` provisioned during the run. */
@@ -107,6 +121,10 @@ export type RlmRuntimeOptions = {
   modelCatalog?: CopilotModelCatalog;
   /** Alternate catalog path for tests and operators maintaining a separate nightly snapshot. */
   modelCatalogPath?: string;
+  /** Immutable semantic brief injected into typed general workers. */
+  runBrief?: RlmRunBrief;
+  /** Injectable typed worker boundary. Defaults to the generated BAML contract. */
+  workerContract?: RlmWorkerContract;
 };
 
 type RunRlmSessionOptions = RlmRuntimeOptions & {
@@ -118,6 +136,8 @@ type RunRlmSessionOptions = RlmRuntimeOptions & {
   /** Restricts the root validation session while leaving the orchestration root unrestricted. */
   availableTools?: string[];
   allowedProfiles?: readonly string[];
+  /** Present only for the general Submind path; validation workers remain raw/verbatim. */
+  workerContract?: RlmWorkerContract;
 };
 
 /**
@@ -137,6 +157,7 @@ export async function runRlmPrototype(
     traceName: "rlm-poc-validation-scenario",
     availableTools: ["custom:rlm"],
     allowedProfiles: [RlmProfileName.Validation],
+    workerContract: undefined,
   });
 }
 
@@ -157,6 +178,7 @@ export async function runRlmSubmind(
     prompt,
     ...(options.conversationId ? { conversationId: options.conversationId } : {}),
     requireConversationId: true,
+    workerContract: options.workerContract ?? bamlRlmWorkerContract,
     systemPrompt: buildRlmSubmindSystemPrompt(profiles, {
       maxTotalCalls,
       ...(options.enableTrellage ? { trellageEnabled: true } : {}),
@@ -191,7 +213,18 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
       ? await (options.prepareRootSkills ?? prepareRlmRootSkills)()
       : undefined;
   const rootSkillDirectories = preparedRootSkills?.skillDirectories ?? [];
-  const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const executionRunId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const runState = options.workerContract
+    ? createRlmRunState(
+        options.runBrief ?? {
+          objective: options.prompt,
+          constraints: [],
+          acceptanceCriteria: [],
+          validationCommands: [],
+        },
+        { runId: options.conversationId ?? executionRunId },
+      )
+    : undefined;
 
   return tracer.startActiveSpan(
     buildRlmRootSpanName(options.traceName),
@@ -208,6 +241,7 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
           ...(options.allowedProfiles ? { allowedProfiles: options.allowedProfiles } : {}),
         }),
         "weavekit.rlm.depth_used": 0,
+        "weavekit.rlm.run_id": runState?.runId ?? executionRunId,
         "weavekit.rlm.max_depth": maxDepth,
         "weavekit.rlm.budget.max_calls": maxTotalCalls,
         "weavekit.rlm.model_catalog.path": modelCatalog.sourcePath,
@@ -251,14 +285,15 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
           allowedSkillDirectories: rootSkillDirectories,
           projectPaths: [process.cwd()],
         });
-        const submindSessionReference: RlmSessionReference = {
+        const rootSessionReference: RlmSessionReference = {
           instructions: options.systemPrompt,
+          initialPrompt: options.prompt,
         };
         // Registered on the root *and*, via `additionalTools`, on every recursive session, so any
         // depth can reach a foreign harness rather than routing everything through the root.
         trellage = options.enableTrellage
           ? await setupTrellageIntegration({
-              runId,
+              runId: executionRunId,
               executionBudget,
               modelCatalog,
               answer: createTrellageAnswerer({
@@ -267,7 +302,7 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
                   options.clientFactory ??
                   (async () =>
                     new CopilotClient(await buildDefaultCopilotClientOptions()) as RlmClient),
-                getConversationContext: () => snapshotConversation(submindSessionReference),
+                getConversationContext: () => snapshotConversation(rootSessionReference),
               }),
               ...(options.provisionTrellageWorktreeEagerly ? { provisionEagerly: true } : {}),
               ...(options.reuseCurrentTrellageWorktree ? { reuseCurrentWorktree: true } : {}),
@@ -280,6 +315,7 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
           reasoningEffort: options.reasoningEffort ?? DEFAULT_RLM_REASONING_EFFORT,
           enableConfigDiscovery: true,
           enableSkills: rootSkillDirectories.length > 0,
+          memory: { enabled: false },
           systemMessage: { mode: "append", content: options.systemPrompt },
           onPermissionRequest: approveAll,
           streaming: consoleStreaming,
@@ -301,10 +337,12 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
               modelCatalog,
               answererModelDecision,
               consoleStreaming,
-              ownerSessionReference: submindSessionReference,
+              rootSessionReference,
               sendTimeoutMs,
               askUserMode: "submind",
               executionBudget,
+              ...(runState ? { runState } : {}),
+              ...(options.workerContract ? { workerContract: options.workerContract } : {}),
               ...(options.prepareProfileSkills
                 ? { prepareProfileSkills: options.prepareProfileSkills }
                 : {}),
@@ -323,7 +361,15 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
         if (options.requireConversationId && !conversationId) {
           throw new Error("Copilot SDK did not return a conversation ID for the Submind session.");
         }
-        submindSessionReference.current = session;
+        if (runState && conversationId) {
+          if (options.conversationId) {
+            await restoreRunStateFromConversation(session, runState, options.workerContract!);
+          } else {
+            setRlmRunIdentity(runState, conversationId);
+          }
+          span.setAttribute("weavekit.rlm.run_id", runState.runId);
+        }
+        rootSessionReference.current = session;
         const unsubscribe = consoleStreaming
           ? attachConsoleStreaming(session, { label: "submind d0", depthUsed: 0 })
           : undefined;
@@ -338,10 +384,24 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
           );
           span.setAttribute("weavekit.rlm.budget.used_calls", budget.usedCalls);
           span.setAttribute("weavekit.rlm.budget.remaining_calls", budget.remainingCalls);
+          if (runState) {
+            const state = snapshotRlmRunState(runState);
+            span.setAttribute("weavekit.rlm.state.revision", state.revision);
+            span.setAttribute("weavekit.rlm.state.call_count", state.calls.length);
+            span.setAttribute(
+              "weavekit.rlm.state.succeeded_calls",
+              state.calls.filter(({ status }) => status === "succeeded").length,
+            );
+            span.setAttribute(
+              "weavekit.rlm.state.failed_calls",
+              state.calls.filter(({ status }) => status === "failed").length,
+            );
+          }
           span.setStatus({ code: SpanStatusCode.OK });
           const worktrees = await trellage?.finalize();
           return {
             finalText,
+            runId: runState?.runId ?? executionRunId,
             ...(conversationId ? { conversationId } : {}),
             traceId: span.spanContext().traceId,
             ...(worktrees?.length ? { worktrees } : {}),
@@ -368,6 +428,64 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
       }
     },
   );
+}
+
+async function restoreRunStateFromConversation(
+  session: RlmSessionReference["current"],
+  state: RlmRunState,
+  workerContract: RlmWorkerContract,
+): Promise<void> {
+  if (!session?.getEvents) {
+    throw new Error("Cannot restore RLM run state: resumed conversation events are unavailable.");
+  }
+  const events = await session.getEvents();
+  let latest: RlmRunStateSnapshot | undefined;
+  for (const event of events) {
+    if (event.type !== "tool.execution_complete") continue;
+    const content = event.data.result?.content;
+    const payload = parseJsonObject(content);
+    if (!payload || !("state" in payload)) continue;
+    const storedState = parseJsonObject(payload.state);
+    if (!storedState || !("schemaVersion" in storedState)) continue;
+    const snapshot = parseRlmRunStateSnapshot(payload.state, (raw) =>
+      workerContract.parseResponse(raw),
+    );
+    if (!latest || snapshot.revision > latest.revision) {
+      latest = snapshot;
+    }
+  }
+  if (latest) {
+    hydrateRlmRunState(state, latest);
+    interruptRunningRlmCalls(state);
+    return;
+  }
+  const firstUserPrompt = events.find(
+    (event) => event.type === "user.message" && event.data.content.trim().length > 0,
+  );
+  if (firstUserPrompt?.type === "user.message") {
+    setRlmRunBrief(state, {
+      ...state.brief,
+      objective: firstUserPrompt.data.content,
+    });
+    return;
+  }
+  throw new Error(
+    "Cannot restore RLM run state: the conversation has no state checkpoint or original user prompt.",
+  );
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : undefined;
 }
 
 async function resumeRlmSession(

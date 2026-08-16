@@ -45,6 +45,66 @@ export type TrellageProfile = {
   readiness?: string;
 };
 
+/**
+ * The features a launcher adapter has verified through its structured-output contract.
+ *
+ * A profile must advertise these capabilities before the RLM can use its headless path. This
+ * keeps future launchers and container profiles on an explicit adapter boundary instead of
+ * scattering launcher-name checks through the orchestration loop.
+ */
+export type TrellageHeadlessCapabilities = {
+  structuredEvents: boolean;
+  resume: boolean;
+  denyQuestionTool: boolean;
+  changedFiles: boolean;
+  cost: boolean;
+};
+
+export const TrellageHeadlessTerminal = {
+  Completed: "completed",
+  Failed: "failed",
+  Malformed: "malformed",
+} as const;
+export type TrellageHeadlessTerminal =
+  (typeof TrellageHeadlessTerminal)[keyof typeof TrellageHeadlessTerminal];
+
+/**
+ * Normalized terminal data emitted by one native headless harness process.
+ *
+ * `reportedSuccess` is retained for diagnostics only. The RLM must obtain a goal-achievement
+ * diagnosis before it can map the attempt to `TrellageOutcome.Completed`.
+ */
+export type TrellageHeadlessResult = {
+  terminal: TrellageHeadlessTerminal;
+  finalText?: string;
+  sessionId?: string;
+  /** Model reported by the harness's terminal response, when its JSONL contract provides one. */
+  model?: string;
+  reportedSuccess?: boolean;
+  harnessError?: string;
+  permissionDenials: string[];
+  usage?: Record<string, unknown>;
+  costUsd?: number;
+  premiumRequests?: number;
+  durationMs?: number;
+  turns?: number;
+  changedFiles: string[];
+  parseWarnings: string[];
+};
+
+/** Raw evidence and normalized data retained for every process attempt. */
+export type TrellageHeadlessAttempt = {
+  number: number;
+  argv: string[];
+  exitCode: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  cancelled: boolean;
+  stdout: string;
+  stderr: string;
+  result?: TrellageHeadlessResult;
+};
+
 /** Terminal classification of one `invoke_trellage` invocation. */
 export const TrellageOutcome = {
   Completed: "completed",
@@ -81,6 +141,22 @@ export type TrellageInvokeArgs = {
    * only, e.g. `xhigh` for a long-horizon, high-stakes delegated task. Unsupported elsewhere.
    */
   effort?: string;
+  /**
+   * Launches a native Copilot (`cpx`) profile with `--autopilot --allow-all`, so it works through
+   * the delegated task end-to-end without pausing for approval. Unsupported for every other
+   * harness.
+   */
+  autopilot?: boolean;
+  /**
+   * Forwarded as `--max-autopilot-continues <n>` to bound an `autopilot` launch. Only meaningful
+   * alongside `autopilot: true` on a native Copilot (`cpx`) profile.
+   */
+  maxAutopilotContinues?: number;
+  /**
+   * Prefixes the delegated prompt with `/fleet ` so a native Copilot (`cpx`) profile decomposes
+   * the task into parallel subagents instead of one sequential turn. Unsupported elsewhere.
+   */
+  fleet?: boolean;
 };
 
 export type TrellageUserInputExchange = {
@@ -95,6 +171,9 @@ export type TrellageInvokeResult = {
   profile: string;
   model?: string;
   effort?: string;
+  autopilot?: boolean;
+  maxAutopilotContinues?: number;
+  fleet?: boolean;
   mode: TrellageMode;
   sandbox: boolean;
   /** Host path of the worktree the harness ran in. */
@@ -104,6 +183,8 @@ export type TrellageInvokeResult = {
   turns: number;
   /** Questions answered on behalf of the root Submind during the invocation. */
   userInputs?: TrellageUserInputExchange[];
+  /** Headless process evidence, retained for structured native-launcher diagnostics. */
+  attempts?: TrellageHeadlessAttempt[];
   /** Screen evidence, retained when the result file was absent or the outcome was not success. */
   evidence?: string;
 };
@@ -115,6 +196,9 @@ export const TrellageInvokeArgsSchema = z.object({
   readOnly: z.boolean().optional(),
   model: z.string().min(1).optional(),
   effort: z.string().min(1).optional(),
+  autopilot: z.boolean().optional(),
+  maxAutopilotContinues: z.number().int().positive().optional(),
+  fleet: z.boolean().optional(),
 });
 
 /**
@@ -172,6 +256,28 @@ export function createTrellageToolJsonSchema(
           "native `claude`/`cldx` profiles; use `xhigh` for a long-horizon, high-stakes " +
           "delegated task. Unsupported for every other harness.",
       },
+      autopilot: {
+        type: "boolean",
+        description:
+          "Supported only for native `copilot`/`cpx` profiles. Launches with `--autopilot " +
+          "--allow-all` so the session works through the delegated task end-to-end without " +
+          "pausing for approval. Unsupported for every other harness.",
+      },
+      maxAutopilotContinues: {
+        type: "integer",
+        minimum: 1,
+        description:
+          "Forwarded as `--max-autopilot-continues <n>`. Only meaningful with `autopilot: " +
+          "true` on a native `copilot`/`cpx` profile; bounds a long-running autopilot task.",
+      },
+      fleet: {
+        type: "boolean",
+        description:
+          "Supported only for native `copilot`/`cpx` profiles. Prefixes the delegated prompt " +
+          "with `/fleet` so the session decomposes the task into parallel subagents instead of " +
+          "one sequential turn. Best for genuinely independent, parallelizable subtasks; " +
+          "unsupported for every other harness.",
+      },
     },
     required: ["prompt", "harness", "profile"],
     additionalProperties: false,
@@ -216,5 +322,12 @@ export class TrellageEffortOverrideError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "TrellageEffortOverrideError";
+  }
+}
+
+export class TrellageAutopilotOverrideError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TrellageAutopilotOverrideError";
   }
 }

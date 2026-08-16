@@ -28,6 +28,16 @@ import {
 } from "./modelCatalog.js";
 import type { PrepareRlmProfileSkills } from "./profileSkills.js";
 import {
+  RlmCallExecutionStatus,
+  RlmRunStateError,
+  beginRlmCall,
+  failRlmCall,
+  resolveRlmDependencies,
+  snapshotRlmRunState,
+  succeedRlmCall,
+  type RlmRunState,
+} from "./runState.js";
+import {
   executeRlm,
   DEFAULT_RLM_SEND_TIMEOUT_MS,
   type RlmClient,
@@ -35,6 +45,7 @@ import {
   type RlmSessionReference,
 } from "./session.js";
 import { createConsoleUserInputHandler, createSubmindUserInputHandler } from "./userInput.js";
+import type { RlmWorkerContract } from "./workerContract.js";
 
 export type RlmAskUserMode = "submind" | "console" | "off";
 
@@ -65,13 +76,19 @@ export type CreateRlmToolOptions = {
    */
   askUserMode?: RlmAskUserMode;
   /** Lazy reference to the root Submind session; shared unchanged through the recursion tree. */
-  ownerSessionReference?: RlmSessionReference;
+  rootSessionReference?: RlmSessionReference;
   /** Internal propagation hook that bubbles descendant ask_user exchanges toward the root. */
   onUserInputCaptured?: (exchange: RlmUserInputExchange) => void;
   /** Root-only total-call limit. Descendants share `executionBudget` instead. */
   maxTotalCalls?: number;
   /** Internal mutable budget shared by all tools in one recursion tree. */
   executionBudget?: RlmExecutionBudget;
+  /** Root-owned semantic state shared by all tools in one recursion tree. */
+  runState?: RlmRunState;
+  /** Typed prompt/output boundary used by general Submind workers. */
+  workerContract?: RlmWorkerContract;
+  /** Call that owns the session on which this recursively registered tool is exposed. */
+  parentCallId?: string;
   /** Restricts profile switching for capability-scoped roots and recursive sessions. */
   allowedProfiles?: readonly string[];
   /**
@@ -110,7 +127,7 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
   const sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_RLM_SEND_TIMEOUT_MS;
   const consoleStreaming = options.consoleStreaming ?? true;
   const askUserMode = options.askUserMode ?? "submind";
-  const ownerSessionReference = options.ownerSessionReference ?? {};
+  const rootSessionReference = options.rootSessionReference ?? {};
   const allowedProfileSet = options.allowedProfiles ? new Set(options.allowedProfiles) : undefined;
   const profileInventory = profiles
     .list()
@@ -138,27 +155,34 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
   const executionBudget =
     options.executionBudget ??
     createRlmExecutionBudget(options.maxTotalCalls ?? DEFAULT_RLM_MAX_TOTAL_CALLS);
+  if (Boolean(options.runState) !== Boolean(options.workerContract)) {
+    throw new Error("RLM run state and worker contract must be configured together.");
+  }
 
   return defineTool<RlmToolArgs>("rlm", {
     description:
       "Recursively delegate a bounded sub-question or sub-task to a brand-new, independent " +
       "Copilot SDK session. Use this when a piece of work is cleanly separable and benefits " +
       "from a fresh, focused context rather than continuing in this conversation. The nested " +
-      "session sees only the prompt you give it - no other context from this conversation is " +
-      "shared automatically, so include everything it needs to know in the prompt. Recursion " +
+      "session receives the immutable run brief, the prompt you give it, and only the completed " +
+      "reports named in dependsOn. It does not inherit this conversation or the complete run " +
+      "ledger, so include all other task-specific context in the prompt. Recursion " +
       `depth is bounded and enforced automatically. Configured profiles: ${profileInventory.join(", ")}.\n` +
       formatModelCandidates(profileCandidates),
     parameters: createRlmToolJsonSchema(profileInventory, modelInventory),
     handler: async (args, invocation): Promise<ToolResultObject> => {
       const userInputExchanges: RlmUserInputExchange[] = [];
+      const depthUsed = options.maxDepth - options.depthRemaining + 1;
+      let runningCall: ReturnType<typeof beginRlmCall> | undefined;
+      let callId: string | undefined;
       const captureUserInput = (exchange: RlmUserInputExchange) => {
         userInputExchanges.push(exchange);
         options.onUserInputCaptured?.(exchange);
       };
       const buildNestedTool = (
         depthRemaining: number,
-        _nestedOwnerSessionReference: RlmSessionReference,
         nestedAllowedProfiles?: readonly string[],
+        nestedParentCallId?: string,
       ): Tool<RlmToolArgs> =>
         createRlmTool({
           depthRemaining,
@@ -174,19 +198,36 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
           sendTimeoutMs,
           consoleStreaming,
           askUserMode,
-          ownerSessionReference,
+          rootSessionReference,
           onUserInputCaptured: captureUserInput,
           executionBudget,
+          ...(options.runState ? { runState: options.runState } : {}),
+          ...(options.workerContract ? { workerContract: options.workerContract } : {}),
+          ...((nestedParentCallId ?? callId) ? { parentCallId: nestedParentCallId ?? callId } : {}),
           ...(nestedAllowedProfiles ? { allowedProfiles: nestedAllowedProfiles } : {}),
           ...(options.additionalTools ? { additionalTools: options.additionalTools } : {}),
         });
       try {
+        runningCall = options.runState
+          ? beginRlmCall(options.runState, {
+              ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
+              dependencyCallIds: args.dependsOn ?? [],
+              profile: args.profile,
+              depthUsed,
+            })
+          : undefined;
+        callId = runningCall?.callId;
         if (!profileInventory.includes(args.profile)) {
           throw new RlmProfileNotAllowedError(args.profile);
         }
-        // Same depthUsed formula executeRlm computes internally; needed here (before the call)
-        // to label the interactive ask_user prompt/console-streaming output.
-        const depthUsed = options.maxDepth - options.depthRemaining + 1;
+        const dependencies = options.runState
+          ? resolveRlmDependencies(options.runState, args.dependsOn ?? [])
+          : [];
+        if (!options.runState && args.dependsOn?.length) {
+          throw new RlmRunStateError(
+            "RLM dependencies require the root-owned general Submind state model.",
+          );
+        }
         // Disambiguates parallel sibling calls at the same depth (e.g. the three
         // movie/book/color questions), which would otherwise share an identical label and
         // produce indistinguishable interleaved console output.
@@ -206,7 +247,7 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
                 label,
                 depthUsed,
                 delegatedPrompt: args.prompt,
-                getConversationContext: () => snapshotConversation(ownerSessionReference),
+                getConversationContext: () => snapshotConversation(rootSessionReference),
                 model: answererModelDecision?.model ?? modelDecision.model,
                 clientFactory,
                 ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
@@ -244,10 +285,39 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
           userInputExchanges,
           executionBudget,
           sendTimeoutMs,
+          ...(options.runState && options.workerContract && callId && runningCall
+            ? {
+                runId: options.runState.runId,
+                callId,
+                callNumber: runningCall.callNumber,
+                stateRevision: options.runState.revision,
+                ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
+                runBrief: options.runState.brief,
+                dependencies,
+                workerContract: options.workerContract,
+              }
+            : {}),
           ...(options.additionalTools ? { additionalTools: options.additionalTools } : {}),
         });
+        if (options.runState && callId) {
+          if (!result.report) {
+            throw new RlmRunStateError(
+              `RLM call "${callId}" completed without the required typed worker report.`,
+            );
+          }
+          succeedRlmCall(options.runState, callId, {
+            model: result.model,
+            report: result.report,
+          });
+        }
+        const payload = {
+          ...result,
+          ...(!options.parentCallId && options.runState
+            ? { state: snapshotRlmRunState(options.runState) }
+            : {}),
+        };
         return {
-          textResultForLlm: JSON.stringify(result),
+          textResultForLlm: JSON.stringify(payload),
           resultType: "success",
           toolTelemetry: {
             rlm: {
@@ -260,10 +330,31 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
         };
       } catch (error) {
         if (
+          options.runState &&
+          callId &&
+          options.runState.calls.get(callId)?.status === RlmCallExecutionStatus.Running
+        ) {
+          failRlmCall(
+            options.runState,
+            callId,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        const stateMetadata = {
+          ...(options.runState ? { runId: options.runState.runId } : {}),
+          ...(callId ? { callId } : {}),
+          ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
+          ...(args.dependsOn?.length ? { dependencyCallIds: [...args.dependsOn] } : {}),
+          ...(!options.parentCallId && options.runState
+            ? { state: snapshotRlmRunState(options.runState) }
+            : {}),
+        };
+        if (
           error instanceof RlmCallBudgetExceededError ||
           error instanceof RlmDepthExceededError ||
           error instanceof RlmProfileNotAllowedError ||
-          error instanceof RlmUnknownProfileError
+          error instanceof RlmUnknownProfileError ||
+          error instanceof RlmRunStateError
         ) {
           const message = error.message;
           const budget = snapshotRlmExecutionBudget(executionBudget);
@@ -271,6 +362,7 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
             textResultForLlm: JSON.stringify({
               error: message,
               budget,
+              ...stateMetadata,
               ...(userInputExchanges.length ? { userInputs: userInputExchanges } : {}),
             }),
             resultType: "failure",
@@ -289,6 +381,7 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
           textResultForLlm: JSON.stringify({
             error: `rlm call failed: ${message}`,
             budget,
+            ...stateMetadata,
             ...(userInputExchanges.length ? { userInputs: userInputExchanges } : {}),
           }),
           resultType: "failure",

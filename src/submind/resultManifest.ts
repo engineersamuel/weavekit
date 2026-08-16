@@ -30,7 +30,7 @@ export function parseDirectExecutionResult(value: unknown): DirectExecutionResul
   const verification = parseVerification(record.verification);
   if (
     outcome === "succeeded" &&
-    (verification.length === 0 || verification.some((entry) => entry.exitCode !== 0))
+    (verification.length === 0 || verification.some((entry) => !verificationPassed(entry)))
   ) {
     throw new Error("Successful execution result requires passing verification evidence.");
   }
@@ -111,7 +111,8 @@ function parseVerification(value: unknown): VerificationEntry[] {
     if (
       typeof record.command !== "string" ||
       !Number.isInteger(record.exitCode) ||
-      typeof record.summary !== "string"
+      typeof record.summary !== "string" ||
+      (record.expectedExitCode !== undefined && !Number.isInteger(record.expectedExitCode))
     ) {
       throw new Error("Execution verification entry is invalid.");
     }
@@ -119,8 +120,19 @@ function parseVerification(value: unknown): VerificationEntry[] {
       command: record.command,
       exitCode: Number(record.exitCode),
       summary: record.summary,
+      ...(record.expectedExitCode === undefined
+        ? {}
+        : { expectedExitCode: Number(record.expectedExitCode) }),
     };
   });
+}
+
+/**
+ * Reports whether a self-reported verification entry proves its check passed. Most commands prove
+ * it with exit 0, but an entry may declare a different passing code via `expectedExitCode`.
+ */
+export function verificationPassed(entry: VerificationEntry): boolean {
+  return entry.exitCode === (entry.expectedExitCode ?? 0);
 }
 
 function validateHttpsUrl(value: string): string {

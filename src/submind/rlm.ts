@@ -165,7 +165,6 @@ export class RlmDirectExecutor implements DirectExecutor {
 
     return {
       executor: ExecutorKind.RLM_SUBMIND,
-      agentName: rlmAgentName(request.workId, request.attemptNumber),
       worktreePath,
       pid,
       logPath,
@@ -274,14 +273,6 @@ function buildNeedsHumanResult(
     ],
     ...(submindTrace ? { submindTrace } : {}),
   };
-}
-
-export function rlmAgentName(workId: string, attemptNumber: number): string {
-  const suffix = workId
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "")
-    .slice(0, 18);
-  return `mm-rlm-${suffix || "work"}-a${attemptNumber}`.slice(0, 40);
 }
 
 async function readOutputPayload(path: string): Promise<RlmOutputPayload | undefined> {

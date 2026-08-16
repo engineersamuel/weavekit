@@ -107,8 +107,24 @@ export function validateTicketReviewProposal(input: {
   ) {
     reasons.push("READY_WITH_NONBLOCKING_GAPS cannot contain blocking reasons.");
   }
-  if (patch.readiness === ReviewReadiness.BLOCKED && patch.blockingReasons.length === 0) {
-    reasons.push("BLOCKED patches require at least one blocking reason.");
+  // A BLOCKED patch whose cause is already owned by a HUMAN or EXTERNAL_DEPENDENCY open item is
+  // coherent even when blockingReasons is empty: the synthesizer routinely records a human-owned
+  // decision only in unansweredQuestions. Rejecting that shape turned an ordinary needs-human
+  // review into a failed review, so require a stated, owned cause rather than the blockingReasons
+  // field specifically. validateOwnershipSemantics still rejects a BLOCKED patch with no owned
+  // cause at all.
+  if (
+    patch.readiness === ReviewReadiness.BLOCKED &&
+    patch.blockingReasons.length === 0 &&
+    !patch.openItemDispositions.some(
+      (disposition) =>
+        disposition.owner === ReviewOpenItemOwner.HUMAN ||
+        disposition.owner === ReviewOpenItemOwner.EXTERNAL_DEPENDENCY,
+    )
+  ) {
+    reasons.push(
+      "BLOCKED patches require at least one blocking reason or a HUMAN/EXTERNAL_DEPENDENCY open item.",
+    );
   }
   validateOpenItemDispositions(patch, reasons);
   validateOwnershipSemantics(patch, reasons);

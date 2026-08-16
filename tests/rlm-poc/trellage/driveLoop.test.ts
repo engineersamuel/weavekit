@@ -19,6 +19,19 @@ import {
 
 const SESSION: TrellageSession = { agentId: "pane-1", paneId: "pane-1", tabId: "tab-1" };
 
+const COPILOT_STARTUP_SPLASH = `
+Current   Sessions   Issues   Pull requests   Gists
+  ╰─╯╰─╯  Copilot v1.0.79 uses AI.
+  █ ▘▝ █  Check for mistakes.
+   ▔▔▔▔
+ ● Tip: /theme
+   └ View or set color mode
+ ~/.herdr/worktrees/weavekit/worktree-rlm [⎇ worktree/rlm*%] [#51]
+Session: 0 AIC used
+ ← open sidebar · autopilot · / commands · tab next tab
+Claude Sonnet 5 · Medium
+`;
+
 /**
  * Scripted stand-in for a real harness pane.
  *
@@ -119,6 +132,10 @@ describe("runTrellageDriveLoop", () => {
       backend,
       session: SESSION,
       answer,
+      prompt: [
+        "Read the file .weavekit/rlm-trellage/run/call/task.md and carry out the task described in it.",
+        "Follow its reporting instructions exactly.",
+      ].join("\n"),
     });
 
     expect(result.outcome).toBe(TrellageOutcome.Completed);
@@ -145,6 +162,10 @@ describe("runTrellageDriveLoop", () => {
       backend,
       session: SESSION,
       answer,
+      prompt: [
+        "Read the file .weavekit/rlm-trellage/run/call/task.md and carry out the task described in it.",
+        "Follow its reporting instructions exactly.",
+      ].join("\n"),
     });
 
     expect(answer).toHaveBeenCalledOnce();
@@ -180,6 +201,37 @@ describe("runTrellageDriveLoop", () => {
     expect(result.userInputs).toEqual([
       { question: "Which database should I use?", answer: "use Postgres" },
     ]);
+  });
+
+  it("waits through a blocked prose startup screen that is not an actual question", async () => {
+    const answer = vi.fn(async () => "should not be used");
+    const { backend, prompts } = createFakeBackend([
+      {
+        status: HerdrAgentStatus.Blocked,
+        screen: [
+          "Current   Sessions   Issues   Pull requests   Gists",
+          "Copilot v1.0.79 uses AI.",
+          "Check for mistakes.",
+          "Tip: /clear",
+        ].join("\n"),
+      },
+      {
+        status: HerdrAgentStatus.Idle,
+        effect: () => writeFile(location.absolutePath, "started after banner"),
+      },
+    ]);
+
+    const result = await runTrellageDriveLoop({
+      ...baseOptions(),
+      backend,
+      session: SESSION,
+      answer,
+    });
+
+    expect(answer).not.toHaveBeenCalled();
+    expect(prompts).toEqual(["do the thing"]);
+    expect(result.outcome).toBe(TrellageOutcome.Completed);
+    expect(result.text).toBe("started after banner");
   });
 
   it("fails closed on an unclassifiable state rather than reporting success", async () => {
@@ -268,6 +320,30 @@ describe("runTrellageDriveLoop", () => {
       }),
     ).rejects.toThrow(/ready to accept a prompt/u);
   });
+
+  it("waits through a blocked Copilot startup splash instead of answering it", async () => {
+    const answer = vi.fn(async () => "should not be asked");
+    const { backend, prompts } = createFakeBackend([
+      { status: HerdrAgentStatus.Blocked, screen: COPILOT_STARTUP_SPLASH },
+      { status: HerdrAgentStatus.Idle },
+      {
+        status: HerdrAgentStatus.Idle,
+        effect: () => writeFile(location.absolutePath, "HELLO FROM copilot/hve"),
+      },
+    ]);
+
+    const result = await runTrellageDriveLoop({
+      ...baseOptions(),
+      backend,
+      session: SESSION,
+      answer,
+    });
+
+    expect(answer).not.toHaveBeenCalled();
+    expect(prompts).toEqual(["do the thing"]);
+    expect(result.outcome).toBe(TrellageOutcome.Completed);
+    expect(result.text).toBe("HELLO FROM copilot/hve");
+  });
 });
 
 describe("result contract", () => {
@@ -276,6 +352,14 @@ describe("result contract", () => {
 
     expect(prompt).toContain(".weavekit/rlm-trellage/run-1/call-1/result.md");
     expect(prompt).not.toContain(location.absolutePath);
+  });
+
+  it("tells the delegated harness it is not the orchestrator", () => {
+    const prompt = buildDelegatedPrompt("build it", location);
+
+    expect(prompt).toContain("You are the delegated worker, not the orchestrator.");
+    expect(prompt).toContain("You do not have the `invoke_trellage` tool in this session.");
+    expect(prompt).toContain("Do not instruct anyone to call `invoke_trellage`");
   });
 
   it("clears a stale result file so it cannot be read as this run's answer", async () => {
@@ -393,6 +477,48 @@ describe("runTrellageDriveLoop prompt submission", () => {
     expect(answer).not.toHaveBeenCalled();
   });
 
+  it("presses enter again when the same submitted prompt is still visibly stuck", async () => {
+    const answer = vi.fn(async () => "should not be asked");
+    const keys: string[][] = [];
+    let nudges = 0;
+    const screen = [
+      "❯ Read the file .weavekit/rlm-trellage/run/call/task.md and carry out the task described in it.",
+      "⏵⏵ bypass permissions on (shift+tab to cycle)",
+      "Update available! Run: mise upgrade claude",
+    ].join("\n");
+    const backend: TrellageBackend = {
+      launch: async () => SESSION,
+      prompt: async () => undefined,
+      waitForState: async () => HerdrAgentStatus.Idle,
+      status: async () => HerdrAgentStatus.Idle,
+      read: async () => screen,
+      sendKeys: async (_session, sent) => {
+        keys.push(sent);
+        nudges += 1;
+        if (nudges >= 2) {
+          await writeFile(location.absolutePath, "submitted after second enter");
+        }
+      },
+      dispose: async () => undefined,
+    };
+
+    const result = await runTrellageDriveLoop({
+      ...baseOptions(),
+      backend,
+      session: SESSION,
+      answer,
+      prompt: [
+        "Read the file .weavekit/rlm-trellage/run/call/task.md and carry out the task described in it.",
+        "Follow its reporting instructions exactly.",
+      ].join("\n"),
+    });
+
+    expect(keys).toEqual([["enter"], ["enter"]]);
+    expect(result.outcome).toBe(TrellageOutcome.Completed);
+    expect(result.text).toBe("submitted after second enter");
+    expect(answer).not.toHaveBeenCalled();
+  });
+
   it("keeps waiting when the stable screen is only the submitted prompt echo", async () => {
     const answer = vi.fn(async () => "should not be asked");
     let reads = 0;
@@ -426,5 +552,137 @@ describe("runTrellageDriveLoop prompt submission", () => {
     expect(result.outcome).toBe(TrellageOutcome.Completed);
     expect(result.text).toBe("finished after startup");
     expect(answer).not.toHaveBeenCalled();
+  });
+
+  it("retries the Enter nudge while a non-question screen stays stuck", async () => {
+    const answer = vi.fn(async () => "should not be asked");
+    const keys: string[][] = [];
+    let nudges = 0;
+    const backend: TrellageBackend = {
+      launch: async () => SESSION,
+      prompt: async () => undefined,
+      waitForState: async () => HerdrAgentStatus.Idle,
+      status: async () => HerdrAgentStatus.Idle,
+      read: async () =>
+        [
+          "❯ Read the file .weavekit/rlm-trellage/run/call/task.md and carry out the task described in it.",
+          "⏵⏵ bypass permissions on (shift+tab to cycle)",
+          "Update available! Run: mise upgrade claude",
+        ].join("\n"),
+      sendKeys: async (_session, sent) => {
+        keys.push(sent);
+        nudges += 1;
+        if (nudges >= 3) {
+          await writeFile(location.absolutePath, "submitted after third nudge");
+        }
+      },
+      dispose: async () => undefined,
+    };
+
+    const result = await runTrellageDriveLoop({
+      ...baseOptions(),
+      backend,
+      session: SESSION,
+      answer,
+      prompt: [
+        "Read the file .weavekit/rlm-trellage/run/call/task.md and carry out the task described in it.",
+        "Follow its reporting instructions exactly.",
+      ].join("\n"),
+    });
+
+    expect(keys).toEqual([["enter"], ["enter"], ["enter"]]);
+    expect(result.outcome).toBe(TrellageOutcome.Completed);
+    expect(result.text).toBe("submitted after third nudge");
+    expect(answer).not.toHaveBeenCalled();
+  });
+
+  it("ignores the Copilot startup tip screen instead of routing it to the answerer", async () => {
+    const answer = vi.fn(async () => "should not be asked");
+    let reads = 0;
+    const backend: TrellageBackend = {
+      launch: async () => SESSION,
+      prompt: async () => undefined,
+      waitForState: async () => HerdrAgentStatus.Idle,
+      status: async () => HerdrAgentStatus.Idle,
+      read: async () => {
+        reads += 1;
+        if (reads >= 30) {
+          await writeFile(location.absolutePath, "HELLO FROM copilot/superpowers");
+        }
+        return [
+          "Current   Sessions   Issues   Pull requests   Gists",
+          "  ╰─╯╰─╯  Copilot v1.0.79 uses AI.",
+          "  █ ▘▝ █  Check for mistakes.",
+          " ● Tip: /app",
+          "   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app",
+          "      https://github.com/features/ai/github-app",
+          "~/.herdr/worktrees/weavekit/worktree-rlm [⎇ worktree/rlm*%] [#51]",
+          "Session: 0 AIC used",
+          " ← open sidebar · autopilot · / commands · tab next tab",
+          "Claude Sonnet 5",
+        ].join("\n");
+      },
+      sendKeys: async () => undefined,
+      dispose: async () => undefined,
+    };
+
+    const result = await runTrellageDriveLoop({
+      ...baseOptions(),
+      backend,
+      session: SESSION,
+      answer,
+    });
+
+    expect(result.outcome).toBe(TrellageOutcome.Completed);
+    expect(result.text).toBe("HELLO FROM copilot/superpowers");
+    expect(answer).not.toHaveBeenCalled();
+  });
+
+  it("clears a startup gate that paints after the harness first reports a settled state", async () => {
+    // Copilot's folder-trust dialog arrives seconds behind its first `idle`, and Herdr keeps
+    // reporting `idle` for it, so the quiescent startup screen is the dialog itself. Prompting
+    // there would answer "do you trust this folder?" with the task text.
+    const trustDialog = await readFile(
+      new URL("./fixtures/copilot-folder-trust-dialog.txt", import.meta.url),
+      "utf8",
+    );
+    const answer = vi.fn(async () => "should not be asked");
+    const events: string[] = [];
+    const keys: string[][] = [];
+    let cleared = false;
+    const backend: TrellageBackend = {
+      launch: async () => SESSION,
+      prompt: async () => {
+        events.push("prompt");
+      },
+      waitForState: async () => HerdrAgentStatus.Idle,
+      status: async () => HerdrAgentStatus.Idle,
+      read: async () => {
+        if (!cleared) return trustDialog;
+        if (events.includes("prompt")) {
+          await writeFile(location.absolutePath, "HELLO FROM copilot/superpowers");
+        }
+        return COPILOT_STARTUP_SPLASH;
+      },
+      sendKeys: async (_session, sent) => {
+        events.push("keys");
+        keys.push(sent);
+        cleared = true;
+      },
+      dispose: async () => undefined,
+    };
+
+    const result = await runTrellageDriveLoop({
+      ...baseOptions(),
+      backend,
+      session: SESSION,
+      answer,
+    });
+
+    expect(events).toEqual(["keys", "prompt"]);
+    expect(keys).toEqual([["enter"]]);
+    expect(answer).not.toHaveBeenCalled();
+    expect(result.outcome).toBe(TrellageOutcome.Completed);
+    expect(result.text).toBe("HELLO FROM copilot/superpowers");
   });
 });

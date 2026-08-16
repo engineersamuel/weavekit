@@ -97,15 +97,21 @@ async function createHarness(
   const launches: string[] = [];
   const launchModels: Array<string | undefined> = [];
   const launchEfforts: Array<string | undefined> = [];
+  const launchAutopilots: Array<boolean | undefined> = [];
+  const launchMaxAutopilotContinues: Array<number | undefined> = [];
+  const prompts: string[] = [];
   const backend: TrellageBackend = {
     launch: async (input) => {
       launches.push(input.label);
       launchModels.push(input.model);
       launchEfforts.push(input.effort);
+      launchAutopilots.push(input.autopilot);
+      launchMaxAutopilotContinues.push(input.maxAutopilotContinues);
       await options.onLaunch?.();
       return SESSION;
     },
     prompt: async (_session, text) => {
+      prompts.push(text);
       // Stands in for a harness that reads the task file it was pointed at and completes its turn:
       // follow the same indirection the real contract uses, then write the result file it names.
       const task = /(\S*task\.md)/u.exec(text);
@@ -150,6 +156,7 @@ async function createHarness(
     executionBudget: createRlmExecutionBudget(options.maxCalls ?? 4),
     modelCatalog: MODEL_CATALOG,
     createBackend: async () => ({ backend, close: () => undefined }),
+    headlessEnabled: false,
     ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
   });
 
@@ -161,6 +168,9 @@ async function createHarness(
     launches,
     launchModels,
     launchEfforts,
+    launchAutopilots,
+    launchMaxAutopilotContinues,
+    prompts,
   };
 }
 
@@ -319,6 +329,85 @@ describe("createTrellageTool", () => {
     expect(launches).toEqual([]);
   });
 
+  it("forwards autopilot and fleet mode to native Copilot, prefixing the prompt with /fleet", async () => {
+    const { handler, launchAutopilots, launchMaxAutopilotContinues, prompts } =
+      await createHarness();
+
+    const result = await handler(
+      {
+        prompt: "do it",
+        harness: TrellageHarness.Copilot,
+        profile: "superpowers",
+        autopilot: true,
+        fleet: true,
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("success");
+    expect(launchAutopilots).toEqual([true]);
+    expect(launchMaxAutopilotContinues).toEqual([25]);
+    expect(prompts[0]).toMatch(/^\/fleet /u);
+    expect(JSON.parse(result.textResultForLlm as string)).toMatchObject({
+      autopilot: true,
+      maxAutopilotContinues: 25,
+      fleet: true,
+    });
+  });
+
+  it("respects an explicit maxAutopilotContinues instead of the default", async () => {
+    const { handler, launchMaxAutopilotContinues } = await createHarness();
+
+    await handler(
+      {
+        prompt: "do it",
+        harness: TrellageHarness.Copilot,
+        profile: "superpowers",
+        autopilot: true,
+        maxAutopilotContinues: 5,
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(launchMaxAutopilotContinues).toEqual([5]);
+  });
+
+  it("rejects autopilot overrides for non-Copilot harnesses", async () => {
+    const { handler, launches } = await createHarness();
+
+    const result = await handler(
+      {
+        prompt: "do it",
+        harness: TrellageHarness.Claude,
+        profile: "default",
+        autopilot: true,
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("failure");
+    expect(result.error).toContain("native Copilot");
+    expect(launches).toEqual([]);
+  });
+
+  it("rejects fleet mode for non-Copilot harnesses", async () => {
+    const { handler, launches } = await createHarness();
+
+    const result = await handler(
+      {
+        prompt: "do it",
+        harness: TrellageHarness.Grok,
+        profile: "superpowers",
+        fleet: true,
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("failure");
+    expect(result.error).toContain("Fleet mode");
+    expect(launches).toEqual([]);
+  });
+
   it("enforces the shared call budget", async () => {
     const { handler } = await createHarness({ maxCalls: 1 });
     const args = {
@@ -459,6 +548,7 @@ describe("createTrellageTool schema", () => {
     expect(tool.description).toContain("trx list --json");
     expect(tool.description).toContain("each launcher's own `list --json`");
     expect(tool.description).toContain("[native, sandboxed; launcher=grx]");
-    expect(tool.description).toContain("Herdr-owned interactive PTY");
+    expect(tool.description).toContain("direct child process, with no PTY");
+    expect(tool.description).not.toContain("Herdr");
   });
 });

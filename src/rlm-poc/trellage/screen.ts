@@ -25,6 +25,8 @@ export type TrellageScreen =
 const MENU_LINE = /^\s*([❯›▸>*]?)\s*(\d+)\s*[.)]\s+(\S.*?)\s*$/u;
 const AFFIRMATIVE = /^(yes|y\b|allow|approve|accept|proceed|continue|confirm|ok\b)/iu;
 const NEGATIVE = /^(no\b|no,|cancel|reject|exit|quit|deny|abort|don'?t)/iu;
+const INPUT_REQUEST =
+  /^(?:please\s+(?:choose|confirm|enter|provide|select|tell)|choose|confirm|select)\b/iu;
 
 /**
  * Classifies a screen captured while the harness was blocked.
@@ -134,16 +136,30 @@ export function extractQuestion(text: string, maxLines = 40): string {
 export function isLikelyQuestion(text: string): boolean {
   return text
     .split(/\r?\n/u)
-    .map((line) =>
-      stripBorders(line)
-        .trim()
-        .replace(/^●\s*/u, ""),
-    )
-    .some(
-      (line) =>
-        line.includes("?") ||
-        /^(?:please\s+(?:choose|confirm|enter|provide|select|tell)|choose|confirm|select)\b/iu.test(
-          line,
-        ),
-    );
+    .map(normalizeQuestionLine)
+    .filter((line) => line.length > 0 && !isKnownUiChrome(line))
+    .some((line) => line.includes("?") || INPUT_REQUEST.test(line));
+}
+
+function normalizeQuestionLine(line: string): string {
+  return stripBorders(line)
+    .trim()
+    .replace(/^●\s*/u, "");
+}
+
+function isKnownUiChrome(line: string): boolean {
+  return (
+    /^tip:\s*/iu.test(line) ||
+    /^https?:\/\//iu.test(line) ||
+    /^session:\s*\d+\s+aic used$/iu.test(line) ||
+    /^current\s+sessions\s+issues\s+pull requests\s+gists$/iu.test(line) ||
+    /^copilot v[\d.]+\s+uses ai\.$/iu.test(line) ||
+    /^check for mistakes\.$/iu.test(line) ||
+    /^prefer a visual workspace\?/iu.test(line) ||
+    /github copilot desktop app/iu.test(line) ||
+    /^←\s+open sidebar/u.test(line) ||
+    /·\s+(?:low|medium|high|max|xhigh)$/iu.test(line) ||
+    line.startsWith("~/") ||
+    /^\[[#\d]/u.test(line)
+  );
 }

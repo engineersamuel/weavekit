@@ -62,7 +62,12 @@ export type DirectExecutionRequest = SubmindRequestInput & {
 
 export type ExecutorHandle = {
   executor: ExecutorKind;
-  agentName: string;
+  /**
+   * Herdr agent name. Only {@link ExecutorKind.HERDR_COPILOT} creates a Herdr agent.
+   * {@link ExecutorKind.RLM_SUBMIND} runs as a detached child process and leaves this unset, so
+   * that no consumer can mistake it for something `herdr agent attach` can reach.
+   */
+  agentName?: string;
   agentSessionId?: string;
   worktreePath: string;
   lastObservedWorkspaceId?: string;
@@ -85,6 +90,12 @@ export type VerificationEntry = {
   command: string;
   exitCode: number;
   summary: string;
+  /**
+   * Exit code that proves this check passed, when it is not 0. Some verification commands report
+   * their successful finding through a non-zero code: `git check-ignore` exits 1 exactly when the
+   * paths are *not* ignored, which is the evidence the caller wants. Defaults to 0.
+   */
+  expectedExitCode?: number;
 };
 
 export type SubmindTraceReference = {

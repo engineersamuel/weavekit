@@ -16,6 +16,7 @@ import type {
   StoredCodeReview,
 } from "../store/store.js";
 import type { CodeReviewHarness } from "./harness.js";
+import { reviewWorktreePath } from "./harness.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -267,6 +268,11 @@ function codeReviewComment(
   marker: string,
 ): string {
   const result = review.review!;
+  const worktree = reviewWorktreePath(attempt);
+  const manualSteps = [
+    ...(worktree ? [`Change to the review worktree root: \`cd ${worktree}\``] : []),
+    ...result.manualVerification,
+  ];
   return [
     marker,
     `Mastermind post-code review for execution attempt ${attempt.attemptNumber}: **${result.verdict}**`,
@@ -284,7 +290,9 @@ function codeReviewComment(
         )
       : ["- None."]),
     "",
-    "Manual verification:",
-    ...result.manualVerification.map((entry) => `- ${entry}`),
+    "Manual verification — run these steps in order:",
+    ...(manualSteps.length
+      ? manualSteps.map((entry, index) => `${index + 1}. ${entry}`)
+      : ["- None."]),
   ].join("\n");
 }

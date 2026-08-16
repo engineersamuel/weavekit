@@ -437,6 +437,39 @@ Authenticated GitHub CLI.
     });
   });
 
+  it("accepts blocked human-owned questions without a separate blocking reason", () => {
+    const patch = createPatch();
+    patch.readiness = ReviewReadiness.BLOCKED;
+    patch.requiresHumanApproval = true;
+    patch.unansweredQuestions = ["What tokenizer should ground the official token numbers?"];
+    patch.openItemDispositions = [
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: "What tokenizer should ground the official token numbers?",
+        owner: ReviewOpenItemOwner.HUMAN,
+        rationale: "Only a human owner can fix the benchmark's reference tokenizer.",
+      },
+    ];
+
+    expect(validatePatch(patch)).toMatchObject({
+      accepted: true,
+      requiresHumanApproval: true,
+      reasons: [],
+    });
+  });
+
+  it("rejects blocked patches with no owned cause", () => {
+    const patch = createPatch();
+    patch.readiness = ReviewReadiness.BLOCKED;
+
+    expect(validatePatch(patch)).toMatchObject({
+      accepted: false,
+      reasons: expect.arrayContaining([
+        "BLOCKED patches require at least one blocking reason or a HUMAN/EXTERNAL_DEPENDENCY open item.",
+      ]),
+    });
+  });
+
   it("rejects blocked executor-preflight items that should be external dependencies", () => {
     const patch = createPatch();
     patch.readiness = ReviewReadiness.BLOCKED;

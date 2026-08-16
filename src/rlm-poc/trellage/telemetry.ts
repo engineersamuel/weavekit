@@ -14,6 +14,12 @@ export type TrellageSpanAttributes = {
   callNumber: number;
 };
 
+export type TrellageAttemptSpanAttributes = {
+  profile: TrellageProfile;
+  attempt: number;
+  argv: readonly string[];
+};
+
 /**
  * Wraps one `invoke_trellage` invocation in a Langfuse-visible span.
  *
@@ -61,6 +67,41 @@ export async function withTrellageSpan<T>(
           "langfuse.observation.output",
           JSON.stringify({ status: "failed", error: exception.message }),
         );
+        span.recordException(exception);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
+        throw error;
+      } finally {
+        span.end();
+      }
+    },
+  );
+}
+
+/** Records one child process attempt without adding terminal text or raw JSONL to telemetry. */
+export async function withTrellageAttemptSpan<T>(
+  attributes: TrellageAttemptSpanAttributes,
+  operation: (span: Span) => Promise<T>,
+): Promise<T> {
+  return tracer.startActiveSpan(
+    `TRELLAGE attempt ${attributes.attempt} · ${attributes.profile.launcher}/${attributes.profile.name}`,
+    {
+      attributes: {
+        "langfuse.observation.type": "agent",
+        "gen_ai.operation.name": "invoke_trellage_attempt",
+        "gen_ai.system": attributes.profile.harness,
+        "weavekit.trellage.attempt": attributes.attempt,
+        "weavekit.trellage.launcher": attributes.profile.launcher,
+        "weavekit.trellage.profile": attributes.profile.name,
+        "weavekit.trellage.argv": JSON.stringify(attributes.argv),
+      },
+    },
+    async (span) => {
+      try {
+        const result = await operation(span);
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (error) {
+        const exception = error instanceof Error ? error : new Error(String(error));
         span.recordException(exception);
         span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
         throw error;

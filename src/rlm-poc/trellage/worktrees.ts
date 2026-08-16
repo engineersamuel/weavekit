@@ -1,9 +1,12 @@
 import { execFile } from "node:child_process";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
   mainRepository,
   provisionHerdrWorktree,
   type ExistingHerdrWorktree,
+  type ProvisionWorktreeInput,
+  type ProvisionedRun,
 } from "../../herdr/provision.js";
 
 const execFileAsync = promisify(execFile);
@@ -17,6 +20,8 @@ export type TrellageWorktree = ExistingHerdrWorktree & {
   baseSha: string;
   /** True when the checkout predated this run and must never be reclaimed by it. */
   reused?: boolean;
+  /** True when RLM made the worktree with Git because no live Herdr workspace was available. */
+  native?: boolean;
 };
 
 export type TrellageWorktreeDisposition = {
@@ -35,6 +40,11 @@ export type TrellageWorktreeRegistryOptions = {
   canonicalize?: typeof mainRepository;
   run?: (command: string, args: string[], cwd: string) => Promise<string>;
   currentWorktree?: ExistingHerdrWorktree;
+  /**
+   * Uses `git worktree` directly. The production RLM headless path always enables this so
+   * delegation never creates a Herdr workspace, pane, or agent.
+   */
+  direct?: boolean;
 };
 
 /**
@@ -52,6 +62,7 @@ export class TrellageWorktreeRegistry {
     Pick<TrellageWorktreeRegistryOptions, "runId" | "provision" | "canonicalize" | "run">
   >;
   private readonly currentWorktree?: ExistingHerdrWorktree;
+  private readonly direct: boolean;
 
   constructor(options: TrellageWorktreeRegistryOptions) {
     this.options = {
@@ -61,6 +72,7 @@ export class TrellageWorktreeRegistry {
       run: options.run ?? defaultRun,
     };
     this.currentWorktree = options.currentWorktree;
+    this.direct = options.direct ?? false;
   }
 
   /**
@@ -120,11 +132,19 @@ export class TrellageWorktreeRegistry {
         continue;
       }
       try {
-        await this.options.run(
-          "herdr",
-          ["worktree", "remove", "--workspace", worktree.workspaceId],
-          worktree.repositoryPath,
-        );
+        if (worktree.native) {
+          await this.options.run(
+            "git",
+            ["worktree", "remove", "--force", worktree.worktreePath],
+            worktree.repositoryPath,
+          );
+        } else {
+          await this.options.run(
+            "herdr",
+            ["worktree", "remove", "--workspace", worktree.workspaceId],
+            worktree.repositoryPath,
+          );
+        }
         await this.deleteBranch(worktree);
         dispositions.push({ worktree, changed, summary, removed: true });
       } catch (error) {
@@ -179,17 +199,26 @@ export class TrellageWorktreeRegistry {
       };
     }
     const branchName = `rlm/${this.options.runId}`;
-    const provisioned = await this.options.provision({
+    const provisionInput = {
       sourceRepositoryPath: repository,
       branchName,
       runId: this.options.runId,
       workspaceLabel: `RLM ${this.options.runId}`,
       tabLabel: "rlm",
-    });
+    };
+    const provisioned = this.direct
+      ? await provisionNativeTrellageWorktree(provisionInput, this.options.run)
+      : await this.options.provision(provisionInput);
     const baseSha = (
       await this.options.run("git", ["rev-parse", "HEAD"], provisioned.worktreePath)
     ).trim();
-    return { ...provisioned, repositoryPath: repository, branchName, baseSha };
+    return {
+      ...provisioned,
+      repositoryPath: repository,
+      branchName,
+      baseSha,
+      ...(this.direct ? { native: true } : {}),
+    };
   }
 
   private async inspect(
@@ -225,4 +254,31 @@ export class TrellageWorktreeRegistry {
 async function defaultRun(command: string, args: string[], cwd: string): Promise<string> {
   const { stdout } = await execFileAsync(command, args, { cwd, encoding: "utf8" });
   return stdout;
+}
+
+/**
+ * Creates one sibling Git worktree without requiring a Herdr socket. The synthetic workspace and
+ * pane IDs are never passed to a headless launcher; they preserve the existing worktree shape for
+ * receipts and diagnostics.
+ */
+export async function provisionNativeTrellageWorktree(
+  input: ProvisionWorktreeInput,
+  runner: (command: string, args: string[], cwd: string) => Promise<string> = defaultRun,
+): Promise<ProvisionedRun> {
+  const suffix = input.runId.replace(/[^a-zA-Z0-9._-]/gu, "-");
+  const worktreePath = join(
+    dirname(input.sourceRepositoryPath),
+    `${basename(input.sourceRepositoryPath)}-rlm-${suffix}`,
+  );
+  await runner(
+    "git",
+    ["worktree", "add", "--no-checkout", "-b", input.branchName, worktreePath, "HEAD"],
+    input.sourceRepositoryPath,
+  );
+  await runner("git", ["checkout", input.branchName], worktreePath);
+  return {
+    worktreePath,
+    workspaceId: `native-${suffix}`,
+    rootPaneId: `native-${suffix}`,
+  };
 }

@@ -5,9 +5,9 @@ import {
   createDirectExecutionRequest,
   directExecutionAgentName,
   ExecutorKind,
-  rlmAgentName,
   startDirectExecutionWithApprovedPreflight,
   validateResultForRequest,
+  verificationPassed,
   type DirectExecutionRequest,
   type DirectExecutionResult,
   type DirectExecutor,
@@ -318,10 +318,12 @@ export class MastermindExecutionCoordinator {
     const executor = this.resolveExecutor(attempt.executorKind);
     const intent: ExecutorHandle = {
       executor: attempt.executorKind,
-      agentName:
-        attempt.executorKind === ExecutorKind.RLM_SUBMIND
-          ? rlmAgentName(work.id, attempt.attemptNumber)
-          : directExecutionAgentName(work.id, attempt.attemptNumber),
+      // Only the Herdr executor creates a named agent. The RLM submind is a detached child
+      // process, so its handle carries pid/logPath instead. Naming it here produced a handle that
+      // looked attachable and was not: `herdr agent focus` answered agent_not_found.
+      ...(attempt.executorKind === ExecutorKind.RLM_SUBMIND
+        ? {}
+        : { agentName: directExecutionAgentName(work.id, attempt.attemptNumber) }),
       worktreePath: request.workspace.checkoutPath,
     };
     const current = attempt.executorHandle
@@ -460,9 +462,7 @@ export class MastermindExecutionCoordinator {
     if (request.validationCommands.length === 0) {
       return {
         commands: result.verification.map((entry) => ({ ...entry, durationMs: 0 })),
-        passed:
-          result.verification.length > 0 &&
-          result.verification.every((entry) => entry.exitCode === 0),
+        passed: result.verification.length > 0 && result.verification.every(verificationPassed),
       };
     }
     const commands = [];
@@ -688,21 +688,7 @@ function executionComment(
 ): string {
   const verification = attempt.verification?.commands ?? [];
   const handle = attempt.executorHandle;
-  const attachmentCommands =
-    handle?.agentName && handle.worktreePath
-      ? [
-          "",
-          "Continue in Herdr:",
-          "",
-          "```bash",
-          `mise run mastermind:attach ${shellQuote(attachmentSelector)}`,
-          `herdr agent attach ${shellQuote(handle.agentName)}`,
-          `herdr agent focus ${shellQuote(handle.agentName)}`,
-          `herdr agent read ${shellQuote(handle.agentName)} --source recent-unwrapped --lines 100`,
-          `cd ${shellQuote(handle.worktreePath)}`,
-          "```",
-        ]
-      : [];
+  const attachmentCommands = handle ? continuationCommands(handle, attachmentSelector) : [];
   return [
     marker,
     `Mastermind execution attempt ${attempt.attemptNumber}: **${attempt.state}**`,
@@ -726,6 +712,45 @@ function executionComment(
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
+
+/**
+ * Commands a human can actually run to continue this attempt, matched to how the executor runs.
+ * A Herdr agent is attachable; a detached RLM submind process is not, so it gets the worktree,
+ * the log, and the result manifest instead.
+ */
+function continuationCommands(handle: ExecutorHandle, attachmentSelector: string): string[] {
+  if (!handle.worktreePath) {
+    return [];
+  }
+  if (handle.executor === ExecutorKind.RLM_SUBMIND) {
+    return [
+      "",
+      "Inspect the submind run:",
+      "",
+      "```bash",
+      `mise run mastermind:attach ${shellQuote(attachmentSelector)}`,
+      `cd ${shellQuote(handle.worktreePath)}`,
+      ...(handle.logPath ? [`tail -n 100 ${shellQuote(handle.logPath)}`] : []),
+      "cat .weavekit/mastermind-result.json",
+      "```",
+    ];
+  }
+  if (!handle.agentName) {
+    return [];
+  }
+  return [
+    "",
+    "Continue in Herdr:",
+    "",
+    "```bash",
+    `mise run mastermind:attach ${shellQuote(attachmentSelector)}`,
+    `herdr agent attach ${shellQuote(handle.agentName)}`,
+    `herdr agent focus ${shellQuote(handle.agentName)}`,
+    `herdr agent read ${shellQuote(handle.agentName)} --source recent-unwrapped --lines 100`,
+    `cd ${shellQuote(handle.worktreePath)}`,
+    "```",
+  ];
 }
 
 function summarizeOutput(stdout: string, stderr: string): string {

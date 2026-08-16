@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Interactive explanation of weavekit's recursive RLM routing, worker authority, verification loops, and Langfuse traces."
+    />
+    <title>RLM Routing Control Room</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@500;600;700;800&display=swap");
+
+      :root {
+        --ink: #181713;
+        --paper: #eee9dc;
+        --paper-deep: #d8d0be;
+        --oxide: #d34d2f;
+        --acid: #d6ef4f;
+        --cyan: #75d8d0;
+        --blue: #315cf5;
+        --violet: #9065d8;
+        --green: #3a8c6b;
+        --line: rgba(24, 23, 19, 0.2);
+        --muted: #656157;
+        --shadow: 8px 8px 0 var(--ink);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(rgba(24, 23, 19, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(24, 23, 19, 0.045) 1px, transparent 1px), var(--paper);
+        background-size: 24px 24px;
+        color: var(--ink);
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        color: inherit;
+      }
+
+      .shell {
+        width: min(1540px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 20px 0 80px;
+      }
+
+      .topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        border: 2px solid var(--ink);
+        background: var(--acid);
+        padding: 10px 14px;
+        text-transform: uppercase;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status::before {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 0 3px rgba(58, 140, 107, 0.18);
+        content: "";
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
+        gap: 26px;
+        min-height: 560px;
+        padding: 50px 0 30px;
+        align-items: end;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 1040px;
+        margin-bottom: 26px;
+        font-family: "Syne", sans-serif;
+        font-size: clamp(58px, 9vw, 150px);
+        line-height: 0.78;
+        letter-spacing: -0.075em;
+        text-transform: uppercase;
+      }
+
+      h1 .outline {
+        display: block;
+        color: transparent;
+        -webkit-text-stroke: 2px var(--ink);
+        transform: translateX(0.08em);
+      }
+
+      .hero-copy {
+        max-width: 790px;
+        font-size: clamp(15px, 1.5vw, 21px);
+        line-height: 1.55;
+      }
+
+      .hero-copy strong {
+        background: var(--oxide);
+        color: #fff8e8;
+        padding: 1px 6px;
+      }
+
+      .manifest {
+        position: relative;
+        border: 2px solid var(--ink);
+        background: #fbf7ec;
+        box-shadow: var(--shadow);
+        padding: 20px;
+        transform: rotate(1.2deg);
+      }
+
+      .manifest::before {
+        position: absolute;
+        top: -18px;
+        left: 50%;
+        width: 74px;
+        height: 28px;
+        background: rgba(117, 216, 208, 0.75);
+        content: "";
+        transform: translateX(-50%) rotate(-4deg);
+      }
+
+      .manifest h2 {
+        font-family: "Syne", sans-serif;
+        font-size: 24px;
+        text-transform: uppercase;
+      }
+
+      .manifest-row {
+        display: grid;
+        grid-template-columns: 90px 1fr;
+        gap: 12px;
+        border-top: 1px solid var(--line);
+        padding: 10px 0;
+        font-size: 12px;
+      }
+
+      .manifest-row span:first-child {
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+
+      .section {
+        margin-top: 70px;
+      }
+
+      .section-kicker {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+        color: var(--oxide);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .section-kicker::after {
+        height: 2px;
+        flex: 1;
+        background: var(--oxide);
+        content: "";
+      }
+
+      .section-title {
+        max-width: 980px;
+        margin-bottom: 26px;
+        font-family: "Syne", sans-serif;
+        font-size: clamp(36px, 5vw, 74px);
+        line-height: 0.94;
+        letter-spacing: -0.045em;
+      }
+
+      .scenario-picker {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .scenario-button,
+      .depth-button,
+      .trace-button {
+        border: 2px solid var(--ink);
+        background: transparent;
+        padding: 10px 14px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        transition:
+          transform 150ms ease,
+          background 150ms ease,
+          color 150ms ease;
+      }
+
+      .scenario-button:hover,
+      .depth-button:hover,
+      .trace-button:hover {
+        transform: translate(-2px, -2px);
+      }
+
+      .scenario-button.active {
+        background: var(--ink);
+        color: var(--paper);
+        box-shadow: 4px 4px 0 var(--oxide);
+      }
+
+      .route-board {
+        display: grid;
+        grid-template-columns: 1fr 56px 1.15fr 56px 1.35fr;
+        align-items: stretch;
+      }
+
+      .route-stage {
+        position: relative;
+        min-height: 350px;
+        border: 2px solid var(--ink);
+        background: rgba(251, 247, 236, 0.92);
+        padding: 20px;
+      }
+
+      .route-stage.router {
+        background: var(--cyan);
+      }
+
+      .route-stage.worker {
+        background: var(--ink);
+        color: var(--paper);
+      }
+
+      .stage-number {
+        display: inline-grid;
+        width: 34px;
+        height: 34px;
+        margin-bottom: 30px;
+        border: 2px solid currentColor;
+        place-items: center;
+        font-family: "Syne", sans-serif;
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .route-stage h3 {
+        margin-bottom: 10px;
+        font-family: "Syne", sans-serif;
+        font-size: 28px;
+        line-height: 1;
+      }
+
+      .route-stage p {
+        color: inherit;
+        font-size: 12px;
+        line-height: 1.6;
+        opacity: 0.78;
+      }
+
+      .prompt-card {
+        margin-top: 24px;
+        border-left: 5px solid var(--oxide);
+        background: rgba(255, 255, 255, 0.65);
+        padding: 14px;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .route-arrow {
+        display: grid;
+        place-items: center;
+        font-family: "Syne", sans-serif;
+        font-size: 34px;
+        font-weight: 800;
+      }
+
+      .router-checks {
+        display: grid;
+        gap: 8px;
+        margin-top: 18px;
+      }
+
+      .router-check {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        border-bottom: 1px solid rgba(24, 23, 19, 0.3);
+        padding-bottom: 7px;
+        font-size: 11px;
+      }
+
+      .router-check b {
+        text-transform: uppercase;
+      }
+
+      .profile-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0 18px;
+        background: var(--acid);
+        color: var(--ink);
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .worker-envelope {
+        display: grid;
+        gap: 7px;
+        border: 1px solid rgba(238, 233, 220, 0.35);
+        padding: 14px;
+        font-size: 11px;
+      }
+
+      .envelope-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .envelope-row span:first-child {
+        color: #aaa698;
+        text-transform: uppercase;
+      }
+
+      .profile-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border-top: 2px solid var(--ink);
+        border-left: 2px solid var(--ink);
+      }
+
+      .profile-card {
+        position: relative;
+        min-height: 260px;
+        border-right: 2px solid var(--ink);
+        border-bottom: 2px solid var(--ink);
+        background: rgba(251, 247, 236, 0.86);
+        padding: 18px;
+        overflow: hidden;
+        transition:
+          background 180ms ease,
+          transform 180ms ease;
+      }
+
+      .profile-card:hover {
+        z-index: 2;
+        background: #fffdf6;
+        transform: scale(1.025);
+        box-shadow: var(--shadow);
+      }
+
+      .profile-card[data-mode="write"]::after,
+      .profile-card[data-mode="read"]::after,
+      .profile-card[data-mode="none"]::after {
+        position: absolute;
+        right: -23px;
+        bottom: 15px;
+        width: 110px;
+        padding: 6px;
+        color: white;
+        content: attr(data-label);
+        font-size: 10px;
+        font-weight: 600;
+        text-align: center;
+        text-transform: uppercase;
+        transform: rotate(-42deg);
+      }
+
+      .profile-card[data-mode="write"]::after {
+        background: var(--oxide);
+      }
+
+      .profile-card[data-mode="read"]::after {
+        background: var(--blue);
+      }
+
+      .profile-card[data-mode="none"]::after {
+        background: var(--muted);
+      }
+
+      .profile-card h3 {
+        font-family: "Syne", sans-serif;
+        font-size: 23px;
+      }
+
+      .profile-card .purpose {
+        margin-bottom: 16px;
+        color: var(--oxide);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .profile-card p {
+        max-width: 90%;
+        font-size: 11px;
+        line-height: 1.55;
+      }
+
+      .model {
+        display: inline-block;
+        border: 1px solid var(--ink);
+        padding: 4px 6px;
+        font-size: 10px;
+      }
+
+      .firewall {
+        display: grid;
+        grid-template-columns: 1fr 150px 1fr;
+        align-items: center;
+        min-height: 460px;
+        border: 2px solid var(--ink);
+        background: var(--ink);
+        color: var(--paper);
+        overflow: hidden;
+      }
+
+      .firewall-side {
+        padding: 34px;
+      }
+
+      .firewall-side h3 {
+        font-family: "Syne", sans-serif;
+        font-size: 30px;
+      }
+
+      .cap-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .cap {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border: 1px solid rgba(238, 233, 220, 0.25);
+        padding: 12px;
+        font-size: 11px;
+      }
+
+      .cap.blocked {
+        opacity: 0.38;
+        text-decoration: line-through;
+      }
+
+      .cap.allowed {
+        border-color: var(--acid);
+        color: var(--acid);
+      }
+
+      .firewall-gate {
+        position: relative;
+        display: grid;
+        height: 100%;
+        background: repeating-linear-gradient(
+          45deg,
+          var(--oxide),
+          var(--oxide) 12px,
+          #f16e4f 12px,
+          #f16e4f 24px
+        );
+        place-items: center;
+      }
+
+      .firewall-gate span {
+        background: var(--ink);
+        padding: 10px;
+        font-family: "Syne", sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+        text-transform: uppercase;
+        transform: rotate(-90deg);
+      }
+
+      .recursion-lab {
+        display: grid;
+        grid-template-columns: 310px 1fr;
+        gap: 28px;
+      }
+
+      .depth-control {
+        border: 2px solid var(--ink);
+        background: var(--acid);
+        padding: 22px;
+      }
+
+      .depth-control h3 {
+        font-family: "Syne", sans-serif;
+        font-size: 25px;
+      }
+
+      .depth-readout {
+        margin: 28px 0 16px;
+        font-family: "Syne", sans-serif;
+        font-size: 78px;
+        font-weight: 800;
+        line-height: 0.8;
+      }
+
+      .depth-buttons {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .depth-button.active {
+        background: var(--ink);
+        color: var(--paper);
+      }
+
+      .tree-stage {
+        position: relative;
+        min-height: 500px;
+        border: 2px solid var(--ink);
+        background: rgba(251, 247, 236, 0.94);
+        padding: 28px;
+        overflow: hidden;
+      }
+
+      .tree-stage::before {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 18% 20%, rgba(117, 216, 208, 0.3), transparent 25%),
+          radial-gradient(circle at 80% 80%, rgba(214, 239, 79, 0.35), transparent 28%);
+        content: "";
+        pointer-events: none;
+      }
+
+      .tree {
+        position: relative;
+        display: grid;
+        gap: 26px;
+      }
+
+      .tree-level {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        opacity: 0;
+        transform: translateY(-12px);
+        transition:
+          opacity 300ms ease,
+          transform 300ms ease;
+      }
+
+      .tree-level.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .tree-node {
+        width: min(220px, 28%);
+        min-width: 145px;
+        border: 2px solid var(--ink);
+        background: var(--paper);
+        box-shadow: 5px 5px 0 var(--ink);
+        padding: 12px;
+        font-size: 10px;
+      }
+
+      .tree-node.root {
+        background: var(--cyan);
+      }
+
+      .tree-node.design {
+        background: #e8dafa;
+      }
+
+      .tree-node.review {
+        background: #dbe2ff;
+      }
+
+      .tree-node strong {
+        display: block;
+        margin-bottom: 5px;
+        font-family: "Syne", sans-serif;
+        font-size: 15px;
+      }
+
+      .parallel-mark {
+        text-align: center;
+        color: var(--oxide);
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .verification-loop {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 0;
+        border: 2px solid var(--ink);
+      }
+
+      .verify-step {
+        position: relative;
+        min-height: 230px;
+        border-right: 2px solid var(--ink);
+        background: rgba(251, 247, 236, 0.92);
+        padding: 18px;
+      }
+
+      .verify-step:last-child {
+        border-right: 0;
+        background: var(--acid);
+      }
+
+      .verify-step:not(:last-child)::after {
+        position: absolute;
+        z-index: 2;
+        top: 50%;
+        right: -15px;
+        width: 28px;
+        height: 28px;
+        border: 2px solid var(--ink);
+        border-radius: 50%;
+        background: var(--paper);
+        content: "→";
+        display: grid;
+        place-items: center;
+        transform: translateY(-50%);
+      }
+
+      .verify-step .num {
+        color: var(--oxide);
+        font-family: "Syne", sans-serif;
+        font-size: 40px;
+        font-weight: 800;
+      }
+
+      .verify-step h3 {
+        font-family: "Syne", sans-serif;
+        font-size: 20px;
+      }
+
+      .verify-step p {
+        font-size: 10px;
+        line-height: 1.55;
+      }
+
+      .trace-console {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        min-height: 520px;
+        border: 2px solid #3dff8b;
+        background: #07120c;
+        color: #bcffd6;
+        box-shadow: 10px 10px 0 rgba(49, 92, 245, 0.8);
+      }
+
+      .trace-sidebar {
+        border-right: 1px solid rgba(188, 255, 214, 0.25);
+        padding: 20px;
+      }
+
+      .trace-sidebar h3,
+      .trace-view h3 {
+        font-family: "Syne", sans-serif;
+        color: #f1ffe8;
+      }
+
+      .trace-button {
+        width: 100%;
+        margin-bottom: 8px;
+        border-color: rgba(188, 255, 214, 0.4);
+        color: #bcffd6;
+        text-align: left;
+      }
+
+      .trace-button.active {
+        background: #3dff8b;
+        color: #07120c;
+      }
+
+      .trace-view {
+        padding: 26px;
+        overflow-x: auto;
+      }
+
+      .span {
+        position: relative;
+        display: grid;
+        grid-template-columns: 190px 1fr 70px;
+        gap: 15px;
+        align-items: center;
+        min-width: 650px;
+        margin-bottom: 9px;
+        border-left: 2px solid #3dff8b;
+        background: rgba(188, 255, 214, 0.06);
+        padding: 11px 13px;
+        font-size: 10px;
+      }
+
+      .span.child {
+        margin-left: 32px;
+      }
+
+      .span.grandchild {
+        margin-left: 64px;
+      }
+
+      .span-name {
+        font-weight: 600;
+      }
+
+      .span-bar {
+        height: 9px;
+        background: linear-gradient(90deg, #3dff8b var(--width), rgba(188, 255, 214, 0.1) 0);
+      }
+
+      .span-time {
+        text-align: right;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-top: 16px;
+        color: #75a987;
+        font-size: 9px;
+        text-transform: uppercase;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 30px;
+        margin-top: 70px;
+        border-top: 2px solid var(--ink);
+        padding-top: 18px;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
+      .reveal {
+        opacity: 0;
+        transform: translateY(18px);
+        transition:
+          opacity 500ms ease,
+          transform 500ms ease;
+      }
+
+      .reveal.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      @media (max-width: 1040px) {
+        .hero,
+        .recursion-lab,
+        .trace-console {
+          grid-template-columns: 1fr;
+        }
+
+        .route-board {
+          grid-template-columns: 1fr;
+          gap: 10px;
+        }
+
+        .route-arrow {
+          height: 38px;
+          transform: rotate(90deg);
+        }
+
+        .profile-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .verification-loop {
+          grid-template-columns: 1fr;
+        }
+
+        .verify-step {
+          border-right: 0;
+          border-bottom: 2px solid var(--ink);
+        }
+
+        .verify-step:last-child {
+          border-bottom: 0;
+        }
+
+        .verify-step:not(:last-child)::after {
+          top: auto;
+          right: 50%;
+          bottom: -15px;
+          transform: translateX(50%) rotate(90deg);
+        }
+
+        .trace-sidebar {
+          border-right: 0;
+          border-bottom: 1px solid rgba(188, 255, 214, 0.25);
+        }
+      }
+
+      @media (max-width: 700px) {
+        .shell {
+          width: min(100% - 18px, 1540px);
+        }
+
+        .topline {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .hero {
+          min-height: auto;
+          padding-top: 34px;
+        }
+
+        h1 {
+          font-size: 18vw;
+        }
+
+        .profile-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .firewall {
+          grid-template-columns: 1fr;
+        }
+
+        .firewall-gate {
+          height: 90px;
+        }
+
+        .firewall-gate span {
+          transform: none;
+        }
+
+        .tree-stage {
+          padding: 16px 8px;
+        }
+
+        .tree-level {
+          gap: 7px;
+        }
+
+        .tree-node {
+          min-width: 0;
+          padding: 8px;
+        }
+
+        .tree-node strong {
+          font-size: 11px;
+        }
+
+        footer {
+          flex-direction: column;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <div class="topline">
+        <span class="status">Capability boundary active</span>
+        <span>weavekit / recursive language model / operator map 01</span>
+        <span>Root writes: 0</span>
+      </div>
+
+      <header class="hero">
+        <div>
+          <h1>
+            Route.
+            <span class="outline">Recurse.</span>
+            Verify.
+          </h1>
+          <p class="hero-copy">
+            The new RLM is a <strong>meta-harness</strong>: the root thinks about the work, chooses
+            known profiles, coordinates parallel branches, and synthesizes evidence. It does not
+            quietly become another coding agent.
+          </p>
+        </div>
+        <aside class="manifest" aria-label="Root capability manifest">
+          <h2>D0 Manifest</h2>
+          <div class="manifest-row"><span>Authority</span><b>Routing + synthesis</b></div>
+          <div class="manifest-row"><span>Tools</span><b>rlm · MCP · optional Trellage</b></div>
+          <div class="manifest-row"><span>Skills</span><b>None from host</b></div>
+          <div class="manifest-row"><span>Writes</span><b>Not permitted</b></div>
+          <div class="manifest-row"><span>Output</span><b>One reconciled answer</b></div>
+        </aside>
+      </header>
+
+      <section class="section reveal" id="route">
+        <div class="section-kicker">01 / The routing decision</div>
+        <h2 class="section-title">One request enters. A bounded worker contract leaves.</h2>
+        <div class="scenario-picker" role="tablist" aria-label="Routing examples">
+          <button class="scenario-button active" data-scenario="visual" type="button">
+            Visual explanation
+          </button>
+          <button class="scenario-button" data-scenario="implementation" type="button">
+            Repository change
+          </button>
+          <button class="scenario-button" data-scenario="research" type="button">
+            Current research
+          </button>
+          <button class="scenario-button" data-scenario="decision" type="button">
+            Architecture decision
+          </button>
+        </div>
+
+        <div class="route-board" aria-live="polite">
+          <article class="route-stage">
+            <span class="stage-number">1</span>
+            <h3>User objective</h3>
+            <p>
+              The complete conversation stays at d0. The root sees intent, constraints, and prior
+              decisions.
+            </p>
+            <div class="prompt-card" id="scenario-prompt">
+              “Create a rich visualization explaining recursive routing.”
+            </div>
+          </article>
+          <div class="route-arrow" aria-hidden="true">→</div>
+          <article class="route-stage router">
+            <span class="stage-number">2</span>
+            <h3>D0 routes</h3>
+            <p>
+              It decomposes, checks dependencies, selects profiles, and decides which calls can run
+              in parallel.
+            </p>
+            <div class="router-checks">
+              <div class="router-check">
+                <span>Primary deliverable</span><b id="route-deliverable">Visual</b>
+              </div>
+              <div class="router-check">
+                <span>Write authority</span><b id="route-write">Worker</b>
+              </div>
+              <div class="router-check">
+                <span>Best profile</span><b id="route-profile-check">Design</b>
+              </div>
+              <div class="router-check"><span>Review needed</span><b id="route-review">Yes</b></div>
+            </div>
+          </article>
+          <div class="route-arrow" aria-hidden="true">→</div>
+          <article class="route-stage worker">
+            <span class="stage-number">3</span>
+            <h3>Profile owns the task</h3>
+            <div class="profile-badge" id="profile-badge">design · claude opus 5</div>
+            <div class="worker-envelope">
+              <div class="envelope-row">
+                <span>Authority</span><b id="envelope-authority">Design implementation</b>
+              </div>
+              <div class="envelope-row">
+                <span>Repository writes</span><b id="envelope-writes">Allowed</b>
+              </div>
+              <div class="envelope-row"><span>Remaining depth</span><b>2</b></div>
+              <div class="envelope-row"><span>Shared budget</span><b>11 calls</b></div>
+              <div class="envelope-row">
+                <span>Child profiles</span><b id="envelope-children">design only</b>
+              </div>
+              <div class="envelope-row"><span>Accountability</span><b>Concrete + verified</b></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal" id="profiles">
+        <div class="section-kicker">02 / Known worker profiles</div>
+        <h2 class="section-title">Different minds. Different permissions. One contract.</h2>
+        <div class="profile-grid">
+          <article class="profile-card" data-mode="write" data-label="write">
+            <div class="purpose">Execution</div>
+            <h3>general</h3>
+            <p>
+              Bounded implementation without a specialized workflow. Owns edits, tests, and concrete
+              output.
+            </p>
+            <span class="model">GPT-5 mini</span>
+          </article>
+          <article class="profile-card" data-mode="write" data-label="write">
+            <div class="purpose">Disciplined execution</div>
+            <h3>superpowers</h3>
+            <p>
+              Design-first, TDD, debugging, review, and verification skills for harder engineering
+              work.
+            </p>
+            <span class="model">GPT-5 mini</span>
+          </article>
+          <article class="profile-card" data-mode="write" data-label="write">
+            <div class="purpose">Visual design</div>
+            <h3>design</h3>
+            <p>
+              Visual plans, infographics, frontend artifacts, design systems, and critique passes.
+            </p>
+            <span class="model">Claude Opus 5</span>
+          </article>
+          <article class="profile-card" data-mode="read" data-label="scoped">
+            <div class="purpose">Research</div>
+            <h3>research</h3>
+            <p>
+              Hyperresearch and recent-source investigation. Writes only inside its isolated
+              research workspace.
+            </p>
+            <span class="model">GPT-5 mini</span>
+          </article>
+          <article class="profile-card" data-mode="read" data-label="read">
+            <div class="purpose">Deliberation</div>
+            <h3>council</h3>
+            <p>
+              Multi-lens decisions with dissent and kill criteria. Reads its bundle; does not modify
+              the repository.
+            </p>
+            <span class="model">GPT-5 mini</span>
+          </article>
+          <article class="profile-card" data-mode="read" data-label="scoped">
+            <div class="purpose">Media analysis</div>
+            <h3>media</h3>
+            <p>
+              Analyzes supplied media with cache-scoped tools and no repository write authority.
+            </p>
+            <span class="model">GPT-5 mini</span>
+          </article>
+          <article class="profile-card" data-mode="none" data-label="read only">
+            <div class="purpose">Independent review</div>
+            <h3>review</h3>
+            <p>
+              Receives requirements, returned diffs, and evidence. Finds defects without changing
+              files.
+            </p>
+            <span class="model">Claude Opus 5</span>
+          </article>
+          <article class="profile-card" data-mode="none" data-label="restricted">
+            <div class="purpose">Protocol check</div>
+            <h3>validation</h3>
+            <p>
+              Confirms recursive mechanics with no repository work and a tightly constrained tool
+              surface.
+            </p>
+            <span class="model">GPT-5 mini</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal" id="firewall">
+        <div class="section-kicker">03 / Capability firewall</div>
+        <h2 class="section-title">MCP configuration passes through. Host behavior does not.</h2>
+        <div class="firewall">
+          <div class="firewall-side">
+            <h3>Host Copilot</h3>
+            <div class="cap-list">
+              <div class="cap allowed"><span>MCP server configuration</span><b>Pass</b></div>
+              <div class="cap blocked"><span>Personal skills</span><b>Block</b></div>
+              <div class="cap blocked"><span>Project skills</span><b>Block</b></div>
+              <div class="cap blocked"><span>Plugin + builtin skills</span><b>Block</b></div>
+              <div class="cap blocked">
+                <span>Convenient direct implementation</span><b>Block</b>
+              </div>
+            </div>
+          </div>
+          <div class="firewall-gate"><span>Manifest gate</span></div>
+          <div class="firewall-side">
+            <h3>RLM Session</h3>
+            <div class="cap-list">
+              <div class="cap allowed"><span>Explicit profile skill names</span><b>Allow</b></div>
+              <div class="cap allowed"><span>Approved skill paths</span><b>Allow</b></div>
+              <div class="cap allowed"><span>Profile-specific tools</span><b>Allow</b></div>
+              <div class="cap"><span>Ambiguous skill name</span><b>Fail closed</b></div>
+              <div class="cap"><span>Unexpected enabled skill</span><b>Fail closed</b></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section reveal" id="recursion">
+        <div class="section-kicker">04 / Recursive shape</div>
+        <h2 class="section-title">A worker may recurse. It never outsources accountability.</h2>
+        <div class="recursion-lab">
+          <aside class="depth-control">
+            <h3>Inspect depth</h3>
+            <p>
+              Reveal how the same bounded contract repeats without copying the root conversation.
+            </p>
+            <div class="depth-readout">d<span id="depth-value">2</span></div>
+            <div class="depth-buttons">
+              <button class="depth-button" data-depth="1" type="button">1</button>
+              <button class="depth-button active" data-depth="2" type="button">2</button>
+              <button class="depth-button" data-depth="3" type="button">3</button>
+            </div>
+            <p style="margin-top: 20px">
+              The budget is shared across the complete tree. Independent siblings launch together;
+              dependent work waits.
+            </p>
+          </aside>
+          <div class="tree-stage">
+            <div class="tree" id="recursion-tree">
+              <div class="tree-level visible" data-level="0">
+                <div class="tree-node root">
+                  <strong>d0 · Submind</strong>
+                  Route · coordinate · synthesize
+                </div>
+              </div>
+              <div class="parallel-mark">same-turn parallel calls ↓</div>
+              <div class="tree-level visible" data-level="1">
+                <div class="tree-node design">
+                  <strong>d1 · design</strong>
+                  Build the visual artifact
+                </div>
+                <div class="tree-node">
+                  <strong>d1 · research</strong>
+                  Gather source facts
+                </div>
+                <div class="tree-node review">
+                  <strong>d1 · review</strong>
+                  Inspect returned evidence
+                </div>
+              </div>
+              <div class="tree-level visible" data-level="2">
+                <div class="tree-node design">
+                  <strong>d2 · design</strong>
+                  Narrow critique pass
+                </div>
+                <div class="tree-node">
+                  <strong>d2 · research</strong>
+                  Resolve one evidence gap
+                </div>
+              </div>
+              <div class="tree-level" data-level="3">
+                <div class="tree-node design">
+                  <strong>d3 · design</strong>
+                  Final visual QA branch
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section reveal" id="verification">
+        <div class="section-kicker">05 / Evidence loop</div>
+        <h2 class="section-title">“Done” is a chain of returned evidence—not confident prose.</h2>
+        <div class="verification-loop">
+          <article class="verify-step">
+            <div class="num">01</div>
+            <h3>Implement</h3>
+            <p>
+              The owning worker changes files or creates the artifact within its declared authority.
+            </p>
+          </article>
+          <article class="verify-step">
+            <div class="num">02</div>
+            <h3>Exercise</h3>
+            <p>
+              That worker runs the narrowest meaningful tests, checks, or direct behavior probe.
+            </p>
+          </article>
+          <article class="verify-step">
+            <div class="num">03</div>
+            <h3>Return evidence</h3>
+            <p>
+              Paths, command output, results, and diff text travel back to d0 in the worker result.
+            </p>
+          </article>
+          <article class="verify-step">
+            <div class="num">04</div>
+            <h3>Review</h3>
+            <p>
+              D0 delegates a read-only review using the returned requirements, diff, and evidence.
+            </p>
+          </article>
+          <article class="verify-step">
+            <div class="num">05</div>
+            <h3>Synthesize</h3>
+            <p>
+              D0 reconciles findings, requests one bounded correction if needed, and reports one
+              outcome.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section reveal" id="trace">
+        <div class="section-kicker">06 / Langfuse projection</div>
+        <h2 class="section-title">The execution tree becomes the trace tree.</h2>
+        <div class="trace-console">
+          <aside class="trace-sidebar">
+            <h3>Root observations</h3>
+            <button class="trace-button active" data-trace="visual" type="button">
+              rlm-submind / visual
+            </button>
+            <button class="trace-button" data-trace="code" type="button">rlm-submind / code</button>
+            <button class="trace-button" data-trace="research" type="button">
+              rlm-submind / research
+            </button>
+            <div class="legend">
+              <span>root = one CLI run</span>
+              <span>child = profile call</span>
+            </div>
+          </aside>
+          <div class="trace-view">
+            <h3 id="trace-title">SUBMIND d0 · orchestration</h3>
+            <div id="trace-spans">
+              <div class="span">
+                <span class="span-name">SUBMIND d0 · orchestration</span>
+                <span class="span-bar" style="--width: 100%"></span>
+                <span class="span-time">42.1s</span>
+              </div>
+              <div class="span child">
+                <span class="span-name">RLM #1 d1/3 · design</span>
+                <span class="span-bar" style="--width: 86%"></span>
+                <span class="span-time">36.2s</span>
+              </div>
+              <div class="span grandchild">
+                <span class="span-name">skill · infographic-creator</span>
+                <span class="span-bar" style="--width: 58%"></span>
+                <span class="span-time">24.4s</span>
+              </div>
+              <div class="span grandchild">
+                <span class="span-name">tool · create artifact</span>
+                <span class="span-bar" style="--width: 31%"></span>
+                <span class="span-time">13.0s</span>
+              </div>
+              <div class="span child">
+                <span class="span-name">RLM #2 d1/3 · review</span>
+                <span class="span-bar" style="--width: 12%"></span>
+                <span class="span-time">5.1s</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <span>weavekit RLM · capability-scoped recursive orchestration</span>
+        <span>root routes / workers own / evidence returns / review stays read-only</span>
+      </footer>
+    </main>
+
+    <script>
+      const scenarios = {
+        visual: {
+          prompt: "“Create a rich visualization explaining recursive routing.”",
+          deliverable: "Visual",
+          write: "Worker",
+          profileCheck: "Design",
+          review: "Yes",
+          badge: "design · claude opus 5",
+          authority: "Design implementation",
+          writes: "Allowed",
+          children: "design only",
+        },
+        implementation: {
+          prompt: "“Add resumable conversation support and tests.”",
+          deliverable: "Code",
+          write: "Worker",
+          profileCheck: "Superpowers",
+          review: "Yes",
+          badge: "superpowers · gpt-5 mini",
+          authority: "Repository implementation",
+          writes: "Allowed",
+          children: "superpowers only",
+        },
+        research: {
+          prompt: "“Compare current agent tracing approaches with sources.”",
+          deliverable: "Evidence",
+          write: "Isolated vault",
+          profileCheck: "Research",
+          review: "Source check",
+          badge: "research · gpt-5 mini",
+          authority: "Scoped investigation",
+          writes: "Workspace only",
+          children: "research only",
+        },
+        decision: {
+          prompt: "“Should profile routing be deterministic or model-selected?”",
+          deliverable: "Decision",
+          write: "None",
+          profileCheck: "Council",
+          review: "Dissent built in",
+          badge: "council · gpt-5 mini",
+          authority: "Structured deliberation",
+          writes: "Not allowed",
+          children: "council seats",
+        },
+      };
+
+      const routeFields = {
+        prompt: document.querySelector("#scenario-prompt"),
+        deliverable: document.querySelector("#route-deliverable"),
+        write: document.querySelector("#route-write"),
+        profileCheck: document.querySelector("#route-profile-check"),
+        review: document.querySelector("#route-review"),
+        badge: document.querySelector("#profile-badge"),
+        authority: document.querySelector("#envelope-authority"),
+        writes: document.querySelector("#envelope-writes"),
+        children: document.querySelector("#envelope-children"),
+      };
+
+      document.querySelectorAll(".scenario-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          document
+            .querySelectorAll(".scenario-button")
+            .forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          const scenario = scenarios[button.dataset.scenario];
+          Object.entries(routeFields).forEach(([key, element]) => {
+            element.textContent = scenario[key];
+          });
+        });
+      });
+
+      const depthValue = document.querySelector("#depth-value");
+      document.querySelectorAll(".depth-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const depth = Number(button.dataset.depth);
+          depthValue.textContent = String(depth);
+          document
+            .querySelectorAll(".depth-button")
+            .forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          document.querySelectorAll(".tree-level[data-level]").forEach((level) => {
+            const levelNumber = Number(level.dataset.level);
+            level.classList.toggle("visible", levelNumber <= depth);
+          });
+        });
+      });
+
+      const traceData = {
+        visual: [
+          ["SUBMIND d0 · orchestration", "100%", "42.1s", ""],
+          ["RLM #1 d1/3 · design", "86%", "36.2s", "child"],
+          ["skill · infographic-creator", "58%", "24.4s", "grandchild"],
+          ["tool · create artifact", "31%", "13.0s", "grandchild"],
+          ["RLM #2 d1/3 · review", "12%", "5.1s", "child"],
+        ],
+        code: [
+          ["SUBMIND d0 · orchestration", "100%", "118s", ""],
+          ["RLM #1 d1/3 · superpowers", "76%", "90s", "child"],
+          ["tool · tests", "41%", "49s", "grandchild"],
+          ["RLM #2 d1/3 · review", "18%", "21s", "child"],
+          ["RLM #3 d1/3 · general correction", "9%", "11s", "child"],
+        ],
+        research: [
+          ["SUBMIND d0 · orchestration", "100%", "174s", ""],
+          ["RLM #1 d1/3 · research", "82%", "143s", "child"],
+          ["skill · hyperresearch", "68%", "118s", "grandchild"],
+          ["RLM #2 d2/3 · research gap", "29%", "50s", "grandchild"],
+          ["RLM #3 d1/3 · review", "11%", "19s", "child"],
+        ],
+      };
+
+      const traceSpans = document.querySelector("#trace-spans");
+      document.querySelectorAll(".trace-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          document
+            .querySelectorAll(".trace-button")
+            .forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          traceSpans.innerHTML = traceData[button.dataset.trace]
+            .map(
+              ([name, width, time, className]) => `
+                <div class="span ${className}">
+                  <span class="span-name">${name}</span>
+                  <span class="span-bar" style="--width: ${width}"></span>
+                  <span class="span-time">${time}</span>
+                </div>
+              `,
+            )
+            .join("");
+        });
+      });
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) entry.target.classList.add("visible");
+          });
+        },
+        { threshold: 0.1 },
+      );
+      document.querySelectorAll(".reveal").forEach((section) => observer.observe(section));
+    </script>
+  </body>
+</html>

@@ -1762,12 +1762,9 @@ function readMastermindRlmExecutionDefaults(
     // operator-configurable, unlike the model/depth/budget knobs below.
     profile: "general",
     model: readOptionalString(record.model),
-    maxDepth: readRequiredBoundedInteger(
-      record.max_depth,
-      "mastermind.rlm_execution.max_depth",
-      1,
-      10,
-    ),
+    // Depth has no ceiling: `max_total_calls` is the real bound on runaway recursion, and a deep
+    // tree is naturally cut off by that budget long before the depth number matters.
+    maxDepth: readRequiredMinimumInteger(record.max_depth, "mastermind.rlm_execution.max_depth", 1),
     maxTotalCalls: readRequiredBoundedInteger(
       record.max_total_calls,
       "mastermind.rlm_execution.max_total_calls",
@@ -1987,6 +1984,14 @@ function readRequiredBoundedInteger(
   const integer = readOptionalInteger(value);
   if (integer === undefined || integer < minimum || integer > maximum) {
     throw new Error(`${field} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return integer;
+}
+
+function readRequiredMinimumInteger(value: unknown, field: string, minimum: number): number {
+  const integer = readOptionalInteger(value);
+  if (integer === undefined || integer < minimum) {
+    throw new Error(`${field} must be an integer of at least ${minimum}`);
   }
   return integer;
 }

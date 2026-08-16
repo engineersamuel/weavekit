@@ -18,7 +18,6 @@ import {
   type RlmClient,
   type RlmClientFactoryContext,
   type RlmSession,
-  type RlmSessionReference,
 } from "../../src/rlm-poc/session.js";
 
 const profiles = createRlmProfileRegistry({
@@ -159,7 +158,7 @@ describe("executeRlm", () => {
     });
 
     // Depth is threaded/decremented by the tool implementation, never exposed to the LLM.
-    expect(buildNestedTool).toHaveBeenCalledWith(2, expect.any(Object), undefined);
+    expect(buildNestedTool).toHaveBeenCalledWith(2, undefined, undefined);
 
     expect(createSessionConfigs).toHaveLength(1);
     const config = createSessionConfigs[0]!;
@@ -167,6 +166,7 @@ describe("executeRlm", () => {
     expect(config.reasoningEffort).toBe("medium");
     expect(config.enableConfigDiscovery).toBe(true);
     expect(config.enableSkills).toBe(false);
+    expect(config.memory).toEqual({ enabled: false });
     const systemMessage = config.systemMessage as { content: string };
     expect(systemMessage.content).toContain("Answer directly.");
     expect(systemMessage.content).toContain("# Worker Execution Envelope");
@@ -181,6 +181,25 @@ describe("executeRlm", () => {
 
     expect(fake.disconnected).toBe(true);
     expect(fake.stopped).toBe(true);
+  });
+
+  it("does not expose a nested rlm tool after recursion depth is exhausted", async () => {
+    const fake = fakeClient(fakeSession("Blue."));
+    const buildNestedTool = vi.fn().mockReturnValue({ name: "rlm-nested-stub" });
+
+    await executeRlm({
+      args,
+      depthRemaining: 1,
+      maxDepth: 1,
+      profiles,
+      prepareProfileSkills: noPreparedSkills,
+      clientFactory: () => fake.client,
+      buildNestedTool,
+      onPermissionRequest: () => ({ kind: "approve-once" }),
+    });
+
+    expect(buildNestedTool).not.toHaveBeenCalled();
+    expect(fake.createSessionConfigs[0]?.tools).toEqual([]);
   });
 
   it("prepares and scopes a skill bundle only to the selected child session", async () => {
@@ -739,6 +758,135 @@ describe("executeRlm", () => {
     ).toMatchObject({ kind: "reject" });
   });
 
+  it("lets the review profile read the repository but write only its own output directory", async () => {
+    const handler = createRlmProfilePermissionHandler(
+      defaultRlmProfileRegistry.resolve("review"),
+      undefined,
+      () => ({ kind: "approve-once" }),
+      "/repo",
+    );
+    const invocation = { sessionId: "session" };
+
+    expect(
+      await handler(
+        { kind: "read", path: "/repo/src/index.ts", intention: "inspect the code under review" },
+        invocation,
+      ),
+    ).toEqual({ kind: "approve-once" });
+    expect(
+      await handler(
+        {
+          kind: "write",
+          canOfferSessionApproval: false,
+          diff: "",
+          fileName: "/repo/.weavekit/reviews/eng-13.md",
+          intention: "write the review report",
+        },
+        invocation,
+      ),
+    ).toEqual({ kind: "approve-once" });
+    expect(
+      await handler(
+        {
+          kind: "write",
+          canOfferSessionApproval: false,
+          diff: "",
+          fileName: "/repo/docs/benchmark-report.md",
+          intention: "rewrite the document under review",
+        },
+        invocation,
+      ),
+    ).toMatchObject({ kind: "reject" });
+    expect(
+      await handler(
+        {
+          kind: "shell",
+          canOfferSessionApproval: false,
+          commands: [{ identifier: "git", readOnly: true }],
+          fullCommandText: "git diff origin/main",
+          hasWriteFileRedirection: false,
+          intention: "read the diff under review",
+          possiblePaths: ["/repo/src"],
+          possibleUrls: [],
+        },
+        invocation,
+      ),
+    ).toEqual({ kind: "approve-once" });
+    expect(
+      await handler(
+        {
+          kind: "shell",
+          canOfferSessionApproval: false,
+          commands: [{ identifier: "sh", readOnly: false }],
+          fullCommandText: "echo notes > /repo/.weavekit/reviews/notes.md",
+          hasWriteFileRedirection: true,
+          intention: "record review notes",
+          possiblePaths: ["/repo/.weavekit/reviews/notes.md"],
+          possibleUrls: [],
+        },
+        invocation,
+      ),
+    ).toEqual({ kind: "approve-once" });
+    expect(
+      await handler(
+        {
+          kind: "shell",
+          canOfferSessionApproval: false,
+          commands: [{ identifier: "sh", readOnly: false }],
+          fullCommandText: "echo patched > /repo/docs/benchmark-report.md",
+          hasWriteFileRedirection: true,
+          intention: "patch the evidence",
+          possiblePaths: ["/repo/docs/benchmark-report.md"],
+          possibleUrls: [],
+        },
+        invocation,
+      ),
+    ).toMatchObject({ kind: "reject" });
+    expect(
+      await handler(
+        {
+          kind: "mcp",
+          readOnly: false,
+          serverName: "filesystem",
+          toolName: "write_file",
+          toolTitle: "Write file",
+        },
+        invocation,
+      ),
+    ).toMatchObject({ kind: "reject" });
+  });
+
+  it("permits shell for no-write profiles that declare their own writable subpaths", async () => {
+    const clientFactory = vi.fn();
+    const scopedProfiles = createRlmProfileRegistry({
+      scoped: {
+        name: "scoped",
+        description: "Destination-scoped review profile.",
+        purpose: RlmProfilePurpose.Review,
+        authority: RlmProfileAuthority.Review,
+        repositoryWritePermission: false,
+        writableSubpaths: [".weavekit/reviews"],
+        model: "test-model",
+        systemMessagePrompt: "Review.",
+        availableTools: ["bash"],
+      },
+    });
+
+    await expect(
+      executeRlm({
+        args: { prompt: "Review.", profile: "scoped" },
+        depthRemaining: 1,
+        maxDepth: 1,
+        profiles: scopedProfiles,
+        prepareProfileSkills: async () => ({ skillDirectories: [] }),
+        clientFactory,
+        buildNestedTool: () => ({}),
+        onPermissionRequest: () => ({ kind: "approve-once" }),
+      }),
+    ).rejects.toThrow();
+    expect(clientFactory).toHaveBeenCalled();
+  });
+
   it("fails closed when a profile returns without invoking its required skill", async () => {
     const requiredProfiles = createRlmProfileRegistry({
       required: {
@@ -831,29 +979,6 @@ describe("executeRlm", () => {
       3 * 60 * 60_000,
     );
     expect(computeRlmSessionTimeoutMs(general, 3, defaultRlmProfileRegistry)).toBe(125 * 60_000);
-  });
-
-  it("provides the nested rlm tool with a lazy reference to its owning session", async () => {
-    const session = fakeSession("Blue.");
-    const { client } = fakeClient(session);
-    let ownerSessionReference: RlmSessionReference | undefined;
-
-    await executeRlm({
-      args,
-      depthRemaining: 3,
-      maxDepth: 3,
-      profiles,
-      prepareProfileSkills: noPreparedSkills,
-      clientFactory: () => client,
-      buildNestedTool: (_depthRemaining, reference) => {
-        ownerSessionReference = reference;
-        return {};
-      },
-      onPermissionRequest: () => ({ kind: "approve-once" }),
-    });
-
-    expect(ownerSessionReference?.current).toBeDefined();
-    expect(ownerSessionReference?.instructions).toBe("Answer directly.");
   });
 
   it("returns an empty string when the nested session produces no content", async () => {

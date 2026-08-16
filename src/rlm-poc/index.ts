@@ -64,6 +64,35 @@ export {
   type RlmSessionReference,
 } from "./session.js";
 export { createRlmTool, type CreateRlmToolOptions } from "./tool.js";
+export {
+  RLM_RUN_STATE_SCHEMA_VERSION,
+  RlmCallExecutionStatus,
+  RlmRunStateError,
+  beginRlmCall,
+  createRlmRunState,
+  failRlmCall,
+  hydrateRlmRunState,
+  interruptRunningRlmCalls,
+  parseRlmRunStateSnapshot,
+  resolveRlmDependencies,
+  restoreRlmRunState,
+  setRlmRunBrief,
+  setRlmRunIdentity,
+  snapshotRlmRunState,
+  succeedRlmCall,
+  type RlmCallRecord,
+  type RlmFailedCallRecord,
+  type RlmRunState,
+  type RlmRunStateSnapshot,
+  type RlmRunningCallRecord,
+  type RlmSucceededCallRecord,
+} from "./runState.js";
+export {
+  bamlRlmWorkerContract,
+  formatRlmWorkerReportText,
+  type RlmWorkerContract,
+  type RlmWorkerContractInput,
+} from "./workerContract.js";
 export { buildRlmCallSpanName, buildRlmRootSpanName, withRlmSpan } from "./telemetry.js";
 export { attachConsoleStreaming, type ConsoleStreamingOptions } from "./consoleStreaming.js";
 export {

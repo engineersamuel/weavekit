@@ -9,6 +9,14 @@ import {
 describe("RLM_SUBMIND_SYSTEM_PROMPT", () => {
   it("adapts the Submind orchestration contract to recursive rlm calls", () => {
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("rlm({ prompt:");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain('dependsOn: ["<completed-call-id>"]');
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("immutable run brief");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "only those completed reports; it never injects the complete ledger",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "Calls issued together in one parallel assistant turn cannot depend on one another",
+    );
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Plan Before Delegation");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Independent Review");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Verify the Work");
@@ -77,13 +85,27 @@ describe("RLM_SUBMIND_SYSTEM_PROMPT", () => {
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("one new Herdr-managed agent");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("same Herdr worktree");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toMatch(/precise\s+blocker/u);
-    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("routing and synthesis meta-harness");
-    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Do not\nperform specialized implementation");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "routing, synthesis, and verification meta-harness",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Do not perform specialized implementation");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
       "A primarily visual deliverable must route through the `design` profile",
     );
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("DNS topology or resolution-flow diagrams");
-    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Delegate even trivial execution work");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "You may read the repository yourself with `view`, `glob`, and `grep`",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Keep those reads targeted");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "When a worker reports that it changed a file, ran a test, or produced an artifact",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "Use the reviewer for judgement about correctness, safety, and requirement coverage",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "Continue to\ndelegate commands and behavioral checks because d0 has no shell tool",
+    );
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Delegate trusted deterministic checks");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
       "All work and every delegated result — implementation, research, design, media analysis",
@@ -98,6 +120,10 @@ describe("RLM_SUBMIND_SYSTEM_PROMPT", () => {
       "with its available tools; no profile may treat unsupported prose as verification",
     );
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("diff text needed by a later reviewer");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("Delegate even trivial execution work");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain(
+      "must not attempt to acquire repository files or diffs itself",
+    );
     expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("Handle trivial work directly");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain(
       "1. Run the repository's trusted deterministic checks",

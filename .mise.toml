@@ -48,7 +48,7 @@ run = "nub scripts/entity-sdk-doctor.ts"
 [tasks.rlm]
 description = "Run the recursive Submind prototype with the provided prompt."
 env = { COPILOT_HOME = "{{config_root}}/.weavekit/copilot-home" }
-run = "nub scripts/rlm-poc.ts --trellage --reuse-current-worktree -p"
+run = "nub scripts/rlm-poc.ts --trellage -p"
 
 [tasks."pre-commit"]
 description = "Fast pre-commit gate: auto-fix/lint staged files with oxlint, auto-format staged files with oxfmt. Install locally with: mise generate git-pre-commit --write"

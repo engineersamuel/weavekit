@@ -351,6 +351,7 @@ export class MastermindDecisionLoop {
         "weavekit.mastermind.issue_id": work.issueId,
       },
       async (span) => {
+        await this.requireInProgressState(work.issueId);
         const ticket = await this.linear.fetchIssue(work.issueId);
         await this.store.saveTicketSnapshot(work.id, ticket);
         const policy = this.resolveProjectPolicy(work, ticket);
@@ -421,6 +422,7 @@ export class MastermindDecisionLoop {
     work: MastermindWorkItem,
     lease: LeaseHeartbeat,
   ): Promise<MastermindWorkItem> {
+    await this.requireInProgressState(work.issueId);
     const ticket = await this.linear.fetchIssue(work.issueId);
     const policy = this.resolveProjectPolicy(work, ticket);
     if (!policy) {
@@ -531,6 +533,10 @@ export class MastermindDecisionLoop {
     }
     if (result.requiresHumanApproval) {
       this.emitProgress("Review requires human input; ticket content was not rewritten.");
+      // Post the open items on the run that produced them. Without this the questions only reach
+      // Linear on the next run, via the self-healing call in reopenReviewIfStale, so the first run
+      // leaves the ticket labelled needs-input with no statement of what is actually being asked.
+      await postClarificationComment(this.linear, work.issueId, review);
       return this.applyTransition(work, {
         type: MastermindEventType.REQUIRE_HUMAN,
       });
@@ -574,6 +580,16 @@ export class MastermindDecisionLoop {
         });
         return transitioned;
       },
+    );
+  }
+
+  private requireInProgressState(issueId: string): Promise<void> {
+    if (!this.linear.setIssueState) {
+      throw new Error("Linear gateway does not support workflow-state projection.");
+    }
+    return this.linear.setIssueState(
+      issueId,
+      this.config.mastermind.inProgressStateName ?? "In Progress",
     );
   }
 

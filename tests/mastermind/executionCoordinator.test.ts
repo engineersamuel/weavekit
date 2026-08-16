@@ -274,6 +274,9 @@ describe("Mastermind execution coordinator", () => {
     const attempt = await store.getCurrentExecutionAttempt(work.id);
     expect(attempt).toMatchObject({ executorKind: ExecutorKind.RLM_SUBMIND });
     expect(attempt?.executorHandle).toMatchObject({ executor: ExecutorKind.RLM_SUBMIND });
+    // No agent name at any stage. The launch-intent handle recorded one before the executor even
+    // started, and `herdr agent focus` on that invented name answered agent_not_found.
+    expect(attempt?.executorHandle?.agentName).toBeUndefined();
 
     await coordinator.process(work.id);
     await coordinator.process(work.id);
@@ -281,6 +284,18 @@ describe("Mastermind execution coordinator", () => {
     await coordinator.process(work.id);
     expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.SUCCEEDED });
     expect(rlmExecutor.collectCalls).toBe(1);
+    await coordinator.process(work.id);
+    await coordinator.process(work.id);
+
+    // The Linear comment must tell a human what actually works for this executor.
+    const body = linear.comments[0]?.body ?? "";
+    expect(body).toContain("Inspect the submind run:");
+    expect(body).toContain("mise run mastermind:attach 'WK-1'");
+    expect(body).toContain(`cd '${directory}'`);
+    expect(body).toContain(`tail -n 100 '${join(directory, ".weavekit", "mastermind-rlm.log")}'`);
+    expect(body).toContain("cat .weavekit/mastermind-result.json");
+    expect(body).not.toContain("Continue in Herdr:");
+    expect(body).not.toContain("herdr agent");
     store.close();
   });
 
@@ -373,6 +388,11 @@ describe("Mastermind execution coordinator", () => {
     expect(linear.states).toEqual(["In Progress", "In Review"]);
     expect(linear.comments).toHaveLength(2);
     expect(linear.comments[1]?.body).toContain("post-code review");
+    expect(linear.comments[1]?.body).toContain("Manual verification — run these steps in order:");
+    expect(linear.comments[1]?.body).toContain(
+      `1. Change to the review worktree root: \`cd ${directory}\``,
+    );
+    expect(linear.comments[1]?.body).toContain("2. Open README.md and confirm the fixture.");
     await acceptMastermindWork({ selector: "WK-1", config, store, linear });
     expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.COMPLETED });
     expect(linear.states).toEqual(["In Progress", "In Review", "Done"]);
@@ -489,11 +509,20 @@ class FakeExecutor implements DirectExecutor {
   ): Promise<ExecutorHandle> {
     this.startCalls += 1;
     this.request = request;
-    return {
-      executor: this.kind,
-      agentName: "mm-workone-a1",
-      worktreePath: request.workspace.checkoutPath,
-    };
+    // The RLM submind is a detached child process, so its handle carries pid/logPath and no
+    // agent name. Only the Herdr executor names an agent.
+    return this.kind === ExecutorKind.RLM_SUBMIND
+      ? {
+          executor: this.kind,
+          worktreePath: request.workspace.checkoutPath,
+          pid: 55179,
+          logPath: join(request.workspace.checkoutPath, ".weavekit", "mastermind-rlm.log"),
+        }
+      : {
+          executor: this.kind,
+          agentName: "mm-workone-a1",
+          worktreePath: request.workspace.checkoutPath,
+        };
   }
 
   async status(): Promise<ExecutorStatus> {

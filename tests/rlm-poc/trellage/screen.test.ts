@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   TrellageScreenKind,
@@ -37,6 +38,33 @@ const PROSE_QUESTION = `
   before I can scaffold the migrations.
 
 > │                                                                  │
+`;
+
+const COPILOT_STARTUP_SPLASH = `
+Current   Sessions   Issues   Pull requests   Gists
+  ╰─╯╰─╯  Copilot v1.0.79 uses AI.
+  █ ▘▝ █  Check for mistakes.
+   ▔▔▔▔
+ ● Tip: /theme
+   └ View or set color mode
+ ~/.herdr/worktrees/weavekit/worktree-rlm [⎇ worktree/rlm*%] [#51]
+Session: 0 AIC used
+ ← open sidebar · autopilot · / commands · tab next tab
+Claude Sonnet 5 · Medium
+`;
+
+const COPILOT_STARTUP_SPLASH_WITH_QUESTION_TIP = `
+Current   Sessions   Issues   Pull requests   Gists
+  ╰─╯╰─╯  Copilot v1.0.79 uses AI.
+  █ ▘▝ █  Check for mistakes.
+   ▔▔▔▔
+ ● Tip: /app
+   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app
+      https://github.com/features/ai/github-app
+ ~/.herdr/worktrees/weavekit/worktree-rlm [⎇ worktree/rlm*%] [#51]
+Session: 0 AIC used
+ ← open sidebar · autopilot · / commands · tab next tab
+Claude Sonnet 5
 `;
 
 describe("parseMenuOptions", () => {
@@ -150,5 +178,53 @@ Update available! Run: mise upgrade claude
 ● high · /effort
 `),
     ).toBe(false);
+  });
+
+  it("rejects the Copilot startup splash that only shows tips and status", () => {
+    expect(isLikelyQuestion(extractQuestion(COPILOT_STARTUP_SPLASH))).toBe(false);
+  });
+
+  it("rejects the Copilot startup splash even when a static tip contains a question mark", () => {
+    expect(isLikelyQuestion(extractQuestion(COPILOT_STARTUP_SPLASH_WITH_QUESTION_TIP))).toBe(false);
+  });
+});
+
+describe("Copilot folder-trust dialog", () => {
+  const dialog = readFileSync(
+    new URL("./fixtures/copilot-folder-trust-dialog.txt", import.meta.url),
+    "utf8",
+  );
+
+  it("reads the recorded dialog as a menu whose affirmative option is already selected", () => {
+    const screen = classifyScreen(dialog);
+
+    expect(screen).toEqual({
+      kind: TrellageScreenKind.Menu,
+      options: [
+        { number: 1, label: "Yes", selected: true },
+        { number: 2, label: "Yes, and remember this folder for future sessions", selected: false },
+        { number: 3, label: "No (Esc)", selected: false },
+      ],
+    });
+  });
+
+  it("approves the session-only option rather than persisting an ephemeral worktree path", () => {
+    const screen = classifyScreen(dialog);
+    if (screen.kind !== TrellageScreenKind.Menu) throw new Error("expected a menu");
+    const approval = findApprovalOption(screen.options);
+
+    expect(approval?.number).toBe(1);
+    expect(keysToChoose(screen.options, approval!)).toEqual(["enter"]);
+  });
+
+  it("is still recognizable after the drive loop strips repaint whitespace", () => {
+    const normalized = dialog
+      .split(/\r?\n/u)
+      .map((line) => line.replace(/\s+$/u, ""))
+      .filter((line) => line.length > 0)
+      .join("\n");
+
+    expect(classifyScreen(normalized).kind).toBe(TrellageScreenKind.Menu);
+    expect(isLikelyQuestion(extractQuestion(normalized))).toBe(true);
   });
 });
