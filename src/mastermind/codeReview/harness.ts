@@ -150,6 +150,13 @@ prove the step passed. Never write "from the worktree root", "in the project dir
 relative reference without also giving the absolute path. Order the entries so that following them
 from top to bottom reproduces the verification.
 
+This dossier is posted verbatim as a Linear comment. In every JSON string field (summary, findings,
+manualVerification, remediation, evidence, and any other field), always format code using proper
+Markdown: wrap any shell command, terminal output, file path fragment used as code, code snippet, or
+diff in a fenced \`\`\`bash or \`\`\`<language> code block, and wrap short inline identifiers or
+one-word commands in single backticks. Never paste a bash command or code snippet as bare unformatted
+text.
+
 Return JSON only:
 {
   "summary": "string",

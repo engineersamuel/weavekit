@@ -239,7 +239,9 @@ function SynthesizeLinearTicketPatch(
       openItemDispositions.text value with the matching kind. If any blockingReasons entry is
       missing its disposition, add it rather than omitting it.
     - Use HUMAN for product behavior, acceptance intent, authorization, scope approval, account
-      choice, or another decision the executor must not make.
+      choice, or another decision the executor must not make. On a SPIKE, apply the SPIKE rule
+      below before assigning HUMAN: a choice the spike is chartered to evaluate is not a HUMAN
+      decision even when it sounds like product behavior or organization policy.
     - Use EXECUTOR_PREFLIGHT for tool or package availability, credentials or auth state, selected
       tenant or account context, runtime version, or another environment fact that can be proven
       fail-closed immediately before implementation starts.
@@ -267,6 +269,21 @@ function SynthesizeLinearTicketPatch(
       EXECUTOR_PREFLIGHT and readiness READY_WITH_NONBLOCKING_GAPS, never BLOCKED.
     - Use IMPLEMENTATION_DISCOVERY for bounded repository or code investigation that is part of
       implementation and does not change product intent.
+    - A SPIKE exists to answer its own open design questions. When dossier.ticketKind is SPIKE,
+      any choice the ticket's own scope or acceptance criteria ask the spike to evaluate,
+      recommend, benchmark, or compare — a tool ruleset, configuration, corpus, threshold, or
+      integration variant — is IMPLEMENTATION_DISCOVERY, never HUMAN and never a blocking reason.
+      Deciding it is the spike's deliverable, not a prerequisite: the executor picks a defensible
+      option, records it as an assumption, and reports the trade-off, so this case is an exception
+      to "never silently decide". Reserve HUMAN on a SPIKE for a decision outside its stated
+      deliverable, such as authorization, spend, production rollout, or a scope change the ticket
+      does not already request. A linked attachment the harness could not read is a risk entry,
+      not a blocking reason, when the ticket body already states the objective. This holds even
+      when the question is phrased as organization policy, an authoritative standard, or product
+      behavior — "which ruleset is authoritative", "should the hook block or only warn" — because
+      naming the recommended option is the spike's output. Before returning a SPIKE patch, re-read
+      every HUMAN disposition and reclassify it to IMPLEMENTATION_DISCOVERY if any scope line or
+      acceptance criterion already asks the spike to determine, recommend, or compare it.
     - Use EXTERNAL_DEPENDENCY for a known blocker outside executor control, such as an upstream
       outage, pending vendor access, or an external system that must become available before work
       can start. Do not use EXECUTOR_PREFLIGHT for external waiting.
@@ -296,6 +313,12 @@ function SynthesizeLinearTicketPatch(
     - Do not claim work is complete or prescribe commands not supported by available evidence.
     - Keep the title concise.
     - confidence is between 0 and 1.
+    - unansweredQuestions and blockingReasons are posted verbatim as a Linear comment. Whenever
+      one of these strings (or any openItemDispositions rationale) includes a shell command,
+      terminal output, code snippet, or diff, always format it with proper Markdown: a fenced
+      ```bash or ```<language> code block for multi-line or command content, and single backticks
+      for a short inline identifier or one-word command. Never paste a command or code snippet as
+      bare unformatted text.
 
     {{ _.role("user") }}
     Ticket:

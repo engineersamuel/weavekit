@@ -268,6 +268,15 @@ raise them as unansweredQuestions or ambiguities:
   built in a brand-new, dedicated Herdr worktree under ~/projects/prototypes/<short-descriptive-
   name> — never inside this project's own repository/worktree and never inside another project's
   worktree. Record this as an assumption, not an open question, and never ask which folder to use.
+- Spike-owned decisions: when ticketKind is SPIKE, any choice the ticket's own scope or acceptance
+  criteria ask the spike to evaluate, benchmark, compare, or recommend — a scoring rubric or
+  quality-judgement method, corpus, threshold, tool ruleset, configuration, or the format and
+  location of its own report and artifacts — is the spike's deliverable, not a human decision.
+  Record it as an assumption the executor resolves and reports; never annotate it with
+  "(owner: HUMAN)" and never raise it as a blocking reason. A linked attachment you could not read
+  is a risk entry, not a blocking reason, when the ticket body already states the objective.
+  Reserve HUMAN ownership on a SPIKE for authorization, spend, production rollout, or a scope
+  change the ticket does not already request.
 - GitHub CLI auth: if the ticket's work depends on GitHub CLI (\`gh\`) access (for example, a PAT
   with Copilot Requests permission, repository/PR operations, or GitHub API calls), use the shell
   tool to run \`gh auth status\` (read-only) yourself and record the outcome as repository or

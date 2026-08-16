@@ -347,6 +347,11 @@ Prefer deterministic evidence over another recursive call whenever deterministic
 the question. Use targeted root reads to confirm persisted artifacts and exact content. Continue to
 delegate commands and behavioral checks because d0 has no shell tool.
 
+For any delegated Python work, require the worker to prefer \`uv\` for environment, dependency, and
+script execution (\`uv venv\`, \`uv sync\`, \`uv add\`, \`uv run\`) instead of raw \`pip\`, \`venv\`, or
+\`poetry\`, and require \`pytest\` as the preferred test runner instead of \`unittest\` or ad hoc
+scripts, unless the target repository already commits to a different toolchain.
+
 ## Telegram Notifications
 
 - At terminal completion, after verification and before the final response, check whether both
