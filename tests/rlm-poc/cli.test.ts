@@ -166,4 +166,45 @@ describe("parseRlmCliArgs", () => {
   ])("rejects invalid arguments %j", (args, message) => {
     expect(() => parseRlmCliArgs(args)).toThrow(message);
   });
+
+  it("collects repeated run brief flags in both spellings", () => {
+    expect(
+      parseRlmCliArgs([
+        "--prompt",
+        "Ship it.",
+        "--acceptance",
+        "Tests pass.",
+        "--acceptance=Docs updated.",
+        "--constraint",
+        "Do not change the public API.",
+        "--validation-command",
+        "nub run test",
+        "--validation-command=nub run typecheck",
+      ]),
+    ).toEqual({
+      prompt: "Ship it.",
+      acceptanceCriteria: ["Tests pass.", "Docs updated."],
+      constraints: ["Do not change the public API."],
+      validationCommands: ["nub run test", "nub run typecheck"],
+      trellage: false,
+      eagerWorktree: false,
+      help: false,
+    });
+  });
+
+  it("omits run brief fields that were never bound", () => {
+    const options = parseRlmCliArgs(["--prompt", "Ship it.", "--acceptance", "Tests pass."]);
+
+    expect(options.acceptanceCriteria).toEqual(["Tests pass."]);
+    expect(options).not.toHaveProperty("constraints");
+    expect(options).not.toHaveProperty("validationCommands");
+  });
+
+  it.each([
+    [["--acceptance"], "requires a non-empty value"],
+    [["--constraint="], "requires a non-empty value"],
+    [["--validation-command"], "requires a non-empty value"],
+  ])("rejects empty run brief values %j", (args, message) => {
+    expect(() => parseRlmCliArgs(args)).toThrow(message);
+  });
 });

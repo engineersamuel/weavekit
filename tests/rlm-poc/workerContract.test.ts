@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   RlmVerificationOutcome,
   RlmWorkerOutcome,
@@ -8,7 +8,28 @@ import {
 import {
   bamlRlmWorkerContract,
   formatRlmWorkerReportText,
+  resolveRlmRunBrief,
+  type RlmWorkerContract,
 } from "../../src/rlm-poc/workerContract.js";
+
+const derivedBrief: RlmRunBrief = {
+  objective: "Derived objective.",
+  constraints: ["Derived constraint."],
+  acceptanceCriteria: ["Derived criterion."],
+  validationCommands: ["nub run derived"],
+};
+
+function stubContract(deriveBrief?: RlmWorkerContract["deriveBrief"]): RlmWorkerContract {
+  return {
+    async renderPrompt() {
+      return "unused";
+    },
+    parseResponse() {
+      throw new Error("unused");
+    },
+    ...(deriveBrief ? { deriveBrief } : {}),
+  };
+}
 
 describe("RLM worker contract", () => {
   it("renders one user prompt with the brief, delegated task, dependencies, and output guidance", async () => {
@@ -117,5 +138,70 @@ describe("RLM worker contract", () => {
         }),
       ),
     ).toThrow();
+  });
+});
+
+describe("RLM run brief resolution", () => {
+  it("binds the derived constraints, acceptance criteria, and validation commands", async () => {
+    const brief = await resolveRlmRunBrief(
+      "Raw objective.",
+      stubContract(async () => derivedBrief),
+    );
+
+    expect(brief).toEqual(derivedBrief);
+  });
+
+  it("replaces only the overridden fields and keeps the rest derived", async () => {
+    const brief = await resolveRlmRunBrief(
+      "Raw objective.",
+      stubContract(async () => derivedBrief),
+      { acceptanceCriteria: ["Operator criterion."] },
+    );
+
+    expect(brief.acceptanceCriteria).toEqual(["Operator criterion."]);
+    expect(brief.constraints).toEqual(["Derived constraint."]);
+    expect(brief.validationCommands).toEqual(["nub run derived"]);
+  });
+
+  it("skips derivation when every list is overridden", async () => {
+    const deriveBrief = vi.fn(async () => derivedBrief);
+
+    const brief = await resolveRlmRunBrief("Raw objective.", stubContract(deriveBrief), {
+      constraints: [],
+      acceptanceCriteria: ["Operator criterion."],
+      validationCommands: ["nub run test"],
+    });
+
+    expect(deriveBrief).not.toHaveBeenCalled();
+    expect(brief.objective).toBe("Raw objective.");
+    expect(brief.acceptanceCriteria).toEqual(["Operator criterion."]);
+  });
+
+  it("falls back to the objective-only brief when derivation fails", async () => {
+    const errors: string[] = [];
+
+    const brief = await resolveRlmRunBrief(
+      "Raw objective.",
+      stubContract(async () => {
+        throw new Error("proxy unavailable");
+      }),
+      {},
+      (message) => errors.push(message),
+    );
+
+    expect(brief).toEqual({
+      objective: "Raw objective.",
+      constraints: [],
+      acceptanceCriteria: [],
+      validationCommands: [],
+    });
+    expect(errors[0]).toContain("proxy unavailable");
+  });
+
+  it("keeps the objective-only brief when the contract cannot derive one", async () => {
+    const brief = await resolveRlmRunBrief("Raw objective.", stubContract());
+
+    expect(brief.objective).toBe("Raw objective.");
+    expect(brief.acceptanceCriteria).toEqual([]);
   });
 });

@@ -94,6 +94,37 @@ function DiagnoseTrellageTurn(
   "#
 }
 
+function DeriveRlmRunBrief(rawObjective: string) -> RlmRunBrief {
+  client CopilotProxyClaudeHaiku45
+  prompt #"
+    {{ _.role("user") }}
+    Convert one raw user request into the structured run brief that every worker in a bounded
+    delegation run will receive as its shared acceptance contract.
+
+    Extract only what the request states or clearly implies. Leave an array empty rather than
+    invent an entry. An empty array is a correct answer. A fabricated entry is not, because every
+    worker will treat each entry as binding.
+
+    - objective: restate the request as one complete, self-contained statement of what must be
+      true when the work is done. Keep every concrete detail: named paths, identifiers, versions,
+      and quantities. Do not summarize the specifics away.
+    - constraints: limits on how the work may be done. Scope boundaries, prohibited actions,
+      required tools or libraries, and process rules the request states.
+    - acceptanceCriteria: independently checkable statements that must all hold before the work
+      is accepted. Each one must be verifiable by inspection, by a command, or by an observable
+      artifact. Split a compound requirement into separate criteria. Do not restate the objective
+      as a single criterion.
+    - validationCommands: exact commands the request names, or that the request's own stated
+      conventions make unambiguous. Copy each command verbatim. Do not guess a project's test or
+      build command when the request does not name it.
+
+    Raw request:
+    {{ rawObjective }}
+
+    {{ ctx.output_format }}
+  "#
+}
+
 function RenderRlmWorkerTask(
   brief: RlmRunBrief,
   delegatedTask: string,

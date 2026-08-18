@@ -113,8 +113,26 @@ describe("RLM_SUBMIND_SYSTEM_PROMPT", () => {
       "Use the reviewer for judgement about correctness, safety, and requirement coverage",
     );
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
-      "Continue to\ndelegate commands and behavioral checks because d0 has no shell tool",
+      "Admit a finding only when removing it leaves an acceptance criterion unmet or unsupported by",
     );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "When two findings each independently break the same criterion, admit both",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "A finding that blocks an acceptance criterion is blocking. Every other finding is advisory",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "Do not reference the implementing call through\n  `dependsOn`",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Do not let the reviewer modify files.");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Do not recursively review reviewers.");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "Your `bash`\ntool is read-only and exists for one purpose: rerun the brief's validation commands yourself",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "Delegate any check that must write, install, or mutate state.",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("d0 has no shell tool");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("Delegate trusted deterministic checks");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
       "All work and every delegated result — implementation, research, design, media analysis",

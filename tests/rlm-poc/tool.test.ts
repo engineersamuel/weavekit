@@ -126,6 +126,10 @@ describe("createRlmTool", () => {
         }
       ).properties.dependsOn,
     ).toMatchObject({ minItems: 1, uniqueItems: true });
+    expect(
+      (tool.parameters as { properties: { effort: { enum: string[] } } }).properties.effort.enum,
+    ).toEqual(["low", "medium", "high", "xhigh"]);
+    expect((tool.parameters as { required: string[] }).required).toEqual(["prompt", "profile"]);
   });
 
   it("does not emit an invalid empty profile enum", () => {

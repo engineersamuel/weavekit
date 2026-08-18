@@ -12,6 +12,7 @@ import {
 import { createRlmProfileRegistry, defaultRlmProfileRegistry } from "../../src/rlm-poc/profiles.js";
 import {
   computeRlmSessionTimeoutMs,
+  createReadOnlyPermissionHandler,
   createRlmProfilePermissionHandler,
   executeRlm,
   prepareRlmSkillPolicy,
@@ -981,6 +982,61 @@ describe("executeRlm", () => {
     expect(computeRlmSessionTimeoutMs(general, 3, defaultRlmProfileRegistry)).toBe(125 * 60_000);
   });
 
+  it("passes a requested reasoning effort through and clamps it to the profile cap", async () => {
+    const cappedProfiles = createRlmProfileRegistry({
+      capped: {
+        name: "capped",
+        description: "Effort-capped test profile.",
+        purpose: RlmProfilePurpose.Execution,
+        authority: RlmProfileAuthority.Implementation,
+        repositoryWritePermission: true,
+        model: "test-model",
+        reasoningEffort: "low",
+        maxReasoningEffort: "high",
+        systemMessagePrompt: "Work.",
+      },
+    });
+
+    const requested = fakeClient(fakeSession("Done."));
+    await executeRlm({
+      args: { prompt: "Work.", profile: "capped", effort: "high" },
+      depthRemaining: 1,
+      maxDepth: 1,
+      profiles: cappedProfiles,
+      prepareProfileSkills: noPreparedSkills,
+      clientFactory: () => requested.client,
+      buildNestedTool: () => ({}),
+      onPermissionRequest: () => ({ kind: "approve-once" }),
+    });
+    expect(requested.createSessionConfigs[0]?.reasoningEffort).toBe("high");
+
+    const clamped = fakeClient(fakeSession("Done."));
+    await executeRlm({
+      args: { prompt: "Work.", profile: "capped", effort: "xhigh" },
+      depthRemaining: 1,
+      maxDepth: 1,
+      profiles: cappedProfiles,
+      prepareProfileSkills: noPreparedSkills,
+      clientFactory: () => clamped.client,
+      buildNestedTool: () => ({}),
+      onPermissionRequest: () => ({ kind: "approve-once" }),
+    });
+    expect(clamped.createSessionConfigs[0]?.reasoningEffort).toBe("high");
+
+    const omitted = fakeClient(fakeSession("Done."));
+    await executeRlm({
+      args: { prompt: "Work.", profile: "capped" },
+      depthRemaining: 1,
+      maxDepth: 1,
+      profiles: cappedProfiles,
+      prepareProfileSkills: noPreparedSkills,
+      clientFactory: () => omitted.client,
+      buildNestedTool: () => ({}),
+      onPermissionRequest: () => ({ kind: "approve-once" }),
+    });
+    expect(omitted.createSessionConfigs[0]?.reasoningEffort).toBe("low");
+  });
+
   it("returns an empty string when the nested session produces no content", async () => {
     const { client } = fakeClient({
       async sendAndWait() {
@@ -1039,5 +1095,109 @@ describe("executeRlm", () => {
 
     expect(disconnected).toBe(true);
     expect(stopped).toBe(true);
+  });
+});
+
+describe("root read-only permission handler", () => {
+  const invocation = { sessionId: "root" };
+
+  function handler() {
+    return createReadOnlyPermissionHandler(() => ({ kind: "approve-once" }));
+  }
+
+  function shellRequest(overrides: Record<string, unknown> = {}) {
+    return {
+      kind: "shell" as const,
+      canOfferSessionApproval: false,
+      commands: [{ identifier: "npx", readOnly: true }],
+      fullCommandText: "npx vitest run tests/rlm-poc",
+      hasWriteFileRedirection: false,
+      intention: "confirm the reported validation command",
+      possiblePaths: ["/repo/tests/rlm-poc"],
+      possibleUrls: [],
+      ...overrides,
+    };
+  }
+
+  it("approves a read-only validation command", async () => {
+    expect(await handler()(shellRequest(), invocation)).toEqual({ kind: "approve-once" });
+  });
+
+  it("rejects a mutating command, a write redirection, and a sandbox bypass", async () => {
+    expect(
+      await handler()(
+        shellRequest({
+          commands: [{ identifier: "rm", readOnly: false }],
+          fullCommandText: "rm -rf /repo/dist",
+        }),
+        invocation,
+      ),
+    ).toMatchObject({ kind: "reject" });
+    expect(
+      await handler()(shellRequest({ hasWriteFileRedirection: true }), invocation),
+    ).toMatchObject({ kind: "reject" });
+    expect(await handler()(shellRequest({ requestSandboxBypass: true }), invocation)).toMatchObject(
+      {
+        kind: "reject",
+      },
+    );
+    expect(await handler()(shellRequest({ commands: [] }), invocation)).toMatchObject({
+      kind: "reject",
+    });
+  });
+
+  it("rejects every write and capability-changing request", async () => {
+    expect(
+      await handler()(
+        {
+          kind: "write",
+          canOfferSessionApproval: false,
+          diff: "",
+          fileName: "/repo/src/index.ts",
+          intention: "edit the repository",
+        },
+        invocation,
+      ),
+    ).toMatchObject({ kind: "reject" });
+    expect(
+      await handler()({ kind: "extension-management", operation: "scaffold" }, invocation),
+    ).toMatchObject({ kind: "reject" });
+  });
+
+  it("passes reads through and gates MCP tools on readOnly", async () => {
+    expect(
+      await handler()(
+        {
+          kind: "read",
+          path: "/repo/src/index.ts",
+          intention: "confirm the reported change",
+        },
+        invocation,
+      ),
+    ).toEqual({ kind: "approve-once" });
+    expect(
+      await handler()(
+        {
+          kind: "mcp",
+          readOnly: true,
+          serverName: "deja",
+          toolName: "recall",
+          toolTitle: "Recall",
+        },
+        invocation,
+      ),
+    ).toEqual({ kind: "approve-once" });
+    expect(
+      await handler()(
+        {
+          kind: "mcp",
+          readOnly: false,
+          serverName: "deja",
+          toolName: "remember",
+          toolTitle: "Remember",
+        },
+        invocation,
+      ),
+    ).toMatchObject({ kind: "reject" });
   });
 });

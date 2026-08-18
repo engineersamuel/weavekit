@@ -25,6 +25,7 @@ import {
   RlmPreparedFilesystemAccess,
   RlmUnknownProfileError,
   RlmSkillPolicyError,
+  clampRlmReasoningEffort,
   type RlmCallResult,
   type RlmProfile,
   type RlmToolArgs,
@@ -402,13 +403,12 @@ function buildSessionConfig(
     ...(options.parentCallId ? { parentCallId: options.parentCallId } : {}),
     dependencyCallIds: options.dependencies?.map(({ callId }) => callId) ?? [],
   });
+  const reasoningEffort = options.args.effort
+    ? clampRlmReasoningEffort(options.args.effort, profile.maxReasoningEffort)
+    : (options.modelDecision?.reasoningEffort ?? profile.reasoningEffort);
   return {
     model: options.modelDecision?.model ?? profile.model,
-    ...((options.modelDecision?.reasoningEffort ?? profile.reasoningEffort)
-      ? {
-          reasoningEffort: options.modelDecision?.reasoningEffort ?? profile.reasoningEffort,
-        }
-      : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     enableConfigDiscovery: true,
     enableSkills: skillDirectories.length > 0,
     memory: { enabled: false },
@@ -532,6 +532,43 @@ function createDestinationScopedPermissionHandler(
       case "extension-management":
       case "extension-permission-access":
         return reject("This profile cannot approve capability-changing operations.");
+      case "read":
+      case "url":
+      case "memory":
+      case "custom-tool":
+        return fallback(request, invocation);
+    }
+  };
+}
+
+/**
+ * Permission handler for the root Submind. The root reads the repository to confirm what a worker
+ * reported and runs the run brief's validation commands itself; it never writes. Shell obeys the
+ * same rule, otherwise `bash` would be a bypass around it.
+ */
+export function createReadOnlyPermissionHandler(fallback: PermissionHandler): PermissionHandler {
+  const reject = (feedback: string): PermissionRequestResult => ({ kind: "reject", feedback });
+
+  return (request, invocation) => {
+    switch (request.kind) {
+      case "write":
+        return reject("The root Submind cannot write; delegate every repository change.");
+      case "shell":
+        if (request.requestSandboxBypass || request.commands.length === 0) {
+          return reject("Sandbox bypass and unparsed shell commands are prohibited.");
+        }
+        return !request.hasWriteFileRedirection &&
+          request.commands.every((command) => command.readOnly)
+          ? { kind: "approve-once" }
+          : reject("The root Submind may run only read-only shell commands; delegate the rest.");
+      case "mcp":
+        return request.readOnly
+          ? fallback(request, invocation)
+          : reject("The root Submind may invoke only read-only MCP tools.");
+      case "hook":
+      case "extension-management":
+      case "extension-permission-access":
+        return reject("The root Submind cannot approve capability-changing operations.");
       case "read":
       case "url":
       case "memory":

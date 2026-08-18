@@ -139,6 +139,7 @@ describe("rlm profile registry", () => {
       "view",
       "glob",
       "grep",
+      "bash",
     ]);
     expect(createRlmRootAvailableTools(true)).toEqual([
       "custom:rlm",
@@ -146,10 +147,10 @@ describe("rlm profile registry", () => {
       "view",
       "glob",
       "grep",
+      "bash",
       "custom:invoke_trellage",
     ]);
     for (const deniedTool of [
-      "bash",
       "write",
       "create",
       "str_replace_editor",
