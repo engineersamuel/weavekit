@@ -1,6 +1,7 @@
 import { TrellageHeadlessTerminal, type TrellageHeadlessResult } from "../contracts.js";
 import {
   malformedResult,
+  normalizeTokenUsage,
   parseJsonLines,
   readRecord,
   readString,
@@ -55,6 +56,8 @@ export const ompCopilotHeadlessAdapter: TrellageHeadlessAdapter = {
     const turnEndEvent = [...events].reverse().find(isTurnEnd);
     const turnMessage = readRecord(turnEndEvent, "message");
     const errorEvent = [...events].reverse().find(isError);
+    const usage = readRecord(turnMessage, "usage");
+    const tokenUsage = normalizeTokenUsage(usage);
 
     if (errorEvent) {
       return {
@@ -66,9 +69,8 @@ export const ompCopilotHeadlessAdapter: TrellageHeadlessAdapter = {
         ...(turnMessage && readString(turnMessage, "model")
           ? { model: readString(turnMessage, "model") }
           : {}),
-        ...(turnMessage && readRecord(turnMessage, "usage")
-          ? { usage: readRecord(turnMessage, "usage") }
-          : {}),
+        ...(usage ? { usage } : {}),
+        ...(tokenUsage ? { tokenUsage } : {}),
         reportedSuccess: false,
         harnessError: errorMessage(errorEvent),
         permissionDenials: [],
@@ -89,7 +91,6 @@ export const ompCopilotHeadlessAdapter: TrellageHeadlessAdapter = {
 
     const finalText = readTextContent(turnMessage);
     const model = readString(turnMessage, "model");
-    const usage = readRecord(turnMessage, "usage");
     return {
       terminal: TrellageHeadlessTerminal.Completed,
       ...(finalText ? { finalText } : {}),
@@ -98,6 +99,7 @@ export const ompCopilotHeadlessAdapter: TrellageHeadlessAdapter = {
       reportedSuccess: true,
       permissionDenials: [],
       ...(usage ? { usage } : {}),
+      ...(tokenUsage ? { tokenUsage } : {}),
       changedFiles: [],
       parseWarnings: warnings,
     };

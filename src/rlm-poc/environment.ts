@@ -1,9 +1,11 @@
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadLocalEnvFiles } from "../config.js";
+import { loadLocalEnvFiles, loadWeavekitConfig } from "../config.js";
 
 export type LoadRlmEnvironmentOptions = {
   homeDirectory?: string;
+  configPath?: string;
   env?: NodeJS.ProcessEnv;
   loadVarlock?: () => Promise<void>;
 };
@@ -41,14 +43,16 @@ export async function loadRlmVarlockEnvironment(): Promise<void> {
 }
 
 /**
- * Makes the operator's home-level environment available to the RLM process before Varlock
- * validates the dedicated RLM schema and installs its runtime redaction hooks.
+ * Makes the operator's Weavekit config and legacy home-level environment available to the RLM
+ * process before Varlock validates the dedicated RLM schema and installs its redaction hooks.
  */
 export async function loadRlmEnvironment(
   options: LoadRlmEnvironmentOptions = {},
 ): Promise<string[]> {
   const env = options.env ?? process.env;
   const homeDirectory = options.homeDirectory ?? homedir();
+  const configPath = options.configPath ?? join(homeDirectory, ".weavekit", "config.toml");
+  loadWeavekitConfig(configPath, env);
   const loaded = loadLocalEnvFiles(homeDirectory, env);
   await (options.loadVarlock ?? loadRlmVarlockEnvironment)();
   return Object.keys(loaded);

@@ -1,6 +1,7 @@
 import { claimRlmExecutionBudget, snapshotRlmExecutionBudget } from "../budget.js";
 import { writeRlmOutput } from "../environment.js";
 import { TrellageTurnOutcome } from "../../generated/baml_client/index.js";
+import { aggregateTokenUsage, boundToolUseEvidence } from "./adapters/contracts.js";
 import { headlessAdapterFor } from "./adapters/index.js";
 import { buildHeadlessTrellageCommand } from "./catalog.js";
 import {
@@ -9,6 +10,8 @@ import {
   type TrellageHeadlessAttempt,
   type TrellageHeadlessResult,
   type TrellageProfile,
+  type TrellageTokenUsage,
+  type TrellageToolUseEvidence,
   type TrellageUserInputExchange,
 } from "./contracts.js";
 import type { TrellageTurnDiagnoser } from "./diagnosis.js";
@@ -24,6 +27,8 @@ import type { RlmExecutionBudget } from "../budget.js";
 export type TrellageHeadlessLoopInput = {
   profile: TrellageProfile;
   prompt: string;
+  appendSystemPrompt?: string;
+  diagnosisGoal?: string;
   cwd: string;
   timeoutMs: number;
   maxAttempts: number;
@@ -47,6 +52,14 @@ export type TrellageHeadlessLoopResult = {
   evidence?: string;
   questionCount: number;
   resumeCount: number;
+  tokenUsage?: TrellageTokenUsage;
+  costUsd?: number;
+  premiumRequests?: number;
+  durationMs?: number;
+  changedFiles: string[];
+  permissionDenials: string[];
+  toolUses?: TrellageToolUseEvidence[];
+  toolUsesTruncated: boolean;
   lastResult?: TrellageHeadlessResult;
 };
 
@@ -71,6 +84,7 @@ export async function runTrellageHeadlessLoop(
     claimRlmExecutionBudget(input.executionBudget);
     const argv = buildHeadlessTrellageCommand(input.profile, {
       prompt,
+      ...(input.appendSystemPrompt ? { appendSystemPrompt: input.appendSystemPrompt } : {}),
       ...(input.model ? { model: input.model } : {}),
       ...(input.effort ? { effort: input.effort } : {}),
       ...(input.autopilot ? { autopilot: input.autopilot } : {}),
@@ -253,21 +267,25 @@ export async function runTrellageHeadlessLoop(
     }
 
     try {
+      const originalGoal = input.diagnosisGoal ?? input.prompt;
       const diagnosis = await input.diagnose.diagnose({
-        originalGoal: input.prompt,
+        originalGoal,
         result,
       });
       if (diagnosis.outcome === TrellageTurnOutcome.ACHIEVED) {
-        return {
-          text: result.finalText ?? diagnosis.summary,
-          outcome: TrellageOutcome.Completed,
-          turns: attempts.length,
-          userInputs,
+        return withAggregateEvidence(
+          {
+            text: result.finalText ?? diagnosis.summary,
+            outcome: TrellageOutcome.Completed,
+            turns: attempts.length,
+            userInputs,
+            attempts,
+            questionCount,
+            resumeCount,
+            lastResult: result,
+          },
           attempts,
-          questionCount,
-          resumeCount,
-          lastResult: result,
-        };
+        );
       }
       return failure(
         TrellageOutcome.Unclassifiable,
@@ -333,21 +351,98 @@ function failure(
   evidence: string,
   lastResult?: TrellageHeadlessResult,
 ): TrellageHeadlessLoopResult {
-  return {
-    text,
-    outcome,
-    turns: attempts.length,
-    userInputs,
+  return withAggregateEvidence(
+    {
+      text,
+      outcome,
+      turns: attempts.length,
+      userInputs,
+      attempts,
+      evidence,
+      questionCount,
+      resumeCount,
+      ...(lastResult ? { lastResult } : {}),
+    },
     attempts,
-    evidence,
-    questionCount,
-    resumeCount,
-    ...(lastResult ? { lastResult } : {}),
-  };
+  );
 }
 
 function normalizedQuestionKey(question: string, choices?: readonly string[]): string {
   return `${question.toLowerCase().replace(/\s+/gu, " ").trim()}\u0000${(choices ?? [])
     .map((choice) => choice.toLowerCase().replace(/\s+/gu, " ").trim())
     .join("\u0000")}`;
+}
+
+function withAggregateEvidence(
+  result: Omit<
+    TrellageHeadlessLoopResult,
+    | "tokenUsage"
+    | "costUsd"
+    | "premiumRequests"
+    | "durationMs"
+    | "changedFiles"
+    | "permissionDenials"
+    | "toolUses"
+    | "toolUsesTruncated"
+  >,
+  attempts: readonly TrellageHeadlessAttempt[],
+): TrellageHeadlessLoopResult {
+  const results = attempts
+    .map((attempt) => attempt.result)
+    .filter(
+      (attemptResult): attemptResult is TrellageHeadlessResult => attemptResult !== undefined,
+    );
+  const tokenUsage = aggregateTokenUsage(results.map((attemptResult) => attemptResult.tokenUsage));
+  const costUsd = sumResultMetric(results, (attemptResult) => attemptResult.costUsd);
+  const premiumRequests = sumResultMetric(
+    results,
+    (attemptResult) => attemptResult.premiumRequests,
+  );
+  const durationMs = sumResultMetric(results, (attemptResult) => attemptResult.durationMs);
+  const changedFiles = uniqueStrings(
+    results.flatMap((attemptResult) => attemptResult.changedFiles),
+  );
+  const permissionDenials = uniqueStrings(
+    results.flatMap((attemptResult) => attemptResult.permissionDenials),
+  );
+  const hasToolUseEvidence = results.some(
+    (attemptResult) =>
+      attemptResult.toolUses !== undefined || attemptResult.toolUsesTruncated !== undefined,
+  );
+  const toolEvidence = hasToolUseEvidence
+    ? boundToolUseEvidence(
+        results.flatMap((attemptResult) => attemptResult.toolUses ?? []),
+        results.some((attemptResult) => attemptResult.toolUsesTruncated === true),
+      )
+    : undefined;
+  return {
+    ...result,
+    ...(tokenUsage ? { tokenUsage } : {}),
+    ...(costUsd !== undefined ? { costUsd } : {}),
+    ...(premiumRequests !== undefined ? { premiumRequests } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    changedFiles,
+    permissionDenials,
+    ...(toolEvidence ? { toolUses: toolEvidence.toolUses } : {}),
+    toolUsesTruncated: toolEvidence?.toolUsesTruncated ?? false,
+  };
+}
+
+function sumResultMetric(
+  results: readonly TrellageHeadlessResult[],
+  select: (result: TrellageHeadlessResult) => number | undefined,
+): number | undefined {
+  let total: number | undefined;
+  for (const result of results) {
+    const value = select(result);
+    if (value === undefined || !Number.isFinite(value) || value < 0) continue;
+    const next = (total ?? 0) + value;
+    if (!Number.isFinite(next)) return undefined;
+    total = next;
+  }
+  return total;
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }

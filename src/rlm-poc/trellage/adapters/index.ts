@@ -1,5 +1,5 @@
 import { TrellageMode, type TrellageProfile } from "../contracts.js";
-import { containerRuntimeFor } from "../catalog.js";
+import { TrellageContainerEventContract } from "../catalog.js";
 import { claudeHeadlessAdapter } from "./claude.js";
 import { copilotHeadlessAdapter } from "./copilot.js";
 import { ompCopilotHeadlessAdapter } from "./omp.js";
@@ -7,10 +7,10 @@ import type { TrellageHeadlessAdapter } from "./contracts.js";
 
 export function headlessAdapterFor(profile: TrellageProfile): TrellageHeadlessAdapter {
   if (profile.mode === TrellageMode.Container) {
-    // A container emits its harness's own stream verbatim, so the Claude container reuses the
-    // native `cldx` adapter unchanged. `headlessCapabilitiesFor` admits only container runtimes
-    // with a verified JSONL branch, so no other runtime reaches this point.
-    if (containerRuntimeFor(profile) === "claude") return claudeHeadlessAdapter;
+    // Trellage emits the harness stream verbatim. Route only by its authoritative event contract.
+    if (profile.headless?.eventContract === TrellageContainerEventContract.ClaudeStreamJsonV1) {
+      return claudeHeadlessAdapter;
+    }
     throw new Error(`No headless adapter is registered for container profile "${profile.name}".`);
   }
   switch (profile.launcher) {

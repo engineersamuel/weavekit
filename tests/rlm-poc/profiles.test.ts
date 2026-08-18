@@ -45,6 +45,8 @@ describe("rlm profile registry", () => {
     expect(council.authority).toBe(RlmProfileAuthority.Investigation);
     expect(council.repositoryWritePermission).toBe(false);
     expect(council.availableTools).toEqual(expect.arrayContaining(["bash", "view", "glob"]));
+    expect(council.description).toContain("materially consequential decisions");
+    expect(council.description).not.toContain("/council");
     expect(council.systemMessagePrompt).toContain("/council");
     expect(council.sendTimeoutMs).toBe(20 * 60_000);
     expect(council.model).toBe("gpt-5.6-sol");

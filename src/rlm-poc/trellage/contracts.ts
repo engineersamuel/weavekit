@@ -12,6 +12,23 @@ export const TrellageMode = {
 } as const;
 export type TrellageMode = (typeof TrellageMode)[keyof typeof TrellageMode];
 
+export type TrellageContainerHeadlessContract = {
+  prompt: boolean;
+  outputFormats: string[];
+  eventContract: string;
+  trellageEventContract: string;
+  sessionId: string;
+  resume: boolean;
+  resumeWithPrompt: boolean;
+  questionToolControl: string;
+  changedFiles: string;
+  usage: boolean;
+  cost: boolean;
+  modelOverride: boolean;
+  effortOverride: boolean;
+  testedHarnessVersion?: string;
+};
+
 /**
  * Selectable harness. `container` is the Trellage container runtime; the rest are native
  * launchers, keyed by the harness they run rather than the launcher binary name, because the
@@ -43,6 +60,8 @@ export type TrellageProfile = {
    * subcommand, so this stays `undefined` there and readiness is not preflighted.
    */
   readiness?: string;
+  /** Authoritative `trellage list --json --full` headless contract for container profiles. */
+  headless?: TrellageContainerHeadlessContract;
 };
 
 /**
@@ -58,6 +77,20 @@ export type TrellageHeadlessCapabilities = {
   denyQuestionTool: boolean;
   changedFiles: boolean;
   cost: boolean;
+};
+
+export type TrellageTokenUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  totalTokens?: number;
+};
+
+export type TrellageToolUseEvidence = {
+  name: string;
+  selector?: string;
+  count: number;
 };
 
 export const TrellageHeadlessTerminal = {
@@ -84,11 +117,14 @@ export type TrellageHeadlessResult = {
   harnessError?: string;
   permissionDenials: string[];
   usage?: Record<string, unknown>;
+  tokenUsage?: TrellageTokenUsage;
   costUsd?: number;
   premiumRequests?: number;
   durationMs?: number;
   turns?: number;
   changedFiles: string[];
+  toolUses?: TrellageToolUseEvidence[];
+  toolUsesTruncated?: boolean;
   parseWarnings: string[];
 };
 
@@ -164,6 +200,20 @@ export type TrellageUserInputExchange = {
   answer: string;
 };
 
+export type TrellageAttemptSummary = {
+  number: number;
+  exitCode: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  cancelled: boolean;
+  stdoutBytes: number;
+  stderrBytes: number;
+  terminal?: TrellageHeadlessTerminal;
+  sessionId?: string;
+  harnessError?: string;
+  parseWarnings?: string[];
+};
+
 export type TrellageInvokeResult = {
   text: string;
   outcome: TrellageOutcome;
@@ -183,8 +233,17 @@ export type TrellageInvokeResult = {
   turns: number;
   /** Questions answered on behalf of the root Submind during the invocation. */
   userInputs?: TrellageUserInputExchange[];
-  /** Headless process evidence, retained for structured native-launcher diagnostics. */
-  attempts?: TrellageHeadlessAttempt[];
+  sessionId?: string;
+  durationMs?: number;
+  usage?: TrellageTokenUsage;
+  costUsd?: number;
+  premiumRequests?: number;
+  changedFiles?: string[];
+  permissionDenials?: string[];
+  toolUses?: TrellageToolUseEvidence[];
+  toolUsesTruncated?: boolean;
+  /** Bounded process evidence. Raw stdout, stderr, and argv stay internal. */
+  attempts?: TrellageAttemptSummary[];
   /** Screen evidence, retained when the result file was absent or the outcome was not success. */
   evidence?: string;
 };

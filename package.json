@@ -29,6 +29,7 @@
     "repro:visual-design": "nub scripts/source-to-project-visual-design-repro.ts",
     "smoke:pr-launch": "nub scripts/source-to-project-pr-launch-smoke.ts",
     "smoke:pr-launch-dashboard": "nub scripts/source-to-project-pr-launch-dashboard-smoke.ts",
+    "smoke:trellage-resume": "nub scripts/trellage-headless-resume-smoke.ts",
     "prototype:agent-harness": "nub scripts/agent-harness-poc.ts"
   },
   "dependencies": {

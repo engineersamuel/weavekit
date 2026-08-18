@@ -5,6 +5,7 @@ import {
   TrellageHarness,
   TrellageMode,
   TrellageUnknownProfileError,
+  type TrellageContainerHeadlessContract,
   type TrellageHeadlessCapabilities,
   type TrellageProfile,
 } from "./contracts.js";
@@ -31,9 +32,35 @@ const ProfileSchema = z
   })
   .passthrough();
 
+const ContainerHeadlessSchema = z.object({
+  prompt: z.boolean(),
+  outputFormats: z.array(z.string()),
+  eventContract: z.string(),
+  trellageEventContract: z.string(),
+  sessionId: z.string(),
+  resume: z.boolean(),
+  resumeWithPrompt: z.boolean(),
+  questionToolControl: z.string(),
+  changedFiles: z.string(),
+  usage: z.boolean(),
+  cost: z.boolean(),
+  modelOverride: z.boolean(),
+  effortOverride: z.boolean(),
+  testedHarnessVersion: z.string().optional(),
+});
+
+const FullContainerProfileSchema = ProfileSchema.extend({
+  headless: z.unknown().optional(),
+});
+
 /** Container mode: `{ schemaVersion, profiles: [...] }` — no per-profile harness/launcher. */
 const ContainerCatalogSchema = z.object({
   profiles: z.array(ProfileSchema).default([]),
+});
+
+/** Full container inventory with authoritative per-profile headless metadata. */
+const FullContainerCatalogSchema = z.object({
+  profiles: z.array(FullContainerProfileSchema).default([]),
 });
 
 /** `trx list --json` reports every native launcher in one canonical inventory. */
@@ -92,20 +119,41 @@ async function discoverContainerProfiles(
   runner: TrellageCommandRunner,
 ): Promise<TrellageProfile[]> {
   try {
+    const { stdout } = await runner("trellage", ["list", "--json", "--full"]);
+    const parsed = FullContainerCatalogSchema.safeParse(JSON.parse(stdout));
+    if (parsed.success) return normalizeContainerProfiles(parsed.data.profiles, true);
+  } catch {
+    // Fall back to basic inventory. Profiles remain discoverable but are not RLM-selectable.
+  }
+
+  try {
     const { stdout } = await runner("trellage", ["list", "--json"]);
     const parsed = ContainerCatalogSchema.safeParse(JSON.parse(stdout));
-    if (!parsed.success) return [];
-    return parsed.data.profiles.map((profile) => ({
+    if (parsed.success) return normalizeContainerProfiles(parsed.data.profiles, false);
+  } catch {
+    // Trellage is unavailable.
+  }
+  return [];
+}
+
+function normalizeContainerProfiles(
+  profiles: Readonly<z.infer<typeof FullContainerCatalogSchema>["profiles"]>,
+  includeHeadless: boolean,
+): TrellageProfile[] {
+  return profiles.map((profile) => {
+    const parsedHeadless = includeHeadless
+      ? ContainerHeadlessSchema.safeParse(profile.headless)
+      : undefined;
+    return {
       harness: TrellageHarness.Container,
       mode: TrellageMode.Container,
       launcher: "trellage",
       name: profile.name,
       description: profile.description,
       sandbox: profile.sandbox ?? false,
-    }));
-  } catch {
-    return [];
-  }
+      ...(parsedHeadless?.success ? { headless: parsedHeadless.data } : {}),
+    };
+  });
 }
 
 async function discoverNativeProfiles(runner: TrellageCommandRunner): Promise<TrellageProfile[]> {
@@ -231,31 +279,9 @@ const NATIVE_HEADLESS_CAPABILITIES: Readonly<
   },
 };
 
-/**
- * Container harness runtimes with a verified headless JSONL contract.
- *
- * Only the Claude container runtime implements the `TRELLAGE_OUTPUT_FORMAT=jsonl` branch, where it
- * appends `--output-format stream-json --verbose` to Claude Code's own args. The emitted events are
- * therefore identical to native `cldx`, so they reuse the same adapter. `denyQuestionTool` holds
- * without passing `--disallowedTools`: Claude Code's non-interactive `-p` mode does not expose
- * `AskUserQuestion` at all. `changedFiles` matches `cldx` — Claude's stream-json does not report
- * them.
- *
- * Trellage names each container profile `<harness kind>-<suite>` and derives the container name
- * from the same kind, so the prefix identifies the runtime. A wrong guess fails closed: a runtime
- * without the JSONL branch emits text, which the adapter reports as malformed.
- */
-const CONTAINER_HEADLESS_RUNTIMES: Readonly<
-  Record<string, TrellageHeadlessCapabilities | undefined>
-> = {
-  claude: {
-    structuredEvents: true,
-    resume: true,
-    denyQuestionTool: true,
-    changedFiles: false,
-    cost: true,
-  },
-};
+export const TrellageContainerEventContract = {
+  ClaudeStreamJsonV1: "claude-stream-json-v1",
+} as const;
 
 /**
  * Launchers blocked from RLM selection even if an adapter is added.
@@ -265,26 +291,45 @@ const CONTAINER_HEADLESS_RUNTIMES: Readonly<
  */
 const RLM_DISABLED_LAUNCHERS = new Set(["grx"]);
 
-/** Resolves the container harness runtime that owns a container profile. */
-export function containerRuntimeFor(profile: TrellageProfile): string | undefined {
-  const [runtime] = profile.name.split("-");
-  return runtime || undefined;
-}
-
 /**
- * Returns capabilities only for launchers and container runtimes with a verified headless adapter.
+ * Returns capabilities only for native launchers and compatible authoritative container metadata.
  */
 export function headlessCapabilitiesFor(
   profile: TrellageProfile,
 ): TrellageHeadlessCapabilities | undefined {
   if (profile.mode === TrellageMode.Container) {
-    const runtime = containerRuntimeFor(profile);
-    return runtime ? CONTAINER_HEADLESS_RUNTIMES[runtime] : undefined;
+    const headless = compatibleContainerHeadlessContract(profile.headless);
+    if (!headless) return undefined;
+    return {
+      structuredEvents: true,
+      resume: headless.resume && headless.resumeWithPrompt,
+      denyQuestionTool: headless.questionToolControl === "hard-deny",
+      changedFiles: headless.changedFiles === "git-diff",
+      cost: headless.cost,
+    };
   }
   return (
     NATIVE_HEADLESS_CAPABILITIES[`${profile.launcher}:${profile.name}`] ??
     NATIVE_HEADLESS_CAPABILITIES[profile.launcher]
   );
+}
+
+function compatibleContainerHeadlessContract(
+  headless: TrellageContainerHeadlessContract | undefined,
+): TrellageContainerHeadlessContract | undefined {
+  if (
+    headless?.prompt !== true ||
+    !headless.outputFormats.includes("jsonl") ||
+    headless.eventContract !== TrellageContainerEventContract.ClaudeStreamJsonV1 ||
+    headless.trellageEventContract !== "trellage-headless-v1" ||
+    headless.sessionId !== "native" ||
+    headless.resume !== true ||
+    headless.resumeWithPrompt !== true ||
+    headless.questionToolControl !== "hard-deny"
+  ) {
+    return undefined;
+  }
+  return headless;
 }
 
 export function supportsHeadlessTrellage(profile: TrellageProfile): boolean {
@@ -297,9 +342,8 @@ export function supportsHeadlessTrellage(profile: TrellageProfile): boolean {
 /**
  * Profiles exposed to `invoke_trellage`.
  *
- * Discovery still reads the complete Trellage/TRX inventory, but the RLM can select only launchers
- * and container runtimes with a verified structured adapter. Keep this restriction until the
- * remaining launchers and container runtimes pass their fixture, contract, and profile-sweep gates.
+ * Discovery still reads the complete Trellage/TRX inventory, but the RLM can select only native
+ * launchers with verified adapters and containers with compatible authoritative metadata.
  */
 export function selectRlmTrellageProfiles(profiles: readonly TrellageProfile[]): TrellageProfile[] {
   return profiles.filter(
@@ -309,6 +353,7 @@ export function selectRlmTrellageProfiles(profiles: readonly TrellageProfile[]):
 
 export type TrellageHeadlessCommandOptions = {
   prompt: string;
+  appendSystemPrompt?: string;
   model?: string;
   effort?: string;
   autopilot?: boolean;
@@ -333,6 +378,11 @@ export function buildHeadlessTrellageCommand(
   }
 
   if (profile.mode === TrellageMode.Container) {
+    if (options.appendSystemPrompt) {
+      throw new Error(
+        "append-system-prompt transport is unavailable for container headless execution.",
+      );
+    }
     // `trellage` exempts `--prompt`, `resume … --prompt`, and `--output-format jsonl` from its
     // interactive-terminal assertion, and drops `--interactive --tty` from `docker container exec`
     // for JSONL. The harness's own flags come from the profile definition and cannot be passed
@@ -354,6 +404,9 @@ export function buildHeadlessTrellageCommand(
 
   if (profile.launcher === "cldx") {
     if (options.resumeSessionId) command.push("--resume", options.resumeSessionId);
+    if (options.appendSystemPrompt) {
+      command.push("--append-system-prompt", options.appendSystemPrompt);
+    }
     command.push(
       "-p",
       options.prompt,
@@ -366,6 +419,12 @@ export function buildHeadlessTrellageCommand(
       "AskUserQuestion",
     );
     return command;
+  }
+
+  if (options.appendSystemPrompt) {
+    throw new Error(
+      `append-system-prompt transport is unavailable for native/${profile.launcher}/${profile.name}.`,
+    );
   }
 
   if (profile.launcher === "omp" && profile.name === "copilot") {

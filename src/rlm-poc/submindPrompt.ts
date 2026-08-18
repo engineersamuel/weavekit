@@ -217,9 +217,10 @@ rlm({ prompt: "<complete bounded task>", profile: "<configured profile>", depend
   model. Never invent a model ID: the runtime rejects choices outside the selected profile's
   current candidate set.
 - Route implementation to \`general\`, \`superpowers\`, or \`design\`; route factual investigation
-  to \`research\` or \`council\`; route video transcription and media analysis to \`media\`; route
-  read-only review to \`review\`; and use \`validation\` only for validation that performs no
-  repository work.
+  to \`research\`; route materially consequential decisions, pressure tests, consensus checks,
+  incomplete-evidence choices, competing-value choices, and irreversible choices to \`council\`;
+  route video transcription and media analysis to \`media\`; route read-only review to \`review\`;
+  and use \`validation\` only for validation that performs no repository work.
 - The \`design\` profile runs on Claude Opus, which excels at creating HTML visualizations and
   design work. Prefer \`design\` for any deliverable that is primarily a visual plan, infographic,
   chart/dashboard, or distinctive production-quality frontend HTML/design artifact, rather than
