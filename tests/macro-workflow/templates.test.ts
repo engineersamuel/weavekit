@@ -5,6 +5,7 @@ import {
   listWorkflowTemplates,
   materializeWorkflowPlan,
 } from "../../src/macro-workflow/templates.js";
+import { legacyTest } from "../support/legacyWorkflowTests.js";
 
 describe("macro workflow templates", () => {
   it("lists the implementation-review template", () => {
@@ -48,7 +49,7 @@ describe("macro workflow templates", () => {
     expect(() => assertValidWorkflowPlan(plan)).not.toThrow();
   });
 
-  it("omits human visual-plan work from plan-only source-to-project runs", () => {
+  legacyTest("omits human visual work from source-to-project plans", () => {
     const plan = materializeWorkflowPlan("source-to-project", {
       objective: "Evaluate source-to-project planning",
       source: "source.md",

@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { legacyTest } from "./support/legacyWorkflowTests.js";
 
 const shutdown = vi.fn(async () => {
   throw new Error("telemetry shutdown failed");
@@ -39,7 +40,7 @@ describe("CLI main", () => {
     vi.clearAllMocks();
   });
 
-  it("ignores telemetry shutdown failures after a successful run", async () => {
+  legacyTest("ignores telemetry shutdown failures after a successful run", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-cli-main-"));
     const inputPath = join(dir, "question.md");
     await writeFile(inputPath, "# Question\n\nShould we use Flue?", "utf8");
@@ -62,7 +63,7 @@ describe("CLI main", () => {
     }
   });
 
-  it("continues running when telemetry startup fails", async () => {
+  legacyTest("continues running when telemetry startup fails", async () => {
     startTelemetryMock.mockRejectedValueOnce(new Error("invalid Langfuse URL"));
 
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);

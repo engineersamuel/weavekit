@@ -20,6 +20,7 @@ import {
   applyMastermindLiveEnvironmentDefaults,
 } from "../src/mastermind/liveEnv.js";
 import { ExecutorKind } from "../src/submind/contracts.js";
+import { legacyTest } from "./support/legacyWorkflowTests.js";
 
 const tempDirs: string[] = [];
 
@@ -541,7 +542,7 @@ synthesis_model = "claude-sonnet-5"
     expect(env.BAML_MODEL).toBe(DEFAULT_MASTERMIND_LIVE_BAML_MODEL);
   });
 
-  it("loads source-to-project defaults and named project catalog entries", async () => {
+  legacyTest("loads source-to-project defaults and project entries", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
@@ -752,7 +753,7 @@ tenant_id = "tenant-one"
     });
   });
 
-  it("loads source-to-project manual PR launcher configuration", async () => {
+  legacyTest("loads source-to-project PR launcher configuration", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
@@ -787,7 +788,7 @@ split = "down"
     });
   });
 
-  it("does not materialize undefined project threshold override fields", async () => {
+  legacyTest("omits undefined source-to-project threshold overrides", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");
@@ -821,7 +822,7 @@ knowledge_export = "off"
     expect(spreadThresholds.minAcceptanceAverage).toBe(0.9);
   });
 
-  it("loads custom source-to-project PR launcher agent options for the Create PR dropdown", async () => {
+  legacyTest("loads custom source-to-project PR launcher options", async () => {
     const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
     tempDirs.push(dir);
     const configPath = join(dir, "config.toml");

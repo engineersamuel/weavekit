@@ -7,6 +7,7 @@ import {
   readWorkflowReplayEvents,
   writeMacroWorkflowArtifacts,
 } from "../../src/macro-workflow/artifacts.js";
+import { legacyTest } from "../support/legacyWorkflowTests.js";
 
 describe("macro workflow artifacts", () => {
   it("reads validated replay JSONL and reports a corrupt line", async () => {
@@ -283,7 +284,7 @@ describe("macro workflow artifacts", () => {
     }
   });
 
-  it("renders source-to-project advisory content in the workflow report", async () => {
+  legacyTest("renders source-to-project advisory report content", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
     try {
       const artifacts = await writeMacroWorkflowArtifacts({
@@ -489,7 +490,7 @@ describe("macro workflow artifacts", () => {
     }
   });
 
-  it("renders rejected final source-to-project reviews instead of active recommendations", async () => {
+  legacyTest("renders rejected source-to-project reviews", async () => {
     const outputDir = await mkdtemp(join(tmpdir(), "macro-artifacts-"));
     try {
       const artifacts = await writeMacroWorkflowArtifacts({

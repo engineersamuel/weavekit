@@ -14,6 +14,7 @@ import {
   type WorkflowDashboardServer,
 } from "../../src/macro-workflow/dashboardServer.js";
 import type { MacroWorkflowRunStateLike } from "../../src/macro-workflow/types.js";
+import { legacyTest } from "../support/legacyWorkflowTests.js";
 
 const fixtureEventsPath = "tests/fixtures/workflow-events.jsonl";
 const execFileAsync = promisify(execFile);
@@ -409,7 +410,7 @@ describe("workflow dashboard replay bootstrap", () => {
     }
   });
 
-  it("rejects manual source-to-project PR launch requests for visualization nodes", async () => {
+  legacyTest("rejects source-to-project PR launch for visualization nodes", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
     const configPath = join(rootDir, "config.toml");
     const launched: unknown[] = [];
@@ -470,7 +471,7 @@ autonomous_pr_allowed = true
     }
   });
 
-  it("launches a manual source-to-project PR agent for a passed report node", async () => {
+  legacyTest("launches a source-to-project PR agent for a passed report", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
     const configPath = join(rootDir, "config.toml");
     const launched: unknown[] = [];
@@ -557,7 +558,7 @@ autonomous_pr_allowed = true
     }
   });
 
-  it("matches a Herdr worktree run to the configured project by git remote", async () => {
+  legacyTest("matches a source-to-project run by git remote", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
     const configPath = join(rootDir, "config.toml");
     const configuredWeavekit = join(rootDir, "configured-weavekit");
@@ -641,7 +642,7 @@ autonomous_pr_allowed = true
     }
   });
 
-  it("logs manual PR launch failures to stderr", async () => {
+  legacyTest("logs source-to-project PR launch failures", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
     const configPath = join(rootDir, "config.toml");
     const stderrWrite = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -699,7 +700,7 @@ autonomous_pr_allowed = true
     }
   });
 
-  it("rejects manual PR launch requests for incomplete visualization nodes", async () => {
+  legacyTest("rejects source-to-project PR launch for incomplete visualization", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-dashboard-"));
     const configPath = join(rootDir, "config.toml");
     try {
