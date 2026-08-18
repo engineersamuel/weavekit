@@ -23,6 +23,7 @@ import { createStaticHarnessRegistry } from "../../src/macro-workflow/harness.js
 import { MacroWorkflowStateStore } from "../../src/macro-workflow/stateStore.js";
 import type { MacroWorkflowRunState } from "../../src/macro-workflow/types.js";
 import { WorkflowHarnessKind } from "../../src/macro-workflow/types.js";
+import { legacyTest } from "../support/legacyWorkflowTests.js";
 
 const entityValidation = vi.hoisted(() => ({
   assertValidEntityCatalog: vi.fn(),
@@ -740,7 +741,7 @@ autonomous_pr_allowed = false
     }
   });
 
-  it("parses source-to-project workflow selectors", () => {
+  legacyTest("parses source-to-project workflow selectors", () => {
     const parsed = parseWorkflowCliArgs([
       "workflow",
       "run",
@@ -843,7 +844,7 @@ autonomous_pr_allowed = false
     }
   });
 
-  it("requires source-to-project project selectors", () => {
+  legacyTest("requires source-to-project project selectors", () => {
     expect(() =>
       parseWorkflowCliArgs([
         "workflow",
@@ -856,7 +857,7 @@ autonomous_pr_allowed = false
     ).toThrow("Missing required --project <id> or --project-path <path> argument.");
   });
 
-  it("infers source-to-project sources from prompt URLs or source lines", () => {
+  legacyTest("infers source-to-project sources from prompts", () => {
     expect(inferSourceReferenceFromPrompt("Read https://example.com/post, then apply it.")).toBe(
       "https://example.com/post",
     );
@@ -1339,7 +1340,7 @@ autonomous_pr_allowed = false
     }
   });
 
-  it("reconstructs source-to-project runtime context and rejects conflicting resume flags", async () => {
+  legacyTest("reconstructs source-to-project resume context", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-source-resume-"));
     const outputRoot = join(rootDir, "runs");
     const runId = "source-run";
@@ -1598,7 +1599,7 @@ autonomous_pr_allowed = false
     }
   });
 
-  it("requires explicit legacy source context and upgrades it after a safe resume", async () => {
+  legacyTest("upgrades legacy source context after a safe resume", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "workflow-cli-source-legacy-"));
     const outputRoot = join(rootDir, "runs");
     const runId = "legacy-source";

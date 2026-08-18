@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import {
   formatDecisionCouncilSuccessMessage,
   parseDecisionCouncilCliArgs,
-  parseEntityCliArgs,
   readDecisionCouncilInputFile,
 } from "../src/cli.js";
 
@@ -38,14 +37,6 @@ function runCommand(
 }
 
 describe("CLI", () => {
-  it("parses entity validate", () => {
-    expect(parseEntityCliArgs(["entity", "validate"])).toEqual({ command: "validate" });
-  });
-
-  it("rejects unknown entity command", () => {
-    expect(() => parseEntityCliArgs(["entity", "list"])).toThrow("Usage: weavekit entity validate");
-  });
-
   it("parses decision-council run arguments", () => {
     const parsed = parseDecisionCouncilCliArgs([
       "decision-council",

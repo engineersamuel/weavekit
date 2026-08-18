@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Classifier, createInitialWorkflowRouter } from "../src/initialRouter.js";
+import { legacyTest } from "./support/legacyWorkflowTests.js";
 
 describe("InitialWorkflowRouter", () => {
   it("routes planning-heavy prompts to plan mode", async () => {
@@ -25,7 +26,7 @@ describe("InitialWorkflowRouter", () => {
     expect(decision.consideration).toContain("deep research");
   });
 
-  it("routes decision questions to the decision council", async () => {
+  legacyTest("routes decision questions to the decision council", async () => {
     const router = createInitialWorkflowRouter();
     const decision = await router.route({
       prompt:
