@@ -20,6 +20,8 @@ import {
   TrellageUnhealthyProfileError,
   TrellageUnknownProfileError,
   createTrellageToolJsonSchema,
+  type TrellageAttemptSummary,
+  type TrellageHeadlessAttempt,
   type TrellageInvokeArgs,
   type TrellageInvokeResult,
 } from "./contracts.js";
@@ -28,8 +30,19 @@ import { bamlTrellageTurnDiagnoser, type TrellageTurnDiagnoser } from "./diagnos
 import { runTrellageHeadlessLoop } from "./headlessLoop.js";
 import { nativeTrellageProcessRunner, type TrellageProcessRunner } from "./headlessRunner.js";
 import { createHerdrTrellageBackend } from "./herdrBackend.js";
+import {
+  composeTrellageDelegatedPrompt,
+  describeTrellageProfileForInventory,
+  resolveTrellageProfileDirective,
+  TrellageDirectiveTransport,
+  type TrellageProfileDirectiveRegistry,
+} from "./profileDirectives.js";
 import { prepareResultLocation, resolveResultLocation, writeTaskDocument } from "./result.js";
-import { withTrellageAttemptSpan, withTrellageSpan } from "./telemetry.js";
+import {
+  recordTrellageResultAttributes,
+  withTrellageAttemptSpan,
+  withTrellageSpan,
+} from "./telemetry.js";
 import type { TrellageWorktreeRegistry } from "./worktrees.js";
 import type { TrellageBackend } from "./backend.js";
 
@@ -41,6 +54,9 @@ export const DEFAULT_TRELLAGE_MAX_TURNS = 12;
 export const DEFAULT_TRELLAGE_MAX_CONCURRENT = 2;
 /** Applied when `autopilot: true` is requested without an explicit `maxAutopilotContinues`. */
 export const DEFAULT_TRELLAGE_MAX_AUTOPILOT_CONTINUES = 25;
+const MAX_TRELLAGE_DIAGNOSTIC_LENGTH = 2_048;
+const MAX_TRELLAGE_PARSE_WARNINGS = 8;
+const MAX_TRELLAGE_PARSE_WARNING_LENGTH = 256;
 
 export type CreateTrellageToolOptions = {
   runId: string;
@@ -70,6 +86,8 @@ export type CreateTrellageToolOptions = {
   diagnose?: TrellageTurnDiagnoser;
   /** Enables structured native headless execution while retaining the PTY path for comparison. */
   headlessEnabled?: boolean;
+  /** Optional directive registry override for tests and caller-owned routing policy. */
+  profileDirectiveRegistry?: TrellageProfileDirectiveRegistry;
 };
 
 /**
@@ -125,7 +143,7 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
           (profile) =>
             `- ${profile.harness} / ${profile.name} [${profile.mode}, ` +
             `${profile.sandbox ? "sandboxed" : "unsandboxed"}; launcher=${profile.launcher}]: ` +
-            profile.description,
+            describeTrellageProfileForInventory(profile, options.profileDirectiveRegistry),
         )
         .join("\n"),
     parameters: createTrellageToolJsonSchema(profiles, copilotModelNames),
@@ -175,10 +193,28 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
         if (readiness && UNHEALTHY_READINESS.has(readiness.toLowerCase())) {
           throw new TrellageUnhealthyProfileError(profile.name, readiness);
         }
+        const directive = resolveTrellageProfileDirective(
+          profile,
+          options.profileDirectiveRegistry,
+        );
+        const useHeadless = headlessEnabled && supportsHeadlessTrellage(profile);
+        const appendSystemPrompt =
+          directive?.transport === TrellageDirectiveTransport.AppendSystemPrompt
+            ? directive.invocationDirective
+            : undefined;
+        if (appendSystemPrompt && (!useHeadless || !isNativeClaude)) {
+          throw new Error(
+            "append-system-prompt transport requires native Claude (`cldx`) headless execution.",
+          );
+        }
+        const delegatedPrompt =
+          directive?.transport === TrellageDirectiveTransport.PromptEnvelope
+            ? composeTrellageDelegatedPrompt(profile, args.prompt, directive)
+            : args.prompt;
+        const headlessPrompt = args.fleet ? `/fleet ${delegatedPrompt}` : delegatedPrompt;
         callNumber += 1;
         const callId = `${invocation.toolCallId ?? `call-${callNumber}`}`;
         const worktree = await options.worktrees.acquire(options.repositoryPath);
-        const useHeadless = headlessEnabled && supportsHeadlessTrellage(profile);
         const command = useHeadless
           ? `${profile.launcher} ${profile.name} [RLM headless JSONL]`
           : buildTrellageCommand(
@@ -207,7 +243,9 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
                   const processRunner = options.headlessRunner ?? nativeTrellageProcessRunner;
                   const loop = await runTrellageHeadlessLoop({
                     profile,
-                    prompt: args.fleet ? `/fleet ${args.prompt}` : args.prompt,
+                    prompt: headlessPrompt,
+                    ...(appendSystemPrompt ? { appendSystemPrompt } : {}),
+                    diagnosisGoal: args.prompt,
                     cwd: worktree.worktreePath,
                     timeoutMs,
                     maxAttempts: maxTurns,
@@ -240,14 +278,17 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
                       questionCount: loop.questionCount,
                       resumeCount: loop.resumeCount,
                       sessionId: loop.lastResult?.sessionId,
-                      durationMs: loop.lastResult?.durationMs,
-                      usage: loop.lastResult?.usage,
-                      costUsd: loop.lastResult?.costUsd,
-                      premiumRequests: loop.lastResult?.premiumRequests,
-                      changedFiles: loop.lastResult?.changedFiles,
-                      permissionDenials: loop.lastResult?.permissionDenials,
+                      durationMs: loop.durationMs,
+                      usage: loop.tokenUsage,
+                      costUsd: loop.costUsd,
+                      premiumRequests: loop.premiumRequests,
+                      changedFiles: loop.changedFiles,
+                      permissionDenials: loop.permissionDenials,
+                      toolUses: loop.toolUses,
+                      toolUsesTruncated: loop.toolUsesTruncated,
                     }),
                   );
+                  recordTrellageResultAttributes(span, loop);
                   return {
                     text: loop.text,
                     outcome: loop.outcome,
@@ -264,8 +305,23 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
                     branchName: worktree.branchName,
                     turns: loop.turns,
                     ...(loop.userInputs.length ? { userInputs: loop.userInputs } : {}),
-                    attempts: loop.attempts,
-                    ...(loop.evidence ? { evidence: loop.evidence } : {}),
+                    ...(loop.lastResult?.sessionId ? { sessionId: loop.lastResult.sessionId } : {}),
+                    ...(loop.durationMs !== undefined ? { durationMs: loop.durationMs } : {}),
+                    ...(loop.tokenUsage ? { usage: loop.tokenUsage } : {}),
+                    ...(loop.costUsd !== undefined ? { costUsd: loop.costUsd } : {}),
+                    ...(loop.premiumRequests !== undefined
+                      ? { premiumRequests: loop.premiumRequests }
+                      : {}),
+                    ...(loop.changedFiles.length ? { changedFiles: loop.changedFiles } : {}),
+                    ...(loop.permissionDenials.length
+                      ? { permissionDenials: loop.permissionDenials }
+                      : {}),
+                    ...(loop.toolUses?.length ? { toolUses: loop.toolUses } : {}),
+                    ...(loop.toolUsesTruncated ? { toolUsesTruncated: true } : {}),
+                    attempts: loop.attempts.map(summarizeHeadlessAttempt),
+                    ...(loop.evidence
+                      ? { evidence: boundDiagnostic(loop.evidence, MAX_TRELLAGE_DIAGNOSTIC_LENGTH) }
+                      : {}),
                   };
                 }
 
@@ -276,7 +332,7 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
                   callId,
                 );
                 await prepareResultLocation(location);
-                const taskPointer = await writeTaskDocument(location, args.prompt);
+                const taskPointer = await writeTaskDocument(location, delegatedPrompt);
                 const launchPrompt = args.fleet ? `/fleet ${taskPointer}` : taskPointer;
                 const agentPrefix = `rlm-t-${options.runId}`;
                 const factory = options.createBackend ?? defaultBackendFactory;
@@ -391,6 +447,40 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
       }
     },
   });
+}
+
+function summarizeHeadlessAttempt(attempt: TrellageHeadlessAttempt): TrellageAttemptSummary {
+  return {
+    number: attempt.number,
+    exitCode: attempt.exitCode,
+    signal: attempt.signal,
+    timedOut: attempt.timedOut,
+    cancelled: attempt.cancelled,
+    stdoutBytes: Buffer.byteLength(attempt.stdout),
+    stderrBytes: Buffer.byteLength(attempt.stderr),
+    ...(attempt.result?.terminal ? { terminal: attempt.result.terminal } : {}),
+    ...(attempt.result?.sessionId ? { sessionId: attempt.result.sessionId } : {}),
+    ...(attempt.result?.harnessError
+      ? {
+          harnessError: boundDiagnostic(
+            attempt.result.harnessError,
+            MAX_TRELLAGE_DIAGNOSTIC_LENGTH,
+          ),
+        }
+      : {}),
+    ...(attempt.result?.parseWarnings.length
+      ? {
+          parseWarnings: attempt.result.parseWarnings
+            .slice(0, MAX_TRELLAGE_PARSE_WARNINGS)
+            .map((warning) => boundDiagnostic(warning, MAX_TRELLAGE_PARSE_WARNING_LENGTH)),
+        }
+      : {}),
+  };
+}
+
+function boundDiagnostic(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1)}…`;
 }
 
 function isUsageError(error: unknown): boolean {

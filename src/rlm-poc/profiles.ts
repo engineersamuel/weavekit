@@ -258,9 +258,9 @@ const COUNCIL_PROFILE: RlmProfile = {
   name: RlmProfileName.Council,
   description:
     "Council of High Intelligence - structured multi-lens deliberation that preserves dissent, " +
-    "kill criteria, and next steps. Best for hard architecture/product tradeoffs and high-stakes " +
-    "design calls where one-shot answers fail. Skip for factual lookups, small reversible edits, " +
-    "or pure implementation throughput. Invoke primarily with `/council <prompt>`.",
+    "kill criteria, and next steps. Use it for materially consequential decisions, pressure " +
+    "tests, consensus checks, and hard architecture/product tradeoffs where one-shot reasoning " +
+    "is unsafe. Skip factual lookups, small reversible edits, and pure implementation throughput.",
   purpose: RlmProfilePurpose.Deliberation,
   authority: RlmProfileAuthority.Investigation,
   repositoryWritePermission: false,

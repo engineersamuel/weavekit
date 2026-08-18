@@ -1,9 +1,10 @@
 import { TrellageHeadlessTerminal, type TrellageHeadlessResult } from "../contracts.js";
 import {
   malformedResult,
+  normalizeTokenUsage,
   parseJsonLines,
   readBoolean,
-  readNumber,
+  readNonNegativeNumber,
   readRecord,
   readString,
   readStringArray,
@@ -73,7 +74,7 @@ export const copilotHeadlessAdapter: TrellageHeadlessAdapter = {
         "Copilot session.task_complete event did not contain success",
       ]);
     }
-    const exitCode = readNumber(resultData, "exitCode", "exit_code");
+    const exitCode = readNonNegativeNumber(resultData, "exitCode", "exit_code");
     const legacyProcessSuccess = readBoolean(resultData, "success", "is_success", "isSuccess");
     const processSuccess = exitCode === undefined ? legacyProcessSuccess === true : exitCode === 0;
     const success = taskSuccess && processSuccess;
@@ -83,6 +84,10 @@ export const copilotHeadlessAdapter: TrellageHeadlessAdapter = {
     const sessionStart = events.find((event) => eventType(event) === "session.start");
     const sessionData = eventData(sessionStart ?? {});
     const usage = readRecord(resultData, "usage") ?? readRecord(taskData, "usage");
+    const tokenUsage = normalizeTokenUsage(
+      readRecord(resultData, "usage"),
+      readRecord(taskData, "usage"),
+    );
     const codeChanges = readRecord(usage, "codeChanges");
     const changedFiles = [
       ...readStringArray(resultData, "changed_files", "changedFiles"),
@@ -117,27 +122,30 @@ export const copilotHeadlessAdapter: TrellageHeadlessAdapter = {
         ...readStringArray(taskData, "permission_denials", "permissionDenials"),
       ],
       ...(usage ? { usage } : {}),
-      ...(readNumber(resultData, "cost_usd", "costUsd", "total_cost_usd") !== undefined
-        ? { costUsd: readNumber(resultData, "cost_usd", "costUsd", "total_cost_usd") }
+      ...(tokenUsage ? { tokenUsage } : {}),
+      ...(readNonNegativeNumber(resultData, "cost_usd", "costUsd", "total_cost_usd") !== undefined
+        ? {
+            costUsd: readNonNegativeNumber(resultData, "cost_usd", "costUsd", "total_cost_usd"),
+          }
         : {}),
-      ...((readNumber(resultData, "premium_requests", "premiumRequests") ??
-        readNumber(usage, "premium_requests", "premiumRequests")) !== undefined
+      ...((readNonNegativeNumber(resultData, "premium_requests", "premiumRequests") ??
+        readNonNegativeNumber(usage, "premium_requests", "premiumRequests")) !== undefined
         ? {
             premiumRequests:
-              readNumber(resultData, "premium_requests", "premiumRequests") ??
-              readNumber(usage, "premium_requests", "premiumRequests"),
+              readNonNegativeNumber(resultData, "premium_requests", "premiumRequests") ??
+              readNonNegativeNumber(usage, "premium_requests", "premiumRequests"),
           }
         : {}),
-      ...((readNumber(resultData, "duration_ms", "durationMs") ??
-        readNumber(usage, "sessionDurationMs", "session_duration_ms")) !== undefined
+      ...((readNonNegativeNumber(resultData, "duration_ms", "durationMs") ??
+        readNonNegativeNumber(usage, "sessionDurationMs", "session_duration_ms")) !== undefined
         ? {
             durationMs:
-              readNumber(resultData, "duration_ms", "durationMs") ??
-              readNumber(usage, "sessionDurationMs", "session_duration_ms"),
+              readNonNegativeNumber(resultData, "duration_ms", "durationMs") ??
+              readNonNegativeNumber(usage, "sessionDurationMs", "session_duration_ms"),
           }
         : {}),
-      ...(readNumber(resultData, "turns", "num_turns") !== undefined
-        ? { turns: readNumber(resultData, "turns", "num_turns") }
+      ...(readNonNegativeNumber(resultData, "turns", "num_turns") !== undefined
+        ? { turns: readNonNegativeNumber(resultData, "turns", "num_turns") }
         : {}),
       changedFiles: [...new Set(changedFiles)],
       parseWarnings: warnings,

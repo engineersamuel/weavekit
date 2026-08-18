@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { claudeHeadlessAdapter } from "../../../src/rlm-poc/trellage/adapters/claude.js";
+import {
+  MAX_TOOL_USE_EVIDENCE_ENTRIES,
+  MAX_TOOL_USE_EVIDENCE_STRING_LENGTH,
+} from "../../../src/rlm-poc/trellage/adapters/contracts.js";
 import { copilotHeadlessAdapter } from "../../../src/rlm-poc/trellage/adapters/copilot.js";
 import { headlessAdapterFor } from "../../../src/rlm-poc/trellage/adapters/index.js";
 import { ompCopilotHeadlessAdapter } from "../../../src/rlm-poc/trellage/adapters/omp.js";
@@ -41,7 +45,53 @@ describe("headless launcher adapters", () => {
       durationMs: 1234,
       costUsd: 0.01,
       turns: 2,
+      tokenUsage: {
+        inputTokens: 100,
+        outputTokens: 50,
+        cachedInputTokens: 20,
+        cacheCreationInputTokens: 5,
+      },
+      toolUses: [
+        { name: "Skill", selector: "frontend-design", count: 2 },
+        { name: "Agent", selector: "member", count: 1 },
+        { name: "Bash", count: 1 },
+      ],
+      toolUsesTruncated: false,
     });
+    expect(JSON.stringify(result.toolUses)).not.toMatch(/prompt|description|secret command/u);
+    expect(result.tokenUsage).not.toHaveProperty("totalTokens");
+  });
+
+  it("bounds Claude tool evidence entries and strings", () => {
+    const longSelector = "s".repeat(MAX_TOOL_USE_EVIDENCE_STRING_LENGTH + 1);
+    const toolUses = [
+      {
+        type: "tool_use",
+        name: "Skill",
+        input: { skill: longSelector },
+      },
+      ...Array.from({ length: MAX_TOOL_USE_EVIDENCE_ENTRIES }, (_, index) => ({
+        type: "tool_use",
+        name: `Tool-${String(index)}`,
+        input: { prompt: `private-${String(index)}` },
+      })),
+    ];
+    const result = claudeHeadlessAdapter.parse({
+      stdout: [
+        JSON.stringify({ type: "assistant", message: { content: toolUses } }),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "done",
+        }),
+      ].join("\n"),
+      stderr: "",
+    });
+
+    expect(result.toolUses).toHaveLength(MAX_TOOL_USE_EVIDENCE_ENTRIES);
+    expect(result.toolUses?.[0]?.selector).toHaveLength(MAX_TOOL_USE_EVIDENCE_STRING_LENGTH);
+    expect(result.toolUsesTruncated).toBe(true);
   });
 
   it("normalizes paired Copilot task-complete and result events", async () => {
@@ -58,6 +108,12 @@ describe("headless launcher adapters", () => {
       changedFiles: ["src/example.ts"],
       durationMs: 321,
       premiumRequests: 1,
+      tokenUsage: {
+        inputTokens: 75,
+        outputTokens: 25,
+        cachedInputTokens: 10,
+        totalTokens: 100,
+      },
     });
   });
 
@@ -130,6 +186,7 @@ describe("headless launcher adapters", () => {
       model: "gpt-5.6-sol",
       reportedSuccess: true,
       usage: { input_tokens: 120, output_tokens: 42, total_tokens: 162 },
+      tokenUsage: { inputTokens: 120, outputTokens: 42, totalTokens: 162 },
     });
   });
 

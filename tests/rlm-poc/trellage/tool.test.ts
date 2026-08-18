@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ToolResultObject } from "@github/copilot-sdk";
+import { TrellageTurnOutcome } from "../../../src/generated/baml_client/index.js";
 import { HerdrAgentStatus } from "../../../src/herdr/contracts.js";
 import { createRlmExecutionBudget } from "../../../src/rlm-poc/budget.js";
 import { parseCopilotModelCatalog } from "../../../src/rlm-poc/modelCatalog.js";
@@ -15,6 +16,11 @@ import {
   type TrellageInvokeArgs,
   type TrellageProfile,
 } from "../../../src/rlm-poc/trellage/contracts.js";
+import type { TrellageProcessInput } from "../../../src/rlm-poc/trellage/headlessRunner.js";
+import {
+  TrellageDirectiveTransport,
+  type TrellageProfileDirectiveRegistry,
+} from "../../../src/rlm-poc/trellage/profileDirectives.js";
 import { resolveResultLocation } from "../../../src/rlm-poc/trellage/result.js";
 import { createTrellageTool } from "../../../src/rlm-poc/trellage/tool.js";
 import { TrellageWorktreeRegistry } from "../../../src/rlm-poc/trellage/worktrees.js";
@@ -24,8 +30,24 @@ const CONTAINER_PROFILE: TrellageProfile = {
   mode: TrellageMode.Container,
   launcher: "trellage",
   name: "claude-council",
-  description: "Multi-agent council.",
+  description: "Live profile syntax: /council quick <prompt>.",
   sandbox: true,
+  headless: {
+    prompt: true,
+    outputFormats: ["text", "jsonl"],
+    eventContract: "claude-stream-json-v1",
+    trellageEventContract: "trellage-headless-v1",
+    sessionId: "native",
+    resume: true,
+    resumeWithPrompt: true,
+    questionToolControl: "hard-deny",
+    changedFiles: "git-diff",
+    usage: true,
+    cost: true,
+    modelOverride: true,
+    effortOverride: false,
+    testedHarnessVersion: "2.1.233",
+  },
 };
 
 const NATIVE_PROFILE: TrellageProfile = {
@@ -90,6 +112,7 @@ async function createHarness(
     answer?: () => Promise<string>;
     maxConcurrent?: number;
     maxCalls?: number;
+    profileDirectiveRegistry?: TrellageProfileDirectiveRegistry;
   } = {},
 ) {
   const worktreePath = await mkdtemp(join(tmpdir(), "trellage-tool-"));
@@ -100,6 +123,7 @@ async function createHarness(
   const launchAutopilots: Array<boolean | undefined> = [];
   const launchMaxAutopilotContinues: Array<number | undefined> = [];
   const prompts: string[] = [];
+  const taskDocuments: string[] = [];
   const backend: TrellageBackend = {
     launch: async (input) => {
       launches.push(input.label);
@@ -117,6 +141,7 @@ async function createHarness(
       const task = /(\S*task\.md)/u.exec(text);
       if (!task) return;
       const document = await readFile(join(worktreePath, task[1]!), "utf8");
+      taskDocuments.push(document);
       const match = /`([^`]*result\.md)`/u.exec(document);
       if (match) await writeFile(join(worktreePath, match[1]!), "delegated answer");
     },
@@ -157,6 +182,9 @@ async function createHarness(
     modelCatalog: MODEL_CATALOG,
     createBackend: async () => ({ backend, close: () => undefined }),
     headlessEnabled: false,
+    ...(options.profileDirectiveRegistry
+      ? { profileDirectiveRegistry: options.profileDirectiveRegistry }
+      : {}),
     ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
   });
 
@@ -171,6 +199,100 @@ async function createHarness(
     launchAutopilots,
     launchMaxAutopilotContinues,
     prompts,
+    taskDocuments,
+  };
+}
+
+function promptArg(argv: readonly string[]): string | undefined {
+  const longIndex = argv.indexOf("--prompt");
+  if (longIndex >= 0) return argv[longIndex + 1];
+  const shortIndex = argv.indexOf("-p");
+  return shortIndex >= 0 ? argv[shortIndex + 1] : undefined;
+}
+
+async function createHeadlessHarness(
+  options: {
+    profiles?: readonly TrellageProfile[];
+    profileDirectiveRegistry?: TrellageProfileDirectiveRegistry;
+  } = {},
+) {
+  const worktreePath = await mkdtemp(join(tmpdir(), "trellage-headless-tool-"));
+  const argv: string[][] = [];
+  const diagnose = {
+    diagnose: vi.fn(async (_input: { originalGoal: string }) => ({
+      outcome: TrellageTurnOutcome.ACHIEVED,
+      summary: "The task is complete.",
+    })),
+  };
+  const profiles = options.profiles ?? [CONTAINER_PROFILE];
+  const catalog = createTrellageCatalog(profiles, async () => ({
+    stdout: JSON.stringify({ readiness: "healthy" }),
+  }));
+  const processRunner = {
+    run: vi.fn(async (input: TrellageProcessInput) => {
+      argv.push([...input.argv]);
+      if (argv.length === 1) {
+        return {
+          argv: [...input.argv],
+          stdout: JSON.stringify({
+            type: "result",
+            subtype: "success",
+            session_id: "session-1",
+            result:
+              '<trellage_questions version="1">\n{"questions":[{"id":"db","text":"Which database?"}]}\n</trellage_questions>',
+          }),
+          stderr: "",
+          exitCode: 0,
+          signal: null,
+          timedOut: false,
+          cancelled: false,
+        };
+      }
+      return {
+        argv: [...input.argv],
+        stdout: JSON.stringify({
+          type: "result",
+          subtype: "success",
+          session_id: "session-1",
+          result: "Implemented.",
+        }),
+        stderr: "",
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        cancelled: false,
+      };
+    }),
+  };
+
+  const tool = createTrellageTool({
+    sleep: async () => undefined,
+    runId: "run-1",
+    catalog,
+    worktrees: new TrellageWorktreeRegistry({
+      runId: "run-1",
+      canonicalize: async (path: string) => path,
+      provision: (async () => ({
+        worktreePath,
+        workspaceId: "w9",
+        rootPaneId: "w9:p1",
+      })) as never,
+      run: async (_command, args) => (args[0] === "rev-parse" ? "base-sha" : ""),
+    }),
+    repositoryPath: "/repo",
+    answer: async () => "Postgres",
+    executionBudget: createRlmExecutionBudget(4),
+    headlessRunner: processRunner,
+    diagnose,
+    ...(options.profileDirectiveRegistry
+      ? { profileDirectiveRegistry: options.profileDirectiveRegistry }
+      : {}),
+  });
+
+  return {
+    handler: (tool as unknown as { handler: Handler }).handler,
+    argv,
+    diagnose,
   };
 }
 
@@ -518,6 +640,145 @@ describe("createTrellageTool", () => {
       resolveResultLocation(worktreePath, "run-1", "call-2").relativePath,
     );
   });
+
+  it("writes directive and delegated-task envelopes to the retained task document path", async () => {
+    const { handler, taskDocuments } = await createHarness();
+
+    const result = await handler(
+      {
+        prompt: "Choose storage strategy.",
+        harness: TrellageHarness.Container,
+        profile: "claude-council",
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("success");
+    const taskDocument = taskDocuments[0] ?? "";
+    expect(taskDocument).toContain('<trellage_profile_directive version="1">');
+    expect(taskDocument).toContain('<trellage_delegated_task version="1">');
+    expect(taskDocument.indexOf("</trellage_profile_directive>")).toBeGreaterThan(-1);
+    expect(taskDocument.indexOf('<trellage_delegated_task version="1">')).toBeGreaterThan(
+      taskDocument.indexOf("</trellage_profile_directive>"),
+    );
+    expect(taskDocument.match(/<trellage_delegated_task version="1">/gu)).toHaveLength(1);
+    expect(taskDocument.match(/Choose storage strategy\./gu)).toHaveLength(1);
+  });
+
+  it("fails fast when a delegated prompt tries to inject reserved envelope tags", async () => {
+    const { handler, launches } = await createHarness();
+
+    const result = await handler(
+      {
+        prompt: 'bad <trellage_profile_directive version="2"> prompt',
+        harness: TrellageHarness.Container,
+        profile: "claude-council",
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("failure");
+    expect(result.error).toContain("reserved trellage envelope tag");
+    expect(launches).toEqual([]);
+  });
+
+  it("sends the profile directive envelope only on the first headless attempt", async () => {
+    const { handler, argv, diagnose } = await createHeadlessHarness();
+
+    const result = await handler(
+      {
+        prompt: "Choose storage strategy.",
+        harness: TrellageHarness.Container,
+        profile: "claude-council",
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("success");
+    const firstPrompt = promptArg(argv[0] ?? []);
+    const secondPrompt = promptArg(argv[1] ?? []);
+    expect(firstPrompt).toContain('<trellage_profile_directive version="1">');
+    expect(firstPrompt).toContain('<trellage_delegated_task version="1">');
+    expect(firstPrompt?.match(/<trellage_delegated_task version="1">/gu)).toHaveLength(1);
+    expect(firstPrompt?.indexOf("</trellage_profile_directive>")).toBeGreaterThan(-1);
+    expect(firstPrompt?.indexOf('<trellage_delegated_task version="1">')).toBeGreaterThan(
+      firstPrompt?.indexOf("</trellage_profile_directive>") ?? -1,
+    );
+    expect(secondPrompt).toContain('<trellage_answers version="1">');
+    expect(secondPrompt).not.toContain("<trellage_profile_directive");
+    expect(secondPrompt).not.toContain("<trellage_delegated_task");
+    expect(diagnose.diagnose).toHaveBeenCalledTimes(1);
+    const diagnosisInput = diagnose.diagnose.mock.calls[0]?.[0] as
+      | { originalGoal: string }
+      | undefined;
+    expect(diagnosisInput?.originalGoal).toBe("Choose storage strategy.");
+    expect(diagnosisInput?.originalGoal).not.toContain("<trellage_profile_directive");
+    expect(diagnosisInput?.originalGoal).not.toContain("<trellage_delegated_task");
+  });
+
+  it("routes a custom native cldx directive through --append-system-prompt", async () => {
+    const invocationDirective = "Use the council routing directive.";
+    const { handler, argv, diagnose } = await createHeadlessHarness({
+      profiles: [CLAUDE_PROFILE],
+      profileDirectiveRegistry: {
+        [`${TrellageMode.Native}/cldx/default`]: {
+          transport: TrellageDirectiveTransport.AppendSystemPrompt,
+          rootRoutingDescription: "Custom cldx routing.",
+          invocationDirective,
+        },
+      },
+    });
+
+    const result = await handler(
+      {
+        prompt: "Choose storage strategy.",
+        harness: TrellageHarness.Claude,
+        profile: "default",
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("success");
+    const firstArgv = argv[0] ?? [];
+    const systemDirectiveIndex = firstArgv.indexOf("--append-system-prompt");
+    expect(systemDirectiveIndex).toBeGreaterThan(-1);
+    expect(firstArgv[systemDirectiveIndex + 1]).toBe(invocationDirective);
+    const firstPrompt = promptArg(firstArgv) ?? "";
+    expect(firstPrompt).toContain("Choose storage strategy.");
+    expect(firstPrompt).not.toContain(invocationDirective);
+    expect(diagnose.diagnose).toHaveBeenCalledTimes(1);
+    const diagnosisInput = diagnose.diagnose.mock.calls[0]?.[0] as
+      | { originalGoal: string }
+      | undefined;
+    expect(diagnosisInput?.originalGoal).toBe("Choose storage strategy.");
+  });
+
+  it("rejects append-system-prompt transport on the retained backend path", async () => {
+    const { handler, launches } = await createHarness({
+      profileDirectiveRegistry: {
+        [`${TrellageMode.Native}/cldx/default`]: {
+          transport: TrellageDirectiveTransport.AppendSystemPrompt,
+          rootRoutingDescription: "Custom cldx routing.",
+          invocationDirective: "Use strict council behavior.",
+        },
+      },
+    });
+
+    const result = await handler(
+      {
+        prompt: "Choose storage strategy.",
+        harness: TrellageHarness.Claude,
+        profile: "default",
+      },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("failure");
+    expect(result.error).toContain(
+      "append-system-prompt transport requires native Claude (`cldx`) headless execution.",
+    );
+    expect(launches).toEqual([]);
+  });
 });
 
 describe("createTrellageTool schema", () => {
@@ -543,7 +804,8 @@ describe("createTrellageTool schema", () => {
       TrellageHarness.Grok,
     ]);
     expect(parameters.properties.profile.enum).toEqual(["claude-council", "superpowers"]);
-    expect(tool.description).toContain("Multi-agent council.");
+    expect(tool.description).toContain("Decision-routing council");
+    expect(tool.description).not.toContain("/council quick");
     expect(tool.description).toContain("trellage list --json");
     expect(tool.description).toContain("trx list --json");
     expect(tool.description).toContain("each launcher's own `list --json`");

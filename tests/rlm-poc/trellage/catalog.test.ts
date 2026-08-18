@@ -4,6 +4,7 @@ import {
   buildHeadlessTrellageCommand,
   createTrellageCatalog,
   discoverTrellageProfiles,
+  headlessCapabilitiesFor,
   selectRlmTrellageProfiles,
   supportsHeadlessTrellage,
   type TrellageCommandRunner,
@@ -17,11 +18,58 @@ import { headlessAdapterFor } from "../../../src/rlm-poc/trellage/adapters/index
 import { claudeHeadlessAdapter } from "../../../src/rlm-poc/trellage/adapters/claude.js";
 
 /** Recorded from the installed launchers, so parsing is tested against the real payload shapes. */
-const CONTAINER_LIST = JSON.stringify({
+const COMPATIBLE_CONTAINER_HEADLESS = {
+  prompt: true,
+  outputFormats: ["text", "jsonl"],
+  eventContract: "claude-stream-json-v1",
+  trellageEventContract: "trellage-headless-v1",
+  sessionId: "native",
+  resume: true,
+  resumeWithPrompt: true,
+  questionToolControl: "hard-deny",
+  changedFiles: "git-diff",
+  usage: true,
+  cost: true,
+  modelOverride: true,
+  effortOverride: false,
+  testedHarnessVersion: "2.1.233",
+};
+
+const CONTAINER_FULL_LIST = JSON.stringify({
+  schemaVersion: 1,
+  profiles: [
+    {
+      name: "claude-council",
+      description: "Multi-agent council.",
+      sandbox: true,
+      headless: COMPATIBLE_CONTAINER_HEADLESS,
+    },
+    {
+      name: "claude-legacy",
+      description: "Misleading Claude profile without compatible headless support.",
+      sandbox: true,
+      headless: {
+        ...COMPATIBLE_CONTAINER_HEADLESS,
+        prompt: false,
+        outputFormats: ["text"],
+        eventContract: "unsupported-events-v1",
+        sessionId: "none",
+        resume: false,
+        resumeWithPrompt: false,
+        questionToolControl: "none",
+        changedFiles: "none",
+        usage: false,
+        cost: false,
+      },
+    },
+  ],
+});
+
+const CONTAINER_BASIC_LIST = JSON.stringify({
   schemaVersion: 1,
   profiles: [
     { name: "claude-council", description: "Multi-agent council.", sandbox: true },
-    { name: "codex-superpowers", description: "Codex with superpowers.", sandbox: true },
+    { name: "claude-legacy", description: "Basic inventory only.", sandbox: true },
   ],
 });
 
@@ -93,7 +141,7 @@ describe("discoverTrellageProfiles", () => {
   it("normalizes the container and native catalog shapes into one profile list", async () => {
     const profiles = await discoverTrellageProfiles(
       createRunner({
-        "trellage list --json": CONTAINER_LIST,
+        "trellage list --json --full": CONTAINER_FULL_LIST,
         "trx list --json": TRX_LIST,
       }),
     );
@@ -105,6 +153,7 @@ describe("discoverTrellageProfiles", () => {
       name: "claude-council",
       description: "Multi-agent council.",
       sandbox: true,
+      headless: COMPATIBLE_CONTAINER_HEADLESS,
     });
     expect(profiles).toContainEqual({
       harness: TrellageHarness.Copilot,
@@ -121,7 +170,10 @@ describe("discoverTrellageProfiles", () => {
 
   it("degrades a broken launcher without losing the healthy ones", async () => {
     const profiles = await discoverTrellageProfiles(
-      createRunner({ "trx list --json": TRX_LIST, "trellage list --json": "not json" }),
+      createRunner({
+        "trx list --json": TRX_LIST,
+        "trellage list --json --full": "not json",
+      }),
     );
 
     expect(profiles).toHaveLength(5);
@@ -148,6 +200,44 @@ describe("discoverTrellageProfiles", () => {
     ]);
   });
 
+  it("falls back to basic container inventory without granting headless capability", async () => {
+    const profiles = await discoverTrellageProfiles(
+      createRunner({
+        "trellage list --json --full": "not json",
+        "trellage list --json": CONTAINER_BASIC_LIST,
+      }),
+    );
+
+    expect(profiles).toHaveLength(2);
+    expect(profiles.every((profile) => profile.headless === undefined)).toBe(true);
+    expect(selectRlmTrellageProfiles(profiles)).toEqual([]);
+  });
+
+  it("keeps profiles with missing or malformed headless metadata out of RLM selection", async () => {
+    const profiles = await discoverTrellageProfiles(
+      createRunner({
+        "trellage list --json --full": JSON.stringify({
+          profiles: [
+            { name: "missing-headless", description: "", sandbox: true },
+            {
+              name: "malformed-headless",
+              description: "",
+              sandbox: true,
+              headless: { prompt: "yes", outputFormats: "jsonl" },
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(profiles.map((profile) => profile.name)).toEqual([
+      "missing-headless",
+      "malformed-headless",
+    ]);
+    expect(profiles.every((profile) => profile.headless === undefined)).toBe(true);
+    expect(selectRlmTrellageProfiles(profiles)).toEqual([]);
+  });
+
   it("returns nothing when no launcher is installed", async () => {
     await expect(discoverTrellageProfiles(createRunner({}))).resolves.toEqual([]);
   });
@@ -156,7 +246,7 @@ describe("discoverTrellageProfiles", () => {
 describe("buildTrellageCommand", () => {
   it("passes container profiles with --profile", async () => {
     const [profile] = await discoverTrellageProfiles(
-      createRunner({ "trellage list --json": CONTAINER_LIST }),
+      createRunner({ "trellage list --json --full": CONTAINER_FULL_LIST }),
     );
 
     expect(buildTrellageCommand(profile!)).toEqual(["trellage", "--profile", "claude-council"]);
@@ -234,6 +324,14 @@ describe("buildTrellageCommand", () => {
         "AskUserQuestion",
       ]),
     );
+    expect(
+      buildHeadlessTrellageCommand(claude, {
+        prompt: "do it",
+        appendSystemPrompt: "System directive",
+      }),
+    ).toEqual(
+      expect.arrayContaining(["--append-system-prompt", "System directive", "-p", "do it"]),
+    );
     expect(buildHeadlessTrellageCommand(ompCopilot, { prompt: "do it" })).toEqual([
       "omp",
       "copilot",
@@ -259,12 +357,18 @@ describe("buildTrellageCommand", () => {
     expect(() => buildHeadlessTrellageCommand(ompLocal, { prompt: "do it" })).toThrow(
       "Headless Trellage is not available for native/omp/local.",
     );
+    expect(() =>
+      buildHeadlessTrellageCommand(copilot, {
+        prompt: "do it",
+        appendSystemPrompt: "System directive",
+      }),
+    ).toThrow("append-system-prompt transport is unavailable for native/cpx/hve.");
   });
 
-  it("exposes verified native and Claude container profiles while omitting grx, omp/local, and non-Claude containers", async () => {
+  it("selects compatible metadata and ignores a misleading claude-prefixed profile", async () => {
     const profiles = await discoverTrellageProfiles(
       createRunner({
-        "trellage list --json": CONTAINER_LIST,
+        "trellage list --json --full": CONTAINER_FULL_LIST,
         "trx list --json": TRX_LIST,
       }),
     );
@@ -280,17 +384,22 @@ describe("buildTrellageCommand", () => {
   });
 
   it("drives a Claude container through the exec-only JSONL contract", async () => {
-    // Verified live: `trellage --profile claude-council --output-format jsonl --prompt ...` and its
-    // `resume` form both exit 0 with Claude stream-json and a stable session ID, with stdin closed
-    // and no TTY. Only the Claude container runtime implements the JSONL branch.
+    // The command builder uses the transport promised by the authoritative metadata.
     const profiles = await discoverTrellageProfiles(
-      createRunner({ "trellage list --json": CONTAINER_LIST }),
+      createRunner({ "trellage list --json --full": CONTAINER_FULL_LIST }),
     );
     const claudeContainer = profiles.find((profile) => profile.name === "claude-council")!;
-    const codexContainer = profiles.find((profile) => profile.name === "codex-superpowers")!;
+    const unsupportedContainer = profiles.find((profile) => profile.name === "claude-legacy")!;
 
     expect(supportsHeadlessTrellage(claudeContainer)).toBe(true);
-    expect(supportsHeadlessTrellage(codexContainer)).toBe(false);
+    expect(headlessCapabilitiesFor(claudeContainer)).toEqual({
+      structuredEvents: true,
+      resume: true,
+      denyQuestionTool: true,
+      changedFiles: true,
+      cost: true,
+    });
+    expect(supportsHeadlessTrellage(unsupportedContainer)).toBe(false);
     expect(buildHeadlessTrellageCommand(claudeContainer, { prompt: "do it" })).toEqual([
       "trellage",
       "--profile",
@@ -321,27 +430,77 @@ describe("buildTrellageCommand", () => {
     expect(buildHeadlessTrellageCommand(claudeContainer, { prompt: "do it" })).not.toContain(
       "--disallowedTools",
     );
-    expect(() => buildHeadlessTrellageCommand(codexContainer, { prompt: "do it" })).toThrow(
-      "Headless Trellage is not available for container/trellage/codex-superpowers.",
+    expect(() => buildHeadlessTrellageCommand(unsupportedContainer, { prompt: "do it" })).toThrow(
+      "Headless Trellage is not available for container/trellage/claude-legacy.",
     );
+    expect(() =>
+      buildHeadlessTrellageCommand(claudeContainer, {
+        prompt: "do it",
+        appendSystemPrompt: "System directive",
+      }),
+    ).toThrow("append-system-prompt transport is unavailable for container headless execution.");
   });
 
   it("parses Claude container output with the native Claude adapter", async () => {
     const profiles = await discoverTrellageProfiles(
-      createRunner({ "trellage list --json": CONTAINER_LIST }),
+      createRunner({ "trellage list --json --full": CONTAINER_FULL_LIST }),
     );
     const claudeContainer = profiles.find((profile) => profile.name === "claude-council")!;
 
     expect(headlessAdapterFor(claudeContainer)).toBe(claudeHeadlessAdapter);
     expect(() =>
-      headlessAdapterFor(profiles.find((profile) => profile.name === "codex-superpowers")!),
-    ).toThrow('No headless adapter is registered for container profile "codex-superpowers".');
+      headlessAdapterFor(profiles.find((profile) => profile.name === "claude-legacy")!),
+    ).toThrow('No headless adapter is registered for container profile "claude-legacy".');
+  });
+
+  it("selects the container adapter by event contract instead of profile name", async () => {
+    const profiles = await discoverTrellageProfiles(
+      createRunner({
+        "trellage list --json --full": JSON.stringify({
+          profiles: [
+            {
+              name: "custom-runtime",
+              description: "Non-Claude name with Claude events.",
+              sandbox: true,
+              headless: {
+                ...COMPATIBLE_CONTAINER_HEADLESS,
+                changedFiles: "none",
+                usage: false,
+                cost: false,
+              },
+            },
+            {
+              name: "claude-unknown-events",
+              description: "Unknown event contract.",
+              sandbox: true,
+              headless: {
+                ...COMPATIBLE_CONTAINER_HEADLESS,
+                eventContract: "unknown-events-v1",
+              },
+            },
+          ],
+        }),
+      }),
+    );
+    const customRuntime = profiles.find((profile) => profile.name === "custom-runtime")!;
+    const unknownEvents = profiles.find((profile) => profile.name === "claude-unknown-events")!;
+
+    expect(selectRlmTrellageProfiles(profiles)).toEqual([customRuntime]);
+    expect(customRuntime.headless?.usage).toBe(false);
+    expect(headlessCapabilitiesFor(customRuntime)).toMatchObject({
+      changedFiles: false,
+      cost: false,
+    });
+    expect(headlessAdapterFor(customRuntime)).toBe(claudeHeadlessAdapter);
+    expect(() => headlessAdapterFor(unknownEvents)).toThrow(
+      'No headless adapter is registered for container profile "claude-unknown-events".',
+    );
   });
 
   it("orders equally suitable choices by sandboxed native, container, unsandboxed native", async () => {
     const profiles = await discoverTrellageProfiles(
       createRunner({
-        "trellage list --json": CONTAINER_LIST,
+        "trellage list --json --full": CONTAINER_FULL_LIST,
         "trx list --json": TRX_LIST,
       }),
     );
@@ -363,7 +522,10 @@ describe("buildTrellageCommand", () => {
 describe("createTrellageCatalog", () => {
   it("rejects a profile that does not belong to the requested harness", async () => {
     const profiles = await discoverTrellageProfiles(
-      createRunner({ "trx list --json": TRX_LIST, "trellage list --json": CONTAINER_LIST }),
+      createRunner({
+        "trx list --json": TRX_LIST,
+        "trellage list --json --full": CONTAINER_FULL_LIST,
+      }),
     );
     const catalog = createTrellageCatalog(profiles);
 
@@ -390,7 +552,7 @@ describe("createTrellageCatalog", () => {
   });
 
   it("reports no readiness for container profiles, which have no inventory command", async () => {
-    const runner = createRunner({ "trellage list --json": CONTAINER_LIST });
+    const runner = createRunner({ "trellage list --json --full": CONTAINER_FULL_LIST });
     const catalog = createTrellageCatalog(await discoverTrellageProfiles(runner), runner);
 
     await expect(

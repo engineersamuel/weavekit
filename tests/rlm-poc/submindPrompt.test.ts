@@ -42,6 +42,15 @@ describe("RLM_SUBMIND_SYSTEM_PROMPT", () => {
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("`general` (execution):");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("`superpowers` (execution):");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("`council` (deliberation):");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("materially consequential decisions");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("pressure tests");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("consensus checks");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain(
+      "Route implementation to `general`, `superpowers`, or `design`; route factual investigation\n  to `research`; route materially consequential decisions, pressure tests, consensus checks,\n  incomplete-evidence choices, competing-value choices, and irreversible choices to `council`;",
+    );
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain(
+      "route factual investigation\nto `research` or `council`",
+    );
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("`research` (research):");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("`design` (design):");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("`media` (media):");
@@ -121,6 +130,12 @@ describe("RLM_SUBMIND_SYSTEM_PROMPT", () => {
     );
     expect(RLM_SUBMIND_SYSTEM_PROMPT).toContain("diff text needed by a later reviewer");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("Delegate even trivial execution work");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("/council");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("named-member");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("named-triad");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("`/council full`");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("`/council quick`");
+    expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain("`/council duo`");
     expect(RLM_SUBMIND_SYSTEM_PROMPT).not.toContain(
       "must not attempt to acquire repository files or diffs itself",
     );

@@ -1,9 +1,12 @@
 import { TrellageHeadlessTerminal, type TrellageHeadlessResult } from "../contracts.js";
 import {
+  boundToolUseEvidence,
   malformedResult,
+  normalizeTokenUsage,
   parseJsonLines,
   readBoolean,
-  readNumber,
+  isJsonRecord,
+  readNonNegativeNumber,
   readRecord,
   readString,
   readStringArray,
@@ -15,6 +18,30 @@ import {
 
 function isClaudeResult(event: JsonRecord): boolean {
   return readString(event, "type") === "result";
+}
+
+function claudeToolUseEvidence(events: readonly JsonRecord[]) {
+  const entries: Array<{ name: string; selector?: string }> = [];
+  for (const event of events) {
+    if (readString(event, "type") !== "assistant") continue;
+    const message = readRecord(event, "message");
+    const content = message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (!isJsonRecord(part) || readString(part, "type") !== "tool_use") continue;
+      const name = readString(part, "name");
+      if (!name) continue;
+      const toolInput = readRecord(part, "input");
+      const selector =
+        name === "Skill"
+          ? readString(toolInput, "skill")
+          : name === "Agent"
+            ? readString(toolInput, "subagent_type")
+            : undefined;
+      entries.push({ name, ...(selector ? { selector } : {}) });
+    }
+  }
+  return boundToolUseEvidence(entries);
 }
 
 /**
@@ -32,6 +59,8 @@ export const claudeHeadlessAdapter: TrellageHeadlessAdapter = {
     }
 
     const usage = readRecord(resultEvent, "usage");
+    const tokenUsage = normalizeTokenUsage(usage);
+    const toolEvidence = claudeToolUseEvidence(events);
     const isError = readBoolean(resultEvent, "is_error", "isError");
     const subtype = readString(resultEvent, "subtype");
     const reportedSuccess =
@@ -55,19 +84,30 @@ export const claudeHeadlessAdapter: TrellageHeadlessAdapter = {
           }),
       permissionDenials: readStringArray(resultEvent, "permission_denials", "permissionDenials"),
       ...(usage ? { usage } : {}),
-      ...(readNumber(resultEvent, "total_cost_usd", "cost_usd", "costUsd") !== undefined
-        ? { costUsd: readNumber(resultEvent, "total_cost_usd", "cost_usd", "costUsd") }
+      ...(tokenUsage ? { tokenUsage } : {}),
+      ...(readNonNegativeNumber(resultEvent, "total_cost_usd", "cost_usd", "costUsd") !== undefined
+        ? {
+            costUsd: readNonNegativeNumber(resultEvent, "total_cost_usd", "cost_usd", "costUsd"),
+          }
         : {}),
-      ...(readNumber(resultEvent, "premium_requests", "premiumRequests") !== undefined
-        ? { premiumRequests: readNumber(resultEvent, "premium_requests", "premiumRequests") }
+      ...(readNonNegativeNumber(resultEvent, "premium_requests", "premiumRequests") !== undefined
+        ? {
+            premiumRequests: readNonNegativeNumber(
+              resultEvent,
+              "premium_requests",
+              "premiumRequests",
+            ),
+          }
         : {}),
-      ...(readNumber(resultEvent, "duration_ms", "durationMs") !== undefined
-        ? { durationMs: readNumber(resultEvent, "duration_ms", "durationMs") }
+      ...(readNonNegativeNumber(resultEvent, "duration_ms", "durationMs") !== undefined
+        ? { durationMs: readNonNegativeNumber(resultEvent, "duration_ms", "durationMs") }
         : {}),
-      ...(readNumber(resultEvent, "num_turns", "turns") !== undefined
-        ? { turns: readNumber(resultEvent, "num_turns", "turns") }
+      ...(readNonNegativeNumber(resultEvent, "num_turns", "turns") !== undefined
+        ? { turns: readNonNegativeNumber(resultEvent, "num_turns", "turns") }
         : {}),
       changedFiles: readStringArray(resultEvent, "changed_files", "changedFiles"),
+      toolUses: toolEvidence.toolUses,
+      toolUsesTruncated: toolEvidence.toolUsesTruncated,
       parseWarnings: warnings,
     };
     return result;
