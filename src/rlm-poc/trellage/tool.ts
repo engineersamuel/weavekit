@@ -7,6 +7,7 @@ import {
   type RlmExecutionBudget,
 } from "../budget.js";
 import { RlmCallBudgetExceededError } from "../contracts.js";
+import { writeRlmOutput } from "../environment.js";
 import type { CopilotModelCatalog } from "../modelCatalog.js";
 import { buildTrellageCommand, supportsHeadlessTrellage, type TrellageCatalog } from "./catalog.js";
 import {
@@ -43,6 +44,11 @@ import {
   withTrellageAttemptSpan,
   withTrellageSpan,
 } from "./telemetry.js";
+import {
+  RlmVisualizationAction,
+  RlmVisualizationStatus,
+  type RlmVisualizationObserver,
+} from "../visualization/contracts.js";
 import type { TrellageWorktreeRegistry } from "./worktrees.js";
 import type { TrellageBackend } from "./backend.js";
 
@@ -88,6 +94,12 @@ export type CreateTrellageToolOptions = {
   headlessEnabled?: boolean;
   /** Optional directive registry override for tests and caller-owned routing policy. */
   profileDirectiveRegistry?: TrellageProfileDirectiveRegistry;
+  /** Run-owned storyboard recorder shared with the `rlm` tools. */
+  visualization?: RlmVisualizationObserver;
+  /** `rlm` call that owns the session this tool is registered on. Absent on the root session. */
+  owningCallId?: string;
+  /** Depth of an action issued from the owning session. 1 for the root session. */
+  depth?: number;
 };
 
 /**
@@ -114,6 +126,7 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
       ]
     : [];
   let callNumber = 0;
+  let visualizationCalls = 0;
 
   return defineTool<TrellageInvokeArgs>("invoke_trellage", {
     description:
@@ -148,6 +161,57 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
         .join("\n"),
     parameters: createTrellageToolJsonSchema(profiles, copilotModelNames),
     handler: async (args, invocation): Promise<ToolResultObject> => {
+      const startedAtMs = Date.now();
+      const startedAt = new Date(startedAtMs).toISOString();
+      visualizationCalls += 1;
+      // Each session owns its own tool instance, so the owning call id is what keeps ids unique
+      // across the recursion tree.
+      const visualizationCallId = `${options.owningCallId ?? `${options.runId}:root`}:trellage-${visualizationCalls}`;
+      const recordCompletion = async (
+        status: RlmVisualizationStatus,
+        detail: {
+          summary?: string;
+          error?: string;
+          profile?: string;
+          model?: string;
+          worktreePath?: string;
+          decisions?: readonly string[];
+        },
+      ): Promise<void> => {
+        if (!options.visualization) return;
+        // Deliberate non-fatal boundary: a storyboard failure must never change the delegated
+        // work's own result, so the failure is reported and then dropped.
+        try {
+          await options.visualization.recordCompletion({
+            action: RlmVisualizationAction.Trellage,
+            status,
+            callId: visualizationCallId,
+            ...(options.owningCallId ? { parentCallId: options.owningCallId } : {}),
+            dependencyCallIds: [],
+            depth: options.depth ?? 1,
+            prompt: args.prompt,
+            profile: detail.profile ?? args.profile,
+            harness: args.harness,
+            ...((detail.model ?? args.model) ? { model: detail.model ?? args.model! } : {}),
+            ...(detail.worktreePath ? { worktreePath: detail.worktreePath } : {}),
+            startedAt,
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAtMs,
+            ...(detail.summary ? { summary: detail.summary } : {}),
+            ...(detail.error ? { error: detail.error } : {}),
+            decisions: detail.decisions ?? [],
+            artifacts: [],
+          });
+        } catch (visualizationError) {
+          writeRlmOutput(
+            `[visualization] invoke_trellage completion was not recorded: ${
+              visualizationError instanceof Error
+                ? visualizationError.message
+                : String(visualizationError)
+            }\n`,
+          );
+        }
+      };
       try {
         const profile = options.catalog.resolve(args.harness, args.profile);
         const isNativeCopilot =
@@ -404,12 +468,25 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
           ? await invoke()
           : await options.worktrees.withExclusiveAccess(options.repositoryPath, invoke);
 
+        const completed = result.outcome === TrellageOutcome.Completed;
+        await recordCompletion(
+          completed ? RlmVisualizationStatus.Succeeded : RlmVisualizationStatus.Failed,
+          {
+            summary: result.text,
+            ...(completed ? {} : { error: `harness outcome: ${result.outcome}` }),
+            profile: result.profile,
+            ...(result.model ? { model: result.model } : {}),
+            worktreePath: result.worktreePath,
+            decisions: (result.userInputs ?? []).map(
+              (exchange) => `${exchange.question} -> ${exchange.answer}`,
+            ),
+          },
+        );
+
         return {
           textResultForLlm: JSON.stringify(result),
-          resultType: result.outcome === TrellageOutcome.Completed ? "success" : "failure",
-          ...(result.outcome === TrellageOutcome.Completed
-            ? {}
-            : { error: `harness outcome: ${result.outcome}` }),
+          resultType: completed ? "success" : "failure",
+          ...(completed ? {} : { error: `harness outcome: ${result.outcome}` }),
           toolTelemetry: {
             invoke_trellage: {
               harness: args.harness,
@@ -429,6 +506,7 @@ export function createTrellageTool(options: CreateTrellageToolOptions): Tool<Tre
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        await recordCompletion(RlmVisualizationStatus.Failed, { error: message });
         return {
           textResultForLlm: JSON.stringify({
             error: message,

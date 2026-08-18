@@ -258,6 +258,15 @@ client<llm> CopilotProxyGemini3ProPreview {
   }
 }
 
+client<llm> CopilotProxyGemini37Flash {
+  provider "openai-generic"
+  options {
+    base_url "http://127.0.0.1:8080/v1"
+    api_key env.COPILOT_PROXY_API_KEY
+    model "gemini-3.7-flash"
+  }
+}
+
 client<llm> CopilotProxyGpt41 {
   provider "openai-generic"
   options {

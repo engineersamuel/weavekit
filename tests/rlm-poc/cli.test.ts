@@ -84,6 +84,15 @@ describe("parseRlmCliArgs", () => {
     });
   });
 
+  it.each(["baml", "copilot-sdk"] as const)(
+    "parses the %s visualization renderer",
+    (visualizationRenderer) => {
+      expect(
+        parseRlmCliArgs(["--visualization-renderer", visualizationRenderer, "-p", "Do the work."]),
+      ).toMatchObject({ visualizationRenderer });
+    },
+  );
+
   it.each([
     [["--prompt-file", "/tmp/prompt.txt"], "/tmp/prompt.txt"],
     [["--prompt-file=/tmp/prompt.txt"], "/tmp/prompt.txt"],
@@ -148,6 +157,9 @@ describe("parseRlmCliArgs", () => {
     [["--cwd="], "requires a non-empty path"],
     [["--max-depth", "0"], "requires a positive integer"],
     [["--max-total-calls", "many"], "requires a positive integer"],
+    [["--visualization-renderer"], 'requires "baml" or "copilot-sdk"'],
+    [["--visualization-renderer", "browser"], 'requires "baml" or "copilot-sdk"'],
+    [["--visualization-renderer", "baml", "--visualization-renderer", "copilot-sdk"], "only once"],
     [["-p", "one", "--prompt", "two"], "only once"],
     [["--resume", "f13c1665-bc2c-4d97-9c37-8f31d5c87d17"], "requires -p/--prompt"],
     [["--resume", "not-a-uuid", "--prompt", "Continue."], "requires a UUID"],

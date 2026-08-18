@@ -1,10 +1,16 @@
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MastermindRlmExecutionDefaults } from "../config.js";
 import { buildLangfuseTraceUrl } from "../mastermind/telemetry.js";
+import {
+  RLM_VISUALIZATION_HTML_PATH,
+  RLM_VISUALIZATION_PNG_PATH,
+  RLM_VISUALIZATION_STATE_PATH,
+} from "../rlm-poc/visualization/contracts.js";
+import { clearRlmVisualizationArtifacts } from "../rlm-poc/visualization/cleanup.js";
 import {
   ExecutorKind,
   type DirectExecutionRequest,
@@ -39,7 +45,11 @@ const WEAVEKIT_DIR_NAME = ".weavekit";
 type RlmOutputPayload =
   | {
       ok: true;
-      result: { finalText: string; conversationId?: string; traceId: string };
+      result: {
+        finalText: string;
+        conversationId?: string;
+        traceId: string;
+      };
       observedAt: string;
     }
   | { ok: false; error: string; observedAt: string };
@@ -142,6 +152,9 @@ export class RlmDirectExecutor implements DirectExecutor {
       rm(join(worktreePath, request.resultManifestPath), { force: true }),
       rm(outputJsonPath, { force: true }),
       rm(join(weavekitDir, "mastermind-attempt.json"), { force: true }),
+      // The child rewrites its storyboard in place, so a previous attempt's artifacts would
+      // otherwise survive and be collected as if they described this one.
+      clearRlmVisualizationArtifacts(worktreePath),
     ]);
     await writeFile(logPath, "", "utf8");
     await writeFile(promptPath, buildRlmDirectExecutionPrompt(request), "utf8");
@@ -158,6 +171,8 @@ export class RlmDirectExecutor implements DirectExecutor {
       String(this.config.maxDepth),
       "--max-total-calls",
       String(this.config.maxTotalCalls),
+      "--visualization-renderer",
+      this.config.visualizationRenderer,
       ...(this.config.model ? ["--model", this.config.model] : []),
       ...(this.config.enableTrellage ? ["--trellage"] : []),
     ];
@@ -216,7 +231,12 @@ export class RlmDirectExecutor implements DirectExecutor {
       outputPayload?.ok === true ? buildSubmindTraceReference(outputPayload.result) : undefined;
     try {
       const manifestResult = await readAndValidateResultManifest(handle.worktreePath);
-      return submindTrace ? { ...manifestResult, submindTrace } : manifestResult;
+      const artifactPaths = await mergeVisualizationArtifacts(
+        handle.worktreePath,
+        manifestResult.artifactPaths,
+      );
+      const result = { ...manifestResult, artifactPaths };
+      return submindTrace ? { ...result, submindTrace } : result;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
@@ -227,8 +247,42 @@ export class RlmDirectExecutor implements DirectExecutor {
         "RLM execution has neither a result manifest nor a captured Submind output yet.",
       );
     }
-    return buildNeedsHumanResult(request, outputPayload, submindTrace);
+    return {
+      ...buildNeedsHumanResult(request, outputPayload, submindTrace),
+      artifactPaths: await mergeVisualizationArtifacts(handle.worktreePath, []),
+    };
   }
+}
+
+/**
+ * Appends the run's storyboard artifacts to the Submind-authored ones, never replacing them.
+ *
+ * The paths are the three fixed visualization constants, not paths read out of the run's own JSON:
+ * a failed or truncated run still has a final storyboard on disk, and no arbitrary path from an
+ * untrusted payload can be attached. Only files that really exist are added, because the
+ * coordinator validates artifact paths again before publishing them.
+ */
+async function mergeVisualizationArtifacts(
+  worktreePath: string,
+  artifactPaths: readonly string[],
+): Promise<string[]> {
+  const merged = [...artifactPaths];
+  for (const candidate of [
+    RLM_VISUALIZATION_HTML_PATH,
+    RLM_VISUALIZATION_PNG_PATH,
+    RLM_VISUALIZATION_STATE_PATH,
+  ]) {
+    if (merged.includes(candidate)) {
+      continue;
+    }
+    try {
+      await stat(join(worktreePath, candidate));
+    } catch {
+      continue;
+    }
+    merged.push(candidate);
+  }
+  return merged;
 }
 
 function buildSubmindTraceReference(result: {

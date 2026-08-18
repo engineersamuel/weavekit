@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import type { SessionEvent, Tool, ToolResultObject } from "@github/copilot-sdk";
 import type { RlmToolArgs } from "../../src/rlm-poc/contracts.js";
 import {
@@ -20,8 +23,15 @@ import type {
   RlmWorkerContract,
   RlmWorkerContractInput,
 } from "../../src/rlm-poc/workerContract.js";
+import {
+  RLM_VISUALIZATION_STATE_PATH,
+  RlmVisualizationRunStatus,
+  type RlmVisualizationState,
+} from "../../src/rlm-poc/visualization/index.js";
 
 const capturedClientOptions: Record<string, unknown>[] = [];
+const sdkStoryboardRequests: unknown[] = [];
+const bamlStoryboardRequests: unknown[] = [];
 
 vi.mock("@github/copilot-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@github/copilot-sdk")>();
@@ -43,6 +53,30 @@ vi.mock("@github/copilot-sdk", async (importOriginal) => {
   }
   return { ...actual, CopilotClient: MockCopilotClient };
 });
+
+vi.mock("../../src/rlm-poc/visualization/sdkRenderer.js", () => ({
+  createCopilotSdkRlmStoryboardRenderer: () => async (request: unknown) => {
+    sdkStoryboardRequests.push(request);
+    return {
+      title: "SDK storyboard",
+      summary: "Rendered with the SDK.",
+      narrative: [],
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>',
+    };
+  },
+}));
+
+vi.mock("../../src/rlm-poc/visualization/renderer.js", () => ({
+  bamlRlmStoryboardRenderer: async (request: unknown) => {
+    bamlStoryboardRequests.push(request);
+    return {
+      title: "BAML storyboard",
+      summary: "Rendered with BAML.",
+      narrative: [],
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>',
+    };
+  },
+}));
 
 const noRootSkills = async () => undefined;
 
@@ -1031,5 +1065,113 @@ describe("RLM runtime workingDirectory", () => {
     });
     expect(capturedClientOptions).toHaveLength(1);
     expect(capturedClientOptions[0]).not.toHaveProperty("workingDirectory");
+  });
+});
+
+describe("RLM runtime visualization", () => {
+  const directories: string[] = [];
+
+  afterAll(async () => {
+    await Promise.all(
+      directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+    );
+  });
+
+  it("uses the Copilot SDK renderer when no visualization mode is specified", async () => {
+    sdkStoryboardRequests.length = 0;
+    const workingDirectory = await mkdtemp(join(tmpdir(), "rlm-runtime-visualization-"));
+    directories.push(workingDirectory);
+
+    await runRlmSubmind("Implement the ticket.", {
+      workingDirectory,
+      consoleStreaming: false,
+      prepareRootSkills: noRootSkills,
+      enableVisualization: true,
+      runBrief: {
+        objective: "Implement the ticket.",
+        constraints: [],
+        acceptanceCriteria: [],
+        validationCommands: [],
+      },
+      visualizationRasterizer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    });
+
+    const state = JSON.parse(
+      await readFile(join(workingDirectory, RLM_VISUALIZATION_STATE_PATH), "utf8"),
+    ) as RlmVisualizationState;
+    expect(state.renderer).toBe("copilot-sdk");
+    expect(state.storyboard?.title).toBe("SDK storyboard");
+    expect(sdkStoryboardRequests.length).toBeGreaterThan(0);
+  });
+
+  it("uses BAML only when it is explicitly selected", async () => {
+    bamlStoryboardRequests.length = 0;
+    const workingDirectory = await mkdtemp(join(tmpdir(), "rlm-runtime-visualization-"));
+    directories.push(workingDirectory);
+
+    await runRlmSubmind("Implement the ticket.", {
+      workingDirectory,
+      consoleStreaming: false,
+      prepareRootSkills: noRootSkills,
+      enableVisualization: true,
+      runBrief: {
+        objective: "Implement the ticket.",
+        constraints: [],
+        acceptanceCriteria: [],
+        validationCommands: [],
+      },
+      visualizationRendererMode: "baml",
+      visualizationRasterizer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    });
+
+    const state = JSON.parse(
+      await readFile(join(workingDirectory, RLM_VISUALIZATION_STATE_PATH), "utf8"),
+    ) as RlmVisualizationState;
+    expect(state.renderer).toBe("baml");
+    expect(state.storyboard?.title).toBe("BAML storyboard");
+    expect(bamlStoryboardRequests.length).toBeGreaterThan(0);
+  });
+
+  it("finalizes a failed storyboard when the root client cannot start, without masking the error", async () => {
+    const workingDirectory = await mkdtemp(join(tmpdir(), "rlm-runtime-visualization-"));
+    directories.push(workingDirectory);
+
+    await expect(
+      runRlmSubmind("Implement the ticket.", {
+        workingDirectory,
+        consoleStreaming: false,
+        prepareRootSkills: noRootSkills,
+        enableVisualization: true,
+        runBrief: {
+          objective: "Implement the ticket.",
+          constraints: [],
+          acceptanceCriteria: [],
+          validationCommands: [],
+        },
+        visualizationRenderer: async () => ({
+          title: "t",
+          summary: "s",
+          narrative: [],
+          svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>',
+        }),
+        visualizationRasterizer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        clientFactory: () => ({
+          async start() {
+            throw new Error("copilot daemon unavailable");
+          },
+          async createSession() {
+            throw new Error("must not create a session");
+          },
+          async stop() {},
+        }),
+      }),
+    ).rejects.toThrow("copilot daemon unavailable");
+
+    const state = JSON.parse(
+      await readFile(join(workingDirectory, RLM_VISUALIZATION_STATE_PATH), "utf8"),
+    ) as RlmVisualizationState;
+    expect(state.runStatus).toBe(RlmVisualizationRunStatus.Failed);
+    expect(state.runSummary).toBe("copilot daemon unavailable");
+    expect(state.renderer).toBe("custom");
   });
 });

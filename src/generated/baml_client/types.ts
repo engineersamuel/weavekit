@@ -722,6 +722,17 @@ export interface RlmRunBrief {
   
 }
 
+export interface RlmStoryboard {
+  /**
+   * Short control-room headline for the whole run, no trailing punctuation.
+   */
+  title: string
+  summary: string
+  narrative: string[]
+  svg: string
+  
+}
+
 export interface RlmVerificationResult {
   commandOrMethod: string
   outcome: RlmVerificationOutcome

@@ -58,6 +58,39 @@ describe("weavekit config loader", () => {
     );
   });
 
+  it("defaults Mastermind storyboards to the SDK and accepts an explicit BAML override", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "weavekit-config-"));
+    tempDirs.push(dir);
+    const configPath = join(dir, "config.toml");
+    const rlmExecution = (renderer?: string) =>
+      [
+        "[mastermind.rlm_execution]",
+        'executor_kind = "rlm-submind"',
+        "max_depth = 3",
+        "max_total_calls = 20",
+        ...(renderer ? [`visualization_renderer = "${renderer}"`] : []),
+        "poll_interval_ms = 1000",
+        "unknown_status_threshold = 3",
+        "cancellation_grace_ms = 5000",
+        "max_attempts = 2",
+      ].join("\n");
+
+    await writeFile(configPath, rlmExecution(), "utf8");
+    expect(
+      loadTypedWeavekitConfig(configPath, {}).mastermind.rlmExecution?.visualizationRenderer,
+    ).toBe("copilot-sdk");
+
+    await writeFile(configPath, rlmExecution("baml"), "utf8");
+    expect(
+      loadTypedWeavekitConfig(configPath, {}).mastermind.rlmExecution?.visualizationRenderer,
+    ).toBe("baml");
+
+    await writeFile(configPath, rlmExecution("unknown"), "utf8");
+    expect(() => loadTypedWeavekitConfig(configPath, {})).toThrow(
+      'mastermind.rlm_execution.visualization_renderer must be "copilot-sdk" or "baml"',
+    );
+  });
+
   it("keeps direct execution disabled until global and project policy explicitly opt in", async () => {
     expect(
       loadTypedWeavekitConfig("/path/that/does/not/exist", {}).mastermind.execution,

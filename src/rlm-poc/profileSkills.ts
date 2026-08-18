@@ -87,6 +87,11 @@ export const RLM_PROFILE_SKILL_SOURCES = {
     ref: "HEAD",
     updatePolicy: "latest",
   },
+  aizInfographic: {
+    repository: "https://github.com/aizzaku/aiz-infographic.git",
+    ref: "HEAD",
+    updatePolicy: "latest",
+  },
   img2threejs: {
     repository: "https://github.com/img2threejs/img2threejs.git",
     ref: "HEAD",
@@ -113,6 +118,14 @@ const ANTHROPIC_DESIGN_SKILLS = [
   "frontend-design",
   "theme-factory",
   "web-artifacts-builder",
+] as const;
+
+export const RLM_STORYBOARD_SKILL_NAMES = [
+  "aiz-infographic",
+  "algorithmic-art",
+  "canvas-design",
+  "frontend-design",
+  "theme-factory",
 ] as const;
 
 const DESIGNER_SKILL_CATEGORIES = [
@@ -219,6 +232,38 @@ export async function prepareRlmRootSkills(
   const cacheDir = resolveRlmProfileSkillsCacheDir(options.cacheDir);
   const runCommand = options.runCommand ?? (execFileAsync as RlmCommandRunner);
   return installOnce(`${cacheDir}:handoff`, () => installHandoffSkill(cacheDir, runCommand));
+}
+
+/**
+ * Installs the small, exact skill stack used by the optional Copilot SDK storyboard renderer.
+ * Upstream contents stay in the ignored worktree cache and are never copied into source control.
+ */
+export async function prepareRlmStoryboardSkills(
+  options: RlmProfileSkillInstallerOptions = {},
+): Promise<PreparedRlmProfileSkills> {
+  const cacheDir = resolveRlmProfileSkillsCacheDir(options.cacheDir);
+  const runCommand = options.runCommand ?? (execFileAsync as RlmCommandRunner);
+  return installOnce(`${cacheDir}:storyboard`, async () => {
+    const [anthropic, aizInfographic] = await Promise.all([
+      ensureCheckout(
+        "anthropic-skills",
+        RLM_PROFILE_SKILL_SOURCES.anthropicSkills,
+        cacheDir,
+        runCommand,
+      ),
+      ensureCheckout(
+        "aiz-infographic",
+        RLM_PROFILE_SKILL_SOURCES.aizInfographic,
+        cacheDir,
+        runCommand,
+      ),
+    ]);
+    return {
+      skillDirectories: [
+        await ensureStoryboardSkillBundle({ anthropic, aizInfographic }, cacheDir),
+      ],
+    };
+  });
 }
 
 async function installOnce(
@@ -679,6 +724,77 @@ async function ensureDesignBundle(
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
+}
+
+async function ensureStoryboardSkillBundle(
+  sources: {
+    anthropic: ResolvedCheckout;
+    aizInfographic: ResolvedCheckout;
+  },
+  cacheDir: string,
+): Promise<string> {
+  const bundleRevision = [
+    "storyboard-v2",
+    sources.anthropic.revision,
+    sources.aizInfographic.revision,
+  ].join(":");
+  const key = createHash("sha256").update(bundleRevision).digest("hex");
+  const target = join(cacheDir, "bundles", "storyboard", key);
+  const skills = join(target, "skills");
+  if (await markerMatches(target, bundleRevision)) return skills;
+
+  await mkdir(dirname(target), { recursive: true });
+  await rm(target, { recursive: true, force: true });
+  const temporaryRoot = await mkdtemp(join(dirname(target), ".install-"));
+  const temporarySkills = join(temporaryRoot, "skills");
+  try {
+    await mkdir(temporarySkills, { recursive: true });
+    await Promise.all(
+      RLM_STORYBOARD_SKILL_NAMES.filter((name) => name !== "aiz-infographic").map((name) =>
+        cp(join(sources.anthropic.checkout, "skills", name), join(temporarySkills, name), {
+          recursive: true,
+        }),
+      ),
+    );
+
+    const aizSkill = join(temporarySkills, "aiz-infographic");
+    await mkdir(aizSkill, { recursive: true });
+    const aizInstructions = await readFile(
+      join(sources.aizInfographic.checkout, "SKILL.md"),
+      "utf8",
+    );
+    await writeFile(join(aizSkill, "SKILL.md"), adaptAizInfographicSkill(aizInstructions), "utf8");
+    const references = join(sources.aizInfographic.checkout, "references");
+    if (await pathExists(references)) {
+      await cp(references, join(aizSkill, "references"), { recursive: true });
+    }
+
+    await writeFile(join(temporaryRoot, ".weavekit-revision"), `${bundleRevision}\n`, "utf8");
+    await installAtomically(temporaryRoot, target);
+    if (!(await markerMatches(target, bundleRevision))) {
+      throw new Error(`Storyboard skill bundle failed verification at "${target}".`);
+    }
+    return skills;
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+}
+
+export function adaptAizInfographicSkill(source: string): string {
+  const adapted = source.replace(
+    /^---\r?\n[\s\S]*?\r?\n---\r?\n/u,
+    [
+      "---",
+      "name: aiz-infographic",
+      "description: Design information-rich infographics with clear hierarchy and composition.",
+      "---",
+      "",
+    ].join("\n"),
+  );
+  if (adapted === source) {
+    throw new Error("aiz-infographic frontmatter changed upstream.");
+  }
+  return adapted;
 }
 
 async function ensureMediaBundle(

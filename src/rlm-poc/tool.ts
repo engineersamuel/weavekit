@@ -8,6 +8,7 @@ import {
 } from "./budget.js";
 import { attachConsoleStreaming } from "./consoleStreaming.js";
 import { snapshotConversation } from "./conversationContext.js";
+import { writeRlmOutput } from "./environment.js";
 import {
   RlmDepthExceededError,
   RlmProfileNotAllowedError,
@@ -45,9 +46,29 @@ import {
   type RlmSessionReference,
 } from "./session.js";
 import { createConsoleUserInputHandler, createSubmindUserInputHandler } from "./userInput.js";
+import {
+  RlmVisualizationAction,
+  RlmVisualizationStatus,
+  type RlmVisualizationObserver,
+} from "./visualization/contracts.js";
 import type { RlmWorkerContract } from "./workerContract.js";
 
 export type RlmAskUserMode = "submind" | "console" | "off";
+
+/** Identifies the session that additional tools are being registered on. */
+export type RlmAdditionalToolContext = {
+  /** The `rlm` call that owns the session, or `undefined` for the root session. */
+  parentCallId?: string;
+  /** Depth of an action issued from that session. 1 for the root session. */
+  depth: number;
+};
+
+/**
+ * Builds the non-`rlm` tools for one session. It is a factory rather than a fixed array so each
+ * session's `invoke_trellage` instance can bind to the `rlm` call that owns it, which is what makes
+ * the storyboard's parent-child hierarchy correct at every depth.
+ */
+export type RlmAdditionalToolFactory = (context: RlmAdditionalToolContext) => readonly unknown[];
 
 export type CreateRlmToolOptions = {
   /** Recursion budget remaining for a call made *at this level*. Decremented per hop, never by the LLM. */
@@ -89,13 +110,20 @@ export type CreateRlmToolOptions = {
   workerContract?: RlmWorkerContract;
   /** Call that owns the session on which this recursively registered tool is exposed. */
   parentCallId?: string;
+  /**
+   * Storyboard-only parent identity, used when the run has no semantic state model and therefore
+   * no `parentCallId`. Kept separate so a synthetic identifier never reaches the LLM payload.
+   */
+  visualizationParentCallId?: string;
   /** Restricts profile switching for capability-scoped roots and recursive sessions. */
   allowedProfiles?: readonly string[];
   /**
    * Tools registered on every nested session in addition to `rlm` itself. Used to make
    * `invoke_trellage` reachable from recursive sessions, not just the root (ADR 0011).
    */
-  additionalTools?: readonly unknown[];
+  additionalTools?: RlmAdditionalToolFactory;
+  /** Run-owned storyboard recorder shared by the root, every nested tool, and every Trellage tool. */
+  visualization?: RlmVisualizationObserver;
 };
 
 const defaultClientFactory: RlmClientFactory = async (context) => {
@@ -158,6 +186,8 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
   if (Boolean(options.runState) !== Boolean(options.workerContract)) {
     throw new Error("RLM run state and worker contract must be configured together.");
   }
+  const visualizationParentCallId = options.parentCallId ?? options.visualizationParentCallId;
+  let syntheticCalls = 0;
 
   return defineTool<RlmToolArgs>("rlm", {
     description:
@@ -173,8 +203,61 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
     handler: async (args, invocation): Promise<ToolResultObject> => {
       const userInputExchanges: RlmUserInputExchange[] = [];
       const depthUsed = options.maxDepth - options.depthRemaining + 1;
+      const startedAtMs = Date.now();
+      const startedAt = new Date(startedAtMs).toISOString();
       let runningCall: ReturnType<typeof beginRlmCall> | undefined;
       let callId: string | undefined;
+      // Every recursive tool shares one recorder, so the call identity must be stable and unique
+      // even when the run has no semantic state model to mint one. The parent identity is a prefix,
+      // which keeps sibling subtrees distinct at every depth.
+      syntheticCalls += 1;
+      const syntheticCallId = `${visualizationParentCallId ?? "root"}/${
+        invocation.toolCallId ?? `rlm-d${depthUsed}`
+      }#${syntheticCalls}`;
+      const visualizationCallId = () => callId ?? syntheticCallId;
+      const recordCompletion = async (
+        status: RlmVisualizationStatus,
+        detail: {
+          summary?: string;
+          error?: string;
+          model?: string;
+          decisions?: readonly string[];
+          artifacts?: readonly string[];
+        },
+      ): Promise<void> => {
+        if (!options.visualization) return;
+        // Deliberate non-fatal boundary: a storyboard failure must never change the delegated
+        // work's own result, so the failure is reported and then dropped.
+        try {
+          await options.visualization.recordCompletion({
+            action: RlmVisualizationAction.Rlm,
+            status,
+            callId: visualizationCallId(),
+            ...(visualizationParentCallId ? { parentCallId: visualizationParentCallId } : {}),
+            dependencyCallIds: args.dependsOn ?? [],
+            depth: depthUsed,
+            prompt: args.prompt,
+            profile: args.profile,
+            ...(detail.model ? { model: detail.model } : {}),
+            ...(options.workingDirectory ? { worktreePath: options.workingDirectory } : {}),
+            startedAt,
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAtMs,
+            ...(detail.summary ? { summary: detail.summary } : {}),
+            ...(detail.error ? { error: detail.error } : {}),
+            decisions: detail.decisions ?? [],
+            artifacts: detail.artifacts ?? [],
+          });
+        } catch (visualizationError) {
+          writeRlmOutput(
+            `[visualization] rlm completion was not recorded: ${
+              visualizationError instanceof Error
+                ? visualizationError.message
+                : String(visualizationError)
+            }\n`,
+          );
+        }
+      };
       const captureUserInput = (exchange: RlmUserInputExchange) => {
         userInputExchanges.push(exchange);
         options.onUserInputCaptured?.(exchange);
@@ -204,8 +287,10 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
           ...(options.runState ? { runState: options.runState } : {}),
           ...(options.workerContract ? { workerContract: options.workerContract } : {}),
           ...((nestedParentCallId ?? callId) ? { parentCallId: nestedParentCallId ?? callId } : {}),
+          visualizationParentCallId: nestedParentCallId ?? callId ?? syntheticCallId,
           ...(nestedAllowedProfiles ? { allowedProfiles: nestedAllowedProfiles } : {}),
           ...(options.additionalTools ? { additionalTools: options.additionalTools } : {}),
+          ...(options.visualization ? { visualization: options.visualization } : {}),
         });
       try {
         runningCall = options.runState
@@ -297,7 +382,14 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
                 workerContract: options.workerContract,
               }
             : {}),
-          ...(options.additionalTools ? { additionalTools: options.additionalTools } : {}),
+          ...(options.additionalTools
+            ? {
+                additionalTools: options.additionalTools({
+                  parentCallId: callId ?? syntheticCallId,
+                  depth: depthUsed + 1,
+                }),
+              }
+            : {}),
         });
         if (options.runState && callId) {
           if (!result.report) {
@@ -316,6 +408,14 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
             ? { state: snapshotRlmRunState(options.runState) }
             : {}),
         };
+        await recordCompletion(RlmVisualizationStatus.Succeeded, {
+          summary: result.report?.summary ?? result.text,
+          model: result.model,
+          decisions: result.report?.decisions ?? [],
+          artifacts: (result.report?.artifacts ?? []).map(
+            (artifact) => `${artifact.locator} - ${artifact.description}`,
+          ),
+        });
         return {
           textResultForLlm: JSON.stringify(payload),
           resultType: "success",
@@ -349,6 +449,10 @@ export function createRlmTool(options: CreateRlmToolOptions): Tool<RlmToolArgs> 
             ? { state: snapshotRlmRunState(options.runState) }
             : {}),
         };
+        await recordCompletion(RlmVisualizationStatus.Failed, {
+          error: error instanceof Error ? error.message : String(error),
+          ...(args.model ? { model: args.model } : {}),
+        });
         if (
           error instanceof RlmCallBudgetExceededError ||
           error instanceof RlmDepthExceededError ||

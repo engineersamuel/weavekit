@@ -51,7 +51,20 @@ import {
 } from "./trellage/integration.js";
 import type { TrellageWorktreeDisposition } from "./trellage/worktrees.js";
 import { buildRlmRootSpanName } from "./telemetry.js";
-import { createRlmTool } from "./tool.js";
+import { createRlmTool, type RlmAdditionalToolFactory } from "./tool.js";
+import {
+  DEFAULT_RLM_STORYBOARD_RENDERER_MODE,
+  RlmVisualizationRunStatus,
+  RlmStoryboardRendererName,
+  RlmStoryboardRendererMode,
+  bamlRlmStoryboardRenderer,
+  createCopilotSdkRlmStoryboardRenderer,
+  createRlmVisualizationRecorder,
+  resvgStoryboardRasterizer,
+  type RlmStoryboardRasterizer,
+  type RlmStoryboardRenderer,
+  type RlmVisualizationArtifacts,
+} from "./visualization/index.js";
 import {
   RLM_ANSWERER_MODEL_POLICY,
   loadCopilotModelCatalogWithFallback,
@@ -93,6 +106,8 @@ export type RlmPrototypeResult = {
   traceId: string;
   /** Disposition of every Herdr worktree `invoke_trellage` provisioned during the run. */
   worktrees?: TrellageWorktreeDisposition[];
+  /** Working-directory-relative storyboard paths, present only when visualization is enabled. */
+  visualization?: RlmVisualizationArtifacts;
 };
 
 export type RlmRuntimeOptions = {
@@ -134,6 +149,18 @@ export type RlmRuntimeOptions = {
   runBrief?: Partial<RlmRunBrief>;
   /** Injectable typed worker boundary. Defaults to the generated BAML contract. */
   workerContract?: RlmWorkerContract;
+  /**
+   * Records every `rlm` and `invoke_trellage` completion and keeps a storyboard current under
+   * `<workingDirectory>/.weavekit/rlm-visualization/`. Off by default because the default renderer
+   * calls a real model; `scripts/rlm-poc.ts` turns it on for Submind runs.
+   */
+  enableVisualization?: boolean;
+  /** Storyboard renderer seam. Defaults to the skill-backed Copilot SDK/Gemini boundary. */
+  visualizationRenderer?: RlmStoryboardRenderer;
+  /** Selects the built-in renderer when `visualizationRenderer` is not injected. */
+  visualizationRendererMode?: RlmStoryboardRendererMode;
+  /** SVG-to-PNG seam. Defaults to the in-process resvg rasterizer. */
+  visualizationRasterizer?: RlmStoryboardRasterizer;
 };
 
 type RunRlmSessionOptions = RlmRuntimeOptions & {
@@ -233,6 +260,31 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
         { runId: options.conversationId ?? executionRunId },
       )
     : undefined;
+  // One recorder per run, shared by the root, every nested `rlm` tool, and every `invoke_trellage`
+  // tool, so the storyboard sees one serialized, correctly parented event stream.
+  const visualizationWorkingDirectory = options.workingDirectory ?? process.cwd();
+  const visualizationRendererMode =
+    options.visualizationRendererMode ?? DEFAULT_RLM_STORYBOARD_RENDERER_MODE;
+  const visualizationRendererName = options.visualizationRenderer
+    ? RlmStoryboardRendererName.Custom
+    : visualizationRendererMode;
+  const visualizationRenderer = options.visualizationRenderer
+    ? options.visualizationRenderer
+    : visualizationRendererMode === RlmStoryboardRendererMode.Baml
+      ? bamlRlmStoryboardRenderer
+      : createCopilotSdkRlmStoryboardRenderer({
+          workingDirectory: visualizationWorkingDirectory,
+        });
+  const visualization = options.enableVisualization
+    ? createRlmVisualizationRecorder({
+        workingDirectory: visualizationWorkingDirectory,
+        runId: runState?.runId ?? executionRunId,
+        objective: runState?.brief.objective ?? options.prompt,
+        rendererName: visualizationRendererName,
+        renderer: visualizationRenderer,
+        rasterizer: options.visualizationRasterizer ?? resvgStoryboardRasterizer,
+      })
+    : undefined;
 
   return tracer.startActiveSpan(
     buildRlmRootSpanName(options.traceName),
@@ -252,6 +304,9 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
         "weavekit.rlm.run_id": runState?.runId ?? executionRunId,
         "weavekit.rlm.max_depth": maxDepth,
         "weavekit.rlm.budget.max_calls": maxTotalCalls,
+        ...(visualization
+          ? { "weavekit.rlm.visualization.renderer": visualizationRendererName }
+          : {}),
         "weavekit.rlm.model_catalog.path": modelCatalog.sourcePath,
         ...(modelCatalog.generatedAt
           ? { "weavekit.rlm.model_catalog.generated_at": modelCatalog.generatedAt }
@@ -272,6 +327,7 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
       },
     },
     async (span) => {
+      await visualization?.initialize();
       const defaultClientFactory: RlmClientFactory = async () =>
         new CopilotClient(
           (options.workingDirectory
@@ -284,8 +340,26 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
           >[0],
         ) as RlmClient;
       const clientFactory = options.clientFactory ?? defaultClientFactory;
-      const client = await clientFactory();
-      await client.start();
+      let client: RlmClient;
+      try {
+        client = await clientFactory();
+        await client.start();
+      } catch (error) {
+        // The main try/finally below has not been entered yet, so this is the one path where a
+        // failed run would otherwise leave the storyboard reporting "running" forever.
+        const exception = error instanceof Error ? error : new Error(String(error));
+        span.recordException(exception);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
+        await visualization
+          ?.finalize({
+            status: RlmVisualizationRunStatus.Failed,
+            summary: exception.message,
+          })
+          // Deliberate non-fatal boundary: finalizing the storyboard must not mask the real error.
+          .catch(() => undefined);
+        span.end();
+        throw error;
+      }
       let trellage: TrellageIntegration | undefined;
       try {
         const rootSkillPolicy = await prepareRlmSkillPolicy(client, {
@@ -315,9 +389,15 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
               ...(options.provisionTrellageWorktreeEagerly ? { provisionEagerly: true } : {}),
               ...(options.reuseCurrentTrellageWorktree ? { reuseCurrentWorktree: true } : {}),
               ...(options.workingDirectory ? { cwd: options.workingDirectory } : {}),
+              ...(visualization ? { visualization } : {}),
             })
           : undefined;
-        const additionalTools = trellage ? [trellage.tool] : undefined;
+        const trellageIntegration = trellage;
+        // A fresh instance per session binds each delegation to the `rlm` call that owns it, which
+        // is what keeps the storyboard hierarchy correct below the root.
+        const additionalTools: RlmAdditionalToolFactory | undefined = trellageIntegration
+          ? (context) => [trellageIntegration.createTool(context)]
+          : undefined;
         const sessionConfig = {
           model: options.model ?? DEFAULT_RLM_MODEL,
           reasoningEffort: options.reasoningEffort ?? DEFAULT_RLM_REASONING_EFFORT,
@@ -358,8 +438,9 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
               ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
               ...(options.allowedProfiles ? { allowedProfiles: options.allowedProfiles } : {}),
               ...(additionalTools ? { additionalTools } : {}),
+              ...(visualization ? { visualization } : {}),
             }),
-            ...(additionalTools ?? []),
+            ...(trellageIntegration ? [trellageIntegration.createTool({ depth: 1 })] : []),
           ],
         };
         const session = options.conversationId
@@ -412,12 +493,17 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
           }
           span.setStatus({ code: SpanStatusCode.OK });
           const worktrees = await trellage?.finalize();
+          const artifacts = await visualization?.finalize({
+            status: RlmVisualizationRunStatus.Succeeded,
+            summary: finalText,
+          });
           return {
             finalText,
             runId: runState?.runId ?? executionRunId,
             ...(conversationId ? { conversationId } : {}),
             traceId: span.spanContext().traceId,
             ...(worktrees?.length ? { worktrees } : {}),
+            ...(artifacts ? { visualization: artifacts } : {}),
           };
         } finally {
           unsubscribe?.();
@@ -431,6 +517,10 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
         );
         span.recordException(exception);
         span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
+        await visualization?.finalize({
+          status: RlmVisualizationRunStatus.Failed,
+          summary: exception.message,
+        });
         throw error;
       } finally {
         // Idempotent: a successful run already finalized, leaving nothing to reclaim. This exists

@@ -1,3 +1,8 @@
+import {
+  RlmStoryboardRendererMode,
+  type RlmStoryboardRendererMode as RlmStoryboardRendererModeValue,
+} from "./visualization/contracts.js";
+
 export type RlmCliOptions = {
   prompt?: string;
   /** Reads the prompt from a file instead of an argument value; mutually exclusive with -p/--prompt. */
@@ -14,6 +19,8 @@ export type RlmCliOptions = {
   model?: string;
   maxDepth?: number;
   maxTotalCalls?: number;
+  /** Chooses the built-in live storyboard renderer. */
+  visualizationRenderer?: RlmStoryboardRendererModeValue;
   /**
    * Operator-supplied run brief fields. Each is repeatable. When any is present it replaces the
    * derived value for that field, so an operator can bind an exact acceptance contract instead of
@@ -43,6 +50,7 @@ export const RLM_CLI_USAGE = `Usage:
   nub scripts/rlm-poc.ts --cwd <path> --prompt "<prompt>"
   nub scripts/rlm-poc.ts --model <model-id> --max-depth <n> --max-total-calls <n> --prompt "<prompt>"
   nub scripts/rlm-poc.ts --acceptance "<criterion>" --validation-command "<cmd>" --prompt "<prompt>"
+  nub scripts/rlm-poc.ts --visualization-renderer baml --prompt "<prompt>"
   nub scripts/rlm-poc.ts --output-json <path> --prompt "<prompt>"
 
 Without a prompt, the CLI runs the three-question validation scenario. With -p/--prompt, it runs
@@ -69,6 +77,11 @@ derived list for that field, so every delegated worker shares the exact contract
 --output-json writes the run's raw result (finalText, conversationId, traceId, worktrees) as JSON
 to the given path as soon as the run resolves, so a caller polling this process from the outside
 (e.g. Mastermind's RLM executor) can read back Submind's literal final output.
+
+--visualization-renderer selects the live storyboard model boundary. "copilot-sdk" is the default
+and uses one persistent Gemini 3.7 Flash session with the aiz-infographic, algorithmic-art,
+canvas-design, frontend-design, and theme-factory skills. Use "baml" for the opt-in fast structured
+Gemini call without skills.
 `;
 
 export function parseRlmCliArgs(args: readonly string[]): RlmCliOptions {
@@ -82,6 +95,7 @@ export function parseRlmCliArgs(args: readonly string[]): RlmCliOptions {
   let model: string | undefined;
   let maxDepth: number | undefined;
   let maxTotalCalls: number | undefined;
+  let visualizationRenderer: RlmStoryboardRendererModeValue | undefined;
   let outputJsonPath: string | undefined;
   const acceptanceCriteria: string[] = [];
   const constraints: string[] = [];
@@ -119,7 +133,8 @@ export function parseRlmCliArgs(args: readonly string[]): RlmCliOptions {
       | "max-total-calls"
       | "acceptance"
       | "constraint"
-      | "validation-command";
+      | "validation-command"
+      | "visualization-renderer";
     if (argument === "-p" || argument === "--prompt") {
       value = args[index + 1];
       index += 1;
@@ -197,6 +212,13 @@ export function parseRlmCliArgs(args: readonly string[]): RlmCliOptions {
     } else if (argument.startsWith("--validation-command=")) {
       value = argument.slice("--validation-command=".length);
       optionName = "validation-command";
+    } else if (argument === "--visualization-renderer") {
+      value = args[index + 1];
+      index += 1;
+      optionName = "visualization-renderer";
+    } else if (argument.startsWith("--visualization-renderer=")) {
+      value = argument.slice("--visualization-renderer=".length);
+      optionName = "visualization-renderer";
     } else {
       throw new Error(`Unknown argument "${argument}".\n\n${RLM_CLI_USAGE}`);
     }
@@ -207,11 +229,13 @@ export function parseRlmCliArgs(args: readonly string[]): RlmCliOptions {
           ? "a non-empty prompt"
           : optionName === "resume"
             ? "a UUID"
-            : optionName === "acceptance" ||
-                optionName === "constraint" ||
-                optionName === "validation-command"
-              ? "a non-empty value"
-              : "a non-empty path";
+            : optionName === "visualization-renderer"
+              ? '"baml" or "copilot-sdk"'
+              : optionName === "acceptance" ||
+                  optionName === "constraint" ||
+                  optionName === "validation-command"
+                ? "a non-empty value"
+                : "a non-empty path";
       throw new Error(`The ${argument} option requires ${requirement}.\n\n${RLM_CLI_USAGE}`);
     }
 
@@ -270,6 +294,10 @@ export function parseRlmCliArgs(args: readonly string[]): RlmCliOptions {
       validationCommands.push(value);
       continue;
     }
+    if (optionName === "visualization-renderer") {
+      visualizationRenderer = readVisualizationRenderer(visualizationRenderer, value);
+      continue;
+    }
 
     if (resume !== undefined) {
       throw new Error(`Specify --resume only once.\n\n${RLM_CLI_USAGE}`);
@@ -311,9 +339,25 @@ export function parseRlmCliArgs(args: readonly string[]): RlmCliOptions {
     ...(acceptanceCriteria.length > 0 ? { acceptanceCriteria } : {}),
     ...(constraints.length > 0 ? { constraints } : {}),
     ...(validationCommands.length > 0 ? { validationCommands } : {}),
+    ...(visualizationRenderer !== undefined ? { visualizationRenderer } : {}),
     ...(outputJsonPath !== undefined ? { outputJsonPath } : {}),
     help,
   };
+}
+
+function readVisualizationRenderer(
+  current: RlmStoryboardRendererModeValue | undefined,
+  value: string,
+): RlmStoryboardRendererModeValue {
+  if (current !== undefined) {
+    throw new Error(`Specify --visualization-renderer only once.\n\n${RLM_CLI_USAGE}`);
+  }
+  if (value !== RlmStoryboardRendererMode.Baml && value !== RlmStoryboardRendererMode.CopilotSdk) {
+    throw new Error(
+      `The --visualization-renderer option requires "baml" or "copilot-sdk".\n\n${RLM_CLI_USAGE}`,
+    );
+  }
+  return value;
 }
 
 function readSingleValue(current: string | undefined, value: string, optionName: string): string {

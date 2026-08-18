@@ -51,6 +51,18 @@ deferred (see below). `invoke_trellage` calls:
 - Consume one depth hop and one shared `RlmExecutionBudget` unit. The spawned harness is a leaf and
   cannot call back into `rlm`.
 
+## Run storyboard
+
+The live picture of one Submind run (see [ADR 0014](adr/0014-rlm-run-storyboard.md)). Every
+completed `rlm` and `invoke_trellage` call is reported to one run-owned recorder through the narrow
+`RlmVisualizationObserver` interface, in completion order, with its parent call named explicitly.
+The recorder keeps three files current under `<workingDirectory>/.weavekit/rlm-visualization/`:
+`visualization.html`, `visualization.png`, and `visualization-state.json`. The picture itself is
+drawn by a Gemini BAML function, and its SVG is sanitized before it is written. Storyboard failures
+are recorded as diagnostics and never change the delegated work's own result. Under Mastermind, the
+final HTML and PNG are uploaded to the ticket and embedded in the execution comment; a run with no
+ticket stays local.
+
 ## `invoke_harness` (still deferred)
 
 A prospective tool for delegating to other harnesses' own SDKs (Claude Agent SDK, Pi SDK) or a
