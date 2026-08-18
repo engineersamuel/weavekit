@@ -16,6 +16,7 @@ import {
 } from "./catalog.js";
 import type { TrellageInvokeArgs } from "./contracts.js";
 import type { TrellageAnswerer } from "./driveLoop.js";
+import type { RlmVisualizationObserver } from "../visualization/contracts.js";
 import { createTrellageTool, type CreateTrellageToolOptions } from "./tool.js";
 import { TrellageWorktreeRegistry, type TrellageWorktreeDisposition } from "./worktrees.js";
 
@@ -36,7 +37,11 @@ type AskedQuestion = {
 };
 
 export type TrellageIntegration = {
-  tool: Tool<TrellageInvokeArgs>;
+  /**
+   * Builds the `invoke_trellage` tool for one session. It is per-session rather than shared so the
+   * storyboard can attribute each delegation to the `rlm` call that owns the session it ran in.
+   */
+  createTool: (context?: { parentCallId?: string; depth?: number }) => Tool<TrellageInvokeArgs>;
   worktrees: TrellageWorktreeRegistry;
   /** Reclaims untouched worktrees and reports the ones holding delegated work. */
   finalize: () => Promise<TrellageWorktreeDisposition[]>;
@@ -56,6 +61,8 @@ export type SetupTrellageOptions = {
     Pick<CreateTrellageToolOptions, "timeoutMs" | "maxTurns" | "maxConcurrent">
   >;
   modelCatalog?: CopilotModelCatalog;
+  /** Run-owned storyboard recorder shared with the `rlm` tools. */
+  visualization?: RlmVisualizationObserver;
 };
 
 /**
@@ -109,18 +116,23 @@ export async function setupTrellageIntegration(
     }
   }
 
-  const tool = createTrellageTool({
-    runId: options.runId,
-    catalog: createTrellageCatalog(availableProfiles),
-    worktrees,
-    repositoryPath,
-    answer: options.answer,
-    executionBudget: options.executionBudget,
-    ...(options.modelCatalog ? { modelCatalog: options.modelCatalog } : {}),
-    ...options.toolOptions,
-  });
+  const catalog = createTrellageCatalog(availableProfiles);
+  const createTool: TrellageIntegration["createTool"] = (context) =>
+    createTrellageTool({
+      runId: options.runId,
+      catalog,
+      worktrees,
+      repositoryPath,
+      answer: options.answer,
+      executionBudget: options.executionBudget,
+      ...(options.modelCatalog ? { modelCatalog: options.modelCatalog } : {}),
+      ...(options.visualization ? { visualization: options.visualization } : {}),
+      ...(context?.parentCallId ? { owningCallId: context.parentCallId } : {}),
+      ...(context?.depth === undefined ? {} : { depth: context.depth }),
+      ...options.toolOptions,
+    });
 
-  return { tool, worktrees, finalize: () => worktrees.finalize() };
+  return { createTool, worktrees, finalize: () => worktrees.finalize() };
 }
 
 export type SubmindAnswererOptions = {

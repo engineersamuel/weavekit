@@ -28,18 +28,27 @@ async function main(): Promise<void> {
   }
 
   await loadRlmEnvironment();
-  const [{ shutdownTelemetry }, { startTelemetry }, { runRlmPrototype, runRlmSubmind }] =
-    await Promise.all([
-      import("../src/submind-poc/telemetry.js"),
-      import("../src/telemetry/bootstrap.js"),
-      import("../src/rlm-poc/runtime.js"),
-    ]);
+  const [
+    { shutdownTelemetry },
+    { startTelemetry },
+    { runRlmPrototype, runRlmSubmind },
+    { clearRlmVisualizationArtifacts },
+  ] = await Promise.all([
+    import("../src/submind-poc/telemetry.js"),
+    import("../src/telemetry/bootstrap.js"),
+    import("../src/rlm-poc/runtime.js"),
+    import("../src/rlm-poc/visualization/index.js"),
+  ]);
+  // Both run paths visualize, so the previous run's storyboard is dropped first. The prototype
+  // path ignores `--cwd` and always records under the process working directory.
+  await clearRlmVisualizationArtifacts(prompt ? (options.cwd ?? process.cwd()) : process.cwd());
   const telemetry = await startTelemetry("weavekit-rlm-poc", {
     skipWhenUnconfigured: true,
   });
   try {
     const result = prompt
       ? await runRlmSubmind(prompt, {
+          enableVisualization: true,
           ...(options.resume ? { conversationId: options.resume } : {}),
           ...(options.trellage ? { enableTrellage: true } : {}),
           ...(options.eagerWorktree ? { provisionTrellageWorktreeEagerly: true } : {}),
@@ -61,8 +70,16 @@ async function main(): Promise<void> {
                 },
               }
             : {}),
+          ...(options.visualizationRenderer
+            ? { visualizationRendererMode: options.visualizationRenderer }
+            : {}),
         })
-      : await runRlmPrototype();
+      : await runRlmPrototype({
+          enableVisualization: true,
+          ...(options.visualizationRenderer
+            ? { visualizationRendererMode: options.visualizationRenderer }
+            : {}),
+        });
     await writeOutputJson(options, { ok: true, result });
     writeRlmOutput(`${result.finalText}\n`);
     if (result.worktrees?.length) {

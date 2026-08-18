@@ -12,6 +12,12 @@ export type LinearIssueComment = {
   createdAt: string;
 };
 
+/** One file published to Linear's asset store and linked from an issue. */
+export type LinearUploadedAsset = {
+  /** Public asset URL Linear serves the uploaded bytes from. */
+  assetUrl: string;
+};
+
 export type LinearGateway = {
   fetchIssue(issueId: string): Promise<LinearTicketSnapshot>;
   updateIssueContent(issueId: string, input: { title: string; description: string }): Promise<void>;
@@ -21,6 +27,14 @@ export type LinearGateway = {
   createIssueComment?(issueId: string, body: string): Promise<string>;
   updateIssueComment?(commentId: string, body: string): Promise<void>;
   listIssueComments?(issueId: string): Promise<LinearIssueComment[]>;
+  /** Uploads bytes to Linear's asset store and attaches the result to an issue. */
+  uploadIssueAttachment?(input: {
+    issueId: string;
+    fileName: string;
+    contentType: string;
+    title: string;
+    data: Uint8Array;
+  }): Promise<LinearUploadedAsset>;
   createIssue?(input: {
     teamId: string;
     title: string;
@@ -285,6 +299,91 @@ export class LinearGraphQlGateway implements LinearGateway {
     if (result.success !== true) {
       throw new Error(`Linear rejected the comment update ${commentId}.`);
     }
+  }
+
+  /**
+   * Publishes a file to Linear in the three steps its API requires: `fileUpload` returns a signed
+   * `uploadUrl` plus the headers that signature was computed over, the bytes are PUT with exactly
+   * those headers, and `attachmentCreate` links the resulting `assetUrl` to the issue.
+   */
+  async uploadIssueAttachment(input: {
+    issueId: string;
+    fileName: string;
+    contentType: string;
+    title: string;
+    data: Uint8Array;
+  }): Promise<LinearUploadedAsset> {
+    const data = await this.query(
+      `mutation MastermindFileUpload(
+        $contentType: String!
+        $filename: String!
+        $size: Int!
+      ) {
+        fileUpload(contentType: $contentType, filename: $filename, size: $size) {
+          success
+          uploadFile {
+            uploadUrl
+            assetUrl
+            headers { key value }
+          }
+        }
+      }`,
+      {
+        contentType: input.contentType,
+        filename: input.fileName,
+        size: input.data.byteLength,
+      },
+    );
+    const upload = asRecord(asRecord(data.fileUpload).uploadFile);
+    const uploadUrl = upload.uploadUrl;
+    const assetUrl = upload.assetUrl;
+    if (
+      asRecord(data.fileUpload).success !== true ||
+      typeof uploadUrl !== "string" ||
+      typeof assetUrl !== "string"
+    ) {
+      throw new Error(`Linear rejected the upload request for ${input.fileName}.`);
+    }
+    // Linear's documented upload contract: send the content type and its long-lived cache header,
+    // then every header the signature was computed over, unchanged.
+    const headers: Record<string, string> = {
+      "content-type": input.contentType,
+      "cache-control": "public, max-age=31536000",
+    };
+    if (Array.isArray(upload.headers)) {
+      for (const header of upload.headers) {
+        const record = asRecord(header);
+        if (typeof record.key === "string" && typeof record.value === "string") {
+          headers[record.key] = record.value;
+        }
+      }
+    }
+    const uploaded = await this.fetcher(uploadUrl, {
+      method: "PUT",
+      headers,
+      body: input.data as unknown as BodyInit,
+    });
+    if (!uploaded.ok) {
+      throw new Error(
+        `Linear asset upload for ${input.fileName} failed with HTTP ${uploaded.status}.`,
+      );
+    }
+    const attached = await this.query(
+      `mutation MastermindAttachmentCreate(
+        $issueId: String!
+        $title: String!
+        $url: String!
+      ) {
+        attachmentCreate(input: { issueId: $issueId, title: $title, url: $url }) {
+          success
+        }
+      }`,
+      { issueId: input.issueId, title: input.title, url: assetUrl },
+    );
+    if (asRecord(attached.attachmentCreate).success !== true) {
+      throw new Error(`Linear rejected the attachment for issue ${input.issueId}.`);
+    }
+    return { assetUrl };
   }
 
   async createIssue(input: {

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -25,6 +25,11 @@ import {
 import { transitionMastermindState } from "../../src/mastermind/domain/machine.js";
 import type { LinearGateway } from "../../src/mastermind/linear/client.js";
 import { SqliteMastermindStore } from "../../src/mastermind/store/sqlite.js";
+import {
+  RLM_VISUALIZATION_DIRECTORY,
+  RLM_VISUALIZATION_HTML_PATH,
+  RLM_VISUALIZATION_PNG_PATH,
+} from "../../src/rlm-poc/visualization/contracts.js";
 import type { LinearTicketSnapshot, MastermindWorkItem } from "../../src/mastermind/store/store.js";
 import {
   ExecutorKind,
@@ -299,6 +304,74 @@ describe("Mastermind execution coordinator", () => {
     store.close();
   });
 
+  it("uploads the storyboard once and embeds it in the execution comment", async () => {
+    const linear = new FakeUploadingLinear();
+    const { store, body } = await runSubmindAttempt({ linear });
+
+    expect(linear.uploads).toEqual([
+      { fileName: "submind-storyboard-attempt-1.png", contentType: "image/png", size: 9 },
+      { fileName: "submind-storyboard-attempt-1.html", contentType: "text/html", size: 10 },
+    ]);
+    expect(body).toContain("Submind storyboard:");
+    expect(body).toContain(
+      "![Submind storyboard](https://uploads.linear.app/asset/submind-storyboard-attempt-1.png)",
+    );
+    expect(body).toContain(
+      "Interactive storyboard: https://uploads.linear.app/asset/submind-storyboard-attempt-1.html",
+    );
+    expect(body).not.toContain("Upload failed");
+    store.close();
+  });
+
+  it("does not upload again when the projection is retried against an existing comment", async () => {
+    const linear = new FakeUploadingLinear();
+    const { store, work, coordinator } = await runSubmindAttempt({ linear, steps: 7 });
+    // Simulate a crash between publishing the comment and marking the projection applied.
+    const save = store.saveExecutionProjection.bind(store);
+    const applied = vi
+      .spyOn(store, "saveExecutionProjection")
+      .mockImplementation(async (input) =>
+        input.projection.disposition === "applied"
+          ? Promise.reject(new Error("store went away"))
+          : save(input),
+      );
+
+    await expect(coordinator.process(work.id)).rejects.toThrow("store went away");
+    applied.mockRestore();
+    await coordinator.process(work.id);
+
+    expect(linear.uploads).toHaveLength(2);
+    expect(linear.commentCreates).toBe(1);
+    store.close();
+  });
+
+  it("keeps the run local when the gateway cannot upload or the run drew no storyboard", async () => {
+    const withoutUploads = new FakeExecutionLinear();
+    const withoutStoryboard = new FakeUploadingLinear();
+    const first = await runSubmindAttempt({ linear: withoutUploads });
+    const second = await runSubmindAttempt({ linear: withoutStoryboard, artifactPaths: [] });
+
+    expect(first.body).not.toContain("Submind storyboard:");
+    expect(withoutStoryboard.uploads).toEqual([]);
+    expect(second.body).not.toContain("Submind storyboard:");
+    first.store.close();
+    second.store.close();
+  });
+
+  it("reports an upload failure in the comment and progress without failing the attempt", async () => {
+    const linear = new FakeUploadingLinear(true);
+    const progress: string[] = [];
+    const { store, work, body } = await runSubmindAttempt({ linear, onProgress: progress });
+
+    expect(await store.getWork(work.id)).toMatchObject({ state: MastermindState.SUCCEEDED });
+    expect(body).toContain("- Upload failed:");
+    expect(body).toContain(RLM_VISUALIZATION_PNG_PATH);
+    expect(
+      progress.filter((message) => message.startsWith("Storyboard upload failed")),
+    ).toHaveLength(2);
+    store.close();
+  });
+
   it("resumes a stored code-review result after its state transition is interrupted", async () => {
     const directory = await tempDirectory();
     await execFileAsync("git", ["init"], { cwd: directory });
@@ -462,6 +535,48 @@ describe("Mastermind execution coordinator", () => {
   });
 });
 
+/**
+ * Runs one DELEGATE_SUBMIND attempt to completion, with the storyboard files the run would have
+ * written already present in the worktree.
+ */
+async function runSubmindAttempt(options: {
+  linear: FakeExecutionLinear;
+  artifactPaths?: string[];
+  onProgress?: string[];
+  steps?: number;
+}): Promise<{
+  store: SqliteMastermindStore;
+  work: MastermindWorkItem;
+  coordinator: MastermindExecutionCoordinator;
+  body: string;
+}> {
+  const artifactPaths = options.artifactPaths ?? [
+    RLM_VISUALIZATION_PNG_PATH,
+    RLM_VISUALIZATION_HTML_PATH,
+  ];
+  const directory = await tempDirectory();
+  await mkdir(join(directory, RLM_VISUALIZATION_DIRECTORY), { recursive: true });
+  await writeFile(join(directory, RLM_VISUALIZATION_PNG_PATH), "png-bytes");
+  await writeFile(join(directory, RLM_VISUALIZATION_HTML_PATH), "html-bytes");
+  const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
+  await store.initialize();
+  const work = await createPlannedDirectWork(store, MastermindAction.DELEGATE_SUBMIND);
+  const coordinator = new MastermindExecutionCoordinator(
+    executionConfig(directory),
+    store,
+    options.linear,
+    new FakeProvisioner(directory),
+    { [ExecutorKind.RLM_SUBMIND]: new FakeExecutor(ExecutorKind.RLM_SUBMIND, artifactPaths) },
+    { run: vi.fn().mockResolvedValue({ exitCode: 0, stdout: "passed", stderr: "" }) },
+    options.onProgress ? (message) => options.onProgress!.push(message) : undefined,
+  );
+
+  // Provisioning, preflight, launch, run, poll, collect, then project.
+  for (let step = 0; step < (options.steps ?? 8); step += 1) await coordinator.process(work.id);
+
+  return { store, work, coordinator, body: options.linear.comments[0]?.body ?? "" };
+}
+
 class FakeProvisioner implements WorkspaceProvisioner {
   provisionCalls = 0;
 
@@ -496,7 +611,10 @@ class FakeExecutor implements DirectExecutor {
   private statuses: ExecutorStatus["state"][] = ["working", "done"];
   private request?: DirectExecutionRequest;
 
-  constructor(private readonly kind: ExecutorKind = ExecutorKind.HERDR_COPILOT) {}
+  constructor(
+    private readonly kind: ExecutorKind = ExecutorKind.HERDR_COPILOT,
+    private readonly artifactPaths: string[] = [],
+  ) {}
 
   async preflight(request: DirectExecutionRequest): Promise<ExecutionPreflightReport> {
     this.preflightPaths.push(request.workspace.checkoutPath);
@@ -549,7 +667,7 @@ class FakeExecutor implements DirectExecutor {
       attemptNumber: this.request.attemptNumber,
       outcome: "succeeded",
       summary: "Implemented and verified.",
-      artifactPaths: [],
+      artifactPaths: [...this.artifactPaths],
       verification: [{ command: "nub run test", exitCode: 0, summary: "passed" }],
       knownRisks: [],
       remainingWork: [],
@@ -599,6 +717,31 @@ class FakeExecutionLinear implements LinearGateway {
     const comment = this.comments.find((candidate) => candidate.id === commentId);
     if (!comment) throw new Error(`Comment not found: ${commentId}`);
     comment.body = body;
+  }
+}
+
+/** Adds the optional upload boundary, which the plain gateway deliberately does not support. */
+class FakeUploadingLinear extends FakeExecutionLinear {
+  uploads: Array<{ fileName: string; contentType: string; size: number }> = [];
+
+  constructor(private readonly failing = false) {
+    super();
+  }
+
+  async uploadIssueAttachment(input: {
+    issueId: string;
+    fileName: string;
+    contentType: string;
+    title: string;
+    data: Uint8Array;
+  }): Promise<{ assetUrl: string }> {
+    this.uploads.push({
+      fileName: input.fileName,
+      contentType: input.contentType,
+      size: input.data.byteLength,
+    });
+    if (this.failing) throw new Error("Linear rejected the upload request.");
+    return { assetUrl: `https://uploads.linear.app/asset/${input.fileName}` };
   }
 }
 
@@ -684,6 +827,7 @@ function executionConfig(directory: string): WeavekitConfig {
         profile: "general",
         maxDepth: 3,
         maxTotalCalls: 20,
+        visualizationRenderer: "copilot-sdk",
         enableTrellage: true,
         pollIntervalMs: 1000,
         unknownStatusThreshold: 3,

@@ -8,10 +8,13 @@ import {
   RLM_COMMON_PROFILE_SKILL_NAMES,
   MEDIA_YT_DLP_WRAPPER,
   RLM_PROFILE_SKILL_SOURCES,
+  RLM_STORYBOARD_SKILL_NAMES,
+  adaptAizInfographicSkill,
   adaptHandoffSkill,
   adaptWatchVideoSkill,
   assertPreparedRlmProfileSkillManifest,
   prepareRlmProfileSkills,
+  prepareRlmStoryboardSkills,
   resolveCompatiblePython,
   resolveRlmProfileSkillsCacheDir,
 } from "../../src/rlm-poc/profileSkills.js";
@@ -29,6 +32,7 @@ describe("RLM profile skill bundles", () => {
       "anthropicSkills",
       "designerSkills",
       "infographic",
+      "aizInfographic",
       "img2threejs",
       "visualPlan",
       "makerSkills",
@@ -38,6 +42,64 @@ describe("RLM profile skill bundles", () => {
       expect(source.ref).toBe("HEAD");
       expect(source.updatePolicy).toBe("latest");
     }
+  });
+
+  it("installs the exact skill-backed storyboard bundle in the ignored cache", async () => {
+    const cacheDir = await mkdtemp(join(tmpdir(), "rlm-storyboard-skills-test-"));
+    const revision = "b".repeat(40);
+    const runCommand = async (_file: string, args: string[]) => {
+      if (args[0] === "ls-remote") {
+        return { stdout: `${revision}\tHEAD\n`, stderr: "" };
+      }
+      if (args[0] === "init") {
+        const checkout = args.at(-1);
+        if (!checkout) throw new Error("Missing checkout path.");
+        if (checkout.includes("aiz-infographic")) {
+          await mkdir(join(checkout, "references"), { recursive: true });
+          await writeFile(join(checkout, "SKILL.md"), "---\nname: aiz-infographic\n---\n", "utf8");
+          await writeFile(join(checkout, "references", "styles.md"), "Editorial.\n", "utf8");
+        } else {
+          await Promise.all(
+            RLM_STORYBOARD_SKILL_NAMES.filter((name) => name !== "aiz-infographic").map(
+              async (name) => {
+                const skill = join(checkout, "skills", name);
+                await mkdir(skill, { recursive: true });
+                await writeFile(join(skill, "SKILL.md"), `---\nname: ${name}\n---\n`, "utf8");
+                await writeFile(join(skill, "LICENSE.txt"), "Apache-2.0\n", "utf8");
+              },
+            ),
+          );
+        }
+      }
+      return { stdout: "", stderr: "" };
+    };
+
+    try {
+      const prepared = await prepareRlmStoryboardSkills({ cacheDir, runCommand });
+      expect(prepared.skillDirectories).toHaveLength(1);
+      const skills = prepared.skillDirectories[0]!;
+      await Promise.all(
+        RLM_STORYBOARD_SKILL_NAMES.map((name) =>
+          expect(stat(join(skills, name, "SKILL.md"))).resolves.toBeDefined(),
+        ),
+      );
+      await expect(
+        readFile(join(skills, "aiz-infographic", "references", "styles.md"), "utf8"),
+      ).resolves.toContain("Editorial");
+    } finally {
+      await rm(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes aiz-infographic frontmatter for Copilot SDK discovery", () => {
+    expect(
+      adaptAizInfographicSkill(
+        "---\nname: aiz-infographic\ndescription: " +
+          "A very long upstream description with many host-specific trigger rules.\n---\n\nBody.\n",
+      ),
+    ).toBe(
+      "---\nname: aiz-infographic\ndescription: Design information-rich infographics with clear hierarchy and composition.\n---\n\nBody.\n",
+    );
   });
 
   it("installs common skills for a profile without a specialized skill bundle", async () => {

@@ -6,6 +6,11 @@ import {
   MastermindAction,
   type MastermindAction as MastermindActionValue,
 } from "./mastermind/domain/events.js";
+import {
+  DEFAULT_RLM_STORYBOARD_RENDERER_MODE,
+  RlmStoryboardRendererMode,
+  type RlmStoryboardRendererMode as RlmStoryboardRendererModeValue,
+} from "./rlm-poc/visualization/contracts.js";
 import { ExecutorKind, type ExecutorKind as ExecutorKindValue } from "./submind/contracts.js";
 import { ExecutionPreflightKind, type ExecutionPreflightRequirement } from "./submind/preflight.js";
 
@@ -212,6 +217,7 @@ export type MastermindRlmExecutionDefaults = {
   model?: string;
   maxDepth: number;
   maxTotalCalls: number;
+  visualizationRenderer: RlmStoryboardRendererModeValue;
   /** Enables `invoke_trellage` on the RLM run so it may itself delegate to a nested worktree. */
   enableTrellage: boolean;
   pollIntervalMs: number;
@@ -1771,6 +1777,7 @@ function readMastermindRlmExecutionDefaults(
       1,
       1_000,
     ),
+    visualizationRenderer: readRlmStoryboardRendererMode(record.visualization_renderer),
     enableTrellage: readBoolean(record.enable_trellage, true),
     pollIntervalMs: readRequiredBoundedInteger(
       record.poll_interval_ms,
@@ -1792,6 +1799,16 @@ function readMastermindRlmExecutionDefaults(
     ),
     maxAttempts,
   };
+}
+
+function readRlmStoryboardRendererMode(value: unknown): RlmStoryboardRendererModeValue {
+  const mode = readString(value, DEFAULT_RLM_STORYBOARD_RENDERER_MODE);
+  if (mode !== RlmStoryboardRendererMode.CopilotSdk && mode !== RlmStoryboardRendererMode.Baml) {
+    throw new Error(
+      'mastermind.rlm_execution.visualization_renderer must be "copilot-sdk" or "baml"',
+    );
+  }
+  return mode;
 }
 
 function readMastermindSelfImprovementDefaults(

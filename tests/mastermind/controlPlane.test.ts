@@ -881,6 +881,7 @@ describe("Mastermind durable control plane", () => {
       profile: "general",
       maxDepth: 3,
       maxTotalCalls: 20,
+      visualizationRenderer: "copilot-sdk",
       enableTrellage: true,
       pollIntervalMs: 1_000,
       unknownStatusThreshold: 3,

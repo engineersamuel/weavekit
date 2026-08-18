@@ -11,6 +11,9 @@ export type LoadRlmEnvironmentOptions = {
 };
 
 let redactOutput = (value: string): string => value;
+const DEFAULT_COPILOT_PROXY_BASE_URL = "http://127.0.0.1:8080/v1";
+const DEFAULT_COPILOT_PROXY_API_KEY = "sk-local";
+const ENVIRONMENT_KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/u;
 
 export function writeRlmOutput(value: string): void {
   process.stdout.write(redactOutput(value));
@@ -52,8 +55,15 @@ export async function loadRlmEnvironment(
   const env = options.env ?? process.env;
   const homeDirectory = options.homeDirectory ?? homedir();
   const configPath = options.configPath ?? join(homeDirectory, ".weavekit", "config.toml");
-  loadWeavekitConfig(configPath, env);
-  const loaded = loadLocalEnvFiles(homeDirectory, env);
+  const configValues = loadWeavekitConfig(configPath, {});
+  for (const [key, value] of Object.entries(configValues)) {
+    if (ENVIRONMENT_KEY_PATTERN.test(key) && env[key] === undefined) {
+      env[key] = value;
+    }
+  }
+  const loadedFromFiles = loadLocalEnvFiles(homeDirectory, env);
+  env.COPILOT_PROXY_BASE_URL ??= DEFAULT_COPILOT_PROXY_BASE_URL;
+  env.COPILOT_PROXY_API_KEY ??= DEFAULT_COPILOT_PROXY_API_KEY;
   await (options.loadVarlock ?? loadRlmVarlockEnvironment)();
-  return Object.keys(loaded);
+  return Object.keys(loadedFromFiles);
 }

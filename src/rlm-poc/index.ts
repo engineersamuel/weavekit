@@ -46,7 +46,9 @@ export {
 } from "./modelCatalog.js";
 export {
   RLM_PROFILE_SKILL_SOURCES,
+  RLM_STORYBOARD_SKILL_NAMES,
   prepareRlmProfileSkills,
+  prepareRlmStoryboardSkills,
   resolveCompatiblePython,
   resolveRlmProfileSkillsCacheDir,
   type PrepareRlmProfileSkills,
@@ -64,6 +66,34 @@ export {
   type RlmSessionReference,
 } from "./session.js";
 export { createRlmTool, type CreateRlmToolOptions } from "./tool.js";
+export {
+  DEFAULT_RLM_STORYBOARD_RENDERER_MODE,
+  RLM_VISUALIZATION_DIRECTORY,
+  RLM_VISUALIZATION_HTML_PATH,
+  RLM_VISUALIZATION_PNG_PATH,
+  RLM_VISUALIZATION_STATE_PATH,
+  RlmStoryboardContractError,
+  RlmStoryboardRendererName,
+  RlmStoryboardRendererMode,
+  RlmVisualizationAction,
+  RlmVisualizationRunStatus,
+  RlmVisualizationStatus,
+  bamlRlmStoryboardRenderer,
+  buildVisualizationHtml,
+  createRlmVisualizationRecorder,
+  createCopilotSdkRlmStoryboardRenderer,
+  resvgStoryboardRasterizer,
+  sanitizeStoryboardSvg,
+  type RlmStoryboard,
+  type RlmStoryboardRasterizer,
+  type RlmStoryboardRenderer,
+  type RlmVisualizationArtifacts,
+  type RlmVisualizationCompletion,
+  type RlmVisualizationEvent,
+  type RlmVisualizationObserver,
+  type RlmVisualizationRecorder,
+  type RlmVisualizationState,
+} from "./visualization/index.js";
 export {
   RLM_RUN_STATE_SCHEMA_VERSION,
   RlmCallExecutionStatus,

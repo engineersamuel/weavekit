@@ -14,6 +14,7 @@ import {
 import {
   createRlmTool as createProductionRlmTool,
   type CreateRlmToolOptions,
+  type RlmAdditionalToolContext,
 } from "../../src/rlm-poc/tool.js";
 import type { RlmClient, RlmSession } from "../../src/rlm-poc/session.js";
 import {
@@ -31,6 +32,11 @@ import type {
   RlmWorkerContract,
   RlmWorkerContractInput,
 } from "../../src/rlm-poc/workerContract.js";
+import {
+  RlmVisualizationAction,
+  RlmVisualizationStatus,
+  type RlmVisualizationCompletion,
+} from "../../src/rlm-poc/visualization/contracts.js";
 
 const profiles = createRlmProfileRegistry({
   default: {
@@ -881,5 +887,184 @@ describe("createRlmTool", () => {
       remainingCalls: 0,
     });
     expect(factoryCalls).toBe(2);
+  });
+
+  it("records nested completions child-first, with the parent call named explicitly", async () => {
+    const runState = createRlmRunState(runBrief, { runId: "run-viz" });
+    const completions: RlmVisualizationCompletion[] = [];
+    let factoryCall = 0;
+    const tool = createRlmTool({
+      depthRemaining: 3,
+      maxDepth: 3,
+      profiles,
+      runState,
+      workerContract: createWorkerContract(),
+      visualization: {
+        async recordCompletion(completion) {
+          completions.push(completion);
+        },
+      },
+      clientFactory: () => {
+        factoryCall += 1;
+        const currentCall = factoryCall;
+        return {
+          async start() {},
+          async createSession(config) {
+            return {
+              async sendAndWait() {
+                if (currentCall !== 1) return { data: { content: "nested report" } };
+                const [nestedTool] = config.tools as Tool<RlmToolArgs>[];
+                if (!nestedTool) throw new Error("Expected nested RLM tool.");
+                await invoke(nestedTool, { prompt: "Complete nested work.", profile: "default" });
+                return { data: { content: "outer report" } };
+              },
+              async disconnect() {},
+            };
+          },
+          async stop() {},
+        };
+      },
+    });
+
+    await invoke(tool, { prompt: "Delegate nested work.", profile: "default" });
+
+    // The nested call finishes inside the outer one, so it must be observed first.
+    expect(
+      completions.map((completion) => [
+        completion.callId,
+        completion.parentCallId,
+        completion.depth,
+        completion.status,
+      ]),
+    ).toEqual([
+      ["run-viz:call-2", "run-viz:call-1", 2, RlmVisualizationStatus.Succeeded],
+      ["run-viz:call-1", undefined, 1, RlmVisualizationStatus.Succeeded],
+    ]);
+    expect(completions[1]).toMatchObject({
+      action: RlmVisualizationAction.Rlm,
+      profile: "default",
+      prompt: "Delegate nested work.",
+      model: "test-model",
+      summary: "outer report",
+    });
+    expect(completions[1]?.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("records a failed call and keeps a successful result when the recorder throws", async () => {
+    const completions: RlmVisualizationCompletion[] = [];
+    const visualization = {
+      async recordCompletion(completion: RlmVisualizationCompletion) {
+        completions.push(completion);
+        throw new Error("recorder is down");
+      },
+    };
+    const failing = createRlmTool({ depthRemaining: 3, maxDepth: 3, profiles, visualization });
+    const succeeding = createRlmTool({
+      depthRemaining: 3,
+      maxDepth: 3,
+      profiles,
+      visualization,
+      clientFactory: fakeClientFactory("Blue."),
+    });
+
+    const failure = await invoke(failing, { prompt: "Do it.", profile: "nope" });
+    const success = await invoke(succeeding, { prompt: "Do it.", profile: "default" });
+
+    expect(failure.resultType).toBe("failure");
+    expect(success.resultType).toBe("success");
+    expect(completions).toMatchObject([
+      { status: RlmVisualizationStatus.Failed, error: expect.stringMatching(/nope/u), depth: 1 },
+      { status: RlmVisualizationStatus.Succeeded, summary: "Blue.", depth: 1 },
+    ]);
+  });
+
+  it("mints unique hierarchical call IDs for a nested run that has no semantic state", async () => {
+    const completions: RlmVisualizationCompletion[] = [];
+    let factoryCall = 0;
+    const tool = createRlmTool({
+      depthRemaining: 3,
+      maxDepth: 3,
+      profiles,
+      visualization: {
+        async recordCompletion(completion) {
+          completions.push(completion);
+        },
+      },
+      clientFactory: () => {
+        factoryCall += 1;
+        const currentCall = factoryCall;
+        return {
+          async start() {},
+          async createSession(config) {
+            return {
+              async sendAndWait() {
+                if (currentCall !== 1) return { data: { content: "nested answer" } };
+                const [nestedTool] = config.tools as Tool<RlmToolArgs>[];
+                if (!nestedTool) throw new Error("Expected nested RLM tool.");
+                await invoke(nestedTool, { prompt: "Complete nested work.", profile: "default" });
+                return { data: { content: "outer answer" } };
+              },
+              async disconnect() {},
+            };
+          },
+          async stop() {},
+        };
+      },
+    });
+
+    await invoke(tool, { prompt: "Delegate nested work.", profile: "default" });
+
+    // Without run state there is no semantic call ID, and the fake SDK reuses one tool call ID at
+    // both depths, so only the parent prefix keeps the two calls distinct and correctly parented.
+    const [nested, outer] = completions;
+    expect(outer?.parentCallId).toBeUndefined();
+    expect(outer?.callId).toBe("root/call-1#1");
+    expect(nested?.parentCallId).toBe(outer?.callId);
+    expect(nested?.callId).toBe("root/call-1#1/call-1#1");
+    expect([nested?.depth, outer?.depth]).toEqual([2, 1]);
+  });
+
+  it("binds each session's additional tools to the rlm call that owns that session", async () => {
+    const runState = createRlmRunState(runBrief, { runId: "run-extra" });
+    const contexts: RlmAdditionalToolContext[] = [];
+    let factoryCall = 0;
+    const tool = createRlmTool({
+      depthRemaining: 3,
+      maxDepth: 3,
+      profiles,
+      runState,
+      workerContract: createWorkerContract(),
+      additionalTools: (context) => {
+        contexts.push(context);
+        return [];
+      },
+      clientFactory: () => {
+        factoryCall += 1;
+        const currentCall = factoryCall;
+        return {
+          async start() {},
+          async createSession(config) {
+            return {
+              async sendAndWait() {
+                if (currentCall !== 1) return { data: { content: "nested report" } };
+                const [nestedTool] = config.tools as Tool<RlmToolArgs>[];
+                if (!nestedTool) throw new Error("Expected nested RLM tool.");
+                await invoke(nestedTool, { prompt: "Complete nested work.", profile: "default" });
+                return { data: { content: "outer report" } };
+              },
+              async disconnect() {},
+            };
+          },
+          async stop() {},
+        };
+      },
+    });
+
+    await invoke(tool, { prompt: "Delegate nested work.", profile: "default" });
+
+    expect(contexts).toEqual([
+      { parentCallId: "run-extra:call-1", depth: 2 },
+      { parentCallId: "run-extra:call-2", depth: 3 },
+    ]);
   });
 });

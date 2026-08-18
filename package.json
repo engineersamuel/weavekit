@@ -45,6 +45,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
     "@opentelemetry/sdk-node": "^0.57.0",
     "@opentelemetry/sdk-trace-base": "^1.30.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@xyflow/react": "^12.11.1",
     "claude-superskills": "2.0.8",
     "elkjs": "^0.11.1",

@@ -23,6 +23,12 @@ import {
 } from "../../../src/rlm-poc/trellage/profileDirectives.js";
 import { resolveResultLocation } from "../../../src/rlm-poc/trellage/result.js";
 import { createTrellageTool } from "../../../src/rlm-poc/trellage/tool.js";
+import {
+  RlmVisualizationAction,
+  RlmVisualizationStatus,
+  type RlmVisualizationCompletion,
+  type RlmVisualizationObserver,
+} from "../../../src/rlm-poc/visualization/contracts.js";
 import { TrellageWorktreeRegistry } from "../../../src/rlm-poc/trellage/worktrees.js";
 
 const CONTAINER_PROFILE: TrellageProfile = {
@@ -113,6 +119,9 @@ async function createHarness(
     maxConcurrent?: number;
     maxCalls?: number;
     profileDirectiveRegistry?: TrellageProfileDirectiveRegistry;
+    visualization?: RlmVisualizationObserver;
+    owningCallId?: string;
+    depth?: number;
   } = {},
 ) {
   const worktreePath = await mkdtemp(join(tmpdir(), "trellage-tool-"));
@@ -186,6 +195,9 @@ async function createHarness(
       ? { profileDirectiveRegistry: options.profileDirectiveRegistry }
       : {}),
     ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
+    ...(options.visualization ? { visualization: options.visualization } : {}),
+    ...(options.owningCallId ? { owningCallId: options.owningCallId } : {}),
+    ...(options.depth === undefined ? {} : { depth: options.depth }),
   });
 
   return {
@@ -778,6 +790,77 @@ describe("createTrellageTool", () => {
       "append-system-prompt transport requires native Claude (`cldx`) headless execution.",
     );
     expect(launches).toEqual([]);
+  });
+
+  it("records each delegation against the rlm call that owns the session", async () => {
+    const completions: RlmVisualizationCompletion[] = [];
+    const { handler } = await createHarness({
+      visualization: {
+        async recordCompletion(completion) {
+          completions.push(completion);
+        },
+      },
+      owningCallId: "run-1:call-4",
+      depth: 3,
+    });
+
+    await handler(
+      { prompt: "do it", harness: TrellageHarness.Container, profile: "claude-council" },
+      { toolCallId: "call-1" },
+    );
+    await handler(
+      { prompt: "do it again", harness: TrellageHarness.Grok, profile: "superpowers" },
+      { toolCallId: "call-2" },
+    );
+
+    expect(
+      completions.map((completion) => [
+        completion.callId,
+        completion.parentCallId,
+        completion.depth,
+      ]),
+    ).toEqual([
+      ["run-1:call-4:trellage-1", "run-1:call-4", 3],
+      ["run-1:call-4:trellage-2", "run-1:call-4", 3],
+    ]);
+    expect(completions[0]).toMatchObject({
+      action: RlmVisualizationAction.Trellage,
+      status: RlmVisualizationStatus.Succeeded,
+      harness: TrellageHarness.Container,
+      profile: "claude-council",
+      prompt: "do it",
+      summary: "delegated answer",
+    });
+  });
+
+  it("records a failed delegation and never lets a broken recorder change the result", async () => {
+    const completions: RlmVisualizationCompletion[] = [];
+    const { handler } = await createHarness({
+      readiness: "unhealthy",
+      visualization: {
+        async recordCompletion(completion) {
+          completions.push(completion);
+          throw new Error("recorder is down");
+        },
+      },
+    });
+
+    const result = await handler(
+      { prompt: "do it", harness: TrellageHarness.Grok, profile: "superpowers" },
+      { toolCallId: "call-1" },
+    );
+
+    expect(result.resultType).toBe("failure");
+    expect(completions).toMatchObject([
+      {
+        action: RlmVisualizationAction.Trellage,
+        status: RlmVisualizationStatus.Failed,
+        callId: "run-1:root:trellage-1",
+        depth: 1,
+        error: expect.stringMatching(/unhealthy/iu),
+      },
+    ]);
+    expect(completions[0]?.parentCallId).toBeUndefined();
   });
 });
 

@@ -301,7 +301,7 @@ then writes one idempotent Linear comment and label projection. Successful imple
 the ticket to `In Review` and starts a distinct post-implementation code review against the frozen
 ticket snapshot, successful attempt, result manifest, verification evidence, and current commit.
 Review `PASS` waits for explicit human acceptance; `CHANGES_REQUIRED` stays out of `Done`.
-`DELEGATE_SUBMIND` now launches too: an opted-in `[mastermind.rlmExecution]` policy resolves it to
+`DELEGATE_SUBMIND` now launches too: an opted-in `[mastermind.rlm_execution]` policy resolves it to
 the `RlmDirectExecutor`, which spawns `rlm-poc`'s recursive Copilot SDK meta-harness ("Submind",
 see [ADR 0010](docs/adr/0010-recursive-llm-tool-rlm.md)) as a detached process rooted at the same
 provisioned worktree, with Trellage enabled by default so it may fan out into further nested Herdr
@@ -309,6 +309,38 @@ worktrees. It shares the same result-manifest completion contract as `IMPLEMENT_
 back to `NEEDS_HUMAN` with Submind's captured final output as evidence when that manifest is
 missing. See [ADR 0012](docs/adr/0012-mastermind-delegate-submind-to-rlm.md) for the full
 executor-selection and result-contract design.
+
+Each RLM Submind run writes a live storyboard to
+`.weavekit/rlm-visualization/{visualization.html,visualization.png,visualization-state.json}` in its
+worktree. State and a local frame appear before the root session starts. Each completed recursive
+RLM or Trellage call is persisted immediately; the slower Gemini render runs asynchronously and
+coalesces pending revisions, so visualization does not delay delegation. Terminal finalization
+waits for the final frame. Mastermind includes these files in result artifacts and uploads the HTML
+and PNG when the run has a Linear issue.
+
+The default renderer is one persistent `gemini-3.7-flash` Copilot SDK session with the
+`aiz-infographic`, `algorithmic-art`, `canvas-design`, `frontend-design`, and `theme-factory`
+skills. The first run downloads pinned skill sources into the ignored
+`.weavekit/rlm-profile-skills` cache and can take longer. `aiz-infographic` stays runtime-cache-only
+because its repository has no declared license. Select the smaller BAML renderer explicitly when
+needed:
+
+```toml
+[mastermind.rlm_execution]
+executor_kind = "rlm-submind"
+max_depth = 3
+max_total_calls = 20
+visualization_renderer = "baml" # omit for the default "copilot-sdk"
+enable_trellage = true
+poll_interval_ms = 1000
+unknown_status_threshold = 3
+cancellation_grace_ms = 5000
+max_attempts = 2
+```
+
+For direct comparison, run `nub scripts/rlm-poc.ts --prompt "..."` for the SDK default or add
+`--visualization-renderer baml`. Display the current PNG in Kitty with
+`kitty +kitten icat .weavekit/rlm-visualization/visualization.png`.
 
 When a `DELEGATE_SUBMIND` attempt reaches a terminal state (success, changes requested, needs
 human, or failure) and `[mastermind.self_improvement]` is enabled, Mastermind runs a best-effort,

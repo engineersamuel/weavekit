@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import type { WeavekitConfig } from "../../config.js";
+import {
+  RLM_VISUALIZATION_HTML_PATH,
+  RLM_VISUALIZATION_PNG_PATH,
+} from "../../rlm-poc/visualization/contracts.js";
 import {
   createDirectExecutionRequest,
   directExecutionAgentName,
@@ -508,9 +513,12 @@ export class MastermindExecutionCoordinator {
     let commentId = await this.linear.findIssueCommentByMarker(work.issueId, marker);
     if (!commentId) {
       const ticket = await this.store.getLatestTicketSnapshot(work.id);
+      // Uploads happen here, at the one point where the comment does not exist yet, so a retried
+      // projection never publishes the same storyboard twice.
+      const storyboard = await this.publishStoryboard(work, current);
       commentId = await this.linear.createIssueComment(
         work.issueId,
-        executionComment(current, marker, ticket?.identifier ?? work.id),
+        executionComment(current, marker, ticket?.identifier ?? work.id, storyboard),
       );
     }
     if (current.state === MastermindState.SUCCEEDED) {
@@ -543,6 +551,52 @@ export class MastermindExecutionCoordinator {
         projectedAt: new Date().toISOString(),
       },
     });
+  }
+
+  /**
+   * Publishes the Submind storyboard to the ticket, if this attempt produced one and the gateway
+   * supports uploads. Deliberately non-fatal: every failure becomes a line in the execution comment
+   * and a progress message, because finished work must not fail over a picture.
+   */
+  private async publishStoryboard(
+    work: MastermindWorkItem,
+    attempt: ExecutionAttempt,
+  ): Promise<StoryboardPublication> {
+    const publication: StoryboardPublication = { failures: [] };
+    const worktreePath = attempt.executorHandle?.worktreePath;
+    const artifactPaths = attempt.result?.artifactPaths ?? [];
+    if (!worktreePath || !this.linear.uploadIssueAttachment) return publication;
+    const targets = [
+      {
+        path: RLM_VISUALIZATION_PNG_PATH,
+        contentType: "image/png",
+        label: "png" as const,
+      },
+      {
+        path: RLM_VISUALIZATION_HTML_PATH,
+        contentType: "text/html",
+        label: "html" as const,
+      },
+    ].filter((target) => artifactPaths.includes(target.path));
+    for (const target of targets) {
+      try {
+        const data = await readFile(join(worktreePath, target.path));
+        const uploaded = await this.linear.uploadIssueAttachment({
+          issueId: work.issueId,
+          fileName: `submind-storyboard-attempt-${attempt.attemptNumber}.${target.label}`,
+          contentType: target.contentType,
+          title: `Submind storyboard (attempt ${attempt.attemptNumber})`,
+          data,
+        });
+        if (target.label === "png") publication.pngUrl = uploaded.assetUrl;
+        else publication.htmlUrl = uploaded.assetUrl;
+      } catch (error) {
+        const message = `${target.path}: ${error instanceof Error ? error.message : String(error)}`;
+        publication.failures.push(message);
+        this.onProgress?.(`Storyboard upload failed for ${message}`);
+      }
+    }
+    return publication;
   }
 
   private async loadContext(
@@ -681,10 +735,18 @@ function policyVersion(project: WeavekitConfig["projects"][string]): string {
     .slice(0, 16);
 }
 
+/** Result of publishing one attempt's storyboard to Linear. Failures are reported, never thrown. */
+type StoryboardPublication = {
+  htmlUrl?: string;
+  pngUrl?: string;
+  failures: string[];
+};
+
 function executionComment(
   attempt: ExecutionAttempt,
   marker: string,
   attachmentSelector: string,
+  storyboard: StoryboardPublication = { failures: [] },
 ): string {
   const verification = attempt.verification?.commands ?? [];
   const handle = attempt.executorHandle;
@@ -706,8 +768,22 @@ function executionComment(
     ...(attempt.result?.pullRequestUrl
       ? ["", `Pull request: ${attempt.result.pullRequestUrl}`]
       : []),
+    ...storyboardSection(storyboard),
     ...attachmentCommands,
   ].join("\n");
+}
+
+function storyboardSection(storyboard: StoryboardPublication): string[] {
+  if (!storyboard.pngUrl && !storyboard.htmlUrl && storyboard.failures.length === 0) {
+    return [];
+  }
+  return [
+    "",
+    "Submind storyboard:",
+    ...(storyboard.pngUrl ? ["", `![Submind storyboard](${storyboard.pngUrl})`] : []),
+    ...(storyboard.htmlUrl ? ["", `Interactive storyboard: ${storyboard.htmlUrl}`] : []),
+    ...storyboard.failures.map((failure) => `- Upload failed: ${failure}`),
+  ];
 }
 
 function shellQuote(value: string): string {

@@ -1,8 +1,15 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { MastermindRlmExecutionDefaults } from "../../src/config.js";
+import {
+  RLM_VISUALIZATION_DIRECTORY,
+  RLM_VISUALIZATION_HTML_PATH,
+  RLM_VISUALIZATION_PNG_PATH,
+  RLM_VISUALIZATION_STATE_PATH,
+} from "../../src/rlm-poc/visualization/contracts.js";
 import {
   ExecutorKind,
   RlmDirectExecutor,
@@ -71,6 +78,8 @@ describe("RLM direct executor", () => {
       "3",
       "--max-total-calls",
       "20",
+      "--visualization-renderer",
+      "copilot-sdk",
       "--trellage",
     ]);
 
@@ -108,6 +117,63 @@ describe("RLM direct executor", () => {
       checks: [],
     });
     expect(spawnCalls[0]).not.toContain("--trellage");
+  });
+
+  it("forwards an explicit BAML storyboard renderer to the detached process", async () => {
+    const worktreePath = await tempDirectory();
+    const spawnCalls: string[][] = [];
+    const executor = new RlmDirectExecutor(
+      { ...executionConfig(), visualizationRenderer: "baml" },
+      fakeLauncher({
+        spawn(_command, args) {
+          spawnCalls.push(args);
+          return { pid: 1 };
+        },
+      }),
+    );
+
+    await startDirectExecutionWithApprovedPreflight(executor, executionRequest(worktreePath), {
+      accepted: true,
+      checkedAt: "2026-08-06T12:00:00.000Z",
+      checks: [],
+    });
+
+    const rendererFlag = spawnCalls[0]?.indexOf("--visualization-renderer") ?? -1;
+    expect(spawnCalls[0]?.[rendererFlag + 1]).toBe("baml");
+  });
+
+  it("removes a previous run's storyboard before spawning the detached child", async () => {
+    const worktreePath = await tempDirectory();
+    await writeStoryboardFiles(worktreePath);
+    const survivingAtSpawn: string[] = [];
+    const executor = new RlmDirectExecutor(
+      executionConfig(),
+      fakeLauncher({
+        spawn() {
+          // Read at spawn time: the child starts writing its own storyboard immediately, so the
+          // stale one must already be gone by now, not merely gone once `start` resolves.
+          survivingAtSpawn.push(
+            ...[
+              RLM_VISUALIZATION_HTML_PATH,
+              RLM_VISUALIZATION_PNG_PATH,
+              RLM_VISUALIZATION_STATE_PATH,
+            ].filter((artifact) => existsSync(join(worktreePath, artifact))),
+          );
+          return { pid: 1 };
+        },
+      }),
+    );
+
+    await startDirectExecutionWithApprovedPreflight(executor, executionRequest(worktreePath), {
+      accepted: true,
+      checkedAt: "2026-08-06T12:00:00.000Z",
+      checks: [],
+    });
+
+    expect(survivingAtSpawn).toEqual([]);
+    expect(existsSync(join(worktreePath, RLM_VISUALIZATION_DIRECTORY))).toBe(false);
+    // Only the storyboard directory is removed; this run's own prompt file is written by `start`.
+    expect(existsSync(join(worktreePath, ".weavekit", "mastermind-rlm-prompt.txt"))).toBe(true);
   });
 
   it("reports working while the process is alive with no output file", async () => {
@@ -324,7 +390,188 @@ describe("RLM direct executor", () => {
     expect(confirmed).toBe(true);
     expect(signals).toEqual(["SIGTERM"]);
   });
+
+  it("appends the run's storyboard paths to the Submind-authored artifacts", async () => {
+    const worktreePath = await tempDirectory();
+    const request = executionRequest(worktreePath);
+    await writeManifest(worktreePath, request, ["docs/plan.md"]);
+    await writeStoryboardFiles(worktreePath);
+    await writeOutputJson(worktreePath, {
+      ok: true,
+      result: { finalText: "All done.", traceId: "trace-9" },
+      observedAt: "2026-08-06T12:05:00.000Z",
+    });
+    const executor = new RlmDirectExecutor(executionConfig(), fakeLauncher());
+
+    const result = await executor.collect(
+      { executor: ExecutorKind.RLM_SUBMIND, worktreePath },
+      request,
+    );
+
+    expect(result.artifactPaths).toEqual([
+      "docs/plan.md",
+      RLM_VISUALIZATION_HTML_PATH,
+      RLM_VISUALIZATION_PNG_PATH,
+      RLM_VISUALIZATION_STATE_PATH,
+    ]);
+  });
+
+  it("adds only the storyboard files that are really on disk", async () => {
+    const worktreePath = await tempDirectory();
+    const request = executionRequest(worktreePath);
+    await writeManifest(worktreePath, request, []);
+    await writeStoryboardFiles(worktreePath, [RLM_VISUALIZATION_PNG_PATH]);
+    await writeOutputJson(worktreePath, {
+      ok: true,
+      result: { finalText: "All done.", traceId: "trace-9" },
+      observedAt: "2026-08-06T12:05:00.000Z",
+    });
+    const executor = new RlmDirectExecutor(executionConfig(), fakeLauncher());
+
+    const result = await executor.collect(
+      { executor: ExecutorKind.RLM_SUBMIND, worktreePath },
+      request,
+    );
+
+    // The coordinator validates these again, so a declared-but-missing file would fail the work.
+    expect(result.artifactPaths).toEqual([RLM_VISUALIZATION_PNG_PATH]);
+  });
+
+  it("ignores storyboard paths claimed by the run's own output JSON", async () => {
+    const worktreePath = await tempDirectory();
+    const request = executionRequest(worktreePath);
+    await writeManifest(worktreePath, request, []);
+    await writeStoryboardFiles(worktreePath, [RLM_VISUALIZATION_PNG_PATH]);
+    await writeFile(join(worktreePath, ".weavekit", "smuggled.txt"), "not an artifact");
+    await writeOutputJson(worktreePath, {
+      ok: true,
+      result: {
+        finalText: "All done.",
+        traceId: "trace-9",
+        visualization: {
+          htmlPath: ".weavekit/smuggled.txt",
+          pngPath: "/etc/passwd",
+          statePath: RLM_VISUALIZATION_STATE_PATH,
+        },
+      },
+      observedAt: "2026-08-06T12:05:00.000Z",
+    });
+    const executor = new RlmDirectExecutor(executionConfig(), fakeLauncher());
+
+    const result = await executor.collect(
+      { executor: ExecutorKind.RLM_SUBMIND, worktreePath },
+      request,
+    );
+
+    // Only the three fixed constants are attachable, and only when the file exists.
+    expect(result.artifactPaths).toEqual([RLM_VISUALIZATION_PNG_PATH]);
+  });
+
+  it("still reports the storyboard when the run produced no result manifest", async () => {
+    const worktreePath = await tempDirectory();
+    const request = executionRequest(worktreePath);
+    await writeStoryboardFiles(worktreePath, [RLM_VISUALIZATION_PNG_PATH]);
+    await writeOutputJson(worktreePath, {
+      ok: true,
+      result: { finalText: "Finished without a manifest.", traceId: "trace-9" },
+      observedAt: "2026-08-06T12:05:00.000Z",
+    });
+    const executor = new RlmDirectExecutor(executionConfig(), fakeLauncher());
+
+    const result = await executor.collect(
+      { executor: ExecutorKind.RLM_SUBMIND, worktreePath },
+      request,
+    );
+
+    expect(result.outcome).toBe("needs-human");
+    expect(result.artifactPaths).toEqual([RLM_VISUALIZATION_PNG_PATH]);
+  });
+
+  it("reports the final storyboard of a failed run", async () => {
+    const worktreePath = await tempDirectory();
+    const request = executionRequest(worktreePath);
+    await writeStoryboardFiles(worktreePath);
+    await writeOutputJson(worktreePath, {
+      ok: false,
+      error: "Copilot SDK session errored out.",
+      observedAt: "2026-08-06T12:05:00.000Z",
+    });
+    const executor = new RlmDirectExecutor(executionConfig(), fakeLauncher());
+
+    const result = await executor.collect(
+      { executor: ExecutorKind.RLM_SUBMIND, worktreePath },
+      request,
+    );
+
+    // A failed payload carries no result object at all, so the storyboard must not depend on one.
+    expect(result.outcome).toBe("needs-human");
+    expect(result.artifactPaths).toEqual([
+      RLM_VISUALIZATION_HTML_PATH,
+      RLM_VISUALIZATION_PNG_PATH,
+      RLM_VISUALIZATION_STATE_PATH,
+    ]);
+  });
+
+  it("reports the final storyboard of a failed run that did write a manifest", async () => {
+    const worktreePath = await tempDirectory();
+    const request = executionRequest(worktreePath);
+    await writeManifest(worktreePath, request, ["docs/plan.md"]);
+    await writeStoryboardFiles(worktreePath, [RLM_VISUALIZATION_HTML_PATH]);
+    await writeOutputJson(worktreePath, {
+      ok: false,
+      error: "Copilot SDK session errored out.",
+      observedAt: "2026-08-06T12:05:00.000Z",
+    });
+    const executor = new RlmDirectExecutor(executionConfig(), fakeLauncher());
+
+    const result = await executor.collect(
+      { executor: ExecutorKind.RLM_SUBMIND, worktreePath },
+      request,
+    );
+
+    expect(result.artifactPaths).toEqual(["docs/plan.md", RLM_VISUALIZATION_HTML_PATH]);
+  });
 });
+
+async function writeManifest(
+  worktreePath: string,
+  request: DirectExecutionRequest,
+  artifactPaths: string[],
+): Promise<void> {
+  await mkdir(join(worktreePath, ".weavekit"), { recursive: true });
+  // The manifest is validated against the worktree, so every declared artifact must really exist.
+  for (const artifactPath of artifactPaths) {
+    await mkdir(dirname(join(worktreePath, artifactPath)), { recursive: true });
+    await writeFile(join(worktreePath, artifactPath), "artifact");
+  }
+  await writeFile(
+    join(worktreePath, ".weavekit", "mastermind-result.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      workId: request.workId,
+      attemptId: request.attemptId,
+      attemptNumber: request.attemptNumber,
+      outcome: "succeeded",
+      summary: "Implemented the ticket.",
+      artifactPaths,
+      verification: [{ command: "nub run test", exitCode: 0, summary: "passed" }],
+      knownRisks: [],
+      remainingWork: [],
+    }),
+  );
+}
+
+async function writeStoryboardFiles(
+  worktreePath: string,
+  paths: string[] = [
+    RLM_VISUALIZATION_HTML_PATH,
+    RLM_VISUALIZATION_PNG_PATH,
+    RLM_VISUALIZATION_STATE_PATH,
+  ],
+): Promise<void> {
+  await mkdir(join(worktreePath, RLM_VISUALIZATION_DIRECTORY), { recursive: true });
+  await Promise.all(paths.map((path) => writeFile(join(worktreePath, path), "storyboard")));
+}
 
 function fakeLauncher(overrides: Partial<RlmProcessLauncher> = {}): RlmProcessLauncher {
   return {
@@ -348,6 +595,7 @@ function executionConfig(): MastermindRlmExecutionDefaults {
     profile: "general",
     maxDepth: 3,
     maxTotalCalls: 20,
+    visualizationRenderer: "copilot-sdk",
     enableTrellage: true,
     pollIntervalMs: 1000,
     unknownStatusThreshold: 3,
