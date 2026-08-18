@@ -25,6 +25,7 @@ import {
   computeRlmSessionTimeoutMs,
   DEFAULT_RLM_SEND_TIMEOUT_MS,
   assertRlmSessionSkillPolicy,
+  createReadOnlyPermissionHandler,
   prepareRlmSkillPolicy,
   type RlmClient,
   type RlmClientFactory,
@@ -57,7 +58,12 @@ import {
   resolveRlmModelDecision,
   type CopilotModelCatalog,
 } from "./modelCatalog.js";
-import { bamlRlmWorkerContract, type RlmWorkerContract } from "./workerContract.js";
+import {
+  bamlRlmWorkerContract,
+  emptyRlmRunBrief,
+  resolveRlmRunBrief,
+  type RlmWorkerContract,
+} from "./workerContract.js";
 
 export const DEFAULT_RLM_MAX_DEPTH = 3;
 export const DEFAULT_RLM_MODEL = "gpt-5.6-sol";
@@ -121,8 +127,11 @@ export type RlmRuntimeOptions = {
   modelCatalog?: CopilotModelCatalog;
   /** Alternate catalog path for tests and operators maintaining a separate nightly snapshot. */
   modelCatalogPath?: string;
-  /** Immutable semantic brief injected into typed general workers. */
-  runBrief?: RlmRunBrief;
+  /**
+   * Operator-supplied run brief fields. Each present field replaces the value derived from the
+   * prompt; absent fields are still derived. Supplying every list skips derivation entirely.
+   */
+  runBrief?: Partial<RlmRunBrief>;
   /** Injectable typed worker boundary. Defaults to the generated BAML contract. */
   workerContract?: RlmWorkerContract;
 };
@@ -216,12 +225,11 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
   const executionRunId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const runState = options.workerContract
     ? createRlmRunState(
-        options.runBrief ?? {
-          objective: options.prompt,
-          constraints: [],
-          acceptanceCriteria: [],
-          validationCommands: [],
-        },
+        // A resumed turn discards this brief: `restoreRunStateFromConversation` either hydrates
+        // the checkpoint or derives from the original prompt, so deriving here would be wasted.
+        options.conversationId
+          ? { ...emptyRlmRunBrief(options.prompt), ...options.runBrief }
+          : await resolveRlmRunBrief(options.prompt, options.workerContract, options.runBrief),
         { runId: options.conversationId ?? executionRunId },
       )
     : undefined;
@@ -317,7 +325,7 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
           enableSkills: rootSkillDirectories.length > 0,
           memory: { enabled: false },
           systemMessage: { mode: "append", content: options.systemPrompt },
-          onPermissionRequest: approveAll,
+          onPermissionRequest: createReadOnlyPermissionHandler(approveAll),
           streaming: consoleStreaming,
           ...(rootSkillDirectories.length > 0 ? { skillDirectories: rootSkillDirectories } : {}),
           ...(rootSkillPolicy.disabledSkills.length > 0
@@ -363,7 +371,12 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
         }
         if (runState && conversationId) {
           if (options.conversationId) {
-            await restoreRunStateFromConversation(session, runState, options.workerContract!);
+            await restoreRunStateFromConversation(
+              session,
+              runState,
+              options.workerContract!,
+              options.runBrief,
+            );
           } else {
             setRlmRunIdentity(runState, conversationId);
           }
@@ -434,6 +447,7 @@ async function restoreRunStateFromConversation(
   session: RlmSessionReference["current"],
   state: RlmRunState,
   workerContract: RlmWorkerContract,
+  briefOverrides?: Partial<RlmRunBrief>,
 ): Promise<void> {
   if (!session?.getEvents) {
     throw new Error("Cannot restore RLM run state: resumed conversation events are unavailable.");
@@ -463,10 +477,10 @@ async function restoreRunStateFromConversation(
     (event) => event.type === "user.message" && event.data.content.trim().length > 0,
   );
   if (firstUserPrompt?.type === "user.message") {
-    setRlmRunBrief(state, {
-      ...state.brief,
-      objective: firstUserPrompt.data.content,
-    });
+    setRlmRunBrief(
+      state,
+      await resolveRlmRunBrief(firstUserPrompt.data.content, workerContract, briefOverrides),
+    );
     return;
   }
   throw new Error(

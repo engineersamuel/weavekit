@@ -136,7 +136,7 @@ export const RLM_ROOT_CAPABILITY_MANIFEST = {
   authority: "routing-synthesis-verification",
   repositoryWritePermission: false,
   allowedSkillNames: [],
-  availableTools: ["custom:rlm", "mcp:*", "view", "glob", "grep"],
+  availableTools: ["custom:rlm", "mcp:*", "view", "glob", "grep", "bash"],
 } as const;
 
 export function createRlmRootAvailableTools(trellageEnabled: boolean): string[] {

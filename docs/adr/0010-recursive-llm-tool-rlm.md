@@ -39,7 +39,13 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
 - Each nested session starts from a **clean conversation slate**. A general worker receives the
   immutable run brief, its delegated task, and only the completed typed reports explicitly named
   in `dependsOn`. It does not inherit the parent transcript or the complete run ledger. The narrow
-  validation scenario keeps its existing raw prompt/result path. When any descendant explicitly
+  validation scenario keeps its existing raw prompt/result path. The brief's objective,
+  constraints, acceptance criteria, and validation commands are derived once per run from the
+  operator's raw prompt, and operator-supplied fields override the derived ones field by field.
+  Derivation extracts only what the prompt states or clearly implies, leaving a list empty rather
+  than inventing an entry, and fails open to an empty brief so a derivation error cannot abort the
+  run. Binding the brief once gives every worker and reviewer the same enumerated acceptance
+  contract instead of each retyping it free-form. When any descendant explicitly
   calls `ask_user`, an isolated answerer receives a point-in-time snapshot of the root Submind's
   application instructions and complete persisted conversation. Its answer is returned to the
   child, while the question/answer exchange is also included structurally in the `rlm` result
@@ -53,7 +59,13 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
 - `rlm`'s signature is minimal:
 
   ```ts
-  rlm({ prompt: string; profile: string; model?: string; dependsOn?: string[] })
+  rlm({
+    prompt: string;
+    profile: string;
+    model?: string;
+    effort?: "low" | "medium" | "high" | "xhigh";
+    dependsOn?: string[];
+  })
     => {
       text: string;
       depthUsed: number;
@@ -76,6 +88,10 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
   falls back to policy. Canonical IDs always come from the validated offered set. The root itself
   is an intentional exception and remains operator-pinned to `mai-code-1.1-flash`; catalog
   capability disagreement is traced diagnostically rather than silently replacing that pin.
+  Reasoning effort follows the same shape: the root may pass `effort` per call to match a task's
+  difficulty, an omitted choice uses the profile's default, and a request above the profile's
+  `maxReasoningEffort` is clamped down to that cap rather than rejected, because a rejected call
+  still spends the shared budget.
 
   `profile` resolves to a local, versioned entity config (model, a `systemMessage` append-block,
   purpose/description, `availableTools`/`excludedTools`, and an optional lazy skill bundle) — not a Trellage
@@ -101,8 +117,14 @@ handoff doc, not touching `src/mastermind/` or `src/submind/`).
     invoke, preventing a validation/review session from escalating into a full-tool profile.
     The root Submind is the application orchestrator, not a selectable profile. It performs routing,
     synthesis, and verification: its tools are `rlm`, optional `invoke_trellage`, discovered MCP,
-    read-only `view`/`glob`/`grep`, and no root-local skills. It reads targeted files and search
-    results to verify worker reports. It never writes, runs shell commands, or loads a skill pack.
+    and read-only `view`/`glob`/`grep`/`bash`, with no root-local skills. It reads targeted files
+    and search results to verify worker reports, and reruns the run brief's validation commands
+    itself to confirm a worker's claim that they passed. It never writes or loads a skill pack.
+    A root-only permission handler is the enforcement point rather than the tool list: it rejects
+    every write, sandbox bypass, unparsed command, and non-read-only MCP tool, and approves shell
+    only when every parsed command is read-only and there is no write redirection. Root shell
+    exists for that one confirmation step; delegation stays the primary execution path for any
+    check that must write, install, or mutate state.
     The headless root does not advertise native `ask_user` without a live callback; recursive worker
     questions still use the isolated root-conversation answerer. It does not directly implement,
     research, design, or review. Every recursive profile also loads Matt Pocock's upstream

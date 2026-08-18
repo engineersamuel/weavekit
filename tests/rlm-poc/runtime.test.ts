@@ -328,7 +328,14 @@ describe("RLM runtime prompts", () => {
     expect(sessionConfig?.memory).toEqual({ enabled: false });
     expect(sessionConfig?.skillDirectories).toBeUndefined();
     expect(sessionConfig?.disabledSkills).toBeUndefined();
-    expect(sessionConfig?.availableTools).toEqual(["custom:rlm", "mcp:*", "view", "glob", "grep"]);
+    expect(sessionConfig?.availableTools).toEqual([
+      "custom:rlm",
+      "mcp:*",
+      "view",
+      "glob",
+      "grep",
+      "bash",
+    ]);
     const systemMessage = sessionConfig?.systemMessage as { content: string };
     expect(systemMessage.content).toContain("enforces at most 6 total `rlm` calls");
     expect(systemMessage.content).toContain("`review` (review):");
@@ -417,6 +424,7 @@ describe("RLM runtime prompts", () => {
       conversationId,
       clientFactory: () => client,
       consoleStreaming: false,
+      workerContract: summaryWorkerContract,
       prepareRootSkills: async () => ({
         skillDirectories: ["/cache/handoff/skills/productivity"],
       }),
@@ -435,7 +443,14 @@ describe("RLM runtime prompts", () => {
     expect(resumedConfig.enableConfigDiscovery).toBe(true);
     expect(resumedConfig.enableSkills).toBe(false);
     expect(resumedConfig.disabledSkills).toBeUndefined();
-    expect(resumedConfig.availableTools).toEqual(["custom:rlm", "mcp:*", "view", "glob", "grep"]);
+    expect(resumedConfig.availableTools).toEqual([
+      "custom:rlm",
+      "mcp:*",
+      "view",
+      "glob",
+      "grep",
+      "bash",
+    ]);
     expect(resumedConfig.tools).toHaveLength(1);
     expect((resumedConfig.systemMessage as { content: string }).content).toContain(
       "Recursive RLM Submind",
@@ -730,6 +745,7 @@ describe("RLM runtime prompts", () => {
           ...(mode === "resumed" ? { conversationId } : {}),
           clientFactory: () => client,
           consoleStreaming: false,
+          workerContract: summaryWorkerContract,
           prepareRootSkills: async () => ({
             skillDirectories: ["/cache/handoff"],
           }),
@@ -806,6 +822,7 @@ describe("RLM runtime prompts", () => {
           ...(mode === "resume" ? { conversationId } : {}),
           clientFactory: () => client,
           consoleStreaming: false,
+          workerContract: summaryWorkerContract,
           prepareRootSkills: async () => ({
             skillDirectories: ["/cache/handoff/skills/productivity"],
           }),
@@ -835,10 +852,160 @@ describe("RLM runtime prompts", () => {
         conversationId: "f13c1665-bc2c-4d97-9c37-8f31d5c87d17",
         clientFactory: () => client,
         consoleStreaming: false,
+        workerContract: summaryWorkerContract,
         prepareRootSkills: noRootSkills,
       }),
     ).rejects.toThrow("Session not found");
     expect(created).toBe(false);
+  });
+});
+
+describe("RLM runtime run brief", () => {
+  function briefCapturingClientFactory(): () => RlmClient {
+    let factoryCall = 0;
+    return (): RlmClient => {
+      factoryCall += 1;
+      if (factoryCall > 1) {
+        return {
+          async start() {},
+          async createSession() {
+            return {
+              async sendAndWait() {
+                return { data: { content: "Worker done." } };
+              },
+              async disconnect() {},
+            };
+          },
+          async stop() {},
+        };
+      }
+      return {
+        async start() {},
+        rpc: {
+          skills: {
+            async discover() {
+              return { skills: [] };
+            },
+          },
+        },
+        async createSession(config) {
+          return {
+            sessionId: "f13c1665-bc2c-4d97-9c37-8f31d5c87d17",
+            rpc: {
+              skills: {
+                async ensureLoaded() {},
+                async list() {
+                  return { skills: [] };
+                },
+              },
+            },
+            async sendAndWait() {
+              const [tool] = config.tools as Tool<RlmToolArgs>[];
+              const args = { prompt: "Do the bounded work.", profile: "general" };
+              const result = (await tool!.handler!(args, {
+                sessionId: "root",
+                toolCallId: "call-1",
+                toolName: "rlm",
+                arguments: args,
+              })) as ToolResultObject;
+              const payload = JSON.parse(result.textResultForLlm) as { text: string };
+              return { data: { content: payload.text } };
+            },
+            async disconnect() {},
+          };
+        },
+        async stop() {},
+      };
+    };
+  }
+
+  function capturingContract(
+    renderedInputs: RlmWorkerContractInput[],
+    deriveBrief?: RlmWorkerContract["deriveBrief"],
+  ): RlmWorkerContract {
+    return {
+      async renderPrompt(input) {
+        renderedInputs.push(structuredClone(input));
+        return input.delegatedTask;
+      },
+      parseResponse(raw) {
+        return workerReport(raw);
+      },
+      ...(deriveBrief ? { deriveBrief } : {}),
+    };
+  }
+
+  it("passes the derived acceptance contract to every delegated worker", async () => {
+    const renderedInputs: RlmWorkerContractInput[] = [];
+
+    await runRlmSubmind("Ship the feature.", {
+      clientFactory: briefCapturingClientFactory(),
+      consoleStreaming: false,
+      prepareProfileSkills: noRootSkills,
+      prepareRootSkills: noRootSkills,
+      workerContract: capturingContract(renderedInputs, async () => ({
+        objective: "Ship the feature end to end.",
+        constraints: ["Do not change the public API."],
+        acceptanceCriteria: ["The feature is covered by a test."],
+        validationCommands: ["nub run test"],
+      })),
+    });
+
+    expect(renderedInputs[0]?.brief).toEqual({
+      objective: "Ship the feature end to end.",
+      constraints: ["Do not change the public API."],
+      acceptanceCriteria: ["The feature is covered by a test."],
+      validationCommands: ["nub run test"],
+    });
+  });
+
+  it("lets an operator override replace only the field it binds", async () => {
+    const renderedInputs: RlmWorkerContractInput[] = [];
+
+    await runRlmSubmind("Ship the feature.", {
+      clientFactory: briefCapturingClientFactory(),
+      consoleStreaming: false,
+      prepareProfileSkills: noRootSkills,
+      prepareRootSkills: noRootSkills,
+      runBrief: { validationCommands: ["nub run typecheck"] },
+      workerContract: capturingContract(renderedInputs, async () => ({
+        objective: "Ship the feature end to end.",
+        constraints: [],
+        acceptanceCriteria: ["The feature is covered by a test."],
+        validationCommands: ["nub run test"],
+      })),
+    });
+
+    expect(renderedInputs[0]?.brief.validationCommands).toEqual(["nub run typecheck"]);
+    expect(renderedInputs[0]?.brief.acceptanceCriteria).toEqual([
+      "The feature is covered by a test.",
+    ]);
+  });
+
+  it("starts the run with an objective-only brief when derivation fails", async () => {
+    const renderedInputs: RlmWorkerContractInput[] = [];
+    const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
+
+    try {
+      await runRlmSubmind("Ship the feature.", {
+        clientFactory: briefCapturingClientFactory(),
+        consoleStreaming: false,
+        prepareProfileSkills: noRootSkills,
+        prepareRootSkills: noRootSkills,
+        workerContract: capturingContract(renderedInputs, async () => {
+          throw new Error("proxy unavailable");
+        }),
+      });
+    } finally {
+      stderr.mockRestore();
+    }
+
+    expect(renderedInputs[0]?.brief).toEqual({
+      objective: "Ship the feature.",
+      constraints: [],
+      acceptanceCriteria: [],
+      validationCommands: [],
+    });
   });
 });
 
@@ -849,6 +1016,7 @@ describe("RLM runtime workingDirectory", () => {
       workingDirectory: "/tmp/mastermind-worktree",
       consoleStreaming: false,
       prepareRootSkills: noRootSkills,
+      workerContract: summaryWorkerContract,
     });
     expect(capturedClientOptions).toHaveLength(1);
     expect(capturedClientOptions[0]?.workingDirectory).toBe("/tmp/mastermind-worktree");
@@ -859,6 +1027,7 @@ describe("RLM runtime workingDirectory", () => {
     await runRlmSubmind("Implement the ticket.", {
       consoleStreaming: false,
       prepareRootSkills: noRootSkills,
+      workerContract: summaryWorkerContract,
     });
     expect(capturedClientOptions).toHaveLength(1);
     expect(capturedClientOptions[0]).not.toHaveProperty("workingDirectory");

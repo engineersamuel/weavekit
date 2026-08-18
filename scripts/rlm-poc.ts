@@ -48,6 +48,19 @@ async function main(): Promise<void> {
           ...(options.model ? { model: options.model } : {}),
           ...(options.maxDepth ? { maxDepth: options.maxDepth } : {}),
           ...(options.maxTotalCalls ? { maxTotalCalls: options.maxTotalCalls } : {}),
+          ...(options.acceptanceCriteria || options.constraints || options.validationCommands
+            ? {
+                runBrief: {
+                  ...(options.acceptanceCriteria
+                    ? { acceptanceCriteria: options.acceptanceCriteria }
+                    : {}),
+                  ...(options.constraints ? { constraints: options.constraints } : {}),
+                  ...(options.validationCommands
+                    ? { validationCommands: options.validationCommands }
+                    : {}),
+                },
+              }
+            : {}),
         })
       : await runRlmPrototype();
     await writeOutputJson(options, { ok: true, result });

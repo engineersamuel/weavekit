@@ -9,6 +9,10 @@ const RLM_WORKER_RENDER_ENV = {
   COPILOT_PROXY_API_KEY: process.env.COPILOT_PROXY_API_KEY ?? "rlm-worker-contract-render-only",
 } as const;
 
+const RLM_BRIEF_DERIVATION_ENV = {
+  COPILOT_PROXY_API_KEY: process.env.COPILOT_PROXY_API_KEY ?? "rlm-brief-derivation-local-proxy",
+} as const;
+
 type JsonObject = Record<string, unknown>;
 
 export interface RlmWorkerContractInput {
@@ -20,6 +24,12 @@ export interface RlmWorkerContractInput {
 export interface RlmWorkerContract {
   renderPrompt(input: RlmWorkerContractInput): Promise<string>;
   parseResponse(raw: string): RlmWorkerReport;
+  /**
+   * Turns the raw root prompt into the enumerated acceptance contract shared by every worker in
+   * the run. Optional so a caller supplying only the render/parse halves keeps the previous
+   * objective-only brief.
+   */
+  deriveBrief?(rawObjective: string): Promise<RlmRunBrief>;
 }
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -109,7 +119,66 @@ export const bamlRlmWorkerContract: RlmWorkerContract = {
   parseResponse(raw) {
     return b.parse.RenderRlmWorkerTask(raw);
   },
+  async deriveBrief(rawObjective) {
+    return await b.DeriveRlmRunBrief(rawObjective, { env: RLM_BRIEF_DERIVATION_ENV });
+  },
 };
+
+/**
+ * The objective-only brief. Used when no contract can derive one, and as the fail-open result when
+ * derivation errors, so a proxy outage degrades brief quality instead of stopping the run.
+ */
+export function emptyRlmRunBrief(objective: string): RlmRunBrief {
+  return { objective, constraints: [], acceptanceCriteria: [], validationCommands: [] };
+}
+
+/**
+ * Derives the shared acceptance contract, then overlays any operator-supplied field.
+ *
+ * Derivation failure falls back to the objective-only brief: a brief improves worker input
+ * quality and is never a precondition for starting the run. Derivation is skipped entirely when
+ * the overrides already bind every list, so an operator who states the full contract pays nothing.
+ */
+export async function resolveRlmRunBrief(
+  rawObjective: string,
+  contract: RlmWorkerContract,
+  overrides: Partial<RlmRunBrief> = {},
+  onError: (message: string) => void = (message) => process.stderr.write(`${message}\n`),
+): Promise<RlmRunBrief> {
+  const fullyOverridden =
+    overrides.constraints !== undefined &&
+    overrides.acceptanceCriteria !== undefined &&
+    overrides.validationCommands !== undefined;
+  const base =
+    fullyOverridden || !contract.deriveBrief
+      ? emptyRlmRunBrief(rawObjective)
+      : await deriveOrFallBack(rawObjective, contract.deriveBrief, onError);
+  return {
+    // The derived objective is the self-contained restatement workers receive in place of a raw,
+    // possibly multi-paragraph prompt. Fallback keeps the raw text rather than nothing.
+    objective: overrides.objective ?? base.objective,
+    constraints: overrides.constraints ?? base.constraints,
+    acceptanceCriteria: overrides.acceptanceCriteria ?? base.acceptanceCriteria,
+    validationCommands: overrides.validationCommands ?? base.validationCommands,
+  };
+}
+
+async function deriveOrFallBack(
+  rawObjective: string,
+  deriveBrief: (rawObjective: string) => Promise<RlmRunBrief>,
+  onError: (message: string) => void,
+): Promise<RlmRunBrief> {
+  try {
+    const brief = await deriveBrief(rawObjective);
+    return brief.objective.trim().length > 0 ? brief : emptyRlmRunBrief(rawObjective);
+  } catch (error) {
+    onError(
+      "[rlm] Run brief derivation failed; continuing with the objective only: " +
+        (error instanceof Error ? error.message : String(error)),
+    );
+    return emptyRlmRunBrief(rawObjective);
+  }
+}
 
 export function formatRlmWorkerReportText(report: RlmWorkerReport): string {
   return report.summary.trim();

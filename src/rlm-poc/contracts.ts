@@ -6,6 +6,28 @@ import type { RlmModelPolicy } from "./modelCatalog.js";
 
 export type RlmReasoningEffort = NonNullable<SessionConfig["reasoningEffort"]>;
 
+/** Ascending order. Used to expose the choice to the model and to clamp it to a profile's cap. */
+export const RLM_REASONING_EFFORTS = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const satisfies readonly RlmReasoningEffort[];
+
+/**
+ * Lowers a requested effort to the profile's cap instead of rejecting the call. A rejected call
+ * still spends the shared budget, so clamping is strictly cheaper than failing closed here.
+ */
+export function clampRlmReasoningEffort(
+  requested: RlmReasoningEffort,
+  cap: RlmReasoningEffort | undefined,
+): RlmReasoningEffort {
+  if (!cap) return requested;
+  return RLM_REASONING_EFFORTS.indexOf(requested) > RLM_REASONING_EFFORTS.indexOf(cap)
+    ? cap
+    : requested;
+}
+
 /**
  * A `profile` is a local, versioned config bundle that `rlm`'s `profile` parameter resolves to.
  * Distinct from a Trellage profile (a container harness definition) - see docs/glossary.md.
@@ -34,6 +56,8 @@ export type RlmProfile = {
   /** Dynamic candidate policy. `model` remains the emergency/fixed fallback for custom profiles. */
   modelPolicy?: RlmModelPolicy;
   reasoningEffort?: RlmReasoningEffort;
+  /** Highest effort a caller may request for this profile. Higher requests are clamped to it. */
+  maxReasoningEffort?: RlmReasoningEffort;
   systemMessagePrompt: string;
   /** Optional profile-specific turn timeout for long-running delegated workflows. */
   sendTimeoutMs?: number;
@@ -103,6 +127,10 @@ export const RlmToolArgsSchema = z.object({
     .min(1)
     .optional()
     .describe("Optional model ID selected from the profile's current validated candidates."),
+  effort: z
+    .enum(RLM_REASONING_EFFORTS)
+    .optional()
+    .describe("Optional reasoning effort for the nested session. Clamped to the profile's cap."),
   dependsOn: z
     .array(z.string().min(1))
     .min(1)
@@ -145,6 +173,13 @@ export function createRlmToolJsonSchema(
         description:
           "Optional current model ID. It must be eligible for the selected profile; omit it to " +
           "use that profile's highest-ranked policy candidate.",
+      },
+      effort: {
+        type: "string",
+        enum: [...RLM_REASONING_EFFORTS],
+        description:
+          "Optional reasoning effort for the nested session. Omit it to use the profile's " +
+          "default; a request above the profile's cap is lowered to that cap.",
       },
       dependsOn: {
         type: "array",
