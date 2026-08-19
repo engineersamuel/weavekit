@@ -5,7 +5,7 @@ import { MastermindState } from "../domain/events.js";
 import type { LinearGateway } from "../linear/client.js";
 import type { ExecutionAttempt, MastermindStore, MastermindWorkItem } from "../store/store.js";
 import { withMastermindSpan } from "../telemetry.js";
-import type { LangfuseTraceFetcher } from "./langfuseClient.js";
+import type { SubmindTraceSource } from "./traceSource.js";
 import { collectMastermindMissionStatements } from "./missionStatements.js";
 
 const SEVERITY_RANK: Record<"BLOCKING" | "IMPORTANT" | "SUGGESTION", number> = {
@@ -28,21 +28,21 @@ const ANALYZABLE_STATES = new Set<MastermindState>([
 
 /**
  * Best-effort secondary loop: after an RLM/Submind-delegated work item reaches a terminal state,
- * fetch its captured Langfuse trace, ask `AnalyzeSubmindTrace` to compare the actual executed path
- * against the ticket and Mastermind/Submind mission statements, and file a Linear triage ticket per
- * concrete finding at/above the configured minimum severity.
+ * read the run record persisted with its result, ask `AnalyzeSubmindTrace` to compare the actual
+ * executed path against the ticket and Mastermind/Submind mission statements, and file a Linear
+ * triage ticket per concrete finding at/above the configured minimum severity.
  *
  * This coordinator must never throw back into the main Mastermind execution/decision loop: a
- * failure here (Langfuse unreachable, BAML error, Linear rejection) only means "no self-improvement
- * ticket this time," never a reason to fail the underlying work item. Every public entry point
- * therefore swallows and logs errors internally.
+ * failure here (BAML error, Linear rejection) only means "no self-improvement ticket this time,"
+ * never a reason to fail the underlying work item. Every public entry point therefore swallows and
+ * logs errors internally.
  */
 export class SelfImprovementCoordinator {
   constructor(
     private readonly config: WeavekitConfig,
     private readonly store: Pick<MastermindStore, "getLatestTicketSnapshot">,
     private readonly linear: LinearGateway,
-    private readonly traceFetcher: LangfuseTraceFetcher,
+    private readonly traceSource: SubmindTraceSource,
     private readonly decisions: Pick<MastermindDecisionProvider, "analyzeSubmindTrace">,
   ) {}
 
@@ -50,8 +50,8 @@ export class SelfImprovementCoordinator {
     const settings = this.config.mastermind.selfImprovement;
     if (!settings?.enabled) return;
     if (!ANALYZABLE_STATES.has(work.state)) return;
-    const traceRef = attempt.result?.submindTrace;
-    if (!traceRef) return;
+    const runRecord = attempt.result?.runRecord;
+    if (!runRecord) return;
 
     try {
       await withMastermindSpan(
@@ -59,9 +59,9 @@ export class SelfImprovementCoordinator {
         {
           "langfuse.observation.type": "chain",
           "weavekit.mastermind.work_id": work.id,
-          "weavekit.mastermind.self_improvement.trace_id": traceRef.traceId,
+          "weavekit.mastermind.self_improvement.run_id": runRecord.runId,
         },
-        async () => this.analyzeAndFile(work, attempt, settings, traceRef.traceId),
+        async () => this.analyzeAndFile(work, attempt, settings),
       );
     } catch (error) {
       // Best-effort: log only. The main Mastermind loop must never fail because self-improvement
@@ -78,10 +78,9 @@ export class SelfImprovementCoordinator {
     work: MastermindWorkItem,
     attempt: ExecutionAttempt,
     settings: NonNullable<WeavekitConfig["mastermind"]["selfImprovement"]>,
-    traceId: string,
   ): Promise<void> {
     if (!this.decisions.analyzeSubmindTrace) return;
-    const traceSummary = await this.traceFetcher.fetchSubmindTraceSummary(traceId);
+    const traceSummary = await this.traceSource.fetchSubmindTraceSummary(attempt);
     if (!traceSummary) return;
 
     const ticket = await this.store.getLatestTicketSnapshot(work.id);

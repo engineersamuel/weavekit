@@ -10,8 +10,10 @@ import {
 import {
   CopilotSdkTicketReviewHarness,
   createReviewPermissionHandler,
+  extractJsonObject,
   parseTicketReviewDossier,
 } from "../../src/mastermind/review/harness.js";
+import { unknownCopilotToolNames } from "../../src/mastermind/harness/toolNames.js";
 import { resolveReviewSkillDiscoveryDirectory } from "../../src/mastermind/review/skillDirectory.js";
 
 const dossier: TicketReviewDossier = {
@@ -164,9 +166,14 @@ describe("Copilot SDK ticket review harness", () => {
     expect(sessionConfig).toMatchObject({
       streaming: false,
       skillDirectories: [reviewSkillsDirectory],
-      availableTools: ["read_file", "list_dir", "grep", "glob", "skill", "bash"],
+      availableTools: ["view", "grep", "rg", "glob", "skill", "bash"],
       onPermissionRequest: expect.any(Function),
     });
+    // An availableTools entry naming no registered tool is dropped silently, so a typo removes a
+    // capability without any error. Fail here instead.
+    expect(
+      unknownCopilotToolNames((sessionConfig as { availableTools: string[] }).availableTools),
+    ).toEqual([]);
     expect(disconnected).toBe(true);
     expect(stopped).toBe(true);
     expect(readPermission).toEqual({ kind: "approve-once" });
@@ -231,6 +238,9 @@ describe("Copilot SDK ticket review harness", () => {
       workingDirectory: "/Users/example/projects/prototypes",
       availableTools: ["web_fetch", "skill", "bash"],
     });
+    expect(
+      unknownCopilotToolNames((sessionConfig as { availableTools: string[] }).availableTools),
+    ).toEqual([]);
   });
 
   it("approves only absolute HTTPS web_fetch URLs without embedded credentials", () => {
@@ -411,6 +421,50 @@ describe("Copilot SDK ticket review harness", () => {
       }),
     ).toThrow(
       /Mastermind review skill weavekit-ticket-review was not found in the configured skill directory\./,
+    );
+  });
+});
+
+describe("extractJsonObject", () => {
+  it("skips a narrated shell fence and returns the json fence", () => {
+    const content = [
+      "I will inspect the workspace.",
+      "",
+      "```bash",
+      "cd /tmp && ls",
+      "```",
+      "",
+      "```json",
+      '{"verdict":"PASS"}',
+      "```",
+    ].join("\n");
+    expect(JSON.parse(extractJsonObject(content))).toEqual({ verdict: "PASS" });
+  });
+
+  it("accepts an unlabelled fence", () => {
+    const content = ["```", '{"verdict":"PASS"}', "```"].join("\n");
+    expect(JSON.parse(extractJsonObject(content))).toEqual({ verdict: "PASS" });
+  });
+
+  it("keeps a json fence whose string fields contain their own code fences", () => {
+    const dossier = {
+      summary: "Reviewed the attempt.",
+      manualVerification: ["Run:\n```bash\ncd /tmp && ls\n```\nExpect exit 0."],
+      confidence: 0.8,
+    };
+    const content = `Dossier:\n\n\`\`\`json\n${JSON.stringify(dossier, null, 2)}\n\`\`\``;
+    expect(JSON.parse(extractJsonObject(content))).toEqual(dossier);
+  });
+
+  it("falls back to a brace slice when no fence is present", () => {
+    expect(JSON.parse(extractJsonObject('Result: {"verdict":"PASS"} done'))).toEqual({
+      verdict: "PASS",
+    });
+  });
+
+  it("throws when no json object is present", () => {
+    expect(() => extractJsonObject("no payload here")).toThrow(
+      "Harness did not return a JSON object.",
     );
   });
 });

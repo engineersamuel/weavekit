@@ -14,6 +14,7 @@ import {
   describeRlmProfileModelRouting,
 } from "../../src/rlm-poc/profiles.js";
 import { parseCopilotModelCatalog } from "../../src/rlm-poc/modelCatalog.js";
+import { unknownCopilotToolNames } from "../../src/mastermind/harness/toolNames.js";
 
 describe("rlm profile registry", () => {
   it("exposes purpose-specific built-in profiles", () => {
@@ -96,7 +97,7 @@ describe("rlm profile registry", () => {
     expect(media.allowedChildProfiles).toContain("research");
     expect(media.allowedChildProfiles).not.toContain("design");
     expect(media.model).toBe("claude-opus-5");
-    expect(review.availableTools).toContain("read_file");
+    expect(review.availableTools).toContain("view");
     expect(review.availableTools).toContain("bash");
     expect(review.availableTools).toContain("create");
     expect(review.authority).toBe(RlmProfileAuthority.Review);
@@ -116,6 +117,12 @@ describe("rlm profile registry", () => {
       expect(profile.systemMessagePrompt).toContain("root Submind conversation");
       expect(profile.systemMessagePrompt).toContain("loaded `rlm-handoff` skill");
       expect(profile.systemMessagePrompt).toContain("loaded `better-github-skill`");
+      // Every profile can spawn children, so every profile must say when that is warranted. The
+      // review profile lacked this sentence and self-delegated to depth 20 in a live run.
+      expect(profile.systemMessagePrompt).toContain("`rlm`");
+      // An availableTools entry naming no registered tool is dropped silently, so a typo removes a
+      // capability without any error. Fail here instead.
+      expect(unknownCopilotToolNames(profile.availableTools ?? [])).toEqual([]);
     }
     expect(defaultRlmProfileRegistry.list().map((profile) => profile.name)).toEqual([
       "validation",

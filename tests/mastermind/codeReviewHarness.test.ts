@@ -5,6 +5,7 @@ import {
   CopilotSdkCodeReviewHarness,
   parseCodeReviewDossier,
 } from "../../src/mastermind/codeReview/harness.js";
+import { unknownCopilotToolNames } from "../../src/mastermind/harness/toolNames.js";
 import type { ExecutionAttempt, StoredReview } from "../../src/mastermind/store/store.js";
 
 const dossier: PostImplementationReviewDossier = {
@@ -84,7 +85,15 @@ describe("Copilot SDK code-review harness", () => {
       }),
     ).resolves.toEqual(dossier);
     expect(prompts).toHaveLength(2);
-    expect(sessionConfig).toMatchObject({ workingDirectory: process.cwd() });
+    expect(sessionConfig).toMatchObject({
+      workingDirectory: process.cwd(),
+      availableTools: ["view", "grep", "rg", "glob", "bash"],
+    });
+    // An availableTools entry naming no registered tool is dropped silently, so a typo removes a
+    // capability without any error. Fail here instead.
+    expect(
+      unknownCopilotToolNames((sessionConfig as { availableTools: string[] }).availableTools),
+    ).toEqual([]);
     expect(prompts[0]).toContain(`Canonical review worktree: ${process.cwd()}`);
     expect(prompts[0]).toContain("Do not\nsubstitute the parent source repository");
     expect(prompts[1]).toContain("one JSON object only");

@@ -199,6 +199,8 @@ export type MastermindStore = {
   }): Promise<{ work: MastermindWorkItem; attempt: ExecutionAttempt }>;
   getExecutionAttempt(attemptId: string): Promise<ExecutionAttempt | undefined>;
   getCurrentExecutionAttempt(workId: string): Promise<ExecutionAttempt | undefined>;
+  listExecutionAttempts(workId: string): Promise<ExecutionAttempt[]>;
+  listRecentTicketWorkIds(limit: number): Promise<Array<{ workId: string; identifier: string }>>;
   findExecutionAttachment(selector: string): Promise<ExecutionAttachmentTarget | undefined>;
   getCurrentCodeReview(workId: string): Promise<StoredCodeReview | undefined>;
   createCodeReview(

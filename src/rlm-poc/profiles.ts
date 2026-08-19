@@ -40,18 +40,19 @@ const SCOPED_INVESTIGATION_TOOLS = [
  * Repository-reading review tools. The read set mirrors the proven allowlist in
  * `src/mastermind/review/harness.ts`; `create`/`str_replace_editor` let the reviewer write its
  * report, and the destination-scoped permission handler confines those writes to
- * `writableSubpaths`. Note "bash", not "shell" - "shell" is only the permission-request kind.
+ * `writableSubpaths`. Note "bash", not "shell" - "shell" is only the permission-request kind - and
+ * "view", not "read_file". An entry naming no registered tool is silently dropped, so a wrong name
+ * quietly removes a capability instead of failing.
  */
 const REPOSITORY_REVIEW_TOOLS = [
   "builtin:ask_user",
   "custom:rlm",
   "skill",
   "bash",
-  "read_file",
-  "list_dir",
   "view",
   "glob",
   "grep",
+  "rg",
   "create",
   "str_replace_editor",
   "web_search",
@@ -182,7 +183,9 @@ const VALIDATION_PROFILE: RlmProfile = {
   systemMessagePrompt:
     "You are a restricted RLM validation worker in a fresh Copilot SDK session. Follow the " +
     "delegated validation instruction exactly. Use native `ask_user` to obtain answers from the " +
-    "root Submind conversation and return the answer verbatim. Do not perform repository work." +
+    "root Submind conversation and return the answer verbatim. Do not perform repository work. " +
+    "Answer the delegated question yourself; use `rlm` only when the instruction explicitly asks " +
+    "you to fan out, and never to pass the same question on unchanged." +
     ROOT_QUESTION_GUIDANCE +
     HANDOFF_GUIDANCE +
     BETTER_GITHUB_GUIDANCE,
@@ -468,7 +471,10 @@ const REVIEW_PROFILE: RlmProfile = {
     "prompt, and re-run verification commands read-only when the supplied evidence is thin. " +
     "Identify concrete defects, requirement gaps, risks, and missing verification. You must not " +
     "change the work you review: write your report and any supporting notes under " +
-    ".weavekit/reviews/, and never edit the files, documents, or artifacts under review." +
+    ".weavekit/reviews/, and never edit the files, documents, or artifacts under review. Use " +
+    "`rlm` only when a cleanly separable sub-review genuinely needs its own clean context; never " +
+    "delegate the whole review you were asked to perform, and never let a chain of sub-reviews " +
+    "stand in for reading the repository yourself." +
     ROOT_QUESTION_GUIDANCE +
     HANDOFF_GUIDANCE +
     BETTER_GITHUB_GUIDANCE,

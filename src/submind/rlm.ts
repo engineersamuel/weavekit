@@ -11,6 +11,7 @@ import {
   RLM_VISUALIZATION_STATE_PATH,
 } from "../rlm-poc/visualization/contracts.js";
 import { clearRlmVisualizationArtifacts } from "../rlm-poc/visualization/cleanup.js";
+import type { RlmRunRecord } from "../rlm-poc/runState.js";
 import {
   ExecutorKind,
   type DirectExecutionRequest,
@@ -49,6 +50,7 @@ type RlmOutputPayload =
         finalText: string;
         conversationId?: string;
         traceId: string;
+        runRecord?: RlmRunRecord;
       };
       observedAt: string;
     }
@@ -229,14 +231,19 @@ export class RlmDirectExecutor implements DirectExecutor {
     const outputPayload = await readOutputPayload(outputJsonPath);
     const submindTrace =
       outputPayload?.ok === true ? buildSubmindTraceReference(outputPayload.result) : undefined;
+    const runRecord = outputPayload?.ok === true ? outputPayload.result.runRecord : undefined;
     try {
       const manifestResult = await readAndValidateResultManifest(handle.worktreePath);
       const artifactPaths = await mergeVisualizationArtifacts(
         handle.worktreePath,
         manifestResult.artifactPaths,
       );
-      const result = { ...manifestResult, artifactPaths };
-      return submindTrace ? { ...result, submindTrace } : result;
+      return {
+        ...manifestResult,
+        artifactPaths,
+        ...(submindTrace ? { submindTrace } : {}),
+        ...(runRecord ? { runRecord } : {}),
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         throw error;
@@ -250,6 +257,7 @@ export class RlmDirectExecutor implements DirectExecutor {
     return {
       ...buildNeedsHumanResult(request, outputPayload, submindTrace),
       artifactPaths: await mergeVisualizationArtifacts(handle.worktreePath, []),
+      ...(runRecord ? { runRecord } : {}),
     };
   }
 }

@@ -12,6 +12,7 @@ import {
   restoreRlmRunState,
   snapshotRlmRunState,
   succeedRlmCall,
+  toRlmRunRecord,
 } from "../../src/rlm-poc/runState.js";
 import {
   RlmWorkerOutcome,
@@ -212,5 +213,70 @@ describe("RLM run state", () => {
     sequenceGap.calls[1]!.callId = "run-one:call-3";
     sequenceGap.nextCallNumber = 4;
     expect(() => restoreRlmRunState(sequenceGap)).toThrow(/contiguous/iu);
+  });
+});
+
+describe("RLM run record", () => {
+  it("keeps every measurement field and drops the worker report bulk", () => {
+    const state = createRlmRunState(brief, {
+      runId: "run-record",
+      now: clock(
+        "2026-08-13T12:00:00.000Z",
+        "2026-08-13T12:00:00.000Z",
+        "2026-08-13T12:00:04.000Z",
+        "2026-08-13T12:00:09.000Z",
+      ),
+    });
+    const first = beginRlmCall(state, { profile: "review", depthUsed: 1 });
+    const second = beginRlmCall(state, {
+      profile: "validation",
+      depthUsed: 2,
+      parentCallId: first.callId,
+    });
+    succeedRlmCall(state, first.callId, {
+      model: "claude-opus-5",
+      report: report("Reviewed the diff."),
+    });
+    failRlmCall(state, second.callId, "Session timed out.");
+
+    const record = toRlmRunRecord(snapshotRlmRunState(state));
+
+    expect(record.runId).toBe("run-record");
+    expect(record.calls).toEqual([
+      {
+        callId: "run-record:call-1",
+        callNumber: 1,
+        profile: "review",
+        depthUsed: 1,
+        status: RlmCallExecutionStatus.Succeeded,
+        model: "claude-opus-5",
+        startedAt: "2026-08-13T12:00:00.000Z",
+        completedAt: "2026-08-13T12:00:04.000Z",
+        summary: "Reviewed the diff.",
+      },
+      {
+        callId: "run-record:call-2",
+        callNumber: 2,
+        parentCallId: "run-record:call-1",
+        profile: "validation",
+        depthUsed: 2,
+        status: RlmCallExecutionStatus.Failed,
+        startedAt: "2026-08-13T12:00:00.000Z",
+        completedAt: "2026-08-13T12:00:09.000Z",
+        summary: "Session timed out.",
+      },
+    ]);
+  });
+
+  it("omits completion fields for a call that is still running", () => {
+    const state = createRlmRunState(brief, { runId: "run-open" });
+    beginRlmCall(state, { profile: "general", depthUsed: 1 });
+
+    const [call] = toRlmRunRecord(snapshotRlmRunState(state)).calls;
+
+    expect(call).toMatchObject({ status: RlmCallExecutionStatus.Running });
+    expect(call).not.toHaveProperty("completedAt");
+    expect(call).not.toHaveProperty("summary");
+    expect(call).not.toHaveProperty("model");
   });
 });

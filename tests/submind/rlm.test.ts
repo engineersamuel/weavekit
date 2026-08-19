@@ -310,6 +310,57 @@ describe("RLM direct executor", () => {
     });
   });
 
+  it("carries the Submind run record onto a manifest result so recursion can be measured", async () => {
+    const worktreePath = await tempDirectory();
+    const request = executionRequest(worktreePath);
+    await mkdir(join(worktreePath, ".weavekit"), { recursive: true });
+    await writeFile(
+      join(worktreePath, ".weavekit", "mastermind-result.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        workId: request.workId,
+        attemptId: request.attemptId,
+        attemptNumber: request.attemptNumber,
+        outcome: "succeeded",
+        summary: "Implemented the ticket.",
+        artifactPaths: [],
+        verification: [{ command: "nub run test", exitCode: 0, summary: "passed" }],
+        knownRisks: [],
+        remainingWork: [],
+      }),
+    );
+    const runRecord = {
+      schemaVersion: 1,
+      runId: "run-record",
+      calls: [
+        {
+          callId: "run-record:call-1",
+          callNumber: 1,
+          profile: "review",
+          depthUsed: 1,
+          status: "succeeded",
+          model: "claude-opus-5",
+          startedAt: "2026-08-13T12:00:00.000Z",
+          completedAt: "2026-08-13T12:00:04.000Z",
+          summary: "Reviewed the diff.",
+        },
+      ],
+    };
+    await writeOutputJson(worktreePath, {
+      ok: true,
+      result: { finalText: "All done.", traceId: "trace-4", runRecord },
+      observedAt: "2026-08-06T12:05:00.000Z",
+    });
+    const executor = new RlmDirectExecutor(executionConfig(), fakeLauncher());
+
+    const result = await executor.collect(
+      { executor: ExecutorKind.RLM_SUBMIND, agentName: "mm-rlm-workone-a1", worktreePath },
+      request,
+    );
+
+    expect(result.runRecord).toEqual(runRecord);
+  });
+
   it("falls back to a needs-human result carrying Submind's captured final text when no manifest was written", async () => {
     const worktreePath = await tempDirectory();
     const request = executionRequest(worktreePath);

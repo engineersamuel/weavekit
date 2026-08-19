@@ -427,3 +427,53 @@ function cloneBrief(brief: RlmRunBrief): RlmRunBrief {
 function cloneCallRecord<T extends RlmCallRecord>(record: T): T {
   return structuredClone(record);
 }
+
+/**
+ * One spawn, reduced to the fields measurement needs. The full `RlmWorkerReport` per call carries
+ * evidence, artifacts, verification, decisions, risks, open questions and remaining work; that is
+ * the bulk of a run's payload and no consumer of this record reads past the summary. A 236-call run
+ * stays small at this width.
+ */
+export type RlmRunCallRecord = {
+  callId: string;
+  callNumber: number;
+  parentCallId?: string;
+  profile: string;
+  depthUsed: number;
+  status: RlmCallExecutionStatus;
+  model?: string;
+  startedAt: string;
+  completedAt?: string;
+  /** Report summary when succeeded, error text when failed, absent while still running. */
+  summary?: string;
+};
+
+/** Durable, trimmed view of a finished run. Persisted with the execution result. */
+export type RlmRunRecord = {
+  schemaVersion: typeof RLM_RUN_STATE_SCHEMA_VERSION;
+  runId: string;
+  calls: RlmRunCallRecord[];
+};
+
+export function toRlmRunRecord(snapshot: RlmRunStateSnapshot): RlmRunRecord {
+  return {
+    schemaVersion: snapshot.schemaVersion,
+    runId: snapshot.runId,
+    calls: snapshot.calls.map((call) => ({
+      callId: call.callId,
+      callNumber: call.callNumber,
+      ...(call.parentCallId ? { parentCallId: call.parentCallId } : {}),
+      profile: call.profile,
+      depthUsed: call.depthUsed,
+      status: call.status,
+      ...(call.status === RlmCallExecutionStatus.Succeeded ? { model: call.model } : {}),
+      startedAt: call.startedAt,
+      ...(call.status === RlmCallExecutionStatus.Running ? {} : { completedAt: call.completedAt }),
+      ...(call.status === RlmCallExecutionStatus.Succeeded
+        ? { summary: call.report.summary }
+        : call.status === RlmCallExecutionStatus.Failed
+          ? { summary: call.error }
+          : {}),
+    })),
+  };
+}

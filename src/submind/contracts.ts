@@ -1,4 +1,5 @@
 import type { ProjectCatalogEntry } from "../config.js";
+import type { RlmRunRecord } from "../rlm-poc/runState.js";
 import type { MastermindNextActionDecision } from "../generated/baml_client/index.js";
 import type { LinearTicketSnapshot, StoredReview } from "../mastermind/store/store.js";
 import type { ExecutionPreflightReport, ExecutionPreflightRequirement } from "./preflight.js";
@@ -122,6 +123,13 @@ export type DirectExecutionResult = {
    * it. Never present for {@link ExecutorKind.HERDR_COPILOT} results.
    */
   submindTrace?: SubmindTraceReference;
+  /**
+   * Set only by {@link ExecutorKind.RLM_SUBMIND} executions: the trimmed per-spawn record of the
+   * Submind run, so recursion behaviour can be measured and self-improvement analysis can read the
+   * run without an external trace API. Never present for {@link ExecutorKind.HERDR_COPILOT}
+   * results.
+   */
+  runRecord?: RlmRunRecord;
 };
 
 export type VerificationEvidence = {
