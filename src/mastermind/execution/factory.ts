@@ -11,7 +11,7 @@ import { createCodeReviewHarness } from "../codeReview/harness.js";
 import { GeneratedMastermindDecisionProvider } from "../decision/bamlAdapters.js";
 import type { LinearGateway } from "../linear/client.js";
 import { SelfImprovementCoordinator } from "../selfImprovement/coordinator.js";
-import { LangfusePublicApiTraceFetcher } from "../selfImprovement/langfuseClient.js";
+import { RunRecordSubmindTraceSource } from "../selfImprovement/traceSource.js";
 import type { MastermindStore } from "../store/store.js";
 import { MastermindExecutionCoordinator, type DirectExecutorResolver } from "./coordinator.js";
 
@@ -73,7 +73,7 @@ export function createMastermindExecutionCoordinator(
           config,
           store,
           linear,
-          new LangfusePublicApiTraceFetcher(),
+          new RunRecordSubmindTraceSource(),
           new GeneratedMastermindDecisionProvider(),
         )
       : undefined,

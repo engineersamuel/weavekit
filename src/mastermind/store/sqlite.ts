@@ -508,6 +508,43 @@ export class SqliteMastermindStore implements MastermindStore {
     return row ? toExecutionAttempt(row) : undefined;
   }
 
+  async listExecutionAttempts(workId: string): Promise<ExecutionAttempt[]> {
+    const rows = this.getDatabase()
+      .prepare(
+        `SELECT * FROM mastermind_execution_attempts
+           WHERE work_id = ?
+           ORDER BY attempt_number ASC`,
+      )
+      .all(workId) as SqlRow[];
+    return rows.map(toExecutionAttempt);
+  }
+
+  async listRecentTicketWorkIds(
+    limit: number,
+  ): Promise<Array<{ workId: string; identifier: string }>> {
+    const rows = this.getDatabase()
+      .prepare(
+        `SELECT work.id AS work_id,
+                json_extract(snapshot.snapshot_json, '$.identifier') AS identifier
+           FROM mastermind_work_items work
+           JOIN mastermind_ticket_snapshots snapshot
+             ON snapshot.id = (
+               SELECT latest.id
+               FROM mastermind_ticket_snapshots latest
+               WHERE latest.work_id = work.id
+               ORDER BY latest.captured_at DESC
+               LIMIT 1
+             )
+           ORDER BY work.updated_at DESC
+           LIMIT ?`,
+      )
+      .all(limit) as SqlRow[];
+    return rows.map((row) => ({
+      workId: String(row.work_id),
+      identifier: String(row.identifier),
+    }));
+  }
+
   async findExecutionAttachment(selector: string): Promise<ExecutionAttachmentTarget | undefined> {
     const rows = this.getDatabase()
       .prepare(

@@ -8,7 +8,7 @@ import { MastermindAction } from "../../src/mastermind/domain/events.js";
 import { MastermindState } from "../../src/mastermind/domain/events.js";
 import type { LinearGateway } from "../../src/mastermind/linear/client.js";
 import { SelfImprovementCoordinator } from "../../src/mastermind/selfImprovement/coordinator.js";
-import type { LangfuseTraceFetcher } from "../../src/mastermind/selfImprovement/langfuseClient.js";
+import type { SubmindTraceSource } from "../../src/mastermind/selfImprovement/traceSource.js";
 import type {
   ExecutionAttempt,
   LinearTicketSnapshot,
@@ -59,6 +59,23 @@ function makeAttempt(overrides: Partial<ExecutionAttempt> = {}): ExecutionAttemp
         conversationId: "conv-1",
         url: "https://langfuse/trace-1",
       },
+      runRecord: {
+        schemaVersion: 1,
+        runId: "run-1",
+        calls: [
+          {
+            callId: "run-1:call-1",
+            callNumber: 1,
+            profile: "general",
+            depthUsed: 1,
+            status: "succeeded",
+            model: "gpt-5.6-sol",
+            startedAt: "2026-08-13T12:00:00.000Z",
+            completedAt: "2026-08-13T12:00:10.000Z",
+            summary: "Did the work.",
+          },
+        ],
+      },
     },
     ...overrides,
   } as unknown as ExecutionAttempt;
@@ -89,7 +106,7 @@ function makeReport(findings: SelfImprovementReport["findings"]): SelfImprovemen
 
 describe("SelfImprovementCoordinator", () => {
   it("skips when the feature is disabled", async () => {
-    const traceFetcher: LangfuseTraceFetcher = { fetchSubmindTraceSummary: vi.fn() };
+    const traceSource: SubmindTraceSource = { fetchSubmindTraceSummary: vi.fn() };
     const decisions = { analyzeSubmindTrace: vi.fn() };
     const store = { getLatestTicketSnapshot: vi.fn() };
     const linear = {} as LinearGateway;
@@ -97,17 +114,17 @@ describe("SelfImprovementCoordinator", () => {
       makeConfig({ enabled: false }),
       store,
       linear,
-      traceFetcher,
+      traceSource,
       decisions,
     );
 
     await coordinator.process(makeWork(MastermindState.COMPLETED), makeAttempt());
 
-    expect(traceFetcher.fetchSubmindTraceSummary).not.toHaveBeenCalled();
+    expect(traceSource.fetchSubmindTraceSummary).not.toHaveBeenCalled();
   });
 
   it("skips when the work item is not in an analyzable terminal state", async () => {
-    const traceFetcher: LangfuseTraceFetcher = { fetchSubmindTraceSummary: vi.fn() };
+    const traceSource: SubmindTraceSource = { fetchSubmindTraceSummary: vi.fn() };
     const decisions = { analyzeSubmindTrace: vi.fn() };
     const store = { getLatestTicketSnapshot: vi.fn() };
     const linear = {} as LinearGateway;
@@ -115,17 +132,17 @@ describe("SelfImprovementCoordinator", () => {
       makeConfig(),
       store,
       linear,
-      traceFetcher,
+      traceSource,
       decisions,
     );
 
     await coordinator.process(makeWork(MastermindState.RUNNING), makeAttempt());
 
-    expect(traceFetcher.fetchSubmindTraceSummary).not.toHaveBeenCalled();
+    expect(traceSource.fetchSubmindTraceSummary).not.toHaveBeenCalled();
   });
 
-  it("skips when the attempt has no Submind trace reference", async () => {
-    const traceFetcher: LangfuseTraceFetcher = { fetchSubmindTraceSummary: vi.fn() };
+  it("skips when the attempt has no captured Submind run record", async () => {
+    const traceSource: SubmindTraceSource = { fetchSubmindTraceSummary: vi.fn() };
     const decisions = { analyzeSubmindTrace: vi.fn() };
     const store = { getLatestTicketSnapshot: vi.fn() };
     const linear = {} as LinearGateway;
@@ -133,7 +150,7 @@ describe("SelfImprovementCoordinator", () => {
       makeConfig(),
       store,
       linear,
-      traceFetcher,
+      traceSource,
       decisions,
     );
 
@@ -142,11 +159,11 @@ describe("SelfImprovementCoordinator", () => {
       makeAttempt({ result: {} as ExecutionAttempt["result"] }),
     );
 
-    expect(traceFetcher.fetchSubmindTraceSummary).not.toHaveBeenCalled();
+    expect(traceSource.fetchSubmindTraceSummary).not.toHaveBeenCalled();
   });
 
   it("filters findings below the configured minimum severity and files one issue per surviving finding", async () => {
-    const traceFetcher: LangfuseTraceFetcher = {
+    const traceSource: SubmindTraceSource = {
       fetchSubmindTraceSummary: vi.fn().mockResolvedValue(traceSummary),
     };
     const decisions = {
@@ -183,7 +200,7 @@ describe("SelfImprovementCoordinator", () => {
       makeConfig(),
       store,
       linear,
-      traceFetcher,
+      traceSource,
       decisions,
     );
 
@@ -197,7 +214,7 @@ describe("SelfImprovementCoordinator", () => {
   });
 
   it("is idempotent: skips filing entirely if the attempt marker already exists", async () => {
-    const traceFetcher: LangfuseTraceFetcher = {
+    const traceSource: SubmindTraceSource = {
       fetchSubmindTraceSummary: vi.fn().mockResolvedValue(traceSummary),
     };
     const decisions = {
@@ -224,7 +241,7 @@ describe("SelfImprovementCoordinator", () => {
       makeConfig(),
       store,
       linear,
-      traceFetcher,
+      traceSource,
       decisions,
     );
 
@@ -234,9 +251,9 @@ describe("SelfImprovementCoordinator", () => {
     expect(linear.createIssueComment).not.toHaveBeenCalled();
   });
 
-  it("never throws when Langfuse fetch fails", async () => {
-    const traceFetcher: LangfuseTraceFetcher = {
-      fetchSubmindTraceSummary: vi.fn().mockRejectedValue(new Error("langfuse down")),
+  it("never throws when reading the run record fails", async () => {
+    const traceSource: SubmindTraceSource = {
+      fetchSubmindTraceSummary: vi.fn().mockRejectedValue(new Error("run record unreadable")),
     };
     const decisions = { analyzeSubmindTrace: vi.fn() };
     const store = { getLatestTicketSnapshot: vi.fn() };
@@ -245,7 +262,7 @@ describe("SelfImprovementCoordinator", () => {
       makeConfig(),
       store,
       linear,
-      traceFetcher,
+      traceSource,
       decisions,
     );
 
@@ -255,7 +272,7 @@ describe("SelfImprovementCoordinator", () => {
   });
 
   it("never throws when the BAML analysis call fails", async () => {
-    const traceFetcher: LangfuseTraceFetcher = {
+    const traceSource: SubmindTraceSource = {
       fetchSubmindTraceSummary: vi.fn().mockResolvedValue(traceSummary),
     };
     const decisions = { analyzeSubmindTrace: vi.fn().mockRejectedValue(new Error("baml failed")) };
@@ -265,7 +282,7 @@ describe("SelfImprovementCoordinator", () => {
       makeConfig(),
       store,
       linear,
-      traceFetcher,
+      traceSource,
       decisions,
     );
 
@@ -275,7 +292,7 @@ describe("SelfImprovementCoordinator", () => {
   });
 
   it("never throws when Linear rejects createIssue", async () => {
-    const traceFetcher: LangfuseTraceFetcher = {
+    const traceSource: SubmindTraceSource = {
       fetchSubmindTraceSummary: vi.fn().mockResolvedValue(traceSummary),
     };
     const decisions = {
@@ -302,7 +319,7 @@ describe("SelfImprovementCoordinator", () => {
       makeConfig(),
       store,
       linear,
-      traceFetcher,
+      traceSource,
       decisions,
     );
 

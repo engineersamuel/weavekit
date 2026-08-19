@@ -37,6 +37,10 @@ description = "Run the independent post-implementation review for one successful
 env = { BAML_LOG = "warn" }
 run = "nub scripts/mastermind-review-one.ts"
 
+[tasks."mastermind:metrics"]
+description = "Print the per-attempt spawn and outcome scorecard for one Mastermind ticket, or the most recent tickets when no identifier is given."
+run = "nub scripts/mastermind-metrics.ts"
+
 [tasks."mastermind:accept"]
 description = "Record human acceptance for reviewed Mastermind work and move its Linear ticket to Done."
 run = "nub scripts/mastermind-accept.ts"

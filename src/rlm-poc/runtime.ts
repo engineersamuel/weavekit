@@ -41,6 +41,8 @@ import {
   setRlmRunBrief,
   setRlmRunIdentity,
   snapshotRlmRunState,
+  toRlmRunRecord,
+  type RlmRunRecord,
   type RlmRunState,
   type RlmRunStateSnapshot,
 } from "./runState.js";
@@ -108,6 +110,8 @@ export type RlmPrototypeResult = {
   worktrees?: TrellageWorktreeDisposition[];
   /** Working-directory-relative storyboard paths, present only when visualization is enabled. */
   visualization?: RlmVisualizationArtifacts;
+  /** Trimmed per-spawn record of the run, present only when run-state tracking is enabled. */
+  runRecord?: RlmRunRecord;
 };
 
 export type RlmRuntimeOptions = {
@@ -478,8 +482,10 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
           );
           span.setAttribute("weavekit.rlm.budget.used_calls", budget.usedCalls);
           span.setAttribute("weavekit.rlm.budget.remaining_calls", budget.remainingCalls);
+          let runRecord: RlmRunRecord | undefined;
           if (runState) {
             const state = snapshotRlmRunState(runState);
+            runRecord = toRlmRunRecord(state);
             span.setAttribute("weavekit.rlm.state.revision", state.revision);
             span.setAttribute("weavekit.rlm.state.call_count", state.calls.length);
             span.setAttribute(
@@ -504,6 +510,7 @@ async function runRlmSession(options: RunRlmSessionOptions): Promise<RlmPrototyp
             traceId: span.spanContext().traceId,
             ...(worktrees?.length ? { worktrees } : {}),
             ...(artifacts ? { visualization: artifacts } : {}),
+            ...(runRecord ? { runRecord } : {}),
           };
         } finally {
           unsubscribe?.();

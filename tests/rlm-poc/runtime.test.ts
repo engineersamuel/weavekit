@@ -354,6 +354,9 @@ describe("RLM runtime prompts", () => {
 
     expect(result.finalText).toBe("ROOT_CONTEXT_OK");
     expect(result.conversationId).toBe("f13c1665-bc2c-4d97-9c37-8f31d5c87d17");
+    expect(result.runRecord?.calls).toMatchObject([
+      { callNumber: 1, profile: "general", depthUsed: 1, status: "succeeded" },
+    ]);
     expect(sentPrompt).toBe("Implement the bounded task.");
     expect(factoryCalls).toBe(3);
     expect(rootTimeout).toBe(200 * 60_000);
