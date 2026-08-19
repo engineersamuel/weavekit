@@ -32,6 +32,36 @@ Nub is preferred because it provides one tool for running files and scripts, ins
 
 RLM is a recursive language meta harness and useful when weavekit needs application-owned controls: per-hop profiles and models, skill and tool boundaries, recursive decomposition, enforced depth and breadth budgets, the root-grounded  ask_user  bridge, structured results, and a visible Langfuse recursion tree. If ordinary Copilot subagents already provide the needed fan-out, permissions, and observability, they are simpler and should be used instead. Depth greater than one should be an available capability, not a goal.
 
+## Mastermind run metrics
+
+`mise run mastermind:metrics [TICKET]` prints a per-attempt scorecard: spawns by RLM profile, max
+recursion depth, failed calls, wall time, code-review status and findings by severity. It reads only
+the local SQLite store, so it is read-only, offline and free. `TICKET` accepts a ticket identifier
+(`ENG-19`), a work id, a Linear issue id, or an attempt id. With no argument it sweeps the most
+recent tickets.
+
+Invoke it:
+
+- Right after a `mise run mastermind <TICKET>` run finishes, to read the spawn counts that run
+  produced. This is the main use.
+- Before you propose or change a recursion budget (`max_depth`, `max_total_calls`) or edit a profile
+  prompt that affects spawning. Size the change from observed counts across several runs, never from
+  one run and never from a guess.
+- After a change like that, to confirm the counts moved.
+- When a ticket needed more than one attempt, to see whether the extra attempts came from real
+  defects or from process waste.
+
+Do not invoke it:
+
+- To watch a run in progress. The record is written when the attempt result is stored, so a run in
+  flight shows the previous state. Use the Langfuse trace instead.
+- On a ticket that has no execution attempt. The selector query joins on execution attempts, so it
+  fails with `No Mastermind work matches`. Use the no-argument mode for a ticket that was reviewed
+  but never executed.
+
+Attempts recorded before the run-state instrumentation, and attempts from non-RLM executors, print
+`spawns: no run record`. That is expected, not a defect.
+
 ## Modern TypeScript
 
 Write canonical, erasable TypeScript and avoid arcane runtime hacks. Node 22.18+/24 strips types and runs `.ts` files directly, so source stays build-free; `tsc` is for type-checking only (it does not run the code).
