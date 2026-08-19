@@ -1033,7 +1033,7 @@ env?: Record<string, string | undefined>
       }
       
   async RenderRlmStoryboard(
-  objective: string,runStatus: string,eventLedger: string,
+  objective: string,runStatus: string,eventLedger: string,finalSummary?: string | null,
   __baml_options__?: BamlCallOptions<never>
   ): Promise<HTTPRequest> {
     try {
@@ -1052,7 +1052,7 @@ env?: Record<string, string | undefined>
       return await this.runtime.buildRequest(
       "RenderRlmStoryboard",
       {
-      "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger
+      "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger,"finalSummary": finalSummary?? null
       },
       this.ctxManager.cloneContext(),
       __baml_options__?.tb?.__tb(),
@@ -2359,7 +2359,7 @@ env?: Record<string, string | undefined>
           }
           
       async RenderRlmStoryboard(
-      objective: string,runStatus: string,eventLedger: string,
+      objective: string,runStatus: string,eventLedger: string,finalSummary?: string | null,
       __baml_options__?: BamlCallOptions<never>
       ): Promise<HTTPRequest> {
         try {
@@ -2378,7 +2378,7 @@ env?: Record<string, string | undefined>
           return await this.runtime.buildRequest(
           "RenderRlmStoryboard",
           {
-          "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger
+          "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger,"finalSummary": finalSummary?? null
           },
           this.ctxManager.cloneContext(),
           __baml_options__?.tb?.__tb(),

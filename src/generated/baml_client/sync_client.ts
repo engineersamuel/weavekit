@@ -1598,7 +1598,7 @@ export class BamlSyncClient {
   }
   
   RenderRlmStoryboard(
-      objective: string,runStatus: string,eventLedger: string,
+      objective: string,runStatus: string,eventLedger: string,finalSummary?: string | null,
       __baml_options__?: BamlCallOptions<never>
   ): types.RlmStoryboard {
     try {
@@ -1630,7 +1630,7 @@ export class BamlSyncClient {
       const __raw__ = this.runtime.callFunctionSync(
         "RenderRlmStoryboard",
         {
-          "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger
+          "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger,"finalSummary": finalSummary?? null
         },
         this.ctxManager.cloneContext(),
         __options__.tb?.__tb(),

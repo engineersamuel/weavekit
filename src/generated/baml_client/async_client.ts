@@ -1778,7 +1778,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             }
             
         async RenderRlmStoryboard(
-        objective: string,runStatus: string,eventLedger: string,
+        objective: string,runStatus: string,eventLedger: string,finalSummary?: string | null,
         __baml_options__?: BamlCallOptions<never>
         ): Promise<types.RlmStoryboard> {
           try {
@@ -1792,7 +1792,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
           // Check if onTick is provided - route through streaming if so
           if (__options__.onTick) {
           const __stream__ = this.stream.RenderRlmStoryboard(
-          objective,runStatus,eventLedger,
+          objective,runStatus,eventLedger,finalSummary,
           __baml_options__
           );
 
@@ -1816,7 +1816,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
             const __raw__ = await this.runtime.callFunction(
             "RenderRlmStoryboard",
             {
-            "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger
+            "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger,"finalSummary": finalSummary?? null
             },
             this.ctxManager.cloneContext(),
             __options__.tb?.__tb(),
@@ -4572,7 +4572,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                   }
                   
             RenderRlmStoryboard(
-            objective: string,runStatus: string,eventLedger: string,
+            objective: string,runStatus: string,eventLedger: string,finalSummary?: string | null,
             __baml_options__?: BamlCallOptions<never>
             ): BamlStream<partial_types.RlmStoryboard, types.RlmStoryboard>
               {
@@ -4621,7 +4621,7 @@ export type RecursivePartialNull<T> = MovedRecursivePartialNull<T>
                 const __raw__ = this.runtime.streamFunction(
                 "RenderRlmStoryboard",
                 {
-                "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger
+                "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger,"finalSummary": finalSummary ?? null
                 },
                 undefined,
                 this.ctxManager.cloneContext(),

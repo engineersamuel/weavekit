@@ -134,6 +134,10 @@ describe("createRlmVisualizationRecorder", () => {
     expect(html).toContain("renderer</dt><dd>copilot-sdk");
     expect(html).toContain("call-2");
     expect(requests.at(-1)?.eventLedger).toContain("call-2");
+    // The terminal render must be grounded in the Submind's own final result text, not only in
+    // the completed-delegation ledger, since root-level verification and risks never appear there.
+    expect(requests.at(-1)?.finalSummary).toBe("done");
+    expect(requests.slice(0, -1).every((request) => request.finalSummary === undefined)).toBe(true);
   });
 
   it("returns after durable state without waiting for Gemini and coalesces pending revisions", async () => {
@@ -309,6 +313,9 @@ describe("createRlmVisualizationRecorder", () => {
     const html = await readFile(join(path, RLM_VISUALIZATION_HTML_PATH), "utf8");
     expect(html).toContain("FALLBACK LEDGER");
     expect(html).toContain("call-1");
+    // The fallback summary must reflect the run's own final result text once known, not a generic
+    // "N completed delegations" line that says nothing about what actually happened.
+    expect(html).toContain('<p class="summary">failed</p>');
   });
 
   it("returns fixed relative artifact paths and disposes the renderer once", async () => {

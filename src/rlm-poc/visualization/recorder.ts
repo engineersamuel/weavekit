@@ -201,6 +201,7 @@ export function createRlmVisualizationRecorder(
         objective: snapshot.objective,
         runStatus: snapshot.runStatus,
         eventLedger: buildStoryboardLedger(snapshot),
+        ...(snapshot.runSummary ? { finalSummary: snapshot.runSummary } : {}),
       });
       storyboard = {
         title: bounded(rendered.title, 200) || `RLM run ${snapshot.runId}`,

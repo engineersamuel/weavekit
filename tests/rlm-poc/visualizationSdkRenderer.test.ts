@@ -168,6 +168,7 @@ describe("createCopilotSdkRlmStoryboardRenderer", () => {
         objective: "Explain the recursive work.",
         runStatus: "succeeded",
         eventLedger: "#1 rlm succeeded\n#2 invoke_trellage succeeded",
+        finalSummary: "Succeeded: shipped the storyboard fix and verified with vitest.",
       }),
     ).resolves.toMatchObject({ title: "Revision 2" });
 
@@ -181,7 +182,14 @@ describe("createCopilotSdkRlmStoryboardRenderer", () => {
       workingDirectory: "/tmp/worktree",
     });
     expect(fake.prompts[0]).toContain(RLM_STORYBOARD_SKILL_NAMES.join(", "));
+    expect(fake.prompts[0]).not.toContain("<final-result>");
     expect(fake.prompts[1]).toContain("Ink black, paper white, safety orange");
+    // The terminal request's prompt must carry the Submind's own final result text so the last
+    // frame reflects the complete run, not only the delegation ledger.
+    expect(fake.prompts[1]).toContain("<final-result>");
+    expect(fake.prompts[1]).toContain(
+      "Succeeded: shipped the storyboard fix and verified with vitest.",
+    );
 
     await renderer.dispose?.();
     expect(fake.counts()).toMatchObject({ stops: 1, disconnects: 1 });

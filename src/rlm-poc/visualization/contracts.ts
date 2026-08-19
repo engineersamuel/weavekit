@@ -109,6 +109,13 @@ export type RlmStoryboardRenderRequest = {
   runStatus: RlmVisualizationRunStatus;
   /** Bounded, deterministic ledger text derived from {@link RlmVisualizationState}. */
   eventLedger: string;
+  /**
+   * The Submind's own final "Return the Final Result" text, present only once
+   * {@link RlmVisualizationRunStatus.Running} has ended. The delegation ledger alone never
+   * captures root-level verification, risks, or synthesis, so the terminal frame must be grounded
+   * in this text too, not only in completed `rlm`/`invoke_trellage` calls.
+   */
+  finalSummary?: string;
 };
 
 export type RlmStoryboardRenderer = ((

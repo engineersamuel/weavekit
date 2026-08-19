@@ -92,7 +92,9 @@ export function buildFallbackStoryboard(state: RlmVisualizationState): RlmStoryb
   ].join("");
   return {
     title: `RLM run ${state.runId}`,
-    summary: `${state.events.length} completed delegations. Run status: ${state.runStatus}.`,
+    summary: state.runSummary
+      ? bounded(state.runSummary, 1200)
+      : `${state.events.length} completed delegations. Run status: ${state.runStatus}.`,
     narrative: rows.map(
       (event) =>
         `#${event.sequence} ${event.action} ${event.status} at depth ${event.depth}: ${bounded(event.prompt, 160)}`,

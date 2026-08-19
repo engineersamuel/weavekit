@@ -16,7 +16,8 @@ class RlmStoryboard {
 function RenderRlmStoryboard(
   objective: string,
   runStatus: string,
-  eventLedger: string
+  eventLedger: string,
+  finalSummary: string?
 ) -> RlmStoryboard {
   client CopilotProxyGemini37Flash
   prompt #"
@@ -35,6 +36,15 @@ function RenderRlmStoryboard(
     4. the decisions recorded for each call,
     5. the information flow between calls, including dependency edges,
     6. results, failures, and the current run status.
+
+    {% if finalSummary %}
+    The run has finished. The text below is the Submind's own "Return the Final Result" answer,
+    covering outcome, verification, risks, and root-level work the ledger never captures because it
+    only records completed `rlm`/`invoke_trellage` delegations. Ground the title, summary, and the
+    final narrative beat in this text so the terminal storyboard reflects the complete run, not only
+    the delegation ledger:
+    {{ finalSummary }}
+    {% endif %}
 
     SVG rules, all mandatory:
     - Return exactly one `<svg>` element with `xmlns="http://www.w3.org/2000/svg"` and a `viewBox`.
