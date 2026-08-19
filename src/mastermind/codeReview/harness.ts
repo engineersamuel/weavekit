@@ -128,7 +128,11 @@ Canonical review worktree: ${worktree}
 Run pwd first and verify it equals that exact path. Inspect artifacts only in that checkout. Do not
 substitute the parent source repository, provisioning root, another worktree, or ~/projects. Include
 untracked files in the review because a greenfield result can exist before its first implementation
-commit. If the current directory does not equal the canonical path, return an unanswered question
+commit. The execution contract writes its attempt and result artifacts under \`.weavekit/\`, which
+this repository gitignores, so file-search tools that honour ignore rules list nothing there. Verify
+those paths with a direct shell listing or read (for example \`ls -l .weavekit\`) before reporting any
+\`.weavekit/\` artifact as missing; a search tool returning no match is not evidence of absence.
+If the current directory does not equal the canonical path, return an unanswered question
 that reports the observed path instead of reviewing a different directory.
 
 Frozen reviewed ticket:

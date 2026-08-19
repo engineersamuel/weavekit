@@ -474,16 +474,38 @@ function reviewAvailableToolsForMode(
 }
 
 export function extractJsonObject(content: string): string {
-  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1];
-  if (fenced) {
-    return fenced.trim();
+  const candidates: string[] = [];
+  // Harnesses often narrate with a ```bash/```sh block before the ```json payload, so the language
+  // tag must be anchored to the fence's own line; otherwise a fenced shell snippet is captured as
+  // the JSON body (observed: `Unexpected token 'b', "bash\ncd /"...`).
+  for (const match of content.matchAll(/```([A-Za-z0-9_-]*)[ \t]*\r?\n([\s\S]*?)```/gu)) {
+    const language = match[1].toLowerCase();
+    if (language && language !== "json") {
+      continue;
+    }
+    const body = match[2].trim();
+    if (body.startsWith("{")) {
+      candidates.push(body);
+    }
   }
+  // The code-review prompt requires fenced code blocks *inside* dossier string fields, which ends
+  // the fence match early and truncates the object (observed: `Unterminated string in JSON at
+  // position 3842`). The brace slice is immune to inner fences, so keep it as a later candidate and
+  // return the first candidate that actually parses.
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
-  if (start === -1 || end <= start) {
-    throw new Error("Harness did not return a JSON object.");
+  if (start !== -1 && end > start) {
+    candidates.push(content.slice(start, end + 1));
   }
-  return content.slice(start, end + 1);
+  for (const candidate of candidates) {
+    try {
+      JSON.parse(candidate);
+      return candidate;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  throw new Error("Harness did not return a JSON object.");
 }
 
 function readEvidenceArray(
