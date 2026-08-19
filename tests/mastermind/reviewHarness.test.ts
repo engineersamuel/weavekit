@@ -13,6 +13,7 @@ import {
   extractJsonObject,
   parseTicketReviewDossier,
 } from "../../src/mastermind/review/harness.js";
+import { unknownCopilotToolNames } from "../../src/mastermind/harness/toolNames.js";
 import { resolveReviewSkillDiscoveryDirectory } from "../../src/mastermind/review/skillDirectory.js";
 
 const dossier: TicketReviewDossier = {
@@ -165,9 +166,14 @@ describe("Copilot SDK ticket review harness", () => {
     expect(sessionConfig).toMatchObject({
       streaming: false,
       skillDirectories: [reviewSkillsDirectory],
-      availableTools: ["read_file", "list_dir", "grep", "glob", "skill", "bash"],
+      availableTools: ["view", "grep", "rg", "glob", "skill", "bash"],
       onPermissionRequest: expect.any(Function),
     });
+    // An availableTools entry naming no registered tool is dropped silently, so a typo removes a
+    // capability without any error. Fail here instead.
+    expect(
+      unknownCopilotToolNames((sessionConfig as { availableTools: string[] }).availableTools),
+    ).toEqual([]);
     expect(disconnected).toBe(true);
     expect(stopped).toBe(true);
     expect(readPermission).toEqual({ kind: "approve-once" });
@@ -232,6 +238,9 @@ describe("Copilot SDK ticket review harness", () => {
       workingDirectory: "/Users/example/projects/prototypes",
       availableTools: ["web_fetch", "skill", "bash"],
     });
+    expect(
+      unknownCopilotToolNames((sessionConfig as { availableTools: string[] }).availableTools),
+    ).toEqual([]);
   });
 
   it("approves only absolute HTTPS web_fetch URLs without embedded credentials", () => {

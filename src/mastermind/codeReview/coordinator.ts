@@ -158,10 +158,14 @@ export class PostImplementationReviewCoordinator {
     }
     const passed = review.status === "passed";
     await this.replaceLabels(work.issueId, {
+      // needsInputLabelId is removed here as well as added below: projectFailure() applies it when
+      // a review attempt errors, and a later attempt that passes must clear it. replaceIssueLabels
+      // applies `remove` before appending `add`, so the needs_human branch still ends up labelled.
       remove: [
         this.config.mastermind.codeReviewLabelId ?? "",
         this.config.mastermind.codeReviewPassedLabelId ?? "",
         this.config.mastermind.changesRequestedLabelId ?? "",
+        this.config.mastermind.needsInputLabelId,
       ],
       add: [
         passed

@@ -459,6 +459,11 @@ describe("Mastermind execution coordinator", () => {
       review: { verdict: PostImplementationReviewVerdict.PASS },
     });
     expect(linear.states).toEqual(["In Progress", "In Review"]);
+    // A review attempt that errors applies needs-input via projectFailure(). A later attempt that
+    // passes must clear it, or the ticket keeps a false "needs human input" signal forever.
+    const passedProjection = linear.labelReplacements.at(-1);
+    expect(passedProjection?.remove).toContain("needs-input");
+    expect(passedProjection?.add).not.toContain("needs-input");
     expect(linear.comments).toHaveLength(2);
     expect(linear.comments[1]?.body).toContain("post-code review");
     expect(linear.comments[1]?.body).toContain("Manual verification — run these steps in order:");

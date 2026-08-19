@@ -36,9 +36,13 @@ export type LangfuseTraceFetcher = {
 };
 
 export class LangfusePublicApiTraceFetcher implements LangfuseTraceFetcher {
+  /** Guards the one-time warning below; the fetcher is constructed per execution attempt. */
+  private static readAPIUnavailableWarned = false;
+
   constructor(
     private readonly env: NodeJS.ProcessEnv = process.env,
     private readonly fetcher: typeof fetch = fetch,
+    private readonly warn: (message: string) => void = (message) => console.warn(message),
   ) {}
 
   async fetchSubmindTraceSummary(traceId: string): Promise<SubmindTraceSummary | undefined> {
@@ -51,10 +55,22 @@ export class LangfusePublicApiTraceFetcher implements LangfuseTraceFetcher {
     const authorization = `Basic ${Buffer.from(`${publicKey}:${secretKey}`).toString("base64")}`;
 
     try {
-      const trace = await this.getJson<LangfuseTraceRecord>(
-        `${baseUrl}/api/public/traces/${encodeURIComponent(traceId)}`,
-        authorization,
-      );
+      const traceUrl = `${baseUrl}/api/public/traces/${encodeURIComponent(traceId)}`;
+      const traceResponse = await this.fetcher(traceUrl, {
+        headers: { authorization, accept: "application/json" },
+      });
+      // A 404 here is not "trace not written yet": Langfuse v4 deployments that run in events-only
+      // mode removed the whole read API, so this integration can never succeed against them. That
+      // used to be swallowed silently, leaving self-improvement analysis permanently off with no
+      // signal at all. Say so once, then keep the never-throw contract.
+      if (traceResponse.status === 404) {
+        this.warnReadAPIUnavailable(baseUrl);
+        return undefined;
+      }
+      if (!traceResponse.ok) {
+        return undefined;
+      }
+      const trace = (await traceResponse.json()) as LangfuseTraceRecord | undefined;
       if (!trace) {
         return undefined;
       }
@@ -73,6 +89,16 @@ export class LangfusePublicApiTraceFetcher implements LangfuseTraceFetcher {
       // Best-effort integration: any fetch/parse failure just means no analysis for this attempt.
       return undefined;
     }
+  }
+
+  private warnReadAPIUnavailable(baseUrl: string): void {
+    if (LangfusePublicApiTraceFetcher.readAPIUnavailableWarned) {
+      return;
+    }
+    LangfusePublicApiTraceFetcher.readAPIUnavailableWarned = true;
+    this.warn(
+      `[mastermind] self-improvement analysis disabled: the Langfuse read API is not available at ${baseUrl} (this deployment exports traces only).`,
+    );
   }
 
   /** Mirrors `mastermind/telemetry.ts`'s `buildLangfuseTraceUrl`, but against this instance's own

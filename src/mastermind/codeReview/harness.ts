@@ -9,8 +9,10 @@ import { createReviewPermissionHandler, extractJsonObject } from "../review/harn
 import type { ExecutionAttempt, StoredReview } from "../store/store.js";
 
 // NOTE: the SDK's built-in command-execution tool is named "bash", not "shell" — "shell" is only
-// the permission-request kind for it (see createReviewPermissionHandler's `case "shell"`).
-const CODE_REVIEW_TOOLS = ["read_file", "list_dir", "grep", "glob", "bash"] as const;
+// the permission-request kind for it (see createReviewPermissionHandler's `case "shell"`). The
+// file-read tool is "view", not "read_file", and there is no "list_dir"; see the comment above
+// REPOSITORY_REVIEW_TOOLS in ../review/harness.ts for why a wrong name here fails silently.
+const CODE_REVIEW_TOOLS = ["view", "grep", "rg", "glob", "bash"] as const;
 
 export type CodeReviewHarnessRequest = {
   ticket: LinearTicketInput;

@@ -12,7 +12,7 @@ import {
   LinearGraphQlGateway,
   SqliteMastermindStore,
 } from "../src/mastermind/index.js";
-import { langfuseExportConfigured } from "../src/mastermind/telemetry.js";
+import { langfuseExportConfigured, traceMastermindWork } from "../src/mastermind/telemetry.js";
 import { startTelemetry, type TelemetryHandle } from "../src/telemetry/bootstrap.js";
 
 loadLocalEnvFiles();
@@ -144,21 +144,39 @@ try {
       "Mastermind direct execution is not configured (set [mastermind.execution] and/or [mastermind.rlm_execution]); stopping after review.\n",
     );
   } else {
-    const result = await executeOneReadyWork({
-      store,
-      coordinator,
+    // The poll loop calls coordinator.process() once per interval, and each call opens a span.
+    // Without an active parent every one of those becomes its own root span, i.e. a separate
+    // Langfuse trace (47 single-span traces were observed in one 20-minute run). Opening one root
+    // trace around the whole loop nests them under a single execution trace instead.
+    // Captured before the callback: control-flow narrowing of the outer `let store` is discarded
+    // inside a closure.
+    const executionStore = store;
+    const result = await traceMastermindWork(
       workId,
-      postImplementationReviewEnabled: true,
-      pollIntervalMs:
-        config.mastermind.execution?.pollIntervalMs ??
-        config.mastermind.rlmExecution?.pollIntervalMs ??
-        config.mastermind.reconcileIntervalMs,
-      onProgress: ({ work, attempt }) => {
+      (traceInfo) => {
         process.stdout.write(
-          `[mastermind] work=${work.id} attempt=${attempt?.attemptNumber ?? "-"} state=${work.state}\n`,
+          `[mastermind] execution Langfuse trace: ${traceInfo.url ?? traceInfo.traceId}\n`,
         );
       },
-    });
+      async (span) => {
+        span.setAttribute("langfuse.trace.name", "mastermind-execution");
+        return executeOneReadyWork({
+          store: executionStore,
+          coordinator,
+          workId,
+          postImplementationReviewEnabled: true,
+          pollIntervalMs:
+            config.mastermind.execution?.pollIntervalMs ??
+            config.mastermind.rlmExecution?.pollIntervalMs ??
+            config.mastermind.reconcileIntervalMs,
+          onProgress: ({ work, attempt }) => {
+            process.stdout.write(
+              `[mastermind] work=${work.id} attempt=${attempt?.attemptNumber ?? "-"} state=${work.state}\n`,
+            );
+          },
+        });
+      },
+    );
     if (result.disposition === "no-work") {
       process.stdout.write(
         "Ticket did not resolve to a launchable execution (needs human, ignored, or execution not opted in for this project).\n",

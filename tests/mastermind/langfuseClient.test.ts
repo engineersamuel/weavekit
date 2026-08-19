@@ -149,4 +149,33 @@ describe("LangfusePublicApiTraceFetcher", () => {
     const summary = await fetcher.fetchSubmindTraceSummary("trace-1");
     expect(summary).toBeUndefined();
   });
+
+  // Langfuse v4 in events-only mode removed the whole read API, so this integration can never
+  // succeed there. That used to be swallowed silently, leaving self-improvement analysis off with
+  // no signal at all. Warn once per process, and still never throw.
+  it("warns once when the Langfuse read API is unavailable", async () => {
+    const warnings: string[] = [];
+    const notFound = (async () =>
+      ({ ok: false, status: 404, json: async () => ({}) }) as Response) as typeof fetch;
+    const env = {
+      LANGFUSE_PUBLIC_KEY: "pub",
+      LANGFUSE_SECRET_KEY: "sec",
+      LANGFUSE_BASE_URL: "http://localhost:3000",
+    };
+
+    const first = new LangfusePublicApiTraceFetcher(env, notFound, (message) =>
+      warnings.push(message),
+    );
+    await expect(first.fetchSubmindTraceSummary("trace-1")).resolves.toBeUndefined();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("self-improvement analysis disabled");
+    expect(warnings[0]).toContain("http://localhost:3000");
+
+    // The fetcher is constructed once per execution attempt; a new instance must not repeat it.
+    const second = new LangfusePublicApiTraceFetcher(env, notFound, (message) =>
+      warnings.push(message),
+    );
+    await expect(second.fetchSubmindTraceSummary("trace-2")).resolves.toBeUndefined();
+    expect(warnings).toHaveLength(1);
+  });
 });

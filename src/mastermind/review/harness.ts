@@ -58,7 +58,12 @@ type CopilotReviewClient = {
 // branch in createReviewPermissionHandler below) — it is not a valid availableTools entry. Passing
 // "shell" here silently grants no tool, which caused the harness to (correctly) report having no
 // command-execution capability.
-const REPOSITORY_REVIEW_TOOLS = ["read_file", "list_dir", "grep", "glob", "skill", "bash"] as const;
+//
+// The same silent-drop bug hid two more wrong names here: the file-read tool is "view" (not
+// "read_file") and there is no "list_dir" at all — "glob" and "bash" cover directory listing. A
+// 4.3 MB session log of a real review run contains 9702 "view" and 2880 "glob" calls and zero
+// "read_file"/"list_dir". Only names in COPILOT_BUILT_IN_TOOL_NAMES belong in these lists.
+const REPOSITORY_REVIEW_TOOLS = ["view", "grep", "rg", "glob", "skill", "bash"] as const;
 const GREENFIELD_REVIEW_TOOLS = ["web_fetch", "skill", "bash"] as const;
 
 export class CopilotSdkTicketReviewHarness implements TicketReviewHarness {
