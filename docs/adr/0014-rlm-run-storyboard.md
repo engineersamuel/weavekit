@@ -50,6 +50,17 @@ the run is a detached process and the reviewer is looking at a Linear ticket, no
   overwrite a newer local or model frame. Finalization supersedes pending running work, drains the
   worker, and guarantees one terminal render before artifact paths are returned.
 
+- **The terminal frame is grounded in the run's own final result, not only the delegation ledger.**
+  `recordCompletion` only observes completed `rlm`/`invoke_trellage` calls, so the event ledger
+  never captures root-level verification, risk assessment, or synthesis the Submind performs
+  itself. `RlmDirectExecutor` passes the model's own "Return the Final Result" text as `summary` to
+  `finalize`; the recorder stores it as `state.runSummary` and, only on that terminal call, also
+  passes it to the renderer as `finalSummary` (`RlmStoryboardRenderRequest`). Both the Copilot SDK
+  and BAML prompts instruct the model to ground the title, summary, and final narrative beat in
+  that text when present, and `buildFallbackStoryboard` uses it as the deterministic fallback
+  summary instead of a generic completed-delegation count. Every non-terminal request omits
+  `finalSummary`, so mid-run frames are unaffected.
+
 - **Skill-backed Copilot SDK renderer by default.** An omitted renderer selection creates one
   persistent `gemini-3.7-flash` Copilot SDK session for the run and enables only
   `aiz-infographic`, `algorithmic-art`, `canvas-design`, `frontend-design`, and `theme-factory`.

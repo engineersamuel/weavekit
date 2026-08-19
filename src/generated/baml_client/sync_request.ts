@@ -1029,7 +1029,7 @@ export class HttpRequest {
   }
   
   RenderRlmStoryboard(
-      objective: string,runStatus: string,eventLedger: string,
+      objective: string,runStatus: string,eventLedger: string,finalSummary?: string | null,
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -1048,7 +1048,7 @@ export class HttpRequest {
       return this.runtime.buildRequestSync(
         "RenderRlmStoryboard",
         {
-          "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger
+          "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger,"finalSummary": finalSummary?? null
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),
@@ -2355,7 +2355,7 @@ export class HttpStreamRequest {
   }
   
   RenderRlmStoryboard(
-      objective: string,runStatus: string,eventLedger: string,
+      objective: string,runStatus: string,eventLedger: string,finalSummary?: string | null,
       __baml_options__?: BamlCallOptions<never>
   ): HTTPRequest {
     try {
@@ -2374,7 +2374,7 @@ export class HttpStreamRequest {
       return this.runtime.buildRequestSync(
         "RenderRlmStoryboard",
         {
-          "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger
+          "objective": objective,"runStatus": runStatus,"eventLedger": eventLedger,"finalSummary": finalSummary?? null
         },
         this.ctxManager.cloneContext(),
         __baml_options__?.tb?.__tb(),

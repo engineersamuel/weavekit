@@ -10,6 +10,7 @@ export const bamlRlmStoryboardRenderer: RlmStoryboardRenderer = async (request) 
     request.objective,
     request.runStatus,
     request.eventLedger,
+    request.finalSummary ?? null,
   );
   return {
     title: storyboard.title,
