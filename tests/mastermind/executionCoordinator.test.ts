@@ -372,6 +372,65 @@ describe("Mastermind execution coordinator", () => {
     store.close();
   });
 
+  it("reports each execution phase once while running status polls repeat", async () => {
+    const progress: string[] = [];
+    const { store } = await runSubmindAttempt({
+      linear: new FakeExecutionLinear(),
+      onProgress: progress,
+    });
+
+    const states = progress.flatMap((message) => {
+      const match = /^Attempt 1: ([^;]+);/.exec(message);
+      return match?.[1] ? [match[1]] : [];
+    });
+    expect(states).toEqual([
+      MastermindState.PROVISIONING,
+      MastermindState.PREFLIGHTING,
+      MastermindState.LAUNCHING,
+      MastermindState.RUNNING,
+      MastermindState.COLLECTING,
+      MastermindState.SUCCEEDED,
+    ]);
+    store.close();
+  });
+
+  it("keeps identical attempt summaries isolated by work item", async () => {
+    const directory = await tempDirectory();
+    const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
+    await store.initialize();
+    const first = await createPlannedDirectWork(
+      store,
+      MastermindAction.IMPLEMENT_DIRECTLY,
+      "issue-one",
+    );
+    const second = await createPlannedDirectWork(
+      store,
+      MastermindAction.IMPLEMENT_DIRECTLY,
+      "issue-two",
+    );
+    const progress: string[] = [];
+    const coordinator = new MastermindExecutionCoordinator(
+      executionConfig(directory),
+      store,
+      new FakeExecutionLinear(),
+      new FakeProvisioner(directory),
+      executorResolver(new FakeExecutor()),
+      { run: vi.fn() },
+      (message) => progress.push(message),
+    );
+
+    await coordinator.process(first.id);
+    await coordinator.process(second.id);
+    await coordinator.process(first.id);
+    await coordinator.process(second.id);
+
+    expect(progress).toEqual([
+      expect.stringContaining("Attempt 1: provisioning;"),
+      expect.stringContaining("Attempt 1: provisioning;"),
+    ]);
+    store.close();
+  });
+
   it("resumes a stored code-review result after its state transition is interrupted", async () => {
     const directory = await tempDirectory();
     await execFileAsync("git", ["init"], { cwd: directory });
@@ -753,13 +812,14 @@ class FakeUploadingLinear extends FakeExecutionLinear {
 async function createPlannedDirectWork(
   store: SqliteMastermindStore,
   action: MastermindAction = MastermindAction.IMPLEMENT_DIRECTLY,
+  issueId = "issue-one",
 ): Promise<MastermindWorkItem> {
   const delivery = await store.ingestDelivery({
     deliveryId: crypto.randomUUID(),
     organizationId: "organization-one",
     eventType: "Issue",
     action: "create",
-    issueId: "issue-one",
+    issueId,
   });
   let work = (await store.acquireLease(delivery.workId, "test-mastermind", new Date(), 60_000))!;
   for (const eventType of [
