@@ -97,6 +97,7 @@ function createProject(): MastermindProjectPolicyInput {
       MastermindAction.DELEGATE_SUBMIND,
       MastermindAction.NEEDS_HUMAN,
     ],
+    contextDocs: [],
   };
 }
 

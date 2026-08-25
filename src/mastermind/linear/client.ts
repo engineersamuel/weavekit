@@ -1,4 +1,4 @@
-import type { LinearTicketSnapshot } from "../store/store.js";
+import type { LinearTicketAttachment, LinearTicketSnapshot } from "../store/store.js";
 import {
   setMastermindSpanInput,
   setMastermindSpanOutput,
@@ -44,6 +44,32 @@ export type LinearGateway = {
   }): Promise<{ id: string; identifier: string; url: string }>;
 };
 
+/** Per-attachment body cap. A real observed attachment was 80 KB; the prompt cannot carry that. */
+const LINEAR_ATTACHMENT_BODY_LIMIT = 32_000;
+
+function isLinearAssetUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      (parsed.hostname === "uploads.linear.app" || parsed.hostname === "linear.app")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isTextualContentType(contentType: string): boolean {
+  const value = contentType.toLowerCase();
+  return (
+    value.startsWith("text/") ||
+    value.includes("json") ||
+    value.includes("markdown") ||
+    value.includes("xml") ||
+    value.includes("yaml")
+  );
+}
+
 type GraphQlEnvelope = {
   data?: Record<string, unknown>;
   errors?: Array<{ message?: string }>;
@@ -79,6 +105,7 @@ export class LinearGraphQlGateway implements LinearGateway {
           project { id }
           state { name }
           labels { nodes { id name } }
+          attachments { nodes { title url subtitle } }
         }
       }`,
           { id: issueId },
@@ -88,6 +115,7 @@ export class LinearGraphQlGateway implements LinearGateway {
         const project = asRecord(issue.project);
         const state = asRecord(issue.state);
         const labels = asRecord(issue.labels);
+        const attachments = await this.resolveAttachments(issue.attachments);
         if (!issue.id || !issue.url || !team.id) {
           throw new Error(`Linear issue ${issueId} returned an incomplete response.`);
         }
@@ -109,6 +137,7 @@ export class LinearGraphQlGateway implements LinearGateway {
                   : [];
               })
             : [],
+          ...(attachments.length > 0 ? { attachments } : {}),
         };
         setMastermindTicketAttributes(span, ticket);
         setMastermindSpanOutput(span, {
@@ -121,6 +150,68 @@ export class LinearGraphQlGateway implements LinearGateway {
         return ticket;
       },
     );
+  }
+
+  /**
+   * Fetches each attachment body with the Linear API key. An attachment must never fail a review,
+   * so every error degrades to a title-only entry that records why the body is missing.
+   */
+  private async resolveAttachments(value: unknown): Promise<LinearTicketAttachment[]> {
+    const nodes = asRecord(value).nodes;
+    if (!Array.isArray(nodes)) {
+      return [];
+    }
+    const attachments = nodes.flatMap((node) => {
+      const record = asRecord(node);
+      return typeof record.url === "string" && record.url.trim()
+        ? [
+            {
+              title: typeof record.title === "string" ? record.title : record.url,
+              url: record.url,
+              ...(typeof record.subtitle === "string" && record.subtitle.trim()
+                ? { subtitle: record.subtitle }
+                : {}),
+            },
+          ]
+        : [];
+    });
+    return Promise.all(attachments.map((attachment) => this.resolveAttachmentBody(attachment)));
+  }
+
+  private async resolveAttachmentBody(
+    attachment: LinearTicketAttachment,
+  ): Promise<LinearTicketAttachment> {
+    // Only Linear's own asset host is fetched with the API key. An attachment can link anywhere,
+    // and sending the credential to a third-party host would leak it.
+    if (!isLinearAssetUrl(attachment.url)) {
+      return { ...attachment, unavailableReason: "Not a Linear-hosted asset; body not fetched." };
+    }
+    try {
+      const response = await this.fetcher(attachment.url, {
+        headers: { Authorization: this.apiKey },
+      });
+      if (!response.ok) {
+        return {
+          ...attachment,
+          unavailableReason: `Linear returned HTTP ${response.status} for the attachment.`,
+        };
+      }
+      const contentType = response.headers.get("content-type") ?? "";
+      if (contentType && !isTextualContentType(contentType)) {
+        return { ...attachment, unavailableReason: `Body is not text (${contentType}).` };
+      }
+      const text = await response.text();
+      return text.length > LINEAR_ATTACHMENT_BODY_LIMIT
+        ? { ...attachment, body: text.slice(0, LINEAR_ATTACHMENT_BODY_LIMIT), truncated: true }
+        : { ...attachment, body: text };
+    } catch (error) {
+      return {
+        ...attachment,
+        unavailableReason: `Attachment fetch failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
   }
 
   async updateIssueContent(

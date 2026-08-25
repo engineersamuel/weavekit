@@ -400,6 +400,13 @@ export function buildDirectExecutionPrompt(request: DirectExecutionRequest): str
     "Decision rationale:",
     request.decision.rationale,
     "",
+    ...(request.contextDocs.length > 0
+      ? [
+          "Required context documents — read each one before you change any file:",
+          ...request.contextDocs.map((path) => `- ${path}`),
+          "",
+        ]
+      : []),
     "Required validation commands:",
     ...(request.validationCommands.length > 0
       ? request.validationCommands.map((command) => `- ${command}`)

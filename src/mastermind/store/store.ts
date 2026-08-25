@@ -28,6 +28,24 @@ export type LinearTicketSnapshot = {
   projectId?: string;
   teamId: string;
   updatedAt?: string;
+  attachments?: LinearTicketAttachment[];
+};
+
+/**
+ * A Linear attachment, resolved by the orchestrator. The review harnesses hold no Linear
+ * credentials, so an attachment they are asked to read is unreadable by construction and gets
+ * reported as a human blocker; fetching the body here is what makes it evidence instead.
+ */
+export type LinearTicketAttachment = {
+  title: string;
+  url: string;
+  subtitle?: string;
+  /** Absent when the body could not be fetched, or the content type is not text. */
+  body?: string;
+  /** True when {@link body} was cut at the size cap. */
+  truncated?: boolean;
+  /** Why the body is absent. Present only when {@link body} is absent. */
+  unavailableReason?: string;
 };
 
 export type MastermindWorkItem = {

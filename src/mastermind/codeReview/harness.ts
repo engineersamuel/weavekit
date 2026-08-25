@@ -1,12 +1,17 @@
 import { MastermindHarnessTransport, type MastermindHarnessProfile } from "../../config.js";
+import { TicketKind } from "../../generated/baml_client/index.js";
 import type {
   LinearTicketInput,
   PostImplementationReviewDossier,
 } from "../../generated/baml_client/index.js";
 import { buildCopilotClientConnectionOptions } from "../../telemetry/copilotSdk.js";
 import { runConfiguredHarnessCommand } from "../harness/command.js";
-import { createReviewPermissionHandler, extractJsonObject } from "../review/harness.js";
-import type { ExecutionAttempt, StoredReview } from "../store/store.js";
+import {
+  createReviewPermissionHandler,
+  extractJsonObject,
+  renderTicketAttachments,
+} from "../review/harness.js";
+import type { ExecutionAttempt, LinearTicketAttachment, StoredReview } from "../store/store.js";
 
 // NOTE: the SDK's built-in command-execution tool is named "bash", not "shell" — "shell" is only
 // the permission-request kind for it (see createReviewPermissionHandler's `case "shell"`). The
@@ -18,10 +23,19 @@ export type CodeReviewHarnessRequest = {
   ticket: LinearTicketInput;
   ticketReview: StoredReview;
   attempt: ExecutionAttempt;
+  /** Resolved by the orchestrator; the harness holds no Linear credentials of its own. */
+  attachments?: LinearTicketAttachment[];
 };
 
+/**
+ * The harness reports what it observed; it does not classify the ticket. `ticketKind` is settled
+ * at readiness review and stamped by {@link PostImplementationReviewCoordinator} from the stored
+ * review, so it is deliberately absent from everything the harness produces.
+ */
+export type HarnessCodeReviewDossier = Omit<PostImplementationReviewDossier, "ticketKind">;
+
 export type CodeReviewHarness = {
-  review(request: CodeReviewHarnessRequest): Promise<PostImplementationReviewDossier>;
+  review(request: CodeReviewHarnessRequest): Promise<HarnessCodeReviewDossier>;
 };
 
 type ReviewClient = {
@@ -49,7 +63,7 @@ export class CopilotSdkCodeReviewHarness implements CodeReviewHarness {
     },
   ) {}
 
-  async review(request: CodeReviewHarnessRequest): Promise<PostImplementationReviewDossier> {
+  async review(request: CodeReviewHarnessRequest): Promise<HarnessCodeReviewDossier> {
     const worktree = requireWorktree(request.attempt);
     const client = await this.clientFactory(worktree);
     await client.start();
@@ -98,7 +112,7 @@ export class CopilotSdkCodeReviewHarness implements CodeReviewHarness {
 export class CommandCodeReviewHarness implements CodeReviewHarness {
   constructor(private readonly profile: MastermindHarnessProfile) {}
 
-  async review(request: CodeReviewHarnessRequest): Promise<PostImplementationReviewDossier> {
+  async review(request: CodeReviewHarnessRequest): Promise<HarnessCodeReviewDossier> {
     const prompt = buildCodeReviewPrompt(request);
     const args = interpolatePromptArgs(this.profile.args, prompt);
     const stdout = await runConfiguredHarnessCommand({
@@ -120,6 +134,23 @@ export function createCodeReviewHarness(profile: MastermindHarnessProfile): Code
   return new CopilotSdkCodeReviewHarness(profile);
 }
 
+/**
+ * A SPIKE's own open design questions are its deliverable, so echoing one as an unanswered
+ * question stalls the ticket for a decision nobody owes. Mirrors the SPIKE rule in
+ * AssessPostImplementationReview (baml_src/mastermind.baml).
+ */
+function spikeQuestionGuidance(ticketKind: TicketKind): string {
+  return ticketKind === TicketKind.SPIKE
+    ? `This is a SPIKE. Any choice the ticket's own scope or acceptance criteria ask the spike to
+evaluate, recommend, benchmark, or compare is the spike's deliverable, not a human-owned question.
+Do not list it in unansweredQuestions; record the option the executor chose and its trade-off in
+knownRisks instead. A linked attachment you could not read is a known risk, not an unanswered
+question, when the ticket body already states the objective. Reserve unansweredQuestions for
+authorization, spend, production rollout, or a scope change the ticket does not already request.
+`
+    : "";
+}
+
 export function buildCodeReviewPrompt(request: CodeReviewHarnessRequest): string {
   const worktree = requireWorktree(request.attempt);
   return `Perform an independent post-implementation code review in the current worktree.
@@ -139,7 +170,9 @@ that reports the observed path instead of reviewing a different directory.
 
 Frozen reviewed ticket:
 ${JSON.stringify(request.ticket, null, 2)}
-
+${renderTicketAttachments(request.attachments ?? [])}
+Reviewed ticket kind: ${request.ticketReview.dossier.ticketKind}
+${spikeQuestionGuidance(request.ticketReview.dossier.ticketKind)}
 Ticket-readiness review:
 ${JSON.stringify(request.ticketReview.patch, null, 2)}
 
@@ -183,8 +216,8 @@ Return JSON only:
 }`;
 }
 
-export function parseCodeReviewDossier(content: string): PostImplementationReviewDossier {
-  const value = JSON.parse(extractJsonObject(content)) as PostImplementationReviewDossier;
+export function parseCodeReviewDossier(content: string): HarnessCodeReviewDossier {
+  const value = JSON.parse(extractJsonObject(content)) as HarnessCodeReviewDossier;
   if (
     !value ||
     typeof value.summary !== "string" ||

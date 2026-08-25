@@ -31,6 +31,7 @@ const request = {
   decision: {} as DirectExecutionRequest["decision"],
   workspace,
   validationCommands: [],
+  contextDocs: [],
   preflightRequirements: [
     {
       kind: ExecutionPreflightKind.AZURE_CLI,

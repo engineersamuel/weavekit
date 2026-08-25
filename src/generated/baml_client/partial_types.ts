@@ -202,6 +202,7 @@ export namespace partial_types {
       repositoryPath?: string | null
       provisioningRoot?: string | null
       allowedActions: types.MastermindAction[]
+      contextDocs: string[]
     }
     export interface MastermindReviewDecisionContext {
       hasCurrentReview?: boolean | null
@@ -392,6 +393,7 @@ export namespace partial_types {
       confidence?: number | null
     }
     export interface PostImplementationReviewDossier {
+      ticketKind?: types.TicketKind | null
       summary?: string | null
       acceptanceCriteriaCoverage: string[]
       verificationAssessment: string[]

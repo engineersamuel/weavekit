@@ -72,7 +72,11 @@ export class PostImplementationReviewCoordinator {
         ticket: toBamlTicket(ticket),
         ticketReview,
         attempt,
+        ...(ticket.attachments ? { attachments: ticket.attachments } : {}),
       });
+      // The ticket kind is settled at readiness review; the code reviewer must not re-litigate it.
+      // Overriding here also means a harness that omits or invents the field cannot change it.
+      dossier = { ...dossier, ticketKind: ticketReview.dossier.ticketKind };
       if (!this.decisions.assessPostImplementationReview) {
         throw new Error("Decision provider does not support post-implementation review.");
       }
