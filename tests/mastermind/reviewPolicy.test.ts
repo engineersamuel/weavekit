@@ -13,6 +13,7 @@ import {
 } from "../../src/generated/baml_client/index.js";
 import {
   backfillOpenItemDispositions,
+  hashLinearTicketContent,
   normalizeBlockingOpenItemReadiness,
   normalizeEmptyBlockedReadiness,
   normalizeStandingDefaultOpenItems,
@@ -735,5 +736,39 @@ Authenticated GitHub CLI.
 
     expect(result.accepted).toBe(false);
     expect(result.reasons).toContain("External evidence ee1 has an invalid URL.");
+  });
+});
+
+describe("hashLinearTicketContent", () => {
+  it("ignores the angle brackets Linear adds around Markdown link destinations", () => {
+    const sent: LinearTicketSnapshot = {
+      ...createTicket(),
+      description:
+        "See [kern](https://github.com/getkern/kern) and [install.sh](http://install.sh).",
+    };
+    const stored: LinearTicketSnapshot = {
+      ...sent,
+      description:
+        "See [kern](<https://github.com/getkern/kern>) and [install.sh](<http://install.sh>).",
+    };
+    expect(hashLinearTicketContent(stored)).toBe(hashLinearTicketContent(sent));
+  });
+
+  it("keeps angle brackets a destination genuinely needs", () => {
+    const spaced: LinearTicketSnapshot = {
+      ...createTicket(),
+      description: "See [doc](<http://example.com/a b>).",
+    };
+    const bare: LinearTicketSnapshot = {
+      ...spaced,
+      description: "See [doc](http://example.com/a b).",
+    };
+    expect(hashLinearTicketContent(spaced)).not.toBe(hashLinearTicketContent(bare));
+  });
+
+  it("still detects a real description change", () => {
+    const before = createTicket();
+    const after: LinearTicketSnapshot = { ...before, description: "Something a human rewrote." };
+    expect(hashLinearTicketContent(after)).not.toBe(hashLinearTicketContent(before));
   });
 });

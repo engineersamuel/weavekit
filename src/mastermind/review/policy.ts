@@ -50,12 +50,25 @@ const OPEN_ITEM_SOURCE_DESCRIPTORS = [
   },
 ] as const satisfies readonly OpenItemSourceDescriptor[];
 
+/**
+ * Linear rewrites Markdown link destinations when it saves a description, wrapping a bare
+ * destination in angle brackets (`](url)` becomes `](<url>)`). Hashing the text we sent against
+ * the text Linear stored therefore reports a change that nobody made, which makes Mastermind
+ * invalidate the review it just applied and re-review the ticket until the decision loop gives
+ * up and asks for a human. Canonicalize the bracketed form back to the bare form so both sides
+ * hash identically. Only a destination with no whitespace and no angle bracket is unwrapped,
+ * because CommonMark requires the brackets for any other destination.
+ */
+function canonicalizeLinearDescription(description: string): string {
+  return description.replace(/\]\(<([^<>\s]*)>(?=[\s)])/gu, "]($1");
+}
+
 export function hashLinearTicketContent(ticket: LinearTicketSnapshot): string {
   return createHash("sha256")
     .update(
       JSON.stringify({
         title: ticket.title,
-        description: ticket.description,
+        description: canonicalizeLinearDescription(ticket.description),
         labels: ticket.labels
           .map((label) => ({ id: label.id, name: label.name }))
           .sort((left, right) => left.id.localeCompare(right.id)),
