@@ -22,6 +22,7 @@ import type {
 import type {
   LinearTicketSnapshot,
   MastermindStore,
+  ReviewedHumanComment,
   StoredReview,
   TicketReviewValidationRecord,
 } from "../../src/mastermind/store/store.js";
@@ -217,6 +218,7 @@ function createReviewStore(initialReview?: StoredReview): {
       originalContentHash: string,
       dossier: TicketReviewDossier,
       patch: ProposedLinearTicketPatch,
+      reviewedHumanComments?: ReviewedHumanComment[],
     ): Promise<StoredReview> {
       const review: StoredReview = {
         id: `review-generated-${nextReviewId}`,
@@ -225,6 +227,7 @@ function createReviewStore(initialReview?: StoredReview): {
         originalContentHash,
         dossier,
         patch,
+        reviewedHumanComments,
         contentApplied: false,
         labelApplied: false,
         invalidated: false,
@@ -373,6 +376,56 @@ describe("generateReviewProposal", () => {
     ]);
   });
 
+  it("invalidates and regenerates a pending review with blocking ownership and nonblocking readiness", async () => {
+    const question = "Which compatibility policy is required?";
+    const inconsistentPatch: ProposedLinearTicketPatch = {
+      ...createCurrentPendingPatch(),
+      readiness: ReviewReadiness.READY_WITH_NONBLOCKING_GAPS,
+      unansweredQuestions: [question],
+      openItemDispositions: [
+        {
+          kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+          text: question,
+          owner: ReviewOpenItemOwner.HUMAN,
+          rationale: "Only the product owner can choose the compatibility policy.",
+        },
+      ],
+      requiresHumanApproval: true,
+    };
+    const pending = createStoredReview({}, inconsistentPatch);
+    const { store, invalidations, savedReviews } = createReviewStore(pending);
+    const harness = new CountingReviewHarness();
+    const decisions = new CountingDecisionProvider([inconsistentPatch]);
+
+    const review = await generateReviewProposal({
+      workId: "work-one",
+      ticket: createTicketSnapshot(),
+      project: createProject(),
+      harness,
+      decisions,
+      store,
+    });
+
+    expect(review.id).not.toBe(pending.id);
+    expect(review.patch.readiness).toBe(ReviewReadiness.BLOCKED);
+    expect(review.validation).toMatchObject({
+      accepted: true,
+      requiresHumanApproval: true,
+      reasons: [],
+    });
+    expect(harness.reviewCalls).toBe(1);
+    expect(decisions.synthesisCalls).toBe(1);
+    expect(savedReviews).toHaveLength(1);
+    expect(invalidations).toEqual([
+      {
+        reviewId: pending.id,
+        reason: expect.stringContaining(
+          "the stored review has blocking open-item ownership with nonblocking readiness",
+        ),
+      },
+    ]);
+  });
+
   it("resynthesizes the patch when open-item disposition coverage is incomplete", async () => {
     const { store, savedReviews } = createReviewStore();
     const harness = new CountingReviewHarness();
@@ -485,5 +538,43 @@ describe("generateReviewProposal", () => {
     expect(review.patch.requiresHumanApproval).toBe(false);
     expect(review.validation).toMatchObject({ accepted: true, requiresHumanApproval: false });
     expect(savedReviews[0]?.patch.requiresHumanApproval).toBe(false);
+  });
+
+  it("normalizes human-owned nonblocking readiness before policy validation", async () => {
+    const { store, savedReviews } = createReviewStore();
+    const harness = new CountingReviewHarness();
+    const question = "Which compatibility policy is required?";
+    const inconsistentPatch: ProposedLinearTicketPatch = {
+      ...createCurrentPendingPatch(),
+      readiness: ReviewReadiness.READY_WITH_NONBLOCKING_GAPS,
+      unansweredQuestions: [question],
+      openItemDispositions: [
+        {
+          kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+          text: question,
+          owner: ReviewOpenItemOwner.HUMAN,
+          rationale: "Only the product owner can choose the compatibility policy.",
+        },
+      ],
+      requiresHumanApproval: true,
+    };
+    const decisions = new CountingDecisionProvider([inconsistentPatch]);
+
+    const review = await generateReviewProposal({
+      workId: "work-one",
+      ticket: createTicketSnapshot(),
+      project: createProject(),
+      harness,
+      decisions,
+      store,
+    });
+
+    expect(review.patch.readiness).toBe(ReviewReadiness.BLOCKED);
+    expect(review.validation).toMatchObject({
+      accepted: true,
+      requiresHumanApproval: true,
+      reasons: [],
+    });
+    expect(savedReviews[0]?.patch.readiness).toBe(ReviewReadiness.BLOCKED);
   });
 });

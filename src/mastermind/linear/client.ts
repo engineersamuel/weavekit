@@ -10,6 +10,7 @@ export type LinearIssueComment = {
   id: string;
   body: string;
   createdAt: string;
+  updatedAt?: string;
 };
 
 /** One file published to Linear's asset store and linked from an issue. */
@@ -333,7 +334,7 @@ export class LinearGraphQlGateway implements LinearGateway {
       `query MastermindIssueCommentsList($id: String!) {
         issue(id: $id) {
           comments {
-            nodes { id body createdAt }
+            nodes { id body createdAt updatedAt }
           }
         }
       }`,
@@ -349,7 +350,14 @@ export class LinearGraphQlGateway implements LinearGateway {
       return typeof record.id === "string" &&
         typeof record.body === "string" &&
         typeof record.createdAt === "string"
-        ? [{ id: record.id, body: record.body, createdAt: record.createdAt }]
+        ? [
+            {
+              id: record.id,
+              body: record.body,
+              createdAt: record.createdAt,
+              ...(typeof record.updatedAt === "string" ? { updatedAt: record.updatedAt } : {}),
+            },
+          ]
         : [];
     });
   }

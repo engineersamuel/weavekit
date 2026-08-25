@@ -277,6 +277,8 @@ class FakeLinearGateway implements LinearGateway {
 /** FakeLinearGateway plus the optional comment surface the clarification flow depends on. */
 class CommentRecordingLinearGateway extends FakeLinearGateway {
   readonly comments: LinearIssueComment[] = [];
+  commentUpdateCalls = 0;
+  private nextCommentTimestamp = Date.parse("2026-08-25T02:03:37.859Z");
 
   async listIssueComments(): Promise<LinearIssueComment[]> {
     return structuredClone(this.comments);
@@ -288,19 +290,39 @@ class CommentRecordingLinearGateway extends FakeLinearGateway {
 
   async createIssueComment(_issueId: string, body: string): Promise<string> {
     const id = `comment-${this.comments.length + 1}`;
+    const timestamp = this.takeCommentTimestamp();
     this.comments.push({
       id,
       body,
-      createdAt: new Date(Date.now() + this.comments.length).toISOString(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
     });
     return id;
   }
 
   async updateIssueComment(commentId: string, body: string): Promise<void> {
+    this.commentUpdateCalls += 1;
     const comment = this.comments.find((candidate) => candidate.id === commentId);
     if (comment) {
       comment.body = body;
+      comment.updatedAt = this.takeCommentTimestamp();
     }
+  }
+
+  addHumanComment(body: string): void {
+    const timestamp = this.takeCommentTimestamp();
+    this.comments.push({
+      id: `comment-${this.comments.length + 1}`,
+      body,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  }
+
+  private takeCommentTimestamp(): string {
+    const timestamp = new Date(this.nextCommentTimestamp).toISOString();
+    this.nextCommentTimestamp += 1_000;
+    return timestamp;
   }
 }
 
@@ -569,6 +591,31 @@ class BlockedDecisionProvider extends FakeDecisionProvider {
         {
           kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
           text: "Which compatibility policy is required?",
+          owner: ReviewOpenItemOwner.HUMAN,
+          rationale: "Only a human owner can choose the compatibility promise.",
+        },
+      ],
+      requiresHumanApproval: true,
+    };
+  }
+}
+
+class HumanOwnedNonblockingDecisionProvider extends FakeDecisionProvider {
+  override async synthesizeTicketPatch(
+    ticket: LinearTicketInput,
+    project: MastermindProjectPolicyInput,
+    dossier: TicketReviewDossier,
+  ): Promise<ProposedLinearTicketPatch> {
+    const patch = await super.synthesizeTicketPatch(ticket, project, dossier);
+    const question = "Which compatibility policy is required?";
+    return {
+      ...patch,
+      readiness: ReviewReadiness.READY_WITH_NONBLOCKING_GAPS,
+      unansweredQuestions: [question],
+      openItemDispositions: [
+        {
+          kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+          text: question,
           owner: ReviewOpenItemOwner.HUMAN,
           rationale: "Only a human owner can choose the compatibility promise.",
         },
@@ -1056,6 +1103,79 @@ describe("Mastermind durable control plane", () => {
     restartedStore.close();
   });
 
+  it("re-reviews a ticket edited while an applied review is waiting in deciding", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174059",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new FakeLinearGateway();
+    const harness = new FakeReviewHarness();
+    const loop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      harness,
+    );
+
+    await loop.process(delivery.workId);
+    const database = new DatabaseSync(path);
+    database
+      .prepare(
+        `UPDATE mastermind_work_items
+         SET state = ?, planned_action = NULL, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(MastermindState.DECIDING, new Date().toISOString(), delivery.workId);
+    database.close();
+    linear.issue.description = "Human edit before decision planning.";
+
+    await loop.process(delivery.workId);
+
+    expect(harness.reviewCalls).toBe(2);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.ACTION_PLANNED,
+      plannedAction: MastermindAction.DELEGATE_SUBMIND,
+    });
+    store.close();
+  });
+
+  it("does not overwrite a verified label snapshot with a later content snapshot", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174060",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new FakeLinearGateway();
+    const loop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      new FakeReviewHarness(),
+    );
+
+    await loop.process(delivery.workId);
+    const review = await store.getLatestReview(delivery.workId);
+    expect(review?.appliedSnapshot).toBeDefined();
+    await store.saveReviewAppliedSnapshot(review!.id, {
+      ...review!.appliedSnapshot!,
+      description: "Unvalidated later content.",
+    });
+
+    expect((await store.getLatestReview(delivery.workId))?.appliedSnapshot).toEqual(
+      review?.appliedSnapshot,
+    );
+    store.close();
+  });
+
   it("resumes a partially applied review without regenerating it", async () => {
     const { store, path } = await createStore();
     const delivery = await store.ingestDelivery({
@@ -1248,6 +1368,7 @@ describe("Mastermind durable control plane", () => {
         'Next: Reopen review because no current stored review exists for the "Mastermind Reviewed" ticket; clear Mastermind labels and generate a fresh review.',
       ].join("\n"),
     );
+
     store.close();
   });
 
@@ -1336,6 +1457,19 @@ describe("Mastermind durable control plane", () => {
       state: MastermindState.ACTION_PLANNED,
       plannedAction: MastermindAction.DELEGATE_SUBMIND,
     });
+    const database = new DatabaseSync(path);
+    database
+      .prepare(
+        `UPDATE mastermind_reviews
+         SET applied_snapshot_json = ?, updated_at = ?
+         WHERE work_id = ?`,
+      )
+      .run(
+        JSON.stringify({ ...structuredClone(linear.issue), labels: [] }),
+        new Date().toISOString(),
+        delivery.workId,
+      );
+    database.close();
     store.close();
 
     let markFetched!: () => void;
@@ -1888,6 +2022,66 @@ describe("Mastermind durable control plane", () => {
     restartedStore.close();
   });
 
+  it("re-reviews a terminal stored review with inconsistent blocking readiness", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174052",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new FakeLinearGateway();
+    await new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new ExternalDependencyDecisionProvider(),
+      new FakeReviewHarness(),
+    ).process(delivery.workId);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.ACTION_PLANNED,
+      plannedAction: MastermindAction.WAIT,
+    });
+
+    const database = new DatabaseSync(path);
+    const reviewRow = database
+      .prepare(
+        `SELECT id, patch_json
+         FROM mastermind_reviews
+         WHERE work_id = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get(delivery.workId) as { id: string; patch_json: string };
+    const inconsistentPatch = JSON.parse(reviewRow.patch_json) as ProposedLinearTicketPatch;
+    inconsistentPatch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
+    database
+      .prepare(
+        `UPDATE mastermind_reviews
+         SET patch_json = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(JSON.stringify(inconsistentPatch), new Date().toISOString(), reviewRow.id);
+    database.close();
+
+    const harness = new FakeReviewHarness();
+    await new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new ExternalDependencyDecisionProvider(),
+      harness,
+    ).process(delivery.workId);
+
+    expect(harness.reviewCalls).toBe(1);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.ACTION_PLANNED,
+      plannedAction: MastermindAction.WAIT,
+    });
+    store.close();
+  });
+
   it("fails closed and labels the ticket when harness evidence is invalid", async () => {
     const { store, path } = await createStore();
     const delivery = await store.ingestDelivery({
@@ -2092,6 +2286,16 @@ describe("Mastermind durable control plane", () => {
         "Next: The ticket has not changed; keep failed and wait for an explicit retry condition.",
       ].join("\n"),
     );
+
+    linear.issue.labels = linear.issue.labels.filter(
+      (label) => label.id !== "review-failed-label-id",
+    );
+    await retryLoop.process(delivery.workId);
+
+    expect(retryHarness.reviewCalls).toBe(1);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.ACTION_PLANNED,
+    });
     store.close();
   });
 
@@ -2120,6 +2324,35 @@ describe("Mastermind durable control plane", () => {
     });
     expect(linear.issue.title).toBe("rough title");
     expect(linear.issue.labels.map((label) => label.name)).toContain("Mastermind Needs Input");
+    store.close();
+  });
+
+  it("normalizes a human-owned nonblocking gap and routes it to human input", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174046",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new CommentRecordingLinearGateway();
+    const loop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new HumanOwnedNonblockingDecisionProvider(),
+      new FakeReviewHarness(),
+    );
+
+    await loop.process(delivery.workId);
+
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.NEEDS_HUMAN,
+    });
+    expect(linear.issue.labels.map((label) => label.name)).toContain("Mastermind Needs Input");
+    expect(linear.comments).toHaveLength(1);
+    expect(linear.comments[0]?.body).toContain("Which compatibility policy is required?");
     store.close();
   });
 
@@ -2152,11 +2385,315 @@ describe("Mastermind durable control plane", () => {
     expect(comment.body).toContain(`<!-- weavekit-mastermind-clarification:${delivery.workId} -->`);
     expect(comment.body).toContain("Which compatibility policy is required?");
     expect(comment.body).toContain("Product owner must choose the compatibility policy.");
+    expect(linear.commentUpdateCalls).toBe(0);
 
-    // Re-processing the same needs-human work item updates the existing comment instead of
-    // posting a duplicate.
+    // Re-processing unchanged needs-human work only ensures the marker exists. It must not
+    // advance the reply-freshness baseline.
     await loop.process(delivery.workId);
     expect(linear.comments).toHaveLength(1);
+    expect(linear.commentUpdateCalls).toBe(0);
+    store.close();
+  });
+
+  it("re-reviews once per human clarification reply after updating the marker comment", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174047",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new CommentRecordingLinearGateway();
+    const harness = new FakeReviewHarness();
+    const decisions = new BlockedDecisionProvider();
+    const loop = new MastermindDecisionLoop(createConfig(path), store, linear, decisions, harness);
+
+    await loop.process(delivery.workId);
+    expect(harness.reviewCalls).toBe(1);
+    expect(decisions.synthesisCalls).toBe(1);
+
+    linear.addHumanComment("Use the compatibility policy from the current release.");
+    await loop.process(delivery.workId);
+    expect(harness.reviewCalls).toBe(2);
+    expect(decisions.synthesisCalls).toBe(2);
+    expect(linear.comments).toHaveLength(2);
+    expect(linear.commentUpdateCalls).toBe(1);
+
+    await loop.process(delivery.workId);
+    expect(harness.reviewCalls).toBe(2);
+    expect(decisions.synthesisCalls).toBe(2);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.NEEDS_HUMAN,
+    });
+    store.close();
+  });
+
+  it("re-reviews a reply posted after the review comment snapshot but before marker publication", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174048",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new CommentRecordingLinearGateway();
+    linear.addHumanComment("Initial context included in the review.");
+    const harness = new BlockingReviewHarness();
+    const decisions = new BlockedDecisionProvider();
+    const loop = new MastermindDecisionLoop(createConfig(path), store, linear, decisions, harness);
+
+    const initialRun = loop.process(delivery.workId);
+    await harness.started;
+    linear.addHumanComment("Reply posted while the review was being generated.");
+    harness.release();
+    await initialRun;
+
+    expect(await store.getLatestReview(delivery.workId)).toMatchObject({
+      reviewedHumanComments: [
+        { id: "comment-1", revision: expect.any(String) },
+        { id: "comment-2", revision: expect.any(String) },
+      ],
+    });
+    expect(harness.reviewCalls).toBe(2);
+
+    await loop.process(delivery.workId);
+
+    expect(harness.reviewCalls).toBe(2);
+    expect(decisions.synthesisCalls).toBe(2);
+    store.close();
+  });
+
+  it("re-reviews a reply posted during an accepted review before planning execution", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174061",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new CommentRecordingLinearGateway();
+    const harness = new BlockingReviewHarness();
+    const loop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      harness,
+    );
+
+    const initialRun = loop.process(delivery.workId);
+    await harness.started;
+    linear.addHumanComment("Requirement added while the review was being generated.");
+    harness.release();
+    await initialRun;
+
+    expect(harness.reviewCalls).toBe(2);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.ACTION_PLANNED,
+      plannedAction: MastermindAction.DELEGATE_SUBMIND,
+    });
+    expect(await store.getLatestReview(delivery.workId)).toMatchObject({
+      reviewedHumanComments: [{ id: "comment-1", revision: expect.any(String) }],
+    });
+    store.close();
+  });
+
+  it("regenerates a legacy inconsistent review already in applying-review state", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174049",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new FakeLinearGateway();
+    const initialLoop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      new FakeReviewHarness(),
+    );
+
+    await initialLoop.process(delivery.workId);
+    expect(await store.getLatestReview(delivery.workId)).toMatchObject({
+      labelApplied: true,
+    });
+
+    const database = new DatabaseSync(path);
+    const reviewRow = database
+      .prepare(
+        `SELECT id, patch_json
+         FROM mastermind_reviews
+         WHERE work_id = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get(delivery.workId) as { id: string; patch_json: string };
+    const legacyPatch = JSON.parse(reviewRow.patch_json) as ProposedLinearTicketPatch;
+    legacyPatch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
+    legacyPatch.unansweredQuestions = ["Which compatibility policy is required?"];
+    legacyPatch.openItemDispositions = [
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: "Which compatibility policy is required?",
+        owner: ReviewOpenItemOwner.HUMAN,
+        rationale: "Only a human owner can choose the compatibility promise.",
+      },
+    ];
+    database
+      .prepare(
+        `UPDATE mastermind_reviews
+         SET patch_json = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(JSON.stringify(legacyPatch), new Date().toISOString(), reviewRow.id);
+    database
+      .prepare(
+        `UPDATE mastermind_work_items
+         SET state = ?, planned_action = NULL, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(MastermindState.APPLYING_REVIEW, new Date().toISOString(), delivery.workId);
+    database.close();
+
+    const harness = new FakeReviewHarness();
+    const retryLoop = new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      harness,
+    );
+    await retryLoop.process(delivery.workId);
+
+    expect(harness.reviewCalls).toBe(1);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.ACTION_PLANNED,
+    });
+    store.close();
+  });
+
+  it("regenerates a legacy review missing dispositions from applying-review state", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174050",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new FakeLinearGateway();
+    await new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      new FakeReviewHarness(),
+    ).process(delivery.workId);
+
+    const database = new DatabaseSync(path);
+    const reviewRow = database
+      .prepare(
+        `SELECT id, patch_json
+         FROM mastermind_reviews
+         WHERE work_id = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get(delivery.workId) as { id: string; patch_json: string };
+    const legacyPatch = JSON.parse(reviewRow.patch_json) as Record<string, unknown>;
+    legacyPatch.unansweredQuestions = ["Which compatibility policy is required?"];
+    delete legacyPatch.openItemDispositions;
+    database
+      .prepare(
+        `UPDATE mastermind_reviews
+         SET patch_json = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(JSON.stringify(legacyPatch), new Date().toISOString(), reviewRow.id);
+    database
+      .prepare(
+        `UPDATE mastermind_work_items
+         SET state = ?, planned_action = NULL, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(MastermindState.APPLYING_REVIEW, new Date().toISOString(), delivery.workId);
+    database.close();
+
+    const harness = new FakeReviewHarness();
+    await new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      harness,
+    ).process(delivery.workId);
+
+    expect(harness.reviewCalls).toBe(1);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.ACTION_PLANNED,
+    });
+    store.close();
+  });
+
+  it("recovers when review invalidation persists before the applying-review transition", async () => {
+    const { store, path } = await createStore();
+    const delivery = await store.ingestDelivery({
+      deliveryId: "123e4567-e89b-42d3-a456-426614174051",
+      organizationId: "organization-one",
+      eventType: "Issue",
+      action: "create",
+      issueId: "issue-one",
+    });
+    const linear = new FakeLinearGateway();
+    await new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      new FakeReviewHarness(),
+    ).process(delivery.workId);
+    const review = await store.getLatestReview(delivery.workId);
+    expect(review).toBeDefined();
+    if (!review) {
+      throw new Error("Expected the initial review to be stored.");
+    }
+
+    const database = new DatabaseSync(path);
+    database
+      .prepare(
+        `UPDATE mastermind_reviews
+         SET invalidated = 1, invalidation_reason = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run("Simulated crash after invalidation.", new Date().toISOString(), review.id);
+    database
+      .prepare(
+        `UPDATE mastermind_work_items
+         SET state = ?, planned_action = NULL, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(MastermindState.APPLYING_REVIEW, new Date().toISOString(), delivery.workId);
+    database.close();
+
+    const harness = new FakeReviewHarness();
+    await new MastermindDecisionLoop(
+      createConfig(path),
+      store,
+      linear,
+      new FakeDecisionProvider(),
+      harness,
+    ).process(delivery.workId);
+
+    expect(harness.reviewCalls).toBe(1);
+    expect(await store.getWork(delivery.workId)).toMatchObject({
+      state: MastermindState.ACTION_PLANNED,
+    });
     store.close();
   });
 

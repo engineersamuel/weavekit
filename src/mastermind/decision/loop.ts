@@ -29,12 +29,16 @@ import {
 import type { MastermindDecisionProvider } from "./bamlAdapters.js";
 import type { LinearGateway } from "../linear/client.js";
 import {
-  findLatestHumanClarificationReply,
+  MASTERMIND_COMMENT_MARKER_PREFIX,
+  findHumanClarificationChange,
+  findReviewedHumanCommentChange,
   postClarificationComment,
+  toReviewedHumanComment,
   withRecentHumanComments,
+  type HumanClarificationChange,
 } from "../review/clarification.js";
 import type { TicketReviewHarness } from "../review/harness.js";
-import { getStoredReviewDispositionGapReason, hashLinearTicketContent } from "../review/policy.js";
+import { getStoredReviewRegenerationReason, hashLinearTicketContent } from "../review/policy.js";
 import { resolveReviewedExecutionProject } from "../projectResolution.js";
 import type {
   LinearTicketSnapshot,
@@ -50,6 +54,17 @@ import {
   traceMastermindWork,
   withMastermindSpan,
 } from "../telemetry.js";
+
+type ReviewFreshnessContext = {
+  ticket: LinearTicketSnapshot;
+  review?: StoredReview;
+  expectedLabelPresent: boolean;
+  latestObservedSnapshot?: LinearTicketSnapshot;
+  contentIsFresh: boolean;
+  humanClarificationChange?: HumanClarificationChange;
+  reviewDispositionGapReason: string | null;
+  expectedLabelName: string;
+};
 
 export class MastermindDecisionLoop {
   constructor(
@@ -144,7 +159,7 @@ export class MastermindDecisionLoop {
           "weavekit.mastermind.work_id": normalizedWork.id,
           "weavekit.mastermind.state": normalizedWork.state,
         },
-        () => this.reopenReviewIfStale(normalizedWork),
+        () => this.reopenReviewIfStale(normalizedWork, lease),
       );
       if (await this.store.getCurrentExecutionAttempt(work.id)) {
         return;
@@ -173,7 +188,7 @@ export class MastermindDecisionLoop {
           return;
         }
         decisionIterations += 1;
-        work = await this.decide(work);
+        work = await this.decide(work, lease);
       }
       if (!isTerminal(work.state)) {
         await this.applyTransition(work, { type: MastermindEventType.REQUIRE_HUMAN });
@@ -196,139 +211,182 @@ export class MastermindDecisionLoop {
     return work;
   }
 
-  private async reopenReviewIfStale(work: MastermindWorkItem): Promise<MastermindWorkItem> {
-    if (
-      work.state !== MastermindState.ACTION_PLANNED &&
-      work.state !== MastermindState.NEEDS_HUMAN &&
-      work.state !== MastermindState.FAILED
-    ) {
+  private async reopenReviewIfStale(
+    work: MastermindWorkItem,
+    lease: LeaseHeartbeat,
+  ): Promise<MastermindWorkItem> {
+    if (!isTerminalReviewState(work.state)) return work;
+    const context = await this.loadReviewFreshnessContext(work);
+    if (work.state === MastermindState.FAILED && context.review === undefined) {
+      return this.handleFailedWorkWithoutReview(work, context, lease);
+    }
+    if (isCurrentTerminalReview(context)) {
+      await this.keepCurrentTerminalReview(work, context, lease);
       return work;
     }
+    return this.reopenStaleTerminalReview(work, context, lease);
+  }
+
+  private async loadReviewFreshnessContext(
+    work: MastermindWorkItem,
+  ): Promise<ReviewFreshnessContext> {
     const ticket = await this.linear.fetchIssue(work.issueId);
     const review = await this.store.getLatestReview(work.id);
-    const expectedLabelId =
-      work.state === MastermindState.ACTION_PLANNED
-        ? this.config.mastermind.reviewedLabelId
-        : work.state === MastermindState.NEEDS_HUMAN
-          ? this.config.mastermind.needsInputLabelId
-          : this.config.mastermind.reviewFailedLabelId;
+    const expectedLabelId = expectedLabelIdForState(this.config, work.state);
     const expectedLabelPresent = ticket.labels.some((label) => label.id === expectedLabelId);
     const latestObservedSnapshot =
       review?.appliedSnapshot ??
       (work.state === MastermindState.FAILED
         ? await this.store.getLatestTicketSnapshot(work.id)
         : undefined);
-    const contentIsFresh =
-      latestObservedSnapshot !== undefined &&
-      hashLinearTicketContent(latestObservedSnapshot) === hashLinearTicketContent(ticket);
-    const humanClarificationReply =
-      work.state === MastermindState.NEEDS_HUMAN && this.linear.listIssueComments
-        ? findLatestHumanClarificationReply(
-            await this.linear.listIssueComments(work.issueId),
-            work.id,
-          )
-        : undefined;
-    const reviewDispositionGapReason = review ? getStoredReviewDispositionGapReason(review) : null;
-    if (work.state === MastermindState.FAILED && review === undefined) {
-      if (latestObservedSnapshot === undefined || contentIsFresh) {
-        this.emitProgress(
-          formatTicketFreshnessProgress({
-            work,
-            ticket,
-            expectedLabelName: expectedLabelNameForState(this.config, work.state),
-            next: nextStepForCurrentReview(work),
-          }),
-        );
-        return work;
-      }
-      this.emitProgress(
-        formatTicketFreshnessProgress({
-          work,
-          ticket,
-          expectedLabelName: expectedLabelNameForState(this.config, work.state),
-          next: "Reopen review because the Linear ticket content changed after the last observed failed review attempt; clear Mastermind labels and generate a fresh review.",
-        }),
+    const contentIsFresh = review
+      ? appliedReviewMatchesTicket(review, ticket, this.config)
+      : latestObservedSnapshot !== undefined &&
+        hashLinearTicketContent(latestObservedSnapshot) === hashLinearTicketContent(ticket);
+    const humanClarificationChange = await this.findReviewCommentChange(work, review);
+    const reviewDispositionGapReason = review ? getStoredReviewRegenerationReason(review) : null;
+    return {
+      ticket,
+      review,
+      expectedLabelPresent,
+      latestObservedSnapshot,
+      contentIsFresh,
+      humanClarificationChange,
+      reviewDispositionGapReason,
+      expectedLabelName: expectedLabelNameForState(this.config, work.state),
+    };
+  }
+
+  private async findReviewCommentChange(
+    work: MastermindWorkItem,
+    review: StoredReview | undefined,
+  ): Promise<HumanClarificationChange | undefined> {
+    if (!this.linear.listIssueComments) return undefined;
+    const comments = await this.linear.listIssueComments(work.issueId);
+    if (work.state === MastermindState.NEEDS_HUMAN) {
+      return findHumanClarificationChange(
+        comments,
+        work.id,
+        review?.reviewedHumanComments,
+        review?.reviewedHumanCommentIds,
       );
-      await this.linear.replaceIssueLabels(work.issueId, {
-        remove: [
-          this.config.mastermind.reviewedLabelId,
-          this.config.mastermind.readyLabelId,
-          this.config.mastermind.needsInputLabelId,
-          this.config.mastermind.reviewFailedLabelId,
-        ],
-        add: [],
-      });
-      return this.applyTransition(work, {
-        type: MastermindEventType.REOPEN_REVIEW,
-      });
     }
+    if (work.state !== MastermindState.ACTION_PLANNED || !review) return undefined;
+    return findReviewedHumanCommentChange(
+      comments,
+      review.reviewedHumanComments,
+      review.reviewedHumanCommentIds,
+    );
+  }
+
+  private async handleFailedWorkWithoutReview(
+    work: MastermindWorkItem,
+    context: ReviewFreshnessContext,
+    lease: LeaseHeartbeat,
+  ): Promise<MastermindWorkItem> {
     if (
-      expectedLabelPresent &&
-      review !== undefined &&
-      contentIsFresh &&
-      !reviewDispositionGapReason &&
-      !humanClarificationReply
+      context.expectedLabelPresent &&
+      (context.latestObservedSnapshot === undefined || context.contentIsFresh)
     ) {
-      if (work.state === MastermindState.NEEDS_HUMAN && review) {
-        // Self-healing: ensure the clarification comment exists even for reviews that were
-        // resolved before this feature existed, without forcing a full review regeneration.
-        await postClarificationComment(this.linear, work.issueId, review);
-      }
       this.emitProgress(
         formatTicketFreshnessProgress({
           work,
-          ticket,
-          expectedLabelName: expectedLabelNameForState(this.config, work.state),
+          ticket: context.ticket,
+          expectedLabelName: context.expectedLabelName,
           next: nextStepForCurrentReview(work),
         }),
       );
       return work;
     }
+    this.emitProgress(
+      formatTicketFreshnessProgress({
+        work,
+        ticket: context.ticket,
+        expectedLabelName: context.expectedLabelName,
+        next: context.expectedLabelPresent
+          ? "Reopen review because the Linear ticket content changed after the last observed failed review attempt; clear Mastermind labels and generate a fresh review."
+          : `Reopen review because the expected "${context.expectedLabelName}" label is missing; clear Mastermind labels and generate a fresh review.`,
+      }),
+    );
+    await lease.assertActive();
+    await this.clearMastermindLabels(work.issueId);
+    return this.applyTransition(work, {
+      type: MastermindEventType.REOPEN_REVIEW,
+    });
+  }
+
+  private async keepCurrentTerminalReview(
+    work: MastermindWorkItem,
+    context: ReviewFreshnessContext,
+    lease: LeaseHeartbeat,
+  ): Promise<void> {
+    if (work.state === MastermindState.NEEDS_HUMAN && context.review) {
+      // Self-healing: ensure the clarification comment exists even for reviews that were
+      // resolved before this feature existed, without advancing the reply-freshness baseline.
+      await lease.assertActive();
+      await postClarificationComment(this.linear, work.issueId, context.review, {
+        updateExisting: false,
+        assertLease: () => lease.assertActive(),
+      });
+    }
+    this.emitProgress(
+      formatTicketFreshnessProgress({
+        work,
+        ticket: context.ticket,
+        expectedLabelName: context.expectedLabelName,
+        next: nextStepForCurrentReview(work),
+      }),
+    );
+  }
+
+  private async reopenStaleTerminalReview(
+    work: MastermindWorkItem,
+    context: ReviewFreshnessContext,
+    lease: LeaseHeartbeat,
+  ): Promise<MastermindWorkItem> {
     const staleReasons = [
-      ...(expectedLabelPresent
+      ...(context.expectedLabelPresent
         ? []
-        : [
-            `the expected "${expectedLabelNameForState(this.config, work.state)}" label is missing`,
-          ]),
-      ...(review === undefined
-        ? [
-            `no current stored review exists for the "${expectedLabelNameForState(
-              this.config,
-              work.state,
-            )}" ticket`,
-          ]
+        : [`the expected "${context.expectedLabelName}" label is missing`]),
+      ...(context.review === undefined
+        ? [`no current stored review exists for the "${context.expectedLabelName}" ticket`]
         : []),
-      ...(reviewDispositionGapReason ? [reviewDispositionGapReason] : []),
-      ...(review && !contentIsFresh
+      ...(context.reviewDispositionGapReason ? [context.reviewDispositionGapReason] : []),
+      ...(context.review && !context.contentIsFresh
         ? ["the Linear ticket content changed after the stored review was applied"]
         : []),
-      ...(humanClarificationReply
-        ? [
-            `a human posted a clarification reply on ${humanClarificationReply.createdAt} after Mastermind's clarification comment`,
-          ]
-        : []),
+      ...(context.humanClarificationChange ? [context.humanClarificationChange.reason] : []),
     ];
     this.emitProgress(
       formatTicketFreshnessProgress({
         work,
-        ticket,
-        expectedLabelName: expectedLabelNameForState(this.config, work.state),
+        ticket: context.ticket,
+        expectedLabelName: context.expectedLabelName,
         next: `Reopen review because ${staleReasons.join(" and ")}; ${
-          review
+          context.review
             ? "invalidate the stored review, clear Mastermind labels, and generate a fresh review."
             : "clear Mastermind labels and generate a fresh review."
         }`,
       }),
     );
-    if (review) {
+    if (context.review) {
+      await lease.assertActive();
       await this.store.invalidateReview(
-        review.id,
-        reviewDispositionGapReason
-          ? `Stored review ${review.id} requires regeneration: ${reviewDispositionGapReason}.`
+        context.review.id,
+        context.reviewDispositionGapReason
+          ? `Stored review ${context.review.id} requires regeneration: ${context.reviewDispositionGapReason}.`
           : `Linear issue ${work.issueId} changed after review completion.`,
       );
     }
-    await this.linear.replaceIssueLabels(work.issueId, {
+    await lease.assertActive();
+    await this.clearMastermindLabels(work.issueId);
+    return this.applyTransition(work, {
+      type: MastermindEventType.REOPEN_REVIEW,
+    });
+  }
+
+  private async clearMastermindLabels(issueId: string): Promise<void> {
+    await this.linear.replaceIssueLabels(issueId, {
       remove: [
         this.config.mastermind.reviewedLabelId,
         this.config.mastermind.readyLabelId,
@@ -337,12 +395,12 @@ export class MastermindDecisionLoop {
       ],
       add: [],
     });
-    return this.applyTransition(work, {
-      type: MastermindEventType.REOPEN_REVIEW,
-    });
   }
 
-  private async decide(work: MastermindWorkItem): Promise<MastermindWorkItem> {
+  private async decide(
+    work: MastermindWorkItem,
+    lease: LeaseHeartbeat,
+  ): Promise<MastermindWorkItem> {
     return withMastermindSpan(
       "mastermind.decide",
       {
@@ -367,9 +425,18 @@ export class MastermindDecisionLoop {
           this.config.mastermind.reviewedLabelId,
           this.config.mastermind.reviewedLabelName,
         );
+        const review = await this.store.getLatestReview(work.id);
+        const reopened = await this.reopenChangedReviewBeforeDecision(
+          work,
+          ticket,
+          hasCurrentReview,
+          review,
+          lease,
+        );
+        if (reopened) return reopened;
         const reviewDecisionInput = buildReviewDecisionInput({
           hasCurrentReview,
-          review: await this.store.getLatestReview(work.id),
+          review,
         });
         this.emitProgress(
           hasCurrentReview
@@ -384,6 +451,16 @@ export class MastermindDecisionLoop {
                 policy.baml,
                 reviewDecisionInput.context,
               );
+        if (hasCurrentReview && review?.labelApplied) {
+          const reopenedAfterDecision = await this.reopenChangedReviewBeforeDecision(
+            work,
+            await this.linear.fetchIssue(work.issueId),
+            true,
+            review,
+            lease,
+          );
+          if (reopenedAfterDecision) return reopenedAfterDecision;
+        }
         const recommendedAction = validateRecommendedAction(reviewDecisionInput.context, decision);
         await this.store.saveDecision(work.id, decision);
         const event = eventForRecommendedAction(
@@ -416,6 +493,32 @@ export class MastermindDecisionLoop {
         return next;
       },
     );
+  }
+
+  private async reopenChangedReviewBeforeDecision(
+    work: MastermindWorkItem,
+    ticket: LinearTicketSnapshot,
+    hasCurrentReview: boolean,
+    review: StoredReview | undefined,
+    lease: LeaseHeartbeat,
+  ): Promise<MastermindWorkItem | undefined> {
+    if (!hasCurrentReview || !review?.labelApplied) return undefined;
+    const commentChange = this.linear.listIssueComments
+      ? findReviewedHumanCommentChange(
+          await this.linear.listIssueComments(work.issueId),
+          review.reviewedHumanComments,
+          review.reviewedHumanCommentIds,
+        )
+      : undefined;
+    if (appliedReviewMatchesTicket(review, ticket, this.config) && !commentChange) return undefined;
+    await lease.assertActive();
+    await this.store.invalidateReview(
+      review.id,
+      `Linear issue ${work.issueId} changed before the reviewed decision was planned.`,
+    );
+    await lease.assertActive();
+    await this.clearMastermindLabels(work.issueId);
+    return this.applyTransition(work, { type: MastermindEventType.REVIEW });
   }
 
   private async generateReview(
@@ -453,6 +556,9 @@ export class MastermindDecisionLoop {
           await this.store.setProjectPolicy(work.id, project.id, project);
           return resolveMastermindProjectPolicyForProject(this.config, project).baml;
         },
+        reviewedHumanComments: comments
+          .filter((comment) => !comment.body.startsWith(MASTERMIND_COMMENT_MARKER_PREFIX))
+          .map(toReviewedHumanComment),
       });
     } catch (error) {
       await lease.assertActive();
@@ -498,7 +604,24 @@ export class MastermindDecisionLoop {
   ): Promise<MastermindWorkItem> {
     const review = await this.store.getLatestReview(work.id);
     if (!review) {
-      throw new Error(`Mastermind work item ${work.id} has no review proposal.`);
+      return this.applyTransition(
+        work,
+        { type: MastermindEventType.REVIEW_INVALIDATED },
+        { reviewRegenerationReason: "the applying work item has no current review" },
+      );
+    }
+    const regenerationReason = getStoredReviewRegenerationReason(review);
+    if (regenerationReason) {
+      await lease.assertActive();
+      await this.store.invalidateReview(
+        review.id,
+        `Stored review ${review.id} requires regeneration: ${regenerationReason}.`,
+      );
+      return this.applyTransition(
+        work,
+        { type: MastermindEventType.REVIEW_INVALIDATED },
+        { reviewId: review.id, reviewRegenerationReason: regenerationReason },
+      );
     }
     this.emitProgress("Applying the governed review result to Linear.");
     const result = await applyReviewProposal({
@@ -533,10 +656,6 @@ export class MastermindDecisionLoop {
     }
     if (result.requiresHumanApproval) {
       this.emitProgress("Review requires human input; ticket content was not rewritten.");
-      // Post the open items on the run that produced them. Without this the questions only reach
-      // Linear on the next run, via the self-healing call in reopenReviewIfStale, so the first run
-      // leaves the ticket labelled needs-input with no statement of what is actually being asked.
-      await postClarificationComment(this.linear, work.issueId, review);
       return this.applyTransition(work, {
         type: MastermindEventType.REQUIRE_HUMAN,
       });
@@ -610,13 +729,90 @@ function describeReviewError(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown ticket review failure.";
 }
 
-function expectedLabelNameForState(
+function isTerminalReviewState(state: MastermindStateValue): boolean {
+  return (
+    state === MastermindState.ACTION_PLANNED ||
+    state === MastermindState.NEEDS_HUMAN ||
+    state === MastermindState.FAILED
+  );
+}
+
+function isCurrentTerminalReview(context: ReviewFreshnessContext): boolean {
+  return (
+    context.expectedLabelPresent &&
+    context.review !== undefined &&
+    context.contentIsFresh &&
+    !context.reviewDispositionGapReason &&
+    !context.humanClarificationChange
+  );
+}
+
+function appliedReviewMatchesTicket(
+  review: StoredReview,
+  ticket: LinearTicketSnapshot,
   config: WeavekitConfig,
-  state:
-    | typeof MastermindState.ACTION_PLANNED
-    | typeof MastermindState.NEEDS_HUMAN
-    | typeof MastermindState.FAILED,
-): string {
+): boolean {
+  const snapshot = review.appliedSnapshot;
+  if (!snapshot) return false;
+  if (hashLinearTicketContent(snapshot) === hashLinearTicketContent(ticket)) return true;
+  if (!review.labelApplied) return false;
+  const managedIds = mastermindLabelIds(config);
+  if (!ticketMatchesWithoutManagedLabels(ticket, snapshot, new Set(managedIds))) return false;
+  const expectedIds = expectedAppliedReviewLabelIds(review, config).sort();
+  const currentIds = ticket.labels
+    .map((label) => label.id)
+    .filter((id) => managedIds.includes(id))
+    .sort();
+  return (
+    currentIds.length === expectedIds.length &&
+    currentIds.every((id, index) => id === expectedIds[index])
+  );
+}
+
+function ticketMatchesWithoutManagedLabels(
+  ticket: LinearTicketSnapshot,
+  snapshot: LinearTicketSnapshot,
+  managedIds: Set<string>,
+): boolean {
+  const withoutManagedLabels = (value: LinearTicketSnapshot): LinearTicketSnapshot => ({
+    ...value,
+    labels: value.labels.filter((label) => !managedIds.has(label.id)),
+  });
+  return (
+    hashLinearTicketContent(withoutManagedLabels(ticket)) ===
+    hashLinearTicketContent(withoutManagedLabels(snapshot))
+  );
+}
+
+function expectedAppliedReviewLabelIds(review: StoredReview, config: WeavekitConfig): string[] {
+  if (!review.validation?.accepted) return [config.mastermind.reviewFailedLabelId];
+  if (review.validation.requiresHumanApproval) return [config.mastermind.needsInputLabelId];
+  return [
+    config.mastermind.reviewedLabelId,
+    ...(review.patch.readiness === ReviewReadiness.READY ? [config.mastermind.readyLabelId] : []),
+  ];
+}
+
+function mastermindLabelIds(config: WeavekitConfig): string[] {
+  return [
+    config.mastermind.reviewedLabelId,
+    config.mastermind.readyLabelId,
+    config.mastermind.needsInputLabelId,
+    config.mastermind.reviewFailedLabelId,
+  ];
+}
+
+function expectedLabelIdForState(config: WeavekitConfig, state: MastermindStateValue): string {
+  if (state === MastermindState.ACTION_PLANNED) {
+    return config.mastermind.reviewedLabelId;
+  }
+  if (state === MastermindState.NEEDS_HUMAN) {
+    return config.mastermind.needsInputLabelId;
+  }
+  return config.mastermind.reviewFailedLabelId;
+}
+
+function expectedLabelNameForState(config: WeavekitConfig, state: MastermindStateValue): string {
   if (state === MastermindState.ACTION_PLANNED) {
     return config.mastermind.reviewedLabelName;
   }
@@ -736,18 +932,18 @@ function buildReviewDecisionInput(args: {
     };
   }
 
-  const storedReviewDispositionGapReason = getStoredReviewDispositionGapReason(review);
-  if (storedReviewDispositionGapReason) {
+  const storedReviewRegenerationReason = getStoredReviewRegenerationReason(review);
+  if (storedReviewRegenerationReason) {
     return {
       mode: "deterministic",
-      reason: storedReviewDispositionGapReason,
+      reason: storedReviewRegenerationReason,
       context: emptyReviewDecisionContext(false),
       decision: buildDeterministicDecision(
         MastermindAction.REVIEW_TICKET,
         "Mastermind must regenerate the stored review before planning the next action.",
         [
-          "Stored reviews without complete open-item ownership cannot drive implementation planning.",
-          storedReviewDispositionGapReason,
+          "Stored reviews with inconsistent readiness or open-item ownership cannot drive implementation planning.",
+          storedReviewRegenerationReason,
         ],
       ),
     };
