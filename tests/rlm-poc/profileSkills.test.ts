@@ -10,6 +10,7 @@ import {
   RLM_PROFILE_SKILL_SOURCES,
   RLM_STORYBOARD_SKILL_NAMES,
   adaptAizInfographicSkill,
+  adaptBetterGithubSkill,
   adaptHandoffSkill,
   adaptWatchVideoSkill,
   assertPreparedRlmProfileSkillManifest,
@@ -165,7 +166,7 @@ describe("RLM profile skill bundles", () => {
             "better-github",
             revision,
             "skills",
-            "better-github-skill",
+            "rlm-better-github",
             "SKILL.md",
           ),
         ),
@@ -178,7 +179,7 @@ describe("RLM profile skill bundles", () => {
             "better-github",
             revision,
             "skills",
-            "better-github-skill",
+            "rlm-better-github",
             "scripts",
           ),
         ),
@@ -197,6 +198,18 @@ describe("RLM profile skill bundles", () => {
       "---\nname: handoff\ndisable-model-invocation: true\n---\n\nWrite a handoff.\n";
 
     expect(adaptHandoffSkill(upstream)).toBe("---\nname: rlm-handoff\n---\n\nWrite a handoff.\n");
+  });
+
+  it("renames better-github so a personally installed skill cannot shadow the bundle", () => {
+    const upstream =
+      '---\nname: better-github-skill\ndescription: "GitHub work via gh CLI"\n---\n\nUse gh.\n';
+
+    const adapted = adaptBetterGithubSkill(upstream);
+
+    expect(adapted).toContain("name: rlm-better-github");
+    expect(adapted).not.toContain("name: better-github-skill");
+    expect(RLM_COMMON_PROFILE_SKILL_NAMES).toContain("rlm-better-github");
+    expect(RLM_COMMON_PROFILE_SKILL_NAMES).not.toContain("better-github-skill");
   });
 
   it("adapts watch-video multimodal analysis to the local Copilot proxy", () => {

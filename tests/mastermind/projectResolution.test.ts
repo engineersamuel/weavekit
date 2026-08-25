@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ProjectRepositoryMode, type ProjectCatalogEntry } from "../../src/config.js";
-import { TicketKind } from "../../src/generated/baml_client/index.js";
+import {
+  ProjectRepositoryMode,
+  type ProjectCatalogEntry,
+  type WeavekitConfig,
+} from "../../src/config.js";
+import { MastermindAction, TicketKind } from "../../src/generated/baml_client/index.js";
+import { resolveMastermindProjectPolicyForProject } from "../../src/mastermind/config.js";
 import { resolveReviewedExecutionProject } from "../../src/mastermind/projectResolution.js";
+import { ExecutorKind } from "../../src/submind/contracts.js";
 import type { LinearTicketSnapshot } from "../../src/mastermind/store/store.js";
 
 const mappedProject: ProjectCatalogEntry = {
@@ -60,5 +66,77 @@ describe("reviewed execution project resolution", () => {
         mappedProject,
       }),
     ).toBe(mappedProject);
+  });
+});
+
+function createPolicyConfig(): WeavekitConfig {
+  return {
+    mastermind: {
+      allowedActions: [
+        MastermindAction.REVIEW_TICKET,
+        MastermindAction.IMPLEMENT_DIRECTLY,
+        MastermindAction.DELEGATE_SUBMIND,
+        MastermindAction.WAIT,
+        MastermindAction.NEEDS_HUMAN,
+        MastermindAction.IGNORE,
+      ],
+      execution: { executorKind: ExecutorKind.HERDR_COPILOT },
+      rlmExecution: { executorKind: ExecutorKind.RLM_SUBMIND },
+    },
+  } as unknown as WeavekitConfig;
+}
+
+describe("mastermind project policy allowed actions", () => {
+  it("drops execution actions whose executor the project does not allow", () => {
+    const project: ProjectCatalogEntry = {
+      ...mappedProject,
+      directExecution: {
+        enabled: true,
+        allowedExecutorKinds: [ExecutorKind.RLM_SUBMIND],
+        allowedPullRequestHosts: [],
+      },
+    };
+
+    const policy = resolveMastermindProjectPolicyForProject(createPolicyConfig(), project);
+
+    expect(policy.baml.allowedActions).toEqual([
+      MastermindAction.REVIEW_TICKET,
+      MastermindAction.DELEGATE_SUBMIND,
+      MastermindAction.WAIT,
+      MastermindAction.NEEDS_HUMAN,
+      MastermindAction.IGNORE,
+    ]);
+  });
+
+  it("drops every execution action when the project has no direct execution opt-in", () => {
+    const policy = resolveMastermindProjectPolicyForProject(createPolicyConfig(), mappedProject);
+
+    expect(policy.baml.allowedActions).toEqual([
+      MastermindAction.REVIEW_TICKET,
+      MastermindAction.WAIT,
+      MastermindAction.NEEDS_HUMAN,
+      MastermindAction.IGNORE,
+    ]);
+  });
+
+  it("drops an execution action the global configuration never configured an executor for", () => {
+    const config = createPolicyConfig();
+    const withoutRlm = {
+      ...config,
+      mastermind: { ...config.mastermind, rlmExecution: undefined },
+    } as WeavekitConfig;
+    const project: ProjectCatalogEntry = {
+      ...mappedProject,
+      directExecution: {
+        enabled: true,
+        allowedExecutorKinds: [ExecutorKind.HERDR_COPILOT, ExecutorKind.RLM_SUBMIND],
+        allowedPullRequestHosts: [],
+      },
+    };
+
+    const policy = resolveMastermindProjectPolicyForProject(withoutRlm, project);
+
+    expect(policy.baml.allowedActions).toContain(MastermindAction.IMPLEMENT_DIRECTLY);
+    expect(policy.baml.allowedActions).not.toContain(MastermindAction.DELEGATE_SUBMIND);
   });
 });
