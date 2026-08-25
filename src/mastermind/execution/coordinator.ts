@@ -38,7 +38,17 @@ import { needsHuman, normalizeExecutionOutcome } from "./result.js";
 
 export type DirectExecutorResolver = Partial<Record<ExecutorKind, DirectExecutor>>;
 
+const TERMINAL_PROGRESS_WORK_STATES = new Set<MastermindState>([
+  MastermindState.AWAITING_ACCEPTANCE,
+  MastermindState.CHANGES_REQUESTED,
+  MastermindState.COMPLETED,
+  MastermindState.NEEDS_HUMAN,
+  MastermindState.FAILED,
+]);
+
 export class MastermindExecutionCoordinator {
+  private readonly lastAttemptProgressByWorkId = new Map<string, string>();
+
   constructor(
     private readonly config: WeavekitConfig,
     private readonly store: MastermindStore,
@@ -67,11 +77,21 @@ export class MastermindExecutionCoordinator {
         const workspaceLabel = attempt.workspace?.checkoutPath
           ? basename(attempt.workspace.checkoutPath)
           : "not provisioned";
-        this.onProgress?.(
-          `Attempt ${attempt.attemptNumber}: ${attempt.state}; repository mode ${
-            project?.repositoryMode ?? "EXISTING_REPOSITORY"
-          }; workspace ${workspaceLabel}.`,
-        );
+        if (
+          TERMINAL_PROGRESS_WORK_STATES.has(leased.state) &&
+          attempt.projection?.disposition === "applied"
+        ) {
+          this.lastAttemptProgressByWorkId.delete(workId);
+        } else {
+          this.reportAttemptProgress(
+            workId,
+            attempt,
+            project?.repositoryMode ?? "EXISTING_REPOSITORY",
+            workspaceLabel,
+          );
+        }
+      } else {
+        this.lastAttemptProgressByWorkId.delete(workId);
       }
       await withMastermindSpan(
         `mastermind.execution.${leased.state}`,
@@ -123,18 +143,39 @@ export class MastermindExecutionCoordinator {
       // poll of a terminal work item, not just the transition into it.
       await this.selfImprovement.process(work, attempt);
     }
+    if (await this.processCodeReview(work, attempt, owner)) return;
+    await this.processAttemptPhase(work, attempt, owner);
+  }
+
+  private async processCodeReview(
+    work: MastermindWorkItem,
+    attempt: ExecutionAttempt,
+    owner: string,
+  ): Promise<boolean> {
+    const codeReview = this.codeReview;
     if (
-      this.codeReview &&
-      attempt.state === MastermindState.SUCCEEDED &&
-      (work.state === MastermindState.SUCCEEDED ||
-        work.state === MastermindState.CODE_REVIEW_PENDING ||
-        work.state === MastermindState.CODE_REVIEWING)
+      !codeReview ||
+      attempt.state !== MastermindState.SUCCEEDED ||
+      (work.state !== MastermindState.SUCCEEDED &&
+        work.state !== MastermindState.CODE_REVIEW_PENDING &&
+        work.state !== MastermindState.CODE_REVIEWING)
     ) {
-      if (work.state !== MastermindState.SUCCEEDED || attempt.projection?.projectedAt) {
-        await this.codeReview.process(work, attempt, owner);
-        return;
-      }
+      return false;
     }
+    if (work.state === MastermindState.SUCCEEDED && !attempt.projection?.projectedAt) return false;
+    await codeReview.process(work, attempt, owner);
+    const currentWork = await this.store.getWork(work.id);
+    if (currentWork && TERMINAL_PROGRESS_WORK_STATES.has(currentWork.state)) {
+      this.lastAttemptProgressByWorkId.delete(work.id);
+    }
+    return true;
+  }
+
+  private async processAttemptPhase(
+    work: MastermindWorkItem,
+    attempt: ExecutionAttempt,
+    owner: string,
+  ): Promise<void> {
     switch (attempt.state) {
       case MastermindState.PROVISIONING:
         await this.provision(work, attempt, owner);
@@ -551,6 +592,9 @@ export class MastermindExecutionCoordinator {
         projectedAt: new Date().toISOString(),
       },
     });
+    if (current.state !== MastermindState.SUCCEEDED || !this.codeReview) {
+      this.lastAttemptProgressByWorkId.delete(work.id);
+    }
   }
 
   /**
@@ -647,6 +691,20 @@ export class MastermindExecutionCoordinator {
       return work.resolvedProject;
     }
     return this.config.projects[projectPolicyId];
+  }
+
+  private reportAttemptProgress(
+    workId: string,
+    attempt: ExecutionAttempt,
+    repositoryMode: string,
+    workspaceLabel: string,
+  ): void {
+    if (!this.onProgress) return;
+    const message = `Attempt ${attempt.attemptNumber}: ${attempt.state}; repository mode ${repositoryMode}; workspace ${workspaceLabel}.`;
+    const fingerprint = `${attempt.id}\0${message}`;
+    if (this.lastAttemptProgressByWorkId.get(workId) === fingerprint) return;
+    this.lastAttemptProgressByWorkId.set(workId, fingerprint);
+    this.onProgress(message);
   }
 
   private transition(

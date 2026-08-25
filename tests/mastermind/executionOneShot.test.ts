@@ -90,6 +90,89 @@ describe("one-shot Mastermind execution", () => {
     expect(result.disposition).toBe("completed");
   });
 
+  it("emits progress only when the visible lifecycle changes", async () => {
+    let work = workItem("running", MastermindState.RUNNING, "attempt-one");
+    let attempt = executionAttempt("attempt-one", work.id, MastermindState.RUNNING);
+    let pollCount = 0;
+    const unchangedPolls = 100;
+    const wait = vi.fn(async () => {});
+    const progress: Array<{
+      workState: MastermindState;
+      attemptState: MastermindState | undefined;
+      projection: string | undefined;
+    }> = [];
+    const process = vi.fn(async () => {
+      pollCount += 1;
+      if (pollCount <= unchangedPolls) {
+        attempt = {
+          ...attempt,
+          lastStatus: {
+            state: "working",
+            observedAt: new Date(Date.UTC(2026, 7, 6, 12, 0, pollCount)).toISOString(),
+          },
+          rowVersion: attempt.rowVersion + 1,
+        };
+        return;
+      }
+      if (pollCount === unchangedPolls + 1) {
+        work = { ...work, state: MastermindState.SUCCEEDED, rowVersion: work.rowVersion + 1 };
+        attempt = {
+          ...attempt,
+          state: MastermindState.SUCCEEDED,
+          projection: { disposition: "pending" },
+          rowVersion: attempt.rowVersion + 1,
+        };
+        return;
+      }
+      attempt = {
+        ...attempt,
+        projection: { disposition: "applied" },
+        rowVersion: attempt.rowVersion + 1,
+      };
+    });
+    const store = fakeStore({
+      getWork: () => work,
+      getAttempt: () => attempt,
+    });
+
+    const result = await executeOneReadyWork({
+      store,
+      coordinator: { process },
+      workId: work.id,
+      postImplementationReviewEnabled: false,
+      pollIntervalMs: 25,
+      wait,
+      onProgress: ({ work: current, attempt: currentAttempt }) => {
+        progress.push({
+          workState: current.state,
+          attemptState: currentAttempt?.state,
+          projection: currentAttempt?.projection?.disposition,
+        });
+      },
+    });
+
+    expect(result.disposition).toBe("completed");
+    expect(process).toHaveBeenCalledTimes(unchangedPolls + 2);
+    expect(wait).toHaveBeenCalledTimes(unchangedPolls);
+    expect(progress).toEqual([
+      {
+        workState: MastermindState.RUNNING,
+        attemptState: MastermindState.RUNNING,
+        projection: undefined,
+      },
+      {
+        workState: MastermindState.SUCCEEDED,
+        attemptState: MastermindState.SUCCEEDED,
+        projection: "pending",
+      },
+      {
+        workState: MastermindState.SUCCEEDED,
+        attemptState: MastermindState.SUCCEEDED,
+        projection: "applied",
+      },
+    ]);
+  });
+
   it("fails instead of looping when project policy does not start execution", async () => {
     const work = workItem("launchable", MastermindState.ACTION_PLANNED);
     const store = fakeStore({ work, launchable: [work.id] });
