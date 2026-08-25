@@ -623,4 +623,49 @@ Authenticated GitHub CLI.
     ).toHaveLength(1);
     expect(validatePatch(backfilled)).toMatchObject({ accepted: true, reasons: [] });
   });
+  it("ignores a malformed dossier evidence locator the patch never cites", () => {
+    const dossier = createDossier();
+    dossier.externalEvidence = [
+      {
+        id: "ee1",
+        kind: ReviewEvidenceKind.EXTERNAL,
+        locator: "gh auth status (local CLI, retrieved 2026-08-24)",
+        claim: "The host GitHub CLI is authenticated for the Copilot model provider.",
+        confidence: 0.9,
+      },
+    ];
+
+    const result = validateTicketReviewProposal({
+      ticket: createTicket(),
+      project: createProject(),
+      dossier,
+      patch: createPatch(),
+    });
+
+    expect(result).toMatchObject({ accepted: true, reasons: [] });
+  });
+
+  it("still rejects a malformed evidence locator the patch cites", () => {
+    const dossier = createDossier();
+    const malformed = {
+      id: "ee1",
+      kind: ReviewEvidenceKind.EXTERNAL,
+      locator: "gh auth status (local CLI, retrieved 2026-08-24)",
+      claim: "The host GitHub CLI is authenticated for the Copilot model provider.",
+      confidence: 0.9,
+    };
+    dossier.externalEvidence = [malformed];
+    const patch = createPatch();
+    patch.evidence = [...patch.evidence, malformed];
+
+    const result = validateTicketReviewProposal({
+      ticket: createTicket(),
+      project: createProject(),
+      dossier,
+      patch,
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.reasons).toContain("External evidence ee1 has an invalid URL.");
+  });
 });

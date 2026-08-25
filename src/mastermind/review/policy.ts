@@ -64,14 +64,12 @@ export function hashLinearTicketContent(ticket: LinearTicketSnapshot): string {
     .digest("hex");
 }
 
-export function validateTicketReviewProposal(input: {
-  ticket: LinearTicketSnapshot;
-  project: MastermindProjectPolicyInput;
-  dossier: TicketReviewDossier;
-  patch: ProposedLinearTicketPatch;
-}): TicketReviewPolicyResult {
-  const reasons: string[] = [];
-  const { dossier, patch } = input;
+/** Checks the patch against the fields the harness dossier owns and the patch must not restate. */
+function validateFidelityToDossier(
+  patch: ProposedLinearTicketPatch,
+  dossier: TicketReviewDossier,
+  reasons: string[],
+): void {
   if (!patch.proposedTitle.trim()) {
     reasons.push("Proposed title is empty.");
   }
@@ -87,19 +85,12 @@ export function validateTicketReviewProposal(input: {
   if (patch.confidence < 0 || patch.confidence > 1) {
     reasons.push("Patch confidence must be between 0 and 1.");
   }
+}
+
+/** Checks that the declared readiness is consistent with the open items the patch carries. */
+function validateReadinessInvariants(patch: ProposedLinearTicketPatch, reasons: string[]): void {
   if (patch.readiness === ReviewReadiness.READY) {
-    if (patch.blockingReasons.length > 0 || patch.unansweredQuestions.length > 0) {
-      reasons.push("READY patches cannot contain blockers or unanswered questions.");
-    }
-    if (patch.acceptanceCriteria.length === 0) {
-      reasons.push("READY patches require acceptance criteria.");
-    }
-    if (patch.automatedVerification.length === 0 && patch.manualVerification.length === 0) {
-      reasons.push("READY patches require a verification plan.");
-    }
-    if (patch.validationSteps.length === 0) {
-      reasons.push("READY patches require an outcome validation plan.");
-    }
+    validateReadyCompleteness(patch, reasons);
   }
   if (
     patch.readiness === ReviewReadiness.READY_WITH_NONBLOCKING_GAPS &&
@@ -126,21 +117,37 @@ export function validateTicketReviewProposal(input: {
       "BLOCKED patches require at least one blocking reason or a HUMAN/EXTERNAL_DEPENDENCY open item.",
     );
   }
+}
+
+/** A READY patch claims no open work, so it must carry the full plan a implementer needs. */
+function validateReadyCompleteness(patch: ProposedLinearTicketPatch, reasons: string[]): void {
+  if (patch.blockingReasons.length > 0 || patch.unansweredQuestions.length > 0) {
+    reasons.push("READY patches cannot contain blockers or unanswered questions.");
+  }
+  if (patch.acceptanceCriteria.length === 0) {
+    reasons.push("READY patches require acceptance criteria.");
+  }
+  if (patch.automatedVerification.length === 0 && patch.manualVerification.length === 0) {
+    reasons.push("READY patches require a verification plan.");
+  }
+  if (patch.validationSteps.length === 0) {
+    reasons.push("READY patches require an outcome validation plan.");
+  }
+}
+
+export function validateTicketReviewProposal(input: {
+  ticket: LinearTicketSnapshot;
+  project: MastermindProjectPolicyInput;
+  dossier: TicketReviewDossier;
+  patch: ProposedLinearTicketPatch;
+}): TicketReviewPolicyResult {
+  const reasons: string[] = [];
+  const { dossier, patch } = input;
+  validateFidelityToDossier(patch, dossier, reasons);
+  validateReadinessInvariants(patch, reasons);
   validateOpenItemDispositions(patch, reasons);
   validateOwnershipSemantics(patch, reasons);
-
-  const evidence = [
-    ...dossier.repositoryEvidence,
-    ...dossier.linearEvidence,
-    ...dossier.externalEvidence,
-  ];
-  validateEvidence(evidence, input.project, reasons);
-  const evidenceIds = new Set(evidence.map((item) => item.id));
-  for (const patchEvidence of patch.evidence) {
-    if (!evidenceIds.has(patchEvidence.id)) {
-      reasons.push(`Patch evidence ${patchEvidence.id} was not produced by the harness.`);
-    }
-  }
+  validateEvidenceReferences(patch, dossier, input.project, reasons);
   return {
     accepted: reasons.length === 0,
     requiresHumanApproval: patchRequiresHumanApproval(patch),
@@ -247,12 +254,13 @@ export function findOpenItemDispositionCoverageIssues(
  * conservative default owner — erring toward requiring human approval rather than silently
  * proceeding.
  */
-export function backfillOpenItemDispositions(
+/** Drops dispositions that no longer match an open item, and duplicates beyond what it needs. */
+function keepMatchingDispositions(
   patch: ProposedLinearTicketPatch,
-): ProposedLinearTicketPatch {
-  const expectedCounts = countExpectedOpenItems(patch);
-  const coveredCounts = new Map<string, number>();
-  const reconciled: ProposedLinearTicketPatch["openItemDispositions"] = [];
+  expectedCounts: Map<string, CountedOpenItem>,
+  coveredCounts: Map<string, number>,
+): ProposedLinearTicketPatch["openItemDispositions"] {
+  const kept: ProposedLinearTicketPatch["openItemDispositions"] = [];
   for (const disposition of patch.openItemDispositions) {
     const descriptor = getOpenItemSourceDescriptor(disposition.kind);
     const key = descriptor
@@ -266,30 +274,48 @@ export function backfillOpenItemDispositions(
     }
     const covered = coveredCounts.get(key) ?? 0;
     if (covered >= countedOpenItem.count) {
-      // Excess duplicate disposition for an item that's already fully covered. Drop it.
+      // Excess duplicate disposition for an item that is already fully covered. Drop it.
       continue;
     }
     coveredCounts.set(key, covered + 1);
-    reconciled.push(disposition);
+    kept.push(disposition);
   }
+  return kept;
+}
 
+/** Adds a default-owned disposition for every open item the synthesizer left unclassified. */
+function appendMissingDispositions(
+  patch: ProposedLinearTicketPatch,
+  expectedCounts: Map<string, CountedOpenItem>,
+  coveredCounts: Map<string, number>,
+  reconciled: ProposedLinearTicketPatch["openItemDispositions"],
+): void {
+  const defaultOwner =
+    patch.readiness === ReviewReadiness.READY_WITH_NONBLOCKING_GAPS
+      ? ReviewOpenItemOwner.EXECUTOR_PREFLIGHT
+      : ReviewOpenItemOwner.HUMAN;
   for (const countedOpenItem of expectedCounts.values()) {
     const key = createOpenItemKey(countedOpenItem.kind, countedOpenItem.text);
-    const covered = coveredCounts.get(key) ?? 0;
-    const missing = countedOpenItem.count - covered;
+    const missing = countedOpenItem.count - (coveredCounts.get(key) ?? 0);
     for (let index = 0; index < missing; index += 1) {
       reconciled.push({
         kind: countedOpenItem.kind,
         text: countedOpenItem.text,
-        owner:
-          patch.readiness === ReviewReadiness.READY_WITH_NONBLOCKING_GAPS
-            ? ReviewOpenItemOwner.EXECUTOR_PREFLIGHT
-            : ReviewOpenItemOwner.HUMAN,
+        owner: defaultOwner,
         rationale:
           "Backfilled default disposition: the harness output omitted an explicit ownership classification for this item, so Mastermind defaulted to the safest available owner.",
       });
     }
   }
+}
+
+export function backfillOpenItemDispositions(
+  patch: ProposedLinearTicketPatch,
+): ProposedLinearTicketPatch {
+  const expectedCounts = countExpectedOpenItems(patch);
+  const coveredCounts = new Map<string, number>();
+  const reconciled = keepMatchingDispositions(patch, expectedCounts, coveredCounts);
+  appendMissingDispositions(patch, expectedCounts, coveredCounts, reconciled);
   if (
     reconciled.length === patch.openItemDispositions.length &&
     reconciled.every((disposition, index) => disposition === patch.openItemDispositions[index])
@@ -517,6 +543,39 @@ function normalizeOpenItemText(text: string | undefined): string {
   return typeof text === "string" ? text.trim() : "";
 }
 
+/**
+ * Gates the review on evidence the patch actually cites.
+ *
+ * Uncited dossier entries are working notes the synthesizer already discarded. Failing on one
+ * turned an otherwise passing review into a terminal `failed` state over a citation nothing
+ * depended on, so they no longer gate. Cited evidence is validated exactly as strictly as before,
+ * and the provenance check still runs against the full dossier so a patch cannot invent evidence.
+ */
+function validateEvidenceReferences(
+  patch: ProposedLinearTicketPatch,
+  dossier: TicketReviewDossier,
+  project: MastermindProjectPolicyInput,
+  reasons: string[],
+): void {
+  const evidence = [
+    ...dossier.repositoryEvidence,
+    ...dossier.linearEvidence,
+    ...dossier.externalEvidence,
+  ];
+  const citedIds = new Set(patch.evidence.map((item) => item.id));
+  validateEvidence(
+    evidence.filter((item) => citedIds.has(item.id)),
+    project,
+    reasons,
+  );
+  const producedIds = new Set(evidence.map((item) => item.id));
+  for (const patchEvidence of patch.evidence) {
+    if (!producedIds.has(patchEvidence.id)) {
+      reasons.push(`Patch evidence ${patchEvidence.id} was not produced by the harness.`);
+    }
+  }
+}
+
 function validateEvidence(
   evidence: TicketReviewEvidence[],
   project: MastermindProjectPolicyInput,
@@ -531,57 +590,102 @@ function validateEvidence(
     if (item.confidence < 0 || item.confidence > 1) {
       reasons.push(`Evidence ${item.id} confidence must be between 0 and 1.`);
     }
-    if (item.kind === ReviewEvidenceKind.REPOSITORY) {
-      if (project.repositoryMode === ProjectRepositoryMode.GREENFIELD) {
-        reasons.push(`Greenfield project evidence ${item.id} cannot reference a repository.`);
-        continue;
+    validateEvidenceItemByKind(item, project, reasons);
+  }
+}
+
+function validateEvidenceItemByKind(
+  item: TicketReviewEvidence,
+  project: MastermindProjectPolicyInput,
+  reasons: string[],
+): void {
+  switch (item.kind) {
+    case ReviewEvidenceKind.REPOSITORY:
+      validateRepositoryEvidence(item, project, reasons);
+      return;
+    case ReviewEvidenceKind.LINEAR:
+      if (!item.locator?.trim()) {
+        reasons.push(`Linear evidence ${item.id} has no locator.`);
       }
-      const repositoryPath = project.repositoryPath?.trim();
-      if (!repositoryPath) {
-        reasons.push(`Repository evidence ${item.id} has no configured repository.`);
-        continue;
-      }
-      const path = item.repositoryPath?.trim();
-      if (!path) {
-        reasons.push(`Repository evidence ${item.id} has no path.`);
-        continue;
-      }
-      if (isAbsolute(path)) {
-        reasons.push(`Repository evidence ${item.id} must use a repository-relative path.`);
-        continue;
-      }
-      const absolutePath = resolve(repositoryPath, path);
-      const pathRelativeToRepository = relative(resolve(repositoryPath), absolutePath);
-      if (pathRelativeToRepository.startsWith("..") || isAbsolute(pathRelativeToRepository)) {
-        reasons.push(`Repository evidence ${item.id} escapes the repository.`);
-      } else if (!existsSync(absolutePath)) {
-        reasons.push(`Repository evidence ${item.id} path does not exist: ${path}.`);
-      } else if (!item.repositoryEvidenceType) {
-        reasons.push(`Repository evidence ${item.id} has no evidence type.`);
-      } else if (
-        item.repositoryEvidenceType === RepositoryEvidenceType.SEARCH &&
-        !item.repositoryQuery?.trim()
-      ) {
-        reasons.push(`Repository search evidence ${item.id} has no query.`);
-      } else if (
-        item.repositoryEvidenceType === RepositoryEvidenceType.SYMBOL &&
-        !item.repositorySymbol?.trim()
-      ) {
-        reasons.push(`Repository symbol evidence ${item.id} has no symbol.`);
-      }
+      return;
+    case ReviewEvidenceKind.EXTERNAL:
+      validateExternalEvidence(item, reasons);
+      return;
+  }
+}
+
+/** Resolves the repository-relative path, or records why it cannot be used as evidence. */
+function resolveRepositoryEvidencePath(
+  item: TicketReviewEvidence,
+  project: MastermindProjectPolicyInput,
+  reasons: string[],
+): { absolutePath: string; path: string } | undefined {
+  if (project.repositoryMode === ProjectRepositoryMode.GREENFIELD) {
+    reasons.push(`Greenfield project evidence ${item.id} cannot reference a repository.`);
+    return undefined;
+  }
+  const repositoryPath = project.repositoryPath?.trim();
+  if (!repositoryPath) {
+    reasons.push(`Repository evidence ${item.id} has no configured repository.`);
+    return undefined;
+  }
+  const path = item.repositoryPath?.trim();
+  if (!path) {
+    reasons.push(`Repository evidence ${item.id} has no path.`);
+    return undefined;
+  }
+  if (isAbsolute(path)) {
+    reasons.push(`Repository evidence ${item.id} must use a repository-relative path.`);
+    return undefined;
+  }
+  const absolutePath = resolve(repositoryPath, path);
+  const pathRelativeToRepository = relative(resolve(repositoryPath), absolutePath);
+  if (pathRelativeToRepository.startsWith("..") || isAbsolute(pathRelativeToRepository)) {
+    reasons.push(`Repository evidence ${item.id} escapes the repository.`);
+    return undefined;
+  }
+  return { absolutePath, path };
+}
+
+function validateRepositoryEvidence(
+  item: TicketReviewEvidence,
+  project: MastermindProjectPolicyInput,
+  reasons: string[],
+): void {
+  const resolved = resolveRepositoryEvidencePath(item, project, reasons);
+  if (!resolved) {
+    return;
+  }
+  if (!existsSync(resolved.absolutePath)) {
+    reasons.push(`Repository evidence ${item.id} path does not exist: ${resolved.path}.`);
+    return;
+  }
+  if (!item.repositoryEvidenceType) {
+    reasons.push(`Repository evidence ${item.id} has no evidence type.`);
+    return;
+  }
+  if (
+    item.repositoryEvidenceType === RepositoryEvidenceType.SEARCH &&
+    !item.repositoryQuery?.trim()
+  ) {
+    reasons.push(`Repository search evidence ${item.id} has no query.`);
+    return;
+  }
+  if (
+    item.repositoryEvidenceType === RepositoryEvidenceType.SYMBOL &&
+    !item.repositorySymbol?.trim()
+  ) {
+    reasons.push(`Repository symbol evidence ${item.id} has no symbol.`);
+  }
+}
+
+function validateExternalEvidence(item: TicketReviewEvidence, reasons: string[]): void {
+  try {
+    const url = new URL(item.locator?.split(/\s+/u)[0] ?? "");
+    if (url.protocol !== "https:") {
+      reasons.push(`External evidence ${item.id} must use HTTPS.`);
     }
-    if (item.kind === ReviewEvidenceKind.LINEAR && !item.locator?.trim()) {
-      reasons.push(`Linear evidence ${item.id} has no locator.`);
-    }
-    if (item.kind === ReviewEvidenceKind.EXTERNAL) {
-      try {
-        const url = new URL(item.locator?.split(/\s+/u)[0] ?? "");
-        if (url.protocol !== "https:") {
-          reasons.push(`External evidence ${item.id} must use HTTPS.`);
-        }
-      } catch {
-        reasons.push(`External evidence ${item.id} has an invalid URL.`);
-      }
-    }
+  } catch {
+    reasons.push(`External evidence ${item.id} has an invalid URL.`);
   }
 }
