@@ -155,8 +155,9 @@ const HANDOFF_GUIDANCE =
   "you are completely stuck or explicitly asked to prepare a continuation, and return the " +
   "temporary handoff document path with the evidence already gathered and remaining blocker.";
 const BETTER_GITHUB_GUIDANCE =
-  " The loaded `better-github-skill` is available for GitHub work. Invoke it when inspecting pull " +
-  "requests, review conversations, CI failures, repository state, or non-trivial `gh` commands.";
+  " The loaded `rlm-better-github` skill is available for GitHub work. Invoke it when inspecting " +
+  "pull requests, review conversations, CI failures, repository state, or non-trivial `gh` " +
+  "commands.";
 export const DEFAULT_RLM_PROFILE_MODEL = "gpt-5.6-sol";
 export const DEFAULT_RLM_PROFILE_REASONING_EFFORT = "medium";
 const TOOL_MODEL_REQUIREMENTS = { toolCall: true } as const;

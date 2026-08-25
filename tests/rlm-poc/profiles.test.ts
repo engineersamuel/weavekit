@@ -116,7 +116,7 @@ describe("rlm profile registry", () => {
       );
       expect(profile.systemMessagePrompt).toContain("root Submind conversation");
       expect(profile.systemMessagePrompt).toContain("loaded `rlm-handoff` skill");
-      expect(profile.systemMessagePrompt).toContain("loaded `better-github-skill`");
+      expect(profile.systemMessagePrompt).toContain("loaded `rlm-better-github`");
       // Every profile can spawn children, so every profile must say when that is warranted. The
       // review profile lacked this sentence and self-delegated to depth 20 in a live run.
       expect(profile.systemMessagePrompt).toContain("`rlm`");

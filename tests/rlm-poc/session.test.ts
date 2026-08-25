@@ -233,10 +233,10 @@ describe("executeRlm", () => {
                   path: "/cache/superpowers/skills/rlm-handoff/SKILL.md",
                 },
                 {
-                  name: "better-github-skill",
+                  name: "rlm-better-github",
                   source: "custom",
                   enabled: true,
-                  path: "/cache/superpowers/skills/better-github-skill/SKILL.md",
+                  path: "/cache/superpowers/skills/rlm-better-github/SKILL.md",
                 },
               ],
             };
@@ -264,10 +264,10 @@ describe("executeRlm", () => {
           path: "/cache/superpowers/skills/rlm-handoff/SKILL.md",
         },
         {
-          name: "better-github-skill",
+          name: "rlm-better-github",
           source: "custom",
           enabled: true,
-          path: "/cache/superpowers/skills/better-github-skill/SKILL.md",
+          path: "/cache/superpowers/skills/rlm-better-github/SKILL.md",
         },
       ],
     });
@@ -484,10 +484,10 @@ describe("executeRlm", () => {
                   path: "/cache/root/handoff/SKILL.md",
                 },
                 {
-                  name: "better-github-skill",
+                  name: "rlm-better-github",
                   source: "custom",
                   enabled: true,
-                  path: "/cache/root/better-github-skill/SKILL.md",
+                  path: "/cache/root/rlm-better-github/SKILL.md",
                 },
               ],
             };
@@ -515,10 +515,10 @@ describe("executeRlm", () => {
                       path: "/cache/root/handoff/SKILL.md",
                     },
                     {
-                      name: "better-github-skill",
+                      name: "rlm-better-github",
                       source: "custom",
                       enabled: true,
-                      path: "/cache/root/better-github-skill/SKILL.md",
+                      path: "/cache/root/rlm-better-github/SKILL.md",
                     },
                     {
                       name: "rogue",

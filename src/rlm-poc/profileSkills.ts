@@ -109,7 +109,9 @@ export const RLM_PROFILE_SKILL_SOURCES = {
   },
 } as const satisfies Record<string, UpstreamSource>;
 
-export const RLM_COMMON_PROFILE_SKILL_NAMES = ["rlm-handoff", "better-github-skill"] as const;
+export const BETTER_GITHUB_SKILL_NAME = "rlm-better-github";
+
+export const RLM_COMMON_PROFILE_SKILL_NAMES = ["rlm-handoff", BETTER_GITHUB_SKILL_NAME] as const;
 
 const ANTHROPIC_DESIGN_SKILLS = [
   "algorithmic-art",
@@ -355,11 +357,23 @@ async function installCommonProfileSkills(
   };
 }
 
+/**
+ * Copilot skill discovery is keyed on the frontmatter name and returns one entry per name, so a
+ * personally installed `better-github-skill` (`~/.copilot/skills/`, `~/.agents/skills/`) shadows
+ * the copy prepared here. The discovered path then sits outside the profile's allowed skill
+ * directories, `prepareRlmSkillPolicy` reports the skill as undiscovered, and every recursive
+ * worker fails to start. Rename the bundled copy the same way `adaptHandoffSkill` renames handoff,
+ * so the prepared skill can never collide with whatever the host has installed.
+ */
+export function adaptBetterGithubSkill(source: string): string {
+  return source.replace(/^name:\s*better-github-skill\s*$/mu, `name: ${BETTER_GITHUB_SKILL_NAME}`);
+}
+
 async function ensureBetterGithubBundle(
   source: ResolvedCheckout,
   cacheDir: string,
 ): Promise<string> {
-  const bundleRevision = `${source.revision}:better-github-skill-md-only-v2`;
+  const bundleRevision = `${source.revision}:${BETTER_GITHUB_SKILL_NAME}-md-only-v3`;
   const target = join(cacheDir, "bundles", "better-github", source.revision);
   const skills = join(target, "skills");
   if (await markerMatches(target, bundleRevision)) return skills;
@@ -373,9 +387,13 @@ async function ensureBetterGithubBundle(
   await rm(target, { recursive: true, force: true });
   const temporaryRoot = await mkdtemp(join(dirname(target), ".install-"));
   try {
-    const skill = join(temporaryRoot, "skills", "better-github-skill");
+    const skill = join(temporaryRoot, "skills", BETTER_GITHUB_SKILL_NAME);
     await mkdir(skill, { recursive: true });
-    await cp(upstreamSkill, join(skill, "SKILL.md"));
+    await writeFile(
+      join(skill, "SKILL.md"),
+      adaptBetterGithubSkill(await readFile(upstreamSkill, "utf8")),
+      "utf8",
+    );
     await writeFile(join(temporaryRoot, ".weavekit-revision"), `${bundleRevision}\n`, "utf8");
     await installAtomically(temporaryRoot, target);
     if (!(await markerMatches(target, bundleRevision))) {
