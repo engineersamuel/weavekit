@@ -46,6 +46,8 @@ describe("reviewed execution project resolution", () => {
       provisioningRoot: "/home/test/projects/prototypes",
       mainline: "main",
       validationCommands: [],
+      // The mapped project's repository-relative paths do not exist in a fresh prototype worktree.
+      contextDocs: [],
     });
     expect(project.directExecution).toBe(mappedProject.directExecution);
   });

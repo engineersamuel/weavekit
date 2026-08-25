@@ -41,6 +41,7 @@ function createProject(): MastermindProjectPolicyInput {
     repositoryMode: ProjectRepositoryMode.EXISTING_REPOSITORY,
     repositoryPath: process.cwd(),
     allowedActions: [],
+    contextDocs: [],
   };
 }
 

@@ -56,6 +56,7 @@ export type DirectExecutionRequest = SubmindRequestInput & {
   decision: MastermindNextActionDecision;
   workspace: ExecutionWorkspace;
   validationCommands: string[];
+  contextDocs: string[];
   preflightRequirements: ExecutionPreflightRequirement[];
   resultManifestPath: string;
   allowedPullRequestHosts: string[];
@@ -157,6 +158,7 @@ export function createDirectExecutionRequest(
     ...input,
     projectId: project.id,
     validationCommands: [...project.validationCommands],
+    contextDocs: [...project.contextDocs],
     preflightRequirements: (project.executionPreflightRequirements ?? []).map((requirement) => ({
       ...requirement,
     })),

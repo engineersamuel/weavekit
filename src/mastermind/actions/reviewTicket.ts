@@ -73,15 +73,18 @@ export async function generateReviewProposal(args: {
   }
   const bamlTicket = toBamlTicket(args.reviewTicket ?? args.ticket);
   args.onProgress?.("Frontier harness is inspecting repository evidence.");
+  const attachments = (args.reviewTicket ?? args.ticket).attachments;
   let dossier = await args.harness.review({
     ticket: bamlTicket,
     project: args.project,
+    ...(attachments ? { attachments } : {}),
   });
   let project = (await args.resolveProject?.(dossier)) ?? args.project;
   if (project.id !== args.project.id) {
     dossier = await args.harness.review({
       ticket: bamlTicket,
       project,
+      ...(attachments ? { attachments } : {}),
     });
     project = (await args.resolveProject?.(dossier)) ?? project;
   }

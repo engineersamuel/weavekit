@@ -80,6 +80,7 @@ export function resolveMastermindProjectPolicyForProject(
         ? { repositoryPath: project.workingTree }
         : { provisioningRoot: project.provisioningRoot }),
       allowedActions: config.mastermind.allowedActions,
+      contextDocs: [...project.contextDocs],
     },
   };
 }

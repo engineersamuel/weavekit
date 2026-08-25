@@ -67,7 +67,7 @@ export default class TypeBuilder {
     
     MastermindNextActionDecision: ClassViewer<'MastermindNextActionDecision', "action" | "rationale" | "prerequisites" | "policyEvidence" | "suggestedExecutorShape" | "confidence">;
     
-    MastermindProjectPolicyInput: ClassViewer<'MastermindProjectPolicyInput', "id" | "displayName" | "repositoryMode" | "repositoryPath" | "provisioningRoot" | "allowedActions">;
+    MastermindProjectPolicyInput: ClassViewer<'MastermindProjectPolicyInput', "id" | "displayName" | "repositoryMode" | "repositoryPath" | "provisioningRoot" | "allowedActions" | "contextDocs">;
     
     MastermindReviewDecisionContext: ClassViewer<'MastermindReviewDecisionContext', "hasCurrentReview" | "readiness" | "requiresHumanApproval" | "blockingReasons" | "warnings" | "unansweredQuestions" | "openItemDispositions" | "reviewConfidence">;
     
@@ -111,7 +111,7 @@ export default class TypeBuilder {
     
     PostImplementationReview: ClassViewer<'PostImplementationReview', "verdict" | "summary" | "acceptanceCriteriaCoverage" | "verificationAssessment" | "manualVerification" | "findings" | "knownRisks" | "unansweredQuestions" | "confidence">;
     
-    PostImplementationReviewDossier: ClassViewer<'PostImplementationReviewDossier', "summary" | "acceptanceCriteriaCoverage" | "verificationAssessment" | "manualVerification" | "findings" | "knownRisks" | "unansweredQuestions" | "confidence">;
+    PostImplementationReviewDossier: ClassViewer<'PostImplementationReviewDossier', "ticketKind" | "summary" | "acceptanceCriteriaCoverage" | "verificationAssessment" | "manualVerification" | "findings" | "knownRisks" | "unansweredQuestions" | "confidence">;
     
     PostImplementationReviewFinding: ClassViewer<'PostImplementationReviewFinding', "severity" | "summary" | "evidence" | "remediation">;
     
@@ -333,7 +333,7 @@ export default class TypeBuilder {
         ]);
         
         this.MastermindProjectPolicyInput = this.tb.classViewer("MastermindProjectPolicyInput", [
-          "id","displayName","repositoryMode","repositoryPath","provisioningRoot","allowedActions",
+          "id","displayName","repositoryMode","repositoryPath","provisioningRoot","allowedActions","contextDocs",
         ]);
         
         this.MastermindReviewDecisionContext = this.tb.classViewer("MastermindReviewDecisionContext", [
@@ -421,7 +421,7 @@ export default class TypeBuilder {
         ]);
         
         this.PostImplementationReviewDossier = this.tb.classViewer("PostImplementationReviewDossier", [
-          "summary","acceptanceCriteriaCoverage","verificationAssessment","manualVerification","findings","knownRisks","unansweredQuestions","confidence",
+          "ticketKind","summary","acceptanceCriteriaCoverage","verificationAssessment","manualVerification","findings","knownRisks","unansweredQuestions","confidence",
         ]);
         
         this.PostImplementationReviewFinding = this.tb.classViewer("PostImplementationReviewFinding", [

@@ -11,7 +11,9 @@ import {
 } from "../../src/config.js";
 import {
   PostImplementationReviewVerdict,
+  TicketKind,
   type MastermindNextActionDecision,
+  type PostImplementationReviewDossier,
 } from "../../src/generated/baml_client/index.js";
 import { acceptMastermindWork } from "../../src/mastermind/codeReview/accept.js";
 import { PostImplementationReviewCoordinator } from "../../src/mastermind/codeReview/coordinator.js";
@@ -546,6 +548,84 @@ describe("Mastermind execution coordinator", () => {
     store.close();
   });
 
+  it("stamps the ticket kind from the stored review, ignoring the one the harness returned", async () => {
+    const directory = await tempDirectory();
+    await execFileAsync("git", ["init"], { cwd: directory });
+    await execFileAsync("git", ["config", "user.email", "mastermind@example.test"], {
+      cwd: directory,
+    });
+    await execFileAsync("git", ["config", "user.name", "Mastermind Test"], { cwd: directory });
+    await writeFile(join(directory, "README.md"), "review fixture\n");
+    await execFileAsync("git", ["add", "README.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "-m", "fixture"], { cwd: directory });
+
+    const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
+    await store.initialize();
+    const config = executionConfig(directory);
+    const work = await createPlannedDirectWork(
+      store,
+      MastermindAction.IMPLEMENT_DIRECTLY,
+      "issue-one",
+      TicketKind.SPIKE,
+    );
+    const linear = new FakeExecutionLinear();
+    let assessed: PostImplementationReviewDossier | undefined;
+    const postReview = new PostImplementationReviewCoordinator(
+      config,
+      store,
+      linear,
+      {
+        async review() {
+          // A harness is an external process returning JSON, so it can report any kind it likes.
+          return {
+            ticketKind: TicketKind.BUG,
+            summary: "Implementation satisfies the frozen ticket.",
+            acceptanceCriteriaCoverage: ["Criterion covered by README.md."],
+            verificationAssessment: ["Independent verification passed."],
+            manualVerification: [],
+            findings: [],
+            knownRisks: [],
+            unansweredQuestions: [],
+            confidence: 0.95,
+          } as never;
+        },
+      },
+      {
+        async synthesizeTicketPatch() {
+          throw new Error("not used");
+        },
+        async decideNextAction() {
+          throw new Error("not used");
+        },
+        async assessPostImplementationReview(_ticket, dossier) {
+          assessed = dossier;
+          return { ...dossier, verdict: PostImplementationReviewVerdict.PASS };
+        },
+      },
+    );
+    const coordinator = new MastermindExecutionCoordinator(
+      config,
+      store,
+      linear,
+      new FakeProvisioner(directory),
+      executorResolver(new FakeExecutor()),
+      { run: vi.fn().mockResolvedValue({ exitCode: 0, stdout: "passed", stderr: "" }) },
+      undefined,
+      postReview,
+    );
+
+    for (let phase = 0; phase < 12; phase += 1) {
+      await coordinator.process(work.id);
+    }
+
+    expect(assessed?.ticketKind).toBe(TicketKind.SPIKE);
+    expect(await store.getCurrentCodeReview(work.id)).toMatchObject({
+      status: "passed",
+      dossier: { ticketKind: TicketKind.SPIKE },
+    });
+    store.close();
+  });
+
   it("moves an exhausted retry to needs-human instead of throwing", async () => {
     const directory = await tempDirectory();
     const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
@@ -813,6 +893,7 @@ async function createPlannedDirectWork(
   store: SqliteMastermindStore,
   action: MastermindAction = MastermindAction.IMPLEMENT_DIRECTLY,
   issueId = "issue-one",
+  ticketKind: TicketKind = TicketKind.TECHNICAL_TASK,
 ): Promise<MastermindWorkItem> {
   const delivery = await store.ingestDelivery({
     deliveryId: crypto.randomUUID(),
@@ -843,7 +924,7 @@ async function createPlannedDirectWork(
     work.id,
     ticket(),
     "hash",
-    { summary: "Ready." } as never,
+    { summary: "Ready.", ticketKind } as never,
     { automatedVerification: ["nub run test"] } as never,
   );
   const decision = {

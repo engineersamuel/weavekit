@@ -487,6 +487,7 @@ function executionRequest(worktreePath: string): DirectExecutionRequest {
       creatorAttemptId: "attempt-one",
     },
     validationCommands: ["nub run test"],
+    contextDocs: [],
     preflightRequirements: [],
     resultManifestPath: ".weavekit/mastermind-result.json",
     allowedPullRequestHosts: ["github.com"],

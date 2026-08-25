@@ -63,6 +63,7 @@ class MastermindProjectPolicyInput {
   repositoryPath string?
   provisioningRoot string?
   allowedActions MastermindAction[]
+  contextDocs string[]
 }
 
 class LinearTicketInput {
@@ -176,6 +177,7 @@ class PostImplementationReviewFinding {
 }
 
 class PostImplementationReviewDossier {
+  ticketKind TicketKind
   summary string
   acceptanceCriteriaCoverage string[]
   verificationAssessment string[]
@@ -397,12 +399,25 @@ function AssessPostImplementationReview(
     without evidence.
 
     Rules:
-    - PASS requires no BLOCKING or IMPORTANT findings, no unanswered questions, concrete
-      acceptance-criteria coverage, and credible verification assessment.
+    - PASS requires no BLOCKING or IMPORTANT findings, no unanswered human-owned questions,
+      concrete acceptance-criteria coverage, and credible verification assessment.
     - CHANGES_REQUIRED means implementation defects or missing required behavior can be fixed by
       another implementation attempt without a product decision.
     - NEEDS_HUMAN means product intent, authorization, acceptance, or another human-owned decision
       is unresolved.
+    - A SPIKE exists to answer its own open design questions. When dossier.ticketKind is SPIKE,
+      any choice the ticket's own scope or acceptance criteria ask the spike to evaluate,
+      recommend, benchmark, or compare — a tool ruleset, configuration, corpus, threshold, or
+      integration variant — is the spike's deliverable, not a human-owned question. Naming the
+      recommended option is the spike's output, so do not treat it as grounds for NEEDS_HUMAN
+      even when it is phrased as organization policy, an authoritative standard, or product
+      behavior. Reserve NEEDS_HUMAN on a SPIKE for a decision outside its stated deliverable,
+      such as authorization, spend, production rollout, or a scope change the ticket does not
+      already request. A linked attachment the reviewer could not read is a known risk, not
+      grounds for NEEDS_HUMAN, when the ticket body already states the objective. Before
+      returning NEEDS_HUMAN on a SPIKE, re-read every unanswered question and drop it from the
+      verdict basis if any scope line or acceptance criterion already asks the spike to
+      determine, recommend, or compare it.
     - Preserve findings and evidence from the dossier. Do not invent repository evidence.
     - Manual verification must be specific and actionable.
     - confidence is between 0 and 1.

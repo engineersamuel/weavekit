@@ -345,6 +345,7 @@ export interface MastermindProjectPolicyInput {
   repositoryPath?: string | null
   provisioningRoot?: string | null
   allowedActions: MastermindAction[]
+  contextDocs: string[]
   
 }
 
@@ -579,6 +580,7 @@ export interface PostImplementationReview {
 }
 
 export interface PostImplementationReviewDossier {
+  ticketKind: TicketKind
   summary: string
   acceptanceCriteriaCoverage: string[]
   verificationAssessment: string[]

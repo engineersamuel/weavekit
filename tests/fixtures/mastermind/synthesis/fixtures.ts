@@ -46,6 +46,7 @@ function existingRepositoryProject(): MastermindProjectPolicyInput {
       MastermindAction.WAIT,
       MastermindAction.NEEDS_HUMAN,
     ],
+    contextDocs: [],
   };
 }
 
@@ -62,6 +63,7 @@ function greenfieldProject(): MastermindProjectPolicyInput {
       MastermindAction.WAIT,
       MastermindAction.NEEDS_HUMAN,
     ],
+    contextDocs: [],
   };
 }
 
