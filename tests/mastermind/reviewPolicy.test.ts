@@ -13,6 +13,7 @@ import {
 } from "../../src/generated/baml_client/index.js";
 import {
   backfillOpenItemDispositions,
+  normalizeBlockingOpenItemReadiness,
   normalizeEmptyBlockedReadiness,
   normalizeStandingDefaultOpenItems,
   validateTicketReviewProposal,
@@ -120,6 +121,72 @@ function validatePatch(patch: ProposedLinearTicketPatch): TicketReviewPolicyResu
 }
 
 describe("Mastermind review policy", () => {
+  it("normalizes human-owned nonblocking gaps to blocked readiness", () => {
+    const patch = createPatch();
+    const question = "Which account should own the rollout?";
+    patch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
+    patch.requiresHumanApproval = true;
+    patch.unansweredQuestions = [question];
+    patch.openItemDispositions = [
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: question,
+        owner: ReviewOpenItemOwner.HUMAN,
+        rationale: "Account ownership is a product authorization decision.",
+      },
+    ];
+
+    const normalized = normalizeBlockingOpenItemReadiness(patch);
+
+    expect(normalized.readiness).toBe(ReviewReadiness.BLOCKED);
+    expect(validatePatch(normalized)).toMatchObject({
+      accepted: true,
+      requiresHumanApproval: true,
+      reasons: [],
+    });
+  });
+
+  it("normalizes external-dependency nonblocking gaps to blocked readiness", () => {
+    const patch = createPatch();
+    const question = "When will the vendor sandbox become reachable again?";
+    patch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
+    patch.unansweredQuestions = [question];
+    patch.openItemDispositions = [
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: question,
+        owner: ReviewOpenItemOwner.EXTERNAL_DEPENDENCY,
+        rationale: "The executor cannot restore the vendor sandbox.",
+      },
+    ];
+
+    const normalized = normalizeBlockingOpenItemReadiness(patch);
+
+    expect(normalized.readiness).toBe(ReviewReadiness.BLOCKED);
+    expect(validatePatch(normalized)).toMatchObject({
+      accepted: true,
+      requiresHumanApproval: false,
+      reasons: [],
+    });
+  });
+
+  it("preserves nonblocking readiness for executor-preflight gaps", () => {
+    const patch = createPatch();
+    const question = "Is the proxy runtime available in this environment?";
+    patch.readiness = ReviewReadiness.READY_WITH_NONBLOCKING_GAPS;
+    patch.unansweredQuestions = [question];
+    patch.openItemDispositions = [
+      {
+        kind: ReviewOpenItemKind.UNANSWERED_QUESTION,
+        text: question,
+        owner: ReviewOpenItemOwner.EXECUTOR_PREFLIGHT,
+        rationale: "The executor can verify the proxy before work starts.",
+      },
+    ];
+
+    expect(normalizeBlockingOpenItemReadiness(patch)).toBe(patch);
+  });
+
   it("normalizes empty BLOCKED readiness to READY", () => {
     const patch = createPatch();
     patch.readiness = ReviewReadiness.BLOCKED;

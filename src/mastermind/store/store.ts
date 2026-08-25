@@ -98,6 +98,11 @@ export type ExecutionProjection = {
   projectedAt?: string;
 };
 
+export type ReviewedHumanComment = {
+  id: string;
+  revision: string;
+};
+
 export type RecoverableExecution = {
   workId: string;
   attemptId: string;
@@ -132,6 +137,8 @@ export type StoredReview = {
   originalContentHash: string;
   dossier: TicketReviewDossier;
   patch: ProposedLinearTicketPatch;
+  reviewedHumanComments?: ReviewedHumanComment[];
+  reviewedHumanCommentIds?: string[];
   legacyOpenItemDispositionsMissing?: boolean;
   validation?: TicketReviewValidationRecord;
   appliedSnapshot?: LinearTicketSnapshot;
@@ -262,10 +269,11 @@ export type MastermindStore = {
     originalContentHash: string,
     dossier: TicketReviewDossier,
     patch: ProposedLinearTicketPatch,
+    reviewedHumanComments?: ReviewedHumanComment[],
   ): Promise<StoredReview>;
   saveReviewValidation(reviewId: string, validation: TicketReviewValidationRecord): Promise<void>;
-  markReviewContentApplied(reviewId: string): Promise<void>;
-  markReviewLabelApplied(reviewId: string): Promise<void>;
+  markReviewContentApplied(reviewId: string, snapshot: LinearTicketSnapshot): Promise<void>;
+  markReviewLabelApplied(reviewId: string, snapshot: LinearTicketSnapshot): Promise<void>;
   saveReviewAppliedSnapshot(reviewId: string, snapshot: LinearTicketSnapshot): Promise<void>;
   invalidateReview(reviewId: string, reason: string): Promise<void>;
   saveDecision(workId: string, decision: MastermindNextActionDecision): Promise<void>;

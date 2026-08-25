@@ -342,6 +342,38 @@ export function normalizePatchRequiresHumanApproval(
 }
 
 /**
+ * Human and external-dependency ownership are blocking by definition. When synthesis reports
+ * nonblocking readiness for either owner, preserve the structured open items and correct only the
+ * redundant readiness field before strict validation routes the review.
+ */
+export function normalizeBlockingOpenItemReadiness(
+  patch: ProposedLinearTicketPatch,
+): ProposedLinearTicketPatch {
+  return patch.readiness === ReviewReadiness.READY_WITH_NONBLOCKING_GAPS &&
+    patch.openItemDispositions.some(
+      (disposition) =>
+        disposition.owner === ReviewOpenItemOwner.HUMAN ||
+        disposition.owner === ReviewOpenItemOwner.EXTERNAL_DEPENDENCY,
+    )
+    ? { ...patch, readiness: ReviewReadiness.BLOCKED }
+    : patch;
+}
+
+export function getStoredReviewReadinessMismatchReason(
+  review: Pick<StoredReview, "patch">,
+): string | null {
+  return normalizeBlockingOpenItemReadiness(review.patch) === review.patch
+    ? null
+    : "the stored review has blocking open-item ownership with nonblocking readiness";
+}
+
+export function getStoredReviewRegenerationReason(review: StoredReview): string | null {
+  return (
+    getStoredReviewDispositionGapReason(review) ?? getStoredReviewReadinessMismatchReason(review)
+  );
+}
+
+/**
  * Readiness is redundant with the structured open-item fields. If the model marks a patch
  * BLOCKED but supplies no open items or approval requirement, treat the structured fields as
  * authoritative instead of failing an otherwise usable review.

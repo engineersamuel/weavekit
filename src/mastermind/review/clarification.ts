@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import type { LinearGateway, LinearIssueComment } from "../linear/client.js";
-import type { LinearTicketSnapshot, StoredReview } from "../store/store.js";
+import type { LinearTicketSnapshot, ReviewedHumanComment, StoredReview } from "../store/store.js";
 
 // Every comment Mastermind itself posts starts with this prefix so it can distinguish its own
 // idempotency markers from genuine human replies when scanning issue comments.
@@ -49,9 +50,10 @@ export function buildClarificationCommentBody(marker: string, review: StoredRevi
     ...itemLines,
     "",
     "To unblock Mastermind, do one of the following:",
-    "- Reply to this ticket with the answers/clarifications. Mastermind checks for new comments and will automatically start a fresh review on its next run.",
+    "- Reply to this ticket with the answers/clarifications while this ticket is waiting for input. Mastermind checks for new comments and will automatically start a fresh review on its next run.",
     "- Edit the ticket title or description directly with the missing information; Mastermind detects content changes and re-reviews automatically.",
     "- Remove the `mastermind-needs-input` label to force an immediate fresh review even if nothing else changed.",
+    "- If the review is marked failed, edit the ticket title or description or remove the failed-review label; a comment alone does not retry a failed review.",
   ].join("\n");
 }
 
@@ -64,44 +66,150 @@ export async function postClarificationComment(
   linear: LinearGateway,
   issueId: string,
   review: StoredReview,
+  options: {
+    updateExisting?: boolean | "if-changed";
+    assertLease?: () => Promise<void>;
+  } = {},
 ): Promise<void> {
   if (!linear.findIssueCommentByMarker || !linear.createIssueComment) return;
   const marker = buildClarificationCommentMarker(review.workId);
   const body = buildClarificationCommentBody(marker, review);
   const existingCommentId = await linear.findIssueCommentByMarker(issueId, marker);
   if (existingCommentId) {
-    if (linear.updateIssueComment) {
-      await linear.updateIssueComment(existingCommentId, body);
+    if (options.updateExisting === false || !linear.updateIssueComment) return;
+    if (options.updateExisting === "if-changed" && linear.listIssueComments) {
+      const existingComment = (await linear.listIssueComments(issueId)).find(
+        (comment) => comment.id === existingCommentId,
+      );
+      if (existingComment?.body === body) return;
     }
+    await options.assertLease?.();
+    await linear.updateIssueComment(existingCommentId, body);
     return;
   }
+  await options.assertLease?.();
   await linear.createIssueComment(issueId, body);
 }
 
 /**
  * Returns the most recent comment that looks like a genuine human reply (i.e. not one of
- * Mastermind's own marker comments) created after the clarification comment was posted, or
- * undefined if no such reply exists. Used to detect that a human has answered Mastermind's
- * open questions even when the ticket's title/description/labels are otherwise unchanged.
+ * Mastermind's own marker comments) created after the clarification comment was last written, or
+ * undefined if no such reply exists. Used to detect that a human has answered Mastermind's open
+ * questions even when the ticket's title/description/labels are otherwise unchanged.
  */
-export function findLatestHumanClarificationReply(
+export type HumanClarificationChange = {
+  comment?: LinearIssueComment;
+  reason: string;
+};
+
+export function toReviewedHumanComment(comment: LinearIssueComment): ReviewedHumanComment {
+  const revision = createHash("sha256")
+    .update(comment.updatedAt ?? comment.createdAt)
+    .update("\0")
+    .update(comment.body)
+    .digest("hex");
+  return { id: comment.id, revision };
+}
+
+export function findHumanClarificationChange(
   comments: LinearIssueComment[],
   workId: string,
-): LinearIssueComment | undefined {
+  reviewedHumanComments?: readonly ReviewedHumanComment[],
+  reviewedHumanCommentIds?: readonly string[],
+): HumanClarificationChange | undefined {
   const marker = buildClarificationCommentMarker(workId);
   const markerComment = comments.find((comment) => comment.body.includes(marker));
   if (!markerComment) return undefined;
-  const humanReplies = comments.filter(
+  const markerWrittenAt = markerComment.updatedAt ?? markerComment.createdAt;
+  const humanComments = comments.filter(
     (comment) =>
-      comment.id !== markerComment.id &&
-      !comment.body.startsWith(MASTERMIND_COMMENT_MARKER_PREFIX) &&
-      new Date(comment.createdAt).getTime() > new Date(markerComment.createdAt).getTime(),
+      comment.id !== markerComment.id && !comment.body.startsWith(MASTERMIND_COMMENT_MARKER_PREFIX),
+  );
+  if (reviewedHumanComments) {
+    return findReviewedHumanCommentChange(comments, reviewedHumanComments);
+  }
+  const reviewedCommentIds = reviewedHumanCommentIds ? new Set(reviewedHumanCommentIds) : undefined;
+  const humanReplies = humanComments.filter((comment) =>
+    reviewedCommentIds !== undefined
+      ? !reviewedCommentIds.has(comment.id)
+      : new Date(comment.createdAt).getTime() > new Date(markerWrittenAt).getTime(),
   );
   if (humanReplies.length === 0) return undefined;
-  return humanReplies.reduce((latest, candidate) =>
-    new Date(candidate.createdAt).getTime() > new Date(latest.createdAt).getTime()
+  const latest = humanReplies.reduce((currentLatest, candidate) =>
+    new Date(candidate.createdAt).getTime() > new Date(currentLatest.createdAt).getTime()
       ? candidate
-      : latest,
+      : currentLatest,
+  );
+  return {
+    comment: latest,
+    reason: `a human posted a clarification reply on ${latest.createdAt} after Mastermind's clarification comment`,
+  };
+}
+
+export function findReviewedHumanCommentChange(
+  comments: LinearIssueComment[],
+  reviewedHumanComments?: readonly ReviewedHumanComment[],
+  reviewedHumanCommentIds?: readonly string[],
+): HumanClarificationChange | undefined {
+  const humanComments = comments.filter(
+    (comment) => !comment.body.startsWith(MASTERMIND_COMMENT_MARKER_PREFIX),
+  );
+  if (reviewedHumanComments) {
+    return findRevisionBasedHumanChange(humanComments, reviewedHumanComments);
+  }
+  if (!reviewedHumanCommentIds) return undefined;
+  const reviewedIds = new Set(reviewedHumanCommentIds);
+  const newComments = humanComments.filter((comment) => !reviewedIds.has(comment.id));
+  if (newComments.length === 0) return undefined;
+  const latest = latestComment(newComments);
+  return {
+    comment: latest,
+    reason: `a human posted a clarification reply on ${latest.createdAt} after Mastermind captured its review input`,
+  };
+}
+
+export function findLatestHumanClarificationReply(
+  comments: LinearIssueComment[],
+  workId: string,
+  reviewedHumanCommentIds?: readonly string[],
+): LinearIssueComment | undefined {
+  return findHumanClarificationChange(comments, workId, undefined, reviewedHumanCommentIds)
+    ?.comment;
+}
+
+function findRevisionBasedHumanChange(
+  humanComments: LinearIssueComment[],
+  reviewedHumanComments: readonly ReviewedHumanComment[],
+): HumanClarificationChange | undefined {
+  const reviewedById = new Map(
+    reviewedHumanComments.map((comment) => [comment.id, comment.revision]),
+  );
+  const changedComments = humanComments.filter(
+    (comment) => reviewedById.get(comment.id) !== toReviewedHumanComment(comment).revision,
+  );
+  if (changedComments.length > 0) {
+    const latest = latestComment(changedComments);
+    return {
+      comment: latest,
+      reason: reviewedById.has(latest.id)
+        ? `human clarification comment ${latest.id} changed after Mastermind reviewed it`
+        : `a human posted a clarification reply on ${latest.createdAt} after Mastermind's clarification comment`,
+    };
+  }
+  const currentIds = new Set(humanComments.map((comment) => comment.id));
+  const deleted = reviewedHumanComments.find((comment) => !currentIds.has(comment.id));
+  return deleted
+    ? {
+        reason: `human clarification comment ${deleted.id} was deleted after Mastermind reviewed it`,
+      }
+    : undefined;
+}
+
+function latestComment(comments: LinearIssueComment[]): LinearIssueComment {
+  return comments.reduce((currentLatest, candidate) =>
+    new Date(candidate.createdAt).getTime() > new Date(currentLatest.createdAt).getTime()
+      ? candidate
+      : currentLatest,
   );
 }
 

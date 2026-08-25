@@ -23,6 +23,7 @@ import type {
   MastermindStore,
   MastermindWorkItem,
   RecoverableExecution,
+  ReviewedHumanComment,
   StoredReview,
   StoredCodeReview,
   TerminalWorkFreshnessScanCursor,
@@ -31,6 +32,15 @@ import type {
 } from "./store.js";
 
 type SqlRow = Record<string, unknown>;
+
+type CreateExecutionAttemptInput = {
+  work: MastermindWorkItem;
+  owner: string;
+  projectPolicyId: string;
+  projectPolicyVersion: string;
+  executorKind: ExecutionAttempt["executorKind"];
+  action: MastermindAction;
+};
 
 export class SqliteMastermindStore implements MastermindStore {
   private database?: DatabaseSync;
@@ -87,6 +97,7 @@ export class SqliteMastermindStore implements MastermindStore {
         review_json TEXT NOT NULL,
         validation_json TEXT,
         applied_snapshot_json TEXT,
+        reviewed_human_comment_ids_json TEXT,
         content_applied INTEGER NOT NULL DEFAULT 0,
         label_applied INTEGER NOT NULL DEFAULT 0,
         invalidated INTEGER NOT NULL DEFAULT 0,
@@ -169,6 +180,7 @@ export class SqliteMastermindStore implements MastermindStore {
     ensureColumn(database, "mastermind_reviews", "patch_json", "TEXT");
     ensureColumn(database, "mastermind_reviews", "validation_json", "TEXT");
     ensureColumn(database, "mastermind_reviews", "applied_snapshot_json", "TEXT");
+    ensureColumn(database, "mastermind_reviews", "reviewed_human_comment_ids_json", "TEXT");
     ensureColumn(database, "mastermind_reviews", "invalidated", "INTEGER NOT NULL DEFAULT 0");
     ensureColumn(database, "mastermind_reviews", "invalidation_reason", "TEXT");
     this.database = database;
@@ -347,122 +359,22 @@ export class SqliteMastermindStore implements MastermindStore {
     }
   }
 
-  async createExecutionAttempt(input: {
-    work: MastermindWorkItem;
-    owner: string;
-    projectPolicyId: string;
-    projectPolicyVersion: string;
-    executorKind: ExecutionAttempt["executorKind"];
-    action: MastermindAction;
-  }): Promise<{ work: MastermindWorkItem; attempt: ExecutionAttempt }> {
+  async createExecutionAttempt(
+    input: CreateExecutionAttemptInput,
+  ): Promise<{ work: MastermindWorkItem; attempt: ExecutionAttempt }> {
     const database = this.getDatabase();
     database.exec("BEGIN IMMEDIATE");
     try {
       const now = new Date().toISOString();
-      const current = database
-        .prepare("SELECT * FROM mastermind_work_items WHERE id = ?")
-        .get(input.work.id) as SqlRow | undefined;
-      if (
-        !current ||
-        current.lease_owner !== input.owner ||
-        typeof current.lease_expires_at !== "string" ||
-        current.lease_expires_at <= now ||
-        Number(current.row_version) !== input.work.rowVersion ||
-        (current.state !== MastermindState.ACTION_PLANNED &&
-          current.state !== MastermindState.RETRY_WAIT) ||
-        current.planned_action !== input.action ||
-        (current.state === MastermindState.ACTION_PLANNED &&
-          current.current_execution_attempt_id !== null)
-      ) {
-        throw new FencedExecutionError(
-          input.work.id,
-          undefined,
-          `Cannot create execution attempt for stale or ineligible work item ${input.work.id}.`,
-        );
-      }
+      const current = requireEligibleExecutionWork(database, input, now);
       const priorState = String(current.state);
       const priorAttemptId =
         typeof current.current_execution_attempt_id === "string"
           ? current.current_execution_attempt_id
           : null;
-      if (priorState === MastermindState.RETRY_WAIT) {
-        const retryAttempt = database
-          .prepare(
-            `SELECT retry_eligible, state
-                 FROM mastermind_execution_attempts
-                 WHERE id = ? AND work_id = ?`,
-          )
-          .get(priorAttemptId, input.work.id) as SqlRow | undefined;
-        if (
-          !retryAttempt ||
-          Number(retryAttempt.retry_eligible) !== 1 ||
-          retryAttempt.state !== MastermindState.RETRY_WAIT
-        ) {
-          throw new FencedExecutionError(
-            input.work.id,
-            priorAttemptId ?? undefined,
-            `Execution retry is not eligible for work item ${input.work.id}.`,
-          );
-        }
-      }
-      const next = database
-        .prepare(
-          `SELECT COALESCE(MAX(attempt_number), 0) + 1 AS attempt_number
-               FROM mastermind_execution_attempts
-               WHERE work_id = ?`,
-        )
-        .get(input.work.id) as SqlRow;
-      const attemptId = randomUUID();
-      const attemptNumber = Number(next.attempt_number);
-      database
-        .prepare(
-          `INSERT INTO mastermind_execution_attempts
-                (id, work_id, attempt_number, action, project_policy_id, project_policy_version,
-                 executor_kind, state, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          attemptId,
-          input.work.id,
-          attemptNumber,
-          input.action,
-          input.projectPolicyId,
-          input.projectPolicyVersion,
-          input.executorKind,
-          MastermindState.PROVISIONING,
-          now,
-          now,
-        );
-      const updated = database
-        .prepare(
-          `UPDATE mastermind_work_items
-               SET state = ?, current_execution_attempt_id = ?, row_version = row_version + 1,
-                   updated_at = ?
-               WHERE id = ? AND lease_owner = ? AND lease_expires_at > ?
-                 AND row_version = ? AND state = ? AND planned_action = ?
-                 AND (? = ? OR current_execution_attempt_id = ?)`,
-        )
-        .run(
-          MastermindState.PROVISIONING,
-          attemptId,
-          now,
-          input.work.id,
-          input.owner,
-          now,
-          input.work.rowVersion,
-          priorState,
-          input.action,
-          priorState,
-          MastermindState.ACTION_PLANNED,
-          priorAttemptId,
-        );
-      if (updated.changes !== 1) {
-        throw new FencedExecutionError(
-          input.work.id,
-          attemptId,
-          `Execution attempt creation lost its work-item fence for ${input.work.id}.`,
-        );
-      }
+      requireEligibleRetry(database, input.work.id, priorState, priorAttemptId);
+      const { attemptId, attemptNumber } = insertExecutionAttempt(database, input, now);
+      advanceWorkToExecution(database, input, now, priorState, priorAttemptId, attemptId);
       this.insertEvent(database, {
         workId: input.work.id,
         eventType: "execution.attempt_created",
@@ -1015,6 +927,7 @@ export class SqliteMastermindStore implements MastermindStore {
     originalContentHash: string,
     dossier: TicketReviewDossier,
     patch: ProposedLinearTicketPatch,
+    reviewedHumanComments?: ReviewedHumanComment[],
   ): Promise<StoredReview> {
     const existing = await this.getLatestReview(workId);
     if (existing && !existing.labelApplied) {
@@ -1026,8 +939,8 @@ export class SqliteMastermindStore implements MastermindStore {
       .prepare(
         `INSERT INTO mastermind_reviews
           (id, work_id, original_snapshot_json, original_content_hash, dossier_json,
-           patch_json, review_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           patch_json, review_json, reviewed_human_comment_ids_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -1037,6 +950,7 @@ export class SqliteMastermindStore implements MastermindStore {
         JSON.stringify(dossier),
         JSON.stringify(patch),
         JSON.stringify(patch),
+        reviewedHumanComments ? JSON.stringify(reviewedHumanComments) : null,
         now,
         now,
       );
@@ -1048,6 +962,7 @@ export class SqliteMastermindStore implements MastermindStore {
       originalContentHash,
       dossier,
       patch,
+      reviewedHumanComments,
       contentApplied: false,
       labelApplied: false,
       invalidated: false,
@@ -1078,7 +993,7 @@ export class SqliteMastermindStore implements MastermindStore {
     });
   }
 
-  async markReviewContentApplied(reviewId: string): Promise<void> {
+  async markReviewContentApplied(reviewId: string, snapshot: LinearTicketSnapshot): Promise<void> {
     const database = this.getDatabase();
     const review = database
       .prepare("SELECT work_id FROM mastermind_reviews WHERE id = ?")
@@ -1086,10 +1001,10 @@ export class SqliteMastermindStore implements MastermindStore {
     const result = database
       .prepare(
         `UPDATE mastermind_reviews
-         SET content_applied = 1, updated_at = ?
-         WHERE id = ? AND content_applied = 0`,
+         SET content_applied = 1, applied_snapshot_json = ?, updated_at = ?
+         WHERE id = ? AND content_applied = 0 AND label_applied = 0`,
       )
-      .run(new Date().toISOString(), reviewId);
+      .run(JSON.stringify(snapshot), new Date().toISOString(), reviewId);
     if (review && result.changes > 0) {
       this.appendAuditEvent(String(review.work_id), "review.content_applied", {
         reviewId,
@@ -1097,19 +1012,19 @@ export class SqliteMastermindStore implements MastermindStore {
     }
   }
 
-  async markReviewLabelApplied(reviewId: string): Promise<void> {
+  async markReviewLabelApplied(reviewId: string, snapshot: LinearTicketSnapshot): Promise<void> {
     const database = this.getDatabase();
     const review = database
-      .prepare("SELECT work_id FROM mastermind_reviews WHERE id = ?")
+      .prepare("SELECT work_id, label_applied FROM mastermind_reviews WHERE id = ?")
       .get(reviewId) as SqlRow | undefined;
-    const result = database
+    database
       .prepare(
         `UPDATE mastermind_reviews
-         SET label_applied = 1, updated_at = ?
-         WHERE id = ? AND label_applied = 0`,
+         SET label_applied = 1, applied_snapshot_json = ?, updated_at = ?
+         WHERE id = ?`,
       )
-      .run(new Date().toISOString(), reviewId);
-    if (review && result.changes > 0) {
+      .run(JSON.stringify(snapshot), new Date().toISOString(), reviewId);
+    if (review && Number(review.label_applied) !== 1) {
       this.appendAuditEvent(String(review.work_id), "review.label_applied", {
         reviewId,
       });
@@ -1117,14 +1032,19 @@ export class SqliteMastermindStore implements MastermindStore {
   }
 
   async saveReviewAppliedSnapshot(reviewId: string, snapshot: LinearTicketSnapshot): Promise<void> {
-    const result = this.getDatabase()
+    const database = this.getDatabase();
+    const result = database
       .prepare(
         `UPDATE mastermind_reviews
          SET applied_snapshot_json = ?, updated_at = ?
-         WHERE id = ?`,
+         WHERE id = ? AND label_applied = 0`,
       )
       .run(JSON.stringify(snapshot), new Date().toISOString(), reviewId);
-    if (result.changes !== 1) {
+    if (result.changes === 1) return;
+    const review = database
+      .prepare("SELECT label_applied FROM mastermind_reviews WHERE id = ?")
+      .get(reviewId) as SqlRow | undefined;
+    if (!review) {
       throw new Error(`Mastermind review not found for applied snapshot: ${reviewId}`);
     }
   }
@@ -1478,6 +1398,151 @@ function jsonOrNull(value: unknown): string | null {
   return value === undefined ? null : JSON.stringify(value);
 }
 
+function requireEligibleExecutionWork(
+  database: DatabaseSync,
+  input: CreateExecutionAttemptInput,
+  now: string,
+): SqlRow {
+  const current = database
+    .prepare("SELECT * FROM mastermind_work_items WHERE id = ?")
+    .get(input.work.id) as SqlRow | undefined;
+  if (!isEligibleExecutionWork(current, input, now)) {
+    throw new FencedExecutionError(
+      input.work.id,
+      undefined,
+      `Cannot create execution attempt for stale or ineligible work item ${input.work.id}.`,
+    );
+  }
+  return current;
+}
+
+function isEligibleExecutionWork(
+  current: SqlRow | undefined,
+  input: CreateExecutionAttemptInput,
+  now: string,
+): current is SqlRow {
+  if (!current) return false;
+  const stateIsEligible =
+    current.state === MastermindState.ACTION_PLANNED ||
+    current.state === MastermindState.RETRY_WAIT;
+  const plannedAttemptIsFree =
+    current.state !== MastermindState.ACTION_PLANNED ||
+    current.current_execution_attempt_id === null;
+  return (
+    current.lease_owner === input.owner &&
+    typeof current.lease_expires_at === "string" &&
+    current.lease_expires_at > now &&
+    Number(current.row_version) === input.work.rowVersion &&
+    stateIsEligible &&
+    current.planned_action === input.action &&
+    plannedAttemptIsFree
+  );
+}
+
+function requireEligibleRetry(
+  database: DatabaseSync,
+  workId: string,
+  priorState: string,
+  priorAttemptId: string | null,
+): void {
+  if (priorState !== MastermindState.RETRY_WAIT) return;
+  const retryAttempt = database
+    .prepare(
+      `SELECT retry_eligible, state
+       FROM mastermind_execution_attempts
+       WHERE id = ? AND work_id = ?`,
+    )
+    .get(priorAttemptId, workId) as SqlRow | undefined;
+  if (
+    retryAttempt &&
+    Number(retryAttempt.retry_eligible) === 1 &&
+    retryAttempt.state === MastermindState.RETRY_WAIT
+  ) {
+    return;
+  }
+  throw new FencedExecutionError(
+    workId,
+    priorAttemptId ?? undefined,
+    `Execution retry is not eligible for work item ${workId}.`,
+  );
+}
+
+function insertExecutionAttempt(
+  database: DatabaseSync,
+  input: CreateExecutionAttemptInput,
+  now: string,
+): { attemptId: string; attemptNumber: number } {
+  const next = database
+    .prepare(
+      `SELECT COALESCE(MAX(attempt_number), 0) + 1 AS attempt_number
+       FROM mastermind_execution_attempts
+       WHERE work_id = ?`,
+    )
+    .get(input.work.id) as SqlRow;
+  const attemptId = randomUUID();
+  const attemptNumber = Number(next.attempt_number);
+  database
+    .prepare(
+      `INSERT INTO mastermind_execution_attempts
+        (id, work_id, attempt_number, action, project_policy_id, project_policy_version,
+         executor_kind, state, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      attemptId,
+      input.work.id,
+      attemptNumber,
+      input.action,
+      input.projectPolicyId,
+      input.projectPolicyVersion,
+      input.executorKind,
+      MastermindState.PROVISIONING,
+      now,
+      now,
+    );
+  return { attemptId, attemptNumber };
+}
+
+function advanceWorkToExecution(
+  database: DatabaseSync,
+  input: CreateExecutionAttemptInput,
+  now: string,
+  priorState: string,
+  priorAttemptId: string | null,
+  attemptId: string,
+): void {
+  const updated = database
+    .prepare(
+      `UPDATE mastermind_work_items
+       SET state = ?, current_execution_attempt_id = ?, row_version = row_version + 1,
+           updated_at = ?
+       WHERE id = ? AND lease_owner = ? AND lease_expires_at > ?
+         AND row_version = ? AND state = ? AND planned_action = ?
+         AND (? = ? OR current_execution_attempt_id = ?)`,
+    )
+    .run(
+      MastermindState.PROVISIONING,
+      attemptId,
+      now,
+      input.work.id,
+      input.owner,
+      now,
+      input.work.rowVersion,
+      priorState,
+      input.action,
+      priorState,
+      MastermindState.ACTION_PLANNED,
+      priorAttemptId,
+    );
+  if (updated.changes !== 1) {
+    throw new FencedExecutionError(
+      input.work.id,
+      attemptId,
+      `Execution attempt creation lost its work-item fence for ${input.work.id}.`,
+    );
+  }
+}
+
 export class FencedExecutionError extends Error {
   constructor(
     readonly workId: string,
@@ -1491,6 +1556,7 @@ export class FencedExecutionError extends Error {
 
 function toStoredReview(row: SqlRow): StoredReview {
   const parsedPatch = parseStoredReviewPatch(String(row.patch_json));
+  const reviewedHumanComments = parseReviewedHumanComments(row.reviewed_human_comment_ids_json);
   return {
     id: String(row.id),
     workId: String(row.work_id),
@@ -1498,6 +1564,8 @@ function toStoredReview(row: SqlRow): StoredReview {
     originalContentHash: String(row.original_content_hash),
     dossier: JSON.parse(String(row.dossier_json)) as TicketReviewDossier,
     patch: parsedPatch.patch,
+    reviewedHumanComments: reviewedHumanComments.revisions,
+    reviewedHumanCommentIds: reviewedHumanComments.legacyIds,
     legacyOpenItemDispositionsMissing: parsedPatch.legacyOpenItemDispositionsMissing,
     validation:
       typeof row.validation_json === "string"
@@ -1513,6 +1581,30 @@ function toStoredReview(row: SqlRow): StoredReview {
     invalidationReason:
       typeof row.invalidation_reason === "string" ? row.invalidation_reason : undefined,
   };
+}
+
+function parseReviewedHumanComments(value: unknown): {
+  revisions?: ReviewedHumanComment[];
+  legacyIds?: string[];
+} {
+  if (typeof value !== "string") return {};
+  const parsed = JSON.parse(value) as unknown;
+  if (!Array.isArray(parsed)) return {};
+  if (parsed.every((item): item is string => typeof item === "string")) {
+    return { legacyIds: parsed };
+  }
+  if (
+    parsed.every(
+      (item): item is ReviewedHumanComment =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as Record<string, unknown>).id === "string" &&
+        typeof (item as Record<string, unknown>).revision === "string",
+    )
+  ) {
+    return { revisions: parsed };
+  }
+  return {};
 }
 
 function ensureColumn(database: DatabaseSync, table: string, column: string, type: string): void {
