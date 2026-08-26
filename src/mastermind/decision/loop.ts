@@ -414,6 +414,13 @@ export class MastermindDecisionLoop {
         await this.store.saveTicketSnapshot(work.id, ticket);
         const policy = this.resolveProjectPolicy(work, ticket);
         if (!policy) {
+          // Without this the run ends as a bare `state=needs_human` with no planned action and no
+          // reason, which reads like a decider judgement rather than missing configuration.
+          this.emitProgress(
+            `No mastermind.project_mappings entry matches ${ticket.identifier} ` +
+              `(team ${ticket.teamId}, Linear project ${ticket.projectId ?? "none"}). ` +
+              "Add a mapping for that team/project before rerunning.",
+          );
           return this.applyTransition(work, { type: MastermindEventType.REQUIRE_HUMAN });
         }
         if (work.projectPolicyId !== policy.project.id) {

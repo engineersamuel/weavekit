@@ -65,6 +65,8 @@ export type RlmSession = {
     skills: {
       ensureLoaded(): Promise<void>;
       list(): Promise<{ skills: RlmDiscoveredSkill[] }>;
+      /** Optional so fakes used in tests aren't forced to implement per-session skill disabling. */
+      disable?(options: { name: string }): Promise<unknown>;
     };
   };
 };
@@ -762,12 +764,23 @@ export async function assertRlmSessionSkillPolicy(
     );
   }
   await session.rpc.skills.ensureLoaded();
-  const listed = await session.rpc.skills.list();
   const allowedNames = new Set(policy.allowedSkillNames);
-  const invalid = listed.skills.filter(
-    (skill) =>
-      skill.enabled && (!allowedNames.has(skill.name) || !isAllowedSkillPath(skill.path, policy)),
-  );
+  let listed = await session.rpc.skills.list();
+  let invalid = findEnabledSkillsOutsidePolicy(listed.skills, allowedNames, policy);
+  if (invalid.length > 0 && session.rpc.skills.disable) {
+    // `prepareRlmSkillPolicy` derives `disabledSkills` from `skills.discover()`, which omits the
+    // host's builtin skills: against Copilot CLI 1.0.81-9, discover() returns zero builtins while
+    // the session lists `customize-cloud-agent` and `github-pr-media` as enabled. Those two reach
+    // the session enabled and `disabledSkills` had no way to name them, so this gate rejected
+    // every recursive worker before its prompt was ever sent. Disable them from the session
+    // listing instead. This only ever narrows what is enabled, so the boundary is unchanged; a
+    // skill still enabled afterwards is still rejected below.
+    for (const name of collectDisableableSkillNames(invalid, allowedNames)) {
+      await session.rpc.skills.disable({ name });
+    }
+    listed = await session.rpc.skills.list();
+    invalid = findEnabledSkillsOutsidePolicy(listed.skills, allowedNames, policy);
+  }
   if (invalid.length > 0) {
     throw new RlmSkillPolicyError(
       "Enabled skills outside the profile manifest/path: " +
@@ -787,6 +800,33 @@ export async function assertRlmSessionSkillPolicy(
       `Allowed skills were not enabled in the recursive session: ${missing.join(", ")}`,
     );
   }
+}
+
+function findEnabledSkillsOutsidePolicy(
+  skills: readonly RlmDiscoveredSkill[],
+  allowedNames: ReadonlySet<string>,
+  policy: RlmSkillPolicy,
+): RlmDiscoveredSkill[] {
+  return skills.filter(
+    (skill) =>
+      skill.enabled && (!allowedNames.has(skill.name) || !isAllowedSkillPath(skill.path, policy)),
+  );
+}
+
+/**
+ * `skills.disable` addresses a skill by name. A skill whose name is allowed but whose path is not
+ * cannot be disabled without also disabling the allowed skill sharing that name, so it is left
+ * enabled and rejected by the caller instead.
+ */
+function collectDisableableSkillNames(
+  invalid: readonly RlmDiscoveredSkill[],
+  allowedNames: ReadonlySet<string>,
+): string[] {
+  const names = new Set<string>();
+  for (const skill of invalid) {
+    if (!allowedNames.has(skill.name)) names.add(skill.name);
+  }
+  return [...names].sort();
 }
 
 function isAllowedSkillPath(path: string | undefined, policy: RlmSkillPolicy): boolean {

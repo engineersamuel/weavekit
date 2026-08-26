@@ -14,6 +14,7 @@ import {
   computeRlmSessionTimeoutMs,
   createReadOnlyPermissionHandler,
   createRlmProfilePermissionHandler,
+  assertRlmSessionSkillPolicy,
   executeRlm,
   prepareRlmSkillPolicy,
   type RlmClient,
@@ -1095,6 +1096,106 @@ describe("executeRlm", () => {
 
     expect(disconnected).toBe(true);
     expect(stopped).toBe(true);
+  });
+});
+
+describe("assertRlmSessionSkillPolicy", () => {
+  const policy = {
+    allowedSkillNames: ["rlm-handoff"],
+    allowedSkillDirectories: ["/cache/superpowers/skills"],
+    disabledSkills: [],
+  };
+  const allowedSkill = {
+    name: "rlm-handoff",
+    source: "custom",
+    enabled: true,
+    path: "/cache/superpowers/skills/rlm-handoff/SKILL.md",
+  };
+  const builtin = {
+    name: "github-pr-media",
+    source: "builtin",
+    enabled: true,
+    path: "/cache/copilot/1.0.81-9/builtin/github-pr-media/SKILL.md",
+  };
+
+  function sessionListing(
+    listings: Array<Array<Record<string, unknown>>>,
+    disabled: string[],
+  ): RlmSession {
+    let call = 0;
+    return {
+      async sendAndWait() {
+        return { data: { content: "" } };
+      },
+      async disconnect() {},
+      rpc: {
+        skills: {
+          async ensureLoaded() {},
+          async list() {
+            const skills = listings[Math.min(call, listings.length - 1)] ?? [];
+            call += 1;
+            return { skills } as { skills: (typeof allowedSkill)[] };
+          },
+          async disable({ name }) {
+            disabled.push(name);
+            return undefined;
+          },
+        },
+      },
+    } as RlmSession;
+  }
+
+  it("disables builtin skills the discovery-derived policy could not name", async () => {
+    // discover() omits builtins, so they arrive enabled and absent from policy.disabledSkills.
+    const disabled: string[] = [];
+    const session = sessionListing(
+      [
+        [allowedSkill, builtin],
+        [allowedSkill, { ...builtin, enabled: false }],
+      ],
+      disabled,
+    );
+    await expect(assertRlmSessionSkillPolicy(session, policy)).resolves.toBeUndefined();
+    expect(disabled).toEqual(["github-pr-media"]);
+  });
+
+  it("still rejects a skill that stays enabled after being disabled", async () => {
+    const disabled: string[] = [];
+    const session = sessionListing([[allowedSkill, builtin]], disabled);
+    await expect(assertRlmSessionSkillPolicy(session, policy)).rejects.toThrow(
+      "Enabled skills outside the profile manifest/path: github-pr-media",
+    );
+  });
+
+  it("rejects rather than disabling an allowed name loaded from a disallowed path", async () => {
+    // Disabling by name here would also disable the legitimate skill sharing that name.
+    const disabled: string[] = [];
+    const shadow = { ...allowedSkill, source: "builtin", path: "/elsewhere/rlm-handoff/SKILL.md" };
+    const session = sessionListing([[allowedSkill, shadow]], disabled);
+    await expect(assertRlmSessionSkillPolicy(session, policy)).rejects.toThrow(
+      "Enabled skills outside the profile manifest/path",
+    );
+    expect(disabled).toEqual([]);
+  });
+
+  it("rejects when the session cannot disable skills", async () => {
+    const session = {
+      async sendAndWait() {
+        return { data: { content: "" } };
+      },
+      async disconnect() {},
+      rpc: {
+        skills: {
+          async ensureLoaded() {},
+          async list() {
+            return { skills: [allowedSkill, builtin] };
+          },
+        },
+      },
+    } as RlmSession;
+    await expect(assertRlmSessionSkillPolicy(session, policy)).rejects.toThrow(
+      "Enabled skills outside the profile manifest/path",
+    );
   });
 });
 
