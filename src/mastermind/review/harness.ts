@@ -294,8 +294,8 @@ raise them as unansweredQuestions or ambiguities:
   change the ticket does not already request.
 - GitHub CLI auth: if the ticket's work depends on GitHub CLI (\`gh\`) access (for example, a PAT
   with Copilot Requests permission, repository/PR operations, or GitHub API calls), use the shell
-  tool to run \`gh auth status\` (read-only) yourself and record the outcome as repository or
-  external evidence. A successful, authenticated \`gh auth status\` fully satisfies this
+  tool to run \`gh auth status\` (read-only) yourself and record the outcome as external
+  evidence with the locator \`shell:gh auth status\`. A successful, authenticated \`gh auth status\` fully satisfies this
   precondition, including for Copilot Requests access — fine-grained PAT permissions like
   "Copilot Requests" are not enumerable via \`gh auth status\` or any other read-only command, so
   do not raise a separate unansweredQuestions/blocking entry asking the human to further confirm a
@@ -306,7 +306,8 @@ raise them as unansweredQuestions or ambiguities:
   insufficient.
 - Azure CLI auth: if the ticket's work depends on Azure CLI (\`az\`) access (for example,
   provisioning or deploying Azure resources), use the shell tool to run \`az account show\`
-  (read-only) yourself and record the outcome as evidence. Only add an unansweredQuestions/
+  (read-only) yourself and record the outcome as external evidence with the locator
+  \`shell:az account show\`. Only add an unansweredQuestions/
   blocking entry (owned by HUMAN) if that command shows the CLI is NOT authenticated or has no
   active subscription. Never ask the human to confirm Azure auth/subscription/tenant/region
   without having actually checked authentication state yourself first.
@@ -341,7 +342,7 @@ or multiple values:
   "summary": "string",
   "repositoryEvidence": [{"id":"string","kind":"REPOSITORY","repositoryEvidenceType":"FILE | SYMBOL | SEARCH","repositoryPath":"a single real repository-relative file or directory path that exists (use '.' for the whole repository; never a glob, comma list, or free-text description)","repositoryLine":1,"repositorySymbol":"optional symbol","repositoryQuery":"the search pattern/keywords for SEARCH evidence (globs and free text belong here, not in repositoryPath)","claim":"string","confidence":0.0}],
   "linearEvidence": [{"id":"string","kind":"LINEAR","locator":"issue or project identifier","claim":"string","confidence":0.0}],
-  "externalEvidence": [{"id":"string","kind":"EXTERNAL","locator":"https URL with retrieval date","claim":"string","confidence":0.0}],
+  "externalEvidence": [{"id":"string","kind":"EXTERNAL","locator":"either an https URL with its retrieval date, or, for the outcome of a read-only shell check you ran yourself, exactly 'shell:<the command you ran>' (for example 'shell:gh auth status') — a locator that is neither an https URL nor shell:-prefixed is rejected","claim":"string","confidence":0.0}],
   "assumptions": ["string"],
   "ambiguities": ["string"],
   "unansweredQuestions": ["string"],
@@ -394,6 +395,10 @@ export function parseTicketReviewDossier(content: string): TicketReviewDossier {
     ReviewEvidenceKind.EXTERNAL,
     "externalEvidence",
   );
+  // The standing policy asks the harness to run read-only auth/tool probes itself, but
+  // `validateExternalEvidence` requires every surviving EXTERNAL locator to be an https URL. Those
+  // probe outcomes therefore carry a `shell:<command>` locator (see buildTicketReviewPrompt) and
+  // are rerouted here into assumptions instead of failing the review policy gate.
   const shellObservations = externalEvidence.filter((evidence) =>
     evidence.locator?.startsWith("shell:"),
   );

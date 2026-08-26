@@ -501,6 +501,28 @@ describe("ticket review prompt", () => {
     expect(prompt).toContain("- docs/architecture.md");
   });
 
+  it("tells the harness to give a shell-check outcome a shell: locator, not a URL", () => {
+    // The standing policy asks the harness to run `gh auth status`/`az account show` itself, but
+    // `validateExternalEvidence` fails any EXTERNAL locator that is not an https URL. Without this
+    // instruction the harness writes prose like "gh auth status via shell", the parser's shell:
+    // rerouting never fires, and the whole review is failed by the policy gate.
+    const prompt = buildTicketReviewPrompt({
+      ticket,
+      project: {
+        id: "weavekit",
+        displayName: "Weavekit",
+        repositoryMode: ProjectRepositoryMode.EXISTING_REPOSITORY,
+        repositoryPath: "/projects/weavekit",
+        allowedActions: [MastermindAction.REVIEW_TICKET],
+        contextDocs: [],
+      },
+    });
+
+    expect(prompt).toContain("'shell:<the command you ran>'");
+    expect(prompt).toContain("shell:gh auth status");
+    expect(prompt).toContain("shell:az account show");
+  });
+
   it("omits context documents in greenfield mode, where the paths resolve to nothing", () => {
     const prompt = buildTicketReviewPrompt({
       ticket,
