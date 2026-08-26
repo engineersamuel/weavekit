@@ -109,9 +109,11 @@ export default class TypeBuilder {
     
     PortfolioPlanDraft: ClassViewer<'PortfolioPlanDraft', "title" | "summary" | "markdown" | "coverageClaims">;
     
-    PostImplementationReview: ClassViewer<'PostImplementationReview', "verdict" | "summary" | "acceptanceCriteriaCoverage" | "verificationAssessment" | "manualVerification" | "findings" | "knownRisks" | "unansweredQuestions" | "confidence">;
+    PostImplementationReview: ClassViewer<'PostImplementationReview', "verdict" | "eli5" | "summary" | "acceptanceCriteriaCoverage" | "verificationAssessment" | "manualVerification" | "findings" | "knownRisks" | "unansweredQuestions" | "confidence">;
     
     PostImplementationReviewDossier: ClassViewer<'PostImplementationReviewDossier', "ticketKind" | "summary" | "acceptanceCriteriaCoverage" | "verificationAssessment" | "manualVerification" | "findings" | "knownRisks" | "unansweredQuestions" | "confidence">;
+    
+    PostImplementationReviewEli5: ClassViewer<'PostImplementationReviewEli5', "hypothesis" | "purpose" | "goal" | "outcome" | "nextSteps">;
     
     PostImplementationReviewFinding: ClassViewer<'PostImplementationReviewFinding', "severity" | "summary" | "evidence" | "remediation">;
     
@@ -244,7 +246,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","LinearTicketInput","MastermindNextActionDecision","MastermindProjectPolicyInput","MastermindReviewDecisionContext","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PostImplementationReview","PostImplementationReviewDossier","PostImplementationReviewFinding","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","ProposedLinearTicketPatch","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","ReviewOpenItemDisposition","RlmArtifactReference","RlmDependencyReport","RlmRunBrief","RlmStoryboard","RlmVerificationResult","RlmWorkerReport","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SelfImprovementFinding","SelfImprovementReport","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","SubmindTraceObservation","SubmindTraceSummary","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","TicketReviewDossier","TicketReviewEvidence","TrellageTurnDiagnosis","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
+            "AdoptionTask","AggregateTemplateJudgment","ClarifyingQuestion","CorroborationReport","CouncilReport","CriterionScore","DeepResearchCompiledReport","DeepResearchConfig","DeepResearchEvidence","DeepResearchEvidenceMatrixEntry","DeepResearchFinding","DeepResearchPriorState","DeepResearchQuestion","DeepResearchReport","DeepResearchReportSource","EvidenceReference","FinalRecommendationReview","ImplementationReviewVerdict","LinearTicketInput","MastermindNextActionDecision","MastermindProjectPolicyInput","MastermindReviewDecisionContext","ModeTemplatePolicy","NonApplicableLesson","Opportunity","OpportunityBundle","OpportunityCouncilReview","OpportunityScore","PersonaChoiceCandidate","PersonaCritique","PersonaCritiqueSummary","PersonaFailure","PersonaSelection","PersonaSelectionRequest","PlanArtifactSummary","PlanCriterionAssessment","PlanRequirementAssessment","PortfolioCoverageAssessment","PortfolioCoverageAudit","PortfolioCoverageClaim","PortfolioPlanDraft","PostImplementationReview","PostImplementationReviewDossier","PostImplementationReviewEli5","PostImplementationReviewFinding","PracticeApplicabilityAssessment","ProjectApplicabilityMatrix","ProjectBrief","ProposedLinearTicketPatch","RawPersonaResult","ResearchIterationAssessment","ResearchQuestionCoverage","ResearchQuestionSet","ReviewOpenItemDisposition","RlmArtifactReference","RlmDependencyReport","RlmRunBrief","RlmStoryboard","RlmVerificationResult","RlmWorkerReport","RoundAssessment","RouterHandoff","RouterRecommendation","RouterResult","RouterRouteScore","RoutingDecision","SelfImprovementFinding","SelfImprovementReport","SourceAnalysis","SourcePractice","SourcePracticeDraft","SourcePracticeLedger","SourcePracticeLedgerDraft","SourceToProjectPairwiseJudgment","SourceToProjectPlanJudgment","SpecializedObligationAssessment","SubmindTraceObservation","SubmindTraceSummary","TemplateCandidate","TemplateExpansionCase","TemplateFixtureJudgment","TemplateOptimizationFixture","TicketReviewDossier","TicketReviewEvidence","TrellageTurnDiagnosis","VerificationAudit","VerificationOpportunity","VerificationOpportunityResearchReport","VerificationOpportunityReview","VerificationOpportunityScore","VerificationRecommendationReview","WorkflowNode","WorkflowPlan","WorkflowReplanPatch",
           ]),
           enums: new Set([
             "MastermindAction","PostImplementationReviewVerdict","ProjectRepositoryMode","RepositoryEvidenceType","ReviewEvidenceKind","ReviewOpenItemKind","ReviewOpenItemOwner","ReviewReadiness","RlmVerificationOutcome","RlmWorkerOutcome","RouterRoute","TicketKind","TrellageTurnOutcome",
@@ -417,11 +419,15 @@ export default class TypeBuilder {
         ]);
         
         this.PostImplementationReview = this.tb.classViewer("PostImplementationReview", [
-          "verdict","summary","acceptanceCriteriaCoverage","verificationAssessment","manualVerification","findings","knownRisks","unansweredQuestions","confidence",
+          "verdict","eli5","summary","acceptanceCriteriaCoverage","verificationAssessment","manualVerification","findings","knownRisks","unansweredQuestions","confidence",
         ]);
         
         this.PostImplementationReviewDossier = this.tb.classViewer("PostImplementationReviewDossier", [
           "ticketKind","summary","acceptanceCriteriaCoverage","verificationAssessment","manualVerification","findings","knownRisks","unansweredQuestions","confidence",
+        ]);
+        
+        this.PostImplementationReviewEli5 = this.tb.classViewer("PostImplementationReviewEli5", [
+          "hypothesis","purpose","goal","outcome","nextSteps",
         ]);
         
         this.PostImplementationReviewFinding = this.tb.classViewer("PostImplementationReviewFinding", [

@@ -261,7 +261,19 @@ describe("Mastermind execution attempt store", () => {
     const duplicate = await store.createCodeReview(identity);
     expect(duplicate.id).toBe(first.id);
 
-    const running = await store.saveCodeReview({ review: first, status: "running" });
+    const running = await store.saveCodeReview({
+      review: first,
+      status: "running",
+      projection: {
+        disposition: "pending",
+        eli5: {
+          svgPath: ".weavekit/mastermind-code-review/review-one/eli5.svg",
+          pngPath: ".weavekit/mastermind-code-review/review-one/eli5.png",
+          pngUrl: "https://uploads.linear.app/asset/eli5.png",
+          failures: [],
+        },
+      },
+    });
     await expect(store.saveCodeReview({ review: first, status: "passed" })).rejects.toThrow(
       "Stale code review",
     );
@@ -269,6 +281,13 @@ describe("Mastermind execution attempt store", () => {
       id: running.id,
       status: "running",
       commitSha: "abc123",
+      projection: {
+        disposition: "pending",
+        eli5: {
+          pngUrl: "https://uploads.linear.app/asset/eli5.png",
+          failures: [],
+        },
+      },
     });
     store.close();
   });

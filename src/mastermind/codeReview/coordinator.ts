@@ -2,7 +2,13 @@ import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { WeavekitConfig } from "../../config.js";
-import { PostImplementationReviewVerdict } from "../../generated/baml_client/index.js";
+import {
+  PostImplementationReviewVerdict,
+  type PostImplementationReview,
+  type PostImplementationReviewDossier,
+} from "../../generated/baml_client/index.js";
+import type { RlmStoryboardRasterizer } from "../../rlm-poc/visualization/contracts.js";
+import { ExecutorKind } from "../../submind/contracts.js";
 import { toBamlTicket } from "../actions/reviewTicket.js";
 import type { MastermindDecisionProvider } from "../decision/bamlAdapters.js";
 import { MastermindEventType, MastermindState } from "../domain/events.js";
@@ -11,10 +17,18 @@ import type { LinearGateway } from "../linear/client.js";
 import { hashLinearTicketContent } from "../review/policy.js";
 import type {
   ExecutionAttempt,
+  LinearTicketSnapshot,
   MastermindStore,
   MastermindWorkItem,
+  CodeReviewEli5Publication,
   StoredCodeReview,
+  StoredReview,
 } from "../store/store.js";
+import {
+  normalizePostImplementationReviewEli5,
+  renderPostImplementationReviewEli5Markdown,
+  writePostImplementationReviewEli5Artifact,
+} from "./eli5.js";
 import type { CodeReviewHarness } from "./harness.js";
 import { reviewWorktreePath } from "./harness.js";
 
@@ -27,81 +41,129 @@ export class PostImplementationReviewCoordinator {
     private readonly linear: LinearGateway,
     private readonly harness: CodeReviewHarness,
     private readonly decisions: MastermindDecisionProvider,
+    private readonly eli5Rasterizer?: RlmStoryboardRasterizer,
   ) {}
 
   async process(work: MastermindWorkItem, attempt: ExecutionAttempt, owner: string): Promise<void> {
     if (attempt.state !== MastermindState.SUCCEEDED || !attempt.projection?.projectedAt) return;
-    if (work.state === MastermindState.SUCCEEDED) {
-      await this.requireLinearState(
-        work.issueId,
-        this.config.mastermind.inReviewStateName ?? "In Review",
-      );
-      await this.replaceLabels(work.issueId, {
-        remove: [this.config.mastermind.readyLabelId],
-        add: [this.config.mastermind.codeReviewLabelId ?? ""],
-      });
-      await this.transition(work, owner, MastermindEventType.BEGIN_CODE_REVIEW);
-      return;
+    switch (work.state) {
+      case MastermindState.SUCCEEDED:
+        await this.beginReview(work, owner);
+        break;
+      case MastermindState.CODE_REVIEW_PENDING:
+        await this.startReview(work, attempt, owner);
+        break;
+      case MastermindState.CODE_REVIEWING:
+        await this.continueReview(work, attempt, owner);
+        break;
     }
-    if (work.state === MastermindState.CODE_REVIEW_PENDING) {
-      const review = await this.ensureReview(work, attempt);
-      await this.store.saveCodeReview({ review, status: "running" });
-      await this.transition(work, owner, MastermindEventType.CODE_REVIEW_STARTED);
-      return;
-    }
-    if (work.state !== MastermindState.CODE_REVIEWING) return;
-    let review = await this.ensureReview(work, attempt);
+  }
+
+  private async beginReview(work: MastermindWorkItem, owner: string): Promise<void> {
+    await this.requireLinearState(
+      work.issueId,
+      this.config.mastermind.inReviewStateName ?? "In Review",
+    );
+    await this.replaceLabels(work.issueId, {
+      remove: [this.config.mastermind.readyLabelId],
+      add: [this.config.mastermind.codeReviewLabelId ?? ""],
+    });
+    await this.transition(work, owner, MastermindEventType.BEGIN_CODE_REVIEW);
+  }
+
+  private async startReview(
+    work: MastermindWorkItem,
+    attempt: ExecutionAttempt,
+    owner: string,
+  ): Promise<void> {
+    const review = await this.ensureReview(work, attempt);
+    await this.store.saveCodeReview({ review, status: "running" });
+    await this.transition(work, owner, MastermindEventType.CODE_REVIEW_STARTED);
+  }
+
+  private async continueReview(
+    work: MastermindWorkItem,
+    attempt: ExecutionAttempt,
+    owner: string,
+  ): Promise<void> {
+    const review = await this.ensureReview(work, attempt);
     if (review.status !== "running") {
-      const eventType = eventForReviewStatus(review.status);
-      if (!eventType) {
-        throw new Error(`Code review ${review.id} is not running.`);
-      }
-      if (review.review && review.projection?.disposition !== "applied") {
-        await this.project(work, attempt, review);
-      }
-      await this.transition(work, owner, eventType);
+      await this.resumeCompletedReview(work, attempt, review, owner);
       return;
     }
+    await this.runReview(work, attempt, review, owner);
+  }
+
+  private async resumeCompletedReview(
+    work: MastermindWorkItem,
+    attempt: ExecutionAttempt,
+    review: StoredCodeReview,
+    owner: string,
+  ): Promise<void> {
+    const eventType = eventForReviewStatus(review.status);
+    if (!eventType) {
+      throw new Error(`Code review ${review.id} is not running.`);
+    }
+    if (review.review && review.projection?.disposition !== "applied") {
+      await this.project(work, attempt, review);
+    }
+    await this.transition(work, owner, eventType);
+  }
+
+  private async runReview(
+    work: MastermindWorkItem,
+    attempt: ExecutionAttempt,
+    review: StoredCodeReview,
+    owner: string,
+  ): Promise<void> {
     const ticket = await this.store.getLatestTicketSnapshot(work.id);
     const ticketReview = await this.store.getLatestReview(work.id);
     if (!ticket || !ticketReview) throw new Error("Code review context is incomplete.");
-    let dossier;
-    let result;
+    let assessment;
     try {
-      dossier = await this.harness.review({
-        ticket: toBamlTicket(ticket),
-        ticketReview,
-        attempt,
-        ...(ticket.attachments ? { attachments: ticket.attachments } : {}),
-      });
-      // The ticket kind is settled at readiness review; the code reviewer must not re-litigate it.
-      // Overriding here also means a harness that omits or invents the field cannot change it.
-      dossier = { ...dossier, ticketKind: ticketReview.dossier.ticketKind };
-      if (!this.decisions.assessPostImplementationReview) {
-        throw new Error("Decision provider does not support post-implementation review.");
-      }
-      result = await this.decisions.assessPostImplementationReview(toBamlTicket(ticket), dossier);
+      assessment = await this.assessReview(ticket, ticketReview, attempt);
     } catch (error) {
-      review = await this.store.saveCodeReview({ review, status: "needs_human" });
-      await this.projectFailure(work, review, error);
+      const failed = await this.store.saveCodeReview({ review, status: "needs_human" });
+      await this.projectFailure(work, failed, error);
       await this.transition(work, owner, MastermindEventType.CODE_REVIEW_NEEDS_HUMAN);
       return;
     }
-    const status =
-      result.verdict === PostImplementationReviewVerdict.PASS
-        ? "passed"
-        : result.verdict === PostImplementationReviewVerdict.CHANGES_REQUIRED
-          ? "changes_requested"
-          : "needs_human";
-    review = await this.store.saveCodeReview({ review, status, dossier, result });
-    await this.project(work, attempt, review);
-    const eventType =
-      result.verdict === PostImplementationReviewVerdict.PASS
-        ? MastermindEventType.CODE_REVIEW_PASSED
-        : result.verdict === PostImplementationReviewVerdict.CHANGES_REQUIRED
-          ? MastermindEventType.CODE_CHANGES_REQUESTED
-          : MastermindEventType.CODE_REVIEW_NEEDS_HUMAN;
-    await this.transition(work, owner, eventType);
+    const outcome = outcomeForVerdict(assessment.result.verdict);
+    const saved = await this.store.saveCodeReview({
+      review,
+      status: outcome.status,
+      dossier: assessment.dossier,
+      result: assessment.result,
+    });
+    await this.project(work, attempt, saved);
+    await this.transition(work, owner, outcome.eventType);
+  }
+
+  private async assessReview(
+    ticket: LinearTicketSnapshot,
+    ticketReview: StoredReview,
+    attempt: ExecutionAttempt,
+  ): Promise<{
+    dossier: PostImplementationReviewDossier;
+    result: PostImplementationReview;
+  }> {
+    const observed = await this.harness.review({
+      ticket: toBamlTicket(ticket),
+      ticketReview,
+      attempt,
+      ...(ticket.attachments ? { attachments: ticket.attachments } : {}),
+    });
+    // The ticket kind is settled at readiness review; the code reviewer must not re-litigate it.
+    // Overriding here also means a harness that omits or invents the field cannot change it.
+    const dossier = { ...observed, ticketKind: ticketReview.dossier.ticketKind };
+    if (!this.decisions.assessPostImplementationReview) {
+      throw new Error("Decision provider does not support post-implementation review.");
+    }
+    const result = await this.decisions.assessPostImplementationReview(
+      toBamlTicket(ticket),
+      dossier,
+    );
+    return { dossier, result };
   }
 
   private async ensureReview(
@@ -148,20 +210,41 @@ export class PostImplementationReviewCoordinator {
     review: StoredCodeReview,
   ): Promise<void> {
     if (!review.review || review.projection?.disposition === "applied") return;
-    if (!this.linear.findIssueCommentByMarker || !this.linear.createIssueComment) {
-      throw new Error("Linear gateway does not support code-review comments.");
-    }
-
+    const comments = this.requireCommentGateway();
     const marker = `<!-- weavekit-mastermind-code-review:${review.id} -->`;
-    let commentId = await this.linear.findIssueCommentByMarker(work.issueId, marker);
+    let commentId = await comments.find(work.issueId, marker);
     if (!commentId) {
-      commentId = await this.linear.createIssueComment(
+      const ticket = await this.store.getLatestTicketSnapshot(work.id);
+      review = await this.ensureEli5Publication(
+        work,
+        attempt,
+        review,
+        ticket?.title ?? "Mastermind review",
+      );
+      commentId = await comments.create(
         work.issueId,
-        codeReviewComment(review, attempt, marker),
+        codeReviewComment(review, attempt, marker, ticket?.title ?? "Mastermind review"),
       );
     }
-    const passed = review.status === "passed";
-    await this.replaceLabels(work.issueId, {
+    await this.projectReviewLabels(work.issueId, review.status);
+    await this.store.saveCodeReview({
+      review,
+      status: review.status,
+      projection: {
+        ...review.projection,
+        disposition: "applied",
+        externalId: commentId,
+        projectedAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  private async projectReviewLabels(
+    issueId: string,
+    status: StoredCodeReview["status"],
+  ): Promise<void> {
+    const label = labelForReviewStatus(status, this.config);
+    await this.replaceLabels(issueId, {
       // needsInputLabelId is removed here as well as added below: projectFailure() applies it when
       // a review attempt errors, and a later attempt that passes must clear it. replaceIssueLabels
       // applies `remove` before appending `add`, so the needs_human branch still ends up labelled.
@@ -171,21 +254,72 @@ export class PostImplementationReviewCoordinator {
         this.config.mastermind.changesRequestedLabelId ?? "",
         this.config.mastermind.needsInputLabelId,
       ],
-      add: [
-        passed
-          ? (this.config.mastermind.codeReviewPassedLabelId ?? "")
-          : review.status === "changes_requested"
-            ? (this.config.mastermind.changesRequestedLabelId ?? "")
-            : this.config.mastermind.needsInputLabelId,
-      ],
+      add: [label],
     });
-    await this.store.saveCodeReview({
+  }
+
+  private requireCommentGateway(): CodeReviewCommentGateway {
+    const find = this.linear.findIssueCommentByMarker?.bind(this.linear);
+    const create = this.linear.createIssueComment?.bind(this.linear);
+    if (!find || !create) {
+      throw new Error("Linear gateway does not support code-review comments.");
+    }
+    return { find, create };
+  }
+
+  private async ensureEli5Publication(
+    work: MastermindWorkItem,
+    attempt: ExecutionAttempt,
+    review: StoredCodeReview,
+    ticketTitle: string,
+  ): Promise<StoredCodeReview> {
+    if (
+      attempt.executorKind !== ExecutorKind.RLM_SUBMIND ||
+      review.projection?.eli5 ||
+      !review.review
+    ) {
+      return review;
+    }
+    const eli5 = normalizePostImplementationReviewEli5(review.review.eli5, review.review.verdict);
+    if (!eli5) return review;
+    const publication: CodeReviewEli5Publication = { failures: [] };
+    const worktreePath = reviewWorktreePath(attempt);
+    if (!worktreePath) {
+      publication.failures.push("The review worktree path is unavailable.");
+    } else {
+      try {
+        const artifact = await writePostImplementationReviewEli5Artifact(
+          {
+            worktreePath,
+            reviewId: review.id,
+            ticketTitle,
+            verdict: review.review.verdict,
+            eli5,
+          },
+          this.eli5Rasterizer,
+        );
+        publication.svgPath = artifact.svgPath;
+        publication.pngPath = artifact.pngPath;
+        if (this.linear.uploadIssueAttachment) {
+          const uploaded = await this.linear.uploadIssueAttachment({
+            issueId: work.issueId,
+            fileName: `mastermind-eli5-attempt-${attempt.attemptNumber}.png`,
+            contentType: "image/png",
+            title: `ELI5 review summary (attempt ${attempt.attemptNumber})`,
+            data: artifact.png,
+          });
+          publication.pngUrl = uploaded.assetUrl;
+        }
+      } catch (error) {
+        publication.failures.push(error instanceof Error ? error.message : String(error));
+      }
+    }
+    return this.store.saveCodeReview({
       review,
       status: review.status,
       projection: {
-        disposition: "applied",
-        externalId: commentId,
-        projectedAt: new Date().toISOString(),
+        disposition: "pending",
+        eli5: publication,
       },
     });
   }
@@ -257,6 +391,44 @@ function hashJson(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
+type CodeReviewCommentGateway = {
+  find(issueId: string, marker: string): Promise<string | undefined>;
+  create(issueId: string, body: string): Promise<string>;
+};
+
+function outcomeForVerdict(verdict: PostImplementationReviewVerdict): {
+  status: "passed" | "changes_requested" | "needs_human";
+  eventType: string;
+} {
+  switch (verdict) {
+    case PostImplementationReviewVerdict.PASS:
+      return { status: "passed", eventType: MastermindEventType.CODE_REVIEW_PASSED };
+    case PostImplementationReviewVerdict.CHANGES_REQUIRED:
+      return {
+        status: "changes_requested",
+        eventType: MastermindEventType.CODE_CHANGES_REQUESTED,
+      };
+    case PostImplementationReviewVerdict.NEEDS_HUMAN:
+      return {
+        status: "needs_human",
+        eventType: MastermindEventType.CODE_REVIEW_NEEDS_HUMAN,
+      };
+  }
+}
+
+function labelForReviewStatus(status: StoredCodeReview["status"], config: WeavekitConfig): string {
+  switch (status) {
+    case "passed":
+      return config.mastermind.codeReviewPassedLabelId ?? "";
+    case "changes_requested":
+      return config.mastermind.changesRequestedLabelId ?? "";
+    case "needs_human":
+      return config.mastermind.needsInputLabelId;
+    default:
+      throw new Error(`Code review status ${status} cannot be projected.`);
+  }
+}
+
 function eventForReviewStatus(status: StoredCodeReview["status"]): string | undefined {
   switch (status) {
     case "passed":
@@ -274,9 +446,14 @@ function codeReviewComment(
   review: StoredCodeReview,
   attempt: ExecutionAttempt,
   marker: string,
+  ticketTitle: string,
 ): string {
   const result = review.review!;
   const worktree = reviewWorktreePath(attempt);
+  const eli5 =
+    attempt.executorKind === ExecutorKind.RLM_SUBMIND
+      ? normalizePostImplementationReviewEli5(result.eli5, result.verdict)
+      : undefined;
   const manualSteps = [
     ...(worktree ? [`Change to the review worktree root: \`cd ${worktree}\``] : []),
     ...result.manualVerification,
@@ -284,6 +461,18 @@ function codeReviewComment(
   return [
     marker,
     `Mastermind post-code review for execution attempt ${attempt.attemptNumber}: **${result.verdict}**`,
+    ...(eli5
+      ? [
+          "",
+          ...renderPostImplementationReviewEli5Markdown(eli5, {
+            ticketTitle,
+            ...(review.projection?.eli5?.pngUrl ? { pngUrl: review.projection.eli5.pngUrl } : {}),
+            visualFailed: (review.projection?.eli5?.failures.length ?? 0) > 0,
+          }),
+          "",
+          "## Technical review",
+        ]
+      : []),
     "",
     result.summary,
     "",

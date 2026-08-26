@@ -568,6 +568,7 @@ export interface PortfolioPlanDraft {
 
 export interface PostImplementationReview {
   verdict: PostImplementationReviewVerdict
+  eli5: PostImplementationReviewEli5
   summary: string
   acceptanceCriteriaCoverage: string[]
   verificationAssessment: string[]
@@ -589,6 +590,15 @@ export interface PostImplementationReviewDossier {
   knownRisks: string[]
   unansweredQuestions: string[]
   confidence: number
+  
+}
+
+export interface PostImplementationReviewEli5 {
+  hypothesis: string
+  purpose: string
+  goal: string
+  outcome: string
+  nextSteps: string[]
   
 }
 

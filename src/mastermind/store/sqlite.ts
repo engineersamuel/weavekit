@@ -13,6 +13,7 @@ import type {
 } from "../../generated/baml_client/index.js";
 import { MastermindAction, MastermindState } from "../domain/events.js";
 import type {
+  CodeReviewProjection,
   ExecutionAttempt,
   ExecutionAttemptPatch,
   ExecutionAttachmentTarget,
@@ -553,7 +554,7 @@ export class SqliteMastermindStore implements MastermindStore {
     status: StoredCodeReview["status"];
     dossier?: StoredCodeReview["dossier"];
     result?: StoredCodeReview["review"];
-    projection?: ExecutionProjection;
+    projection?: CodeReviewProjection;
   }): Promise<StoredCodeReview> {
     const now = new Date(
       Math.max(Date.now(), Date.parse(input.review.updatedAt) + 1),
