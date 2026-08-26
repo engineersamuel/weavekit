@@ -188,8 +188,17 @@ class PostImplementationReviewDossier {
   confidence float
 }
 
+class PostImplementationReviewEli5 {
+  hypothesis string
+  purpose string
+  goal string
+  outcome string
+  nextSteps string[]
+}
+
 class PostImplementationReview {
   verdict PostImplementationReviewVerdict
+  eli5 PostImplementationReviewEli5
   summary string
   acceptanceCriteriaCoverage string[]
   verificationAssessment string[]
@@ -420,6 +429,18 @@ function AssessPostImplementationReview(
       determine, recommend, or compare it.
     - Preserve findings and evidence from the dossier. Do not invent repository evidence.
     - Manual verification must be specific and actionable.
+    - Always populate eli5 as a plain-language explanation for a non-specialist. Use short
+      sentences, common words, and no raw commands, file paths, or unexplained acronyms.
+    - eli5.hypothesis states the ticket's testable belief. When the ticket does not state one
+      directly, begin with "We wanted to find out whether" and restate only the ticket's goal.
+    - eli5.purpose explains why the work matters. eli5.goal explains what success meant.
+    - eli5.outcome must agree with verdict and include any material limitation without turning a
+      SUGGESTION into a failure or claiming an unverified benefit.
+    - For CHANGES_REQUIRED, put required remediations first in eli5.nextSteps. For NEEDS_HUMAN,
+      put the human-owned decisions first. For PASS, use optional follow-ups grounded in findings
+      and known risks; when none exist, say that no required work remains.
+    - Keep eli5.nextSteps ordered and limited to four entries. Do not invent a benefit,
+      measurement, decision, or next action that is absent from the ticket or dossier.
     - confidence is between 0 and 1.
 
     {{ _.role("user") }}

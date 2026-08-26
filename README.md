@@ -318,6 +318,16 @@ coalesces pending revisions, so visualization does not delay delegation. Termina
 waits for the final frame. Mastermind includes these files in result artifacts and uploads the HTML
 and PNG when the run has a Linear issue.
 
+After an RLM-backed attempt completes its independent post-implementation review, Mastermind adds
+an `## ELI5` section near the top of the final code-review comment. The same BAML assessment that
+sets the verdict explains the hypothesis, purpose, success goal, outcome, and up to four next steps
+in plain language. Mastermind also renders that structured explanation as a deterministic PNG and
+attaches it to the comment when Linear upload is available. This final-review picture is separate
+from the execution storyboard: the storyboard explains how the recursive run worked, while the ELI5
+picture explains what the reviewed work means. If rendering or upload fails, the complete text stays
+in the comment and the verdict does not change. Non-RLM reviews keep their existing comment format.
+See [ADR 0015](docs/adr/0015-mastermind-rlm-final-eli5.md).
+
 The default renderer is one persistent `gemini-3.7-flash` Copilot SDK session with the
 `aiz-infographic`, `algorithmic-art`, `canvas-design`, `frontend-design`, and `theme-factory`
 skills. The first run downloads pinned skill sources into the ignored

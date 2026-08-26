@@ -98,6 +98,17 @@ export type ExecutionProjection = {
   projectedAt?: string;
 };
 
+export type CodeReviewEli5Publication = {
+  svgPath?: string;
+  pngPath?: string;
+  pngUrl?: string;
+  failures: string[];
+};
+
+export type CodeReviewProjection = ExecutionProjection & {
+  eli5?: CodeReviewEli5Publication;
+};
+
 export type ReviewedHumanComment = {
   id: string;
   revision: string;
@@ -158,7 +169,7 @@ export type StoredCodeReview = {
   status: "pending" | "running" | "passed" | "changes_requested" | "needs_human";
   dossier?: PostImplementationReviewDossier;
   review?: PostImplementationReview;
-  projection?: ExecutionProjection;
+  projection?: CodeReviewProjection;
   createdAt: string;
   updatedAt: string;
 };
@@ -236,7 +247,7 @@ export type MastermindStore = {
     status: StoredCodeReview["status"];
     dossier?: PostImplementationReviewDossier;
     result?: PostImplementationReview;
-    projection?: ExecutionProjection;
+    projection?: CodeReviewProjection;
   }): Promise<StoredCodeReview>;
   transitionExecutionAttempt(input: {
     work: MastermindWorkItem;

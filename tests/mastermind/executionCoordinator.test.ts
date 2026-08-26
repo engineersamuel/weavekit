@@ -49,6 +49,13 @@ import type {
 
 const directories: string[] = [];
 const execFileAsync = promisify(execFile);
+const passingEli5 = {
+  hypothesis: "We wanted to find out whether the change solved the ticket.",
+  purpose: "Give the user the requested behavior.",
+  goal: "Meet the frozen acceptance criteria with repeatable proof.",
+  outcome: "The implementation passed the final review.",
+  nextSteps: ["No required work remains."],
+};
 
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
@@ -476,7 +483,7 @@ describe("Mastermind execution coordinator", () => {
           throw new Error("not used");
         },
         async assessPostImplementationReview(_ticket, dossier) {
-          return { ...dossier, verdict: PostImplementationReviewVerdict.PASS };
+          return { ...dossier, verdict: PostImplementationReviewVerdict.PASS, eli5: passingEli5 };
         },
       },
     );
@@ -527,6 +534,7 @@ describe("Mastermind execution coordinator", () => {
     expect(passedProjection?.add).not.toContain("needs-input");
     expect(linear.comments).toHaveLength(2);
     expect(linear.comments[1]?.body).toContain("post-code review");
+    expect(linear.comments[1]?.body).not.toContain("## ELI5");
     expect(linear.comments[1]?.body).toContain("Manual verification — run these steps in order:");
     expect(linear.comments[1]?.body).toContain(
       `1. Change to the review worktree root: \`cd ${directory}\``,
@@ -545,6 +553,112 @@ describe("Mastermind execution coordinator", () => {
     await acceptMastermindWork({ selector: "WK-1", config, store, linear });
     expect(linear.comments).toHaveLength(3);
     expect(linear.comments[2]?.body).toContain("Canonical implementation worktree");
+    store.close();
+  });
+
+  it("adds an RLM-only ELI5 infographic and reuses it after projection interruption", async () => {
+    const linear = new FakeUploadingLinear();
+    const { store, work, coordinator } = await createRlmPostReviewScenario(linear);
+    const save = store.saveCodeReview.bind(store);
+    let interrupted = false;
+    vi.spyOn(store, "saveCodeReview").mockImplementation(async (input) => {
+      if (input.projection?.disposition === "applied" && !interrupted) {
+        interrupted = true;
+        throw new Error("simulated final-comment projection interruption");
+      }
+      return save(input);
+    });
+
+    for (let phase = 0; phase < 14; phase += 1) {
+      try {
+        await coordinator.process(work.id);
+      } catch (error) {
+        expect(error).toMatchObject({
+          message: "simulated final-comment projection interruption",
+        });
+      }
+    }
+
+    expect(interrupted).toBe(true);
+    expect(linear.uploads).toEqual([
+      {
+        fileName: "mastermind-eli5-attempt-1.png",
+        contentType: "image/png",
+        size: 4,
+      },
+    ]);
+    expect(linear.commentCreates).toBe(2);
+    const body =
+      linear.comments.find((comment) => comment.body.includes("weavekit-mastermind-code-review"))
+        ?.body ?? "";
+    expect(body).toContain("## ELI5");
+    expect(body).toContain(`**Our guess (hypothesis):** ${passingEli5.hypothesis}`);
+    expect(body).toContain("1. No required work remains.");
+    expect(body).toContain(
+      "![Plain-language summary for Implement direct execution](https://uploads.linear.app/asset/mastermind-eli5-attempt-1.png)",
+    );
+    expect(body.indexOf("## ELI5")).toBeLessThan(body.indexOf("## Technical review"));
+    expect(await store.getCurrentCodeReview(work.id)).toMatchObject({
+      status: "passed",
+      projection: {
+        disposition: "applied",
+        eli5: {
+          pngPath: expect.stringContaining("/eli5.png"),
+          pngUrl: "https://uploads.linear.app/asset/mastermind-eli5-attempt-1.png",
+          failures: [],
+        },
+      },
+    });
+    store.close();
+  });
+
+  it("keeps the RLM ELI5 text when its infographic upload fails", async () => {
+    const linear = new FakeUploadingLinear(true);
+    const { store, work, coordinator } = await createRlmPostReviewScenario(linear);
+
+    for (let phase = 0; phase < 14; phase += 1) {
+      await coordinator.process(work.id);
+    }
+
+    const body =
+      linear.comments.find((comment) => comment.body.includes("weavekit-mastermind-code-review"))
+        ?.body ?? "";
+    expect(body).toContain("## ELI5");
+    expect(body).toContain(passingEli5.outcome);
+    expect(body).toContain("The infographic could not be attached.");
+    expect(body).not.toContain("![Plain-language summary");
+    expect(await store.getCurrentCodeReview(work.id)).toMatchObject({
+      status: "passed",
+      projection: {
+        disposition: "applied",
+        eli5: {
+          failures: ["Linear rejected the upload request."],
+        },
+      },
+    });
+    store.close();
+  });
+
+  it("projects a stored pre-feature RLM review with no ELI5 data", async () => {
+    const linear = new FakeUploadingLinear();
+    const { store, work, coordinator } = await createRlmPostReviewScenario(linear, {
+      legacyWithoutEli5: true,
+    });
+
+    for (let phase = 0; phase < 14; phase += 1) {
+      await coordinator.process(work.id);
+    }
+
+    const review = await store.getCurrentCodeReview(work.id);
+    const body =
+      linear.comments.find((comment) => comment.body.includes("weavekit-mastermind-code-review"))
+        ?.body ?? "";
+    expect(review).toMatchObject({ status: "passed", projection: { disposition: "applied" } });
+    expect(review?.review).not.toHaveProperty("eli5");
+    expect(body).toContain("Implementation satisfies the frozen ticket.");
+    expect(body).toContain("Acceptance criteria coverage:");
+    expect(body).not.toContain("## ELI5");
+    expect(linear.uploads).toEqual([]);
     store.close();
   });
 
@@ -599,7 +713,7 @@ describe("Mastermind execution coordinator", () => {
         },
         async assessPostImplementationReview(_ticket, dossier) {
           assessed = dossier;
-          return { ...dossier, verdict: PostImplementationReviewVerdict.PASS };
+          return { ...dossier, verdict: PostImplementationReviewVerdict.PASS, eli5: passingEli5 };
         },
       },
     );
@@ -719,6 +833,75 @@ async function runSubmindAttempt(options: {
   for (let step = 0; step < (options.steps ?? 8); step += 1) await coordinator.process(work.id);
 
   return { store, work, coordinator, body: options.linear.comments[0]?.body ?? "" };
+}
+
+async function createRlmPostReviewScenario(
+  linear: FakeUploadingLinear,
+  options: { legacyWithoutEli5?: boolean } = {},
+): Promise<{
+  store: SqliteMastermindStore;
+  work: MastermindWorkItem;
+  coordinator: MastermindExecutionCoordinator;
+}> {
+  const directory = await tempDirectory();
+  await execFileAsync("git", ["init"], { cwd: directory });
+  await execFileAsync("git", ["config", "user.email", "mastermind@example.test"], {
+    cwd: directory,
+  });
+  await execFileAsync("git", ["config", "user.name", "Mastermind Test"], { cwd: directory });
+  await writeFile(join(directory, "README.md"), "review fixture\n");
+  await execFileAsync("git", ["add", "README.md"], { cwd: directory });
+  await execFileAsync("git", ["commit", "-m", "fixture"], { cwd: directory });
+  const store = new SqliteMastermindStore(join(directory, "mastermind.sqlite"));
+  await store.initialize();
+  const config = executionConfig(directory);
+  const work = await createPlannedDirectWork(store, MastermindAction.DELEGATE_SUBMIND);
+  const postReview = new PostImplementationReviewCoordinator(
+    config,
+    store,
+    linear,
+    {
+      async review() {
+        return {
+          summary: "Implementation satisfies the frozen ticket.",
+          acceptanceCriteriaCoverage: ["Criterion covered by README.md."],
+          verificationAssessment: ["Independent verification passed."],
+          manualVerification: ["Open README.md and confirm the fixture."],
+          findings: [],
+          knownRisks: [],
+          unansweredQuestions: [],
+          confidence: 0.95,
+        };
+      },
+    },
+    {
+      async synthesizeTicketPatch() {
+        throw new Error("not used");
+      },
+      async decideNextAction() {
+        throw new Error("not used");
+      },
+      async assessPostImplementationReview(_ticket, dossier) {
+        const result = {
+          ...dossier,
+          verdict: PostImplementationReviewVerdict.PASS,
+        };
+        return options.legacyWithoutEli5 ? (result as never) : { ...result, eli5: passingEli5 };
+      },
+    },
+    async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+  );
+  const coordinator = new MastermindExecutionCoordinator(
+    config,
+    store,
+    linear,
+    new FakeProvisioner(directory),
+    { [ExecutorKind.RLM_SUBMIND]: new FakeExecutor(ExecutorKind.RLM_SUBMIND) },
+    { run: vi.fn().mockResolvedValue({ exitCode: 0, stdout: "passed", stderr: "" }) },
+    undefined,
+    postReview,
+  );
+  return { store, work, coordinator };
 }
 
 class FakeProvisioner implements WorkspaceProvisioner {
