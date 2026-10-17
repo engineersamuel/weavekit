@@ -1,4 +1,10 @@
-export type FlueMcpServerName = "exa" | "EngHub" | "baton" | "context7" | "awesome-copilot";
+export type FlueMcpServerName =
+  | "exa"
+  | "parallel"
+  | "EngHub"
+  | "baton"
+  | "context7"
+  | "awesome-copilot";
 
 export type RemoteFlueMcpSpec = {
   name: FlueMcpServerName;
@@ -25,6 +31,15 @@ export function buildFlueMcpSpecs(
   options: { includeLocalBaton?: boolean } = {},
 ): FlueMcpSpec[] {
   const specs: FlueMcpSpec[] = [
+    {
+      name: "parallel",
+      kind: "remote",
+      enabled: env.WEAVEKIT_PARALLEL_SEARCH === "1",
+      url: "https://search.parallel.ai/mcp",
+      transport: "streamable-http",
+      headers: { "User-Agent": "weavekit/0.0.0" },
+      tools: ["web_search", "web_fetch"],
+    },
     {
       name: "exa",
       kind: "remote",

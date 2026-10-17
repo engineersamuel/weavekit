@@ -36,6 +36,26 @@ describe("Flue MCP config", () => {
     expect(enabled.map((spec) => spec.name)).toEqual(["EngHub"]);
   });
 
+  it("enables anonymous Parallel search only with an explicit opt-in", () => {
+    for (const value of [undefined, "", "0", "false"]) {
+      expect(
+        getEnabledRemoteMcpSpecs({ WEAVEKIT_PARALLEL_SEARCH: value }).map((spec) => spec.name),
+      ).toEqual(["EngHub"]);
+    }
+
+    const enabled = getEnabledRemoteMcpSpecs({ WEAVEKIT_PARALLEL_SEARCH: "1" });
+    expect(enabled.map((spec) => spec.name)).toEqual(["parallel", "EngHub"]);
+    expect(enabled[0]).toEqual({
+      name: "parallel",
+      kind: "remote",
+      enabled: true,
+      url: "https://search.parallel.ai/mcp",
+      transport: "streamable-http",
+      headers: { "User-Agent": "weavekit/0.0.0" },
+      tools: ["web_search", "web_fetch"],
+    });
+  });
+
   it("keeps Baton disabled unless local MCPs are explicitly included", () => {
     expect(getEnabledRemoteMcpSpecs({}).map((spec) => spec.name)).not.toContain("baton");
     expect(

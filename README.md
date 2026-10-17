@@ -655,13 +655,14 @@ Set `[flue].model` in `~/.weavekit/config.toml` to override the default Flue mod
 
 The Flue workflow can expose selected MCP tools from the same systems used in local Copilot CLI config:
 
-| MCP             | Env/config                | Notes                                                                                                 |
-| --------------- | ------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Exa             | `EXA_API_KEY`             | Builds `https://mcp.exa.ai/mcp?exaApiKey=...` at runtime.                                             |
-| EngHub          | none                      | Uses `https://mcp.eng.ms`.                                                                            |
-| Context7        | `CONTEXT7_API_KEY`        | Sent as a trusted application header.                                                                 |
-| Baton           | `includeLocalBaton: true` | Local development only; requires Baton MCP server on `http://localhost:53724/mcp`.                    |
-| awesome-copilot | not wired                 | Current Flue MCP API expects remote MCP endpoints; bridge the Docker stdio server before exposing it. |
+| MCP             | Env/config                   | Notes                                                                                                 |
+| --------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Parallel        | `WEAVEKIT_PARALLEL_SEARCH=1` | Opt-in web search and page fetching, with no Parallel account or API key.                             |
+| Exa             | `EXA_API_KEY`                | Builds `https://mcp.exa.ai/mcp?exaApiKey=...` at runtime.                                             |
+| EngHub          | none                         | Uses `https://mcp.eng.ms`.                                                                            |
+| Context7        | `CONTEXT7_API_KEY`           | Sent as a trusted application header.                                                                 |
+| Baton           | `includeLocalBaton: true`    | Local development only; requires Baton MCP server on `http://localhost:53724/mcp`.                    |
+| awesome-copilot | not wired                    | Current Flue MCP API expects remote MCP endpoints; bridge the Docker stdio server before exposing it. |
 
 Server or application registration code should use `createConfiguredDecisionCouncilWorkflow(...)` when it wants the environment-configured MCP tools attached to the Flue workflow:
 
@@ -677,6 +678,15 @@ try {
   await close();
 }
 ```
+
+Set `WEAVEKIT_PARALLEL_SEARCH=1` in the environment passed to this factory to add
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp). It connects to
+`https://search.parallel.ai/mcp` over Streamable HTTP and exposes `web_search` and `web_fetch`.
+For example, a council evaluating a library can search for recent release notes, then fetch the
+relevant pages before comparing the options. Anonymous search uses Fast mode and is rate limited
+for exploration and light use. Leave the variable unset or set it to `0` to disable Parallel;
+the existing MCP servers and model selection are unchanged. This opt-in applies to the configured
+Flue factory above, not the separate CLI or Deep Research provider configuration.
 
 ### Superpowers skill
 
